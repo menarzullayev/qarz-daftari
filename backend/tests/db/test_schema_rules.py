@@ -292,3 +292,40 @@ def test_migration_sql_matches_the_approved_schema() -> None:
     # which are set at deploy.
     assert "NOLOGIN NOBYPASSRLS" in migration[start:end]
     assert migration[:start] + role_in_spec + migration[end:] == approved
+
+
+# --- indexes the load test showed to be needed (S19.1, migration 0020) ---------------------------------
+
+
+def test_the_ledger_has_its_shop_first_indexes(owner: psycopg.Connection) -> None:
+    rows = owner.execute(
+        "SELECT i.indexname, i.indexdef, x.indisvalid FROM pg_indexes i "
+        "JOIN pg_class c ON c.relname = i.indexname JOIN pg_index x ON x.indexrelid = c.oid "
+        "WHERE i.schemaname = 'public' AND i.tablename = 'ledger_entry'"
+    ).fetchall()
+    found = {name: (definition.split(" USING ", 1)[1], valid) for name, definition, valid in rows}
+    assert found["ledger_reversal_shop"] == ("btree (shop_id, reverses_id) WHERE (reverses_id IS NOT NULL)", True)
+    assert found["ledger_shop_customer"] == ("btree (shop_id, customer_id, seq)", True)
+
+
+def test_one_customers_entries_are_reached_through_the_shop_first_index(
+    as_app: AppSession, shop_a: Shop, owner: psycopg.Connection
+) -> None:
+    """Under row-level security the planner has a single index for "this customer in this shop".
+
+    Without it the choice was to intersect the customer index with the whole shop's, which in a large
+    shop reads every entry of the shop for every customer looked at.
+    """
+    for seq in range(1, 4):
+        add_entry(owner, shop_a, seq=seq, amount=1000)
+    with as_app(shop_a.shop_id) as conn:
+        # Sequential scans win on a table of three rows; they are not the choice under test.
+        conn.execute("SET LOCAL enable_seqscan = off")
+        plan = "\n".join(
+            row[0]
+            for row in conn.execute(
+                "EXPLAIN SELECT sum(amount) FROM ledger_entry WHERE customer_id = %s", (shop_a.customer_id,)
+            ).fetchall()
+        )
+    assert "ledger_shop_customer" in plan, plan
+    assert "BitmapAnd" not in plan, plan
