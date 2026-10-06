@@ -13,7 +13,7 @@ import psycopg
 import pytest
 from psycopg import errors
 
-from .conftest import AppSession, Shop, add_entry, add_line
+from ..conftest import AppSession, Shop, add_entry, add_line
 
 pytestmark = pytest.mark.db
 
