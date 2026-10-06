@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { I18nProvider, useI18n } from "../i18n/I18nProvider";
 import type { Language, MessageKey } from "../i18n/types";
 import { type Api, type ApiAuth, type ApiError, createApi, type Fetch, type ShopMembership, toApiError } from "./api";
-import { navigate, useHashPath } from "./router";
+import { isCustomerPath, MY_PATH } from "./customer/paths";
+import { Link, navigate, useHashPath } from "./router";
 import { SignInRequiredScreen } from "./screens";
 import { Shell } from "./Shell";
 import { StaffRoutes } from "./StaffApp";
@@ -19,15 +20,23 @@ type StaffRootProps = {
   connect: () => Promise<ApiAuth | null>;
   fetch?: Fetch;
   now?: () => Date;
+  /**
+   * Whether this client also serves a person as a customer: their own accounts and what they owe. On
+   * for the Telegram Mini App, off for the web panel, which is for staff only.
+   */
+  customerPage?: boolean;
 };
 
 type Phase =
   | { kind: "connecting" }
   | { kind: "signedOut" }
   | { kind: "failed"; error: ApiError }
-  | { kind: "ready"; api: Api; shops: ShopMembership[]; activeShop: string | null };
+  | { kind: "ready"; api: Api; shops: ShopMembership[]; activeShop: string | null; isCustomer: boolean };
 
 const browserFetch: Fetch = (input, init) => window.fetch(input, init);
+
+// Loaded only for a person who has a customer account, so staff who have none never download it.
+const CustomerArea = lazy(() => import("./customer/CustomerArea"));
 
 /** Frame for the moments before there is an active shop: no navigation, the given title, one message. */
 function Gate({ entryKey, title, children }: { entryKey: MessageKey; title: string; children: ReactNode }) {
@@ -76,8 +85,15 @@ function ShopChooser({
   );
 }
 
-function Root({ entryKey, connect, fetch = browserFetch, now }: Omit<StaffRootProps, "initialLanguage">) {
+function Root({
+  entryKey,
+  connect,
+  fetch = browserFetch,
+  now,
+  customerPage = false,
+}: Omit<StaffRootProps, "initialLanguage">) {
   const { t } = useI18n();
+  const path = useHashPath();
   const [phase, setPhase] = useState<Phase>({ kind: "connecting" });
   const [attempt, setAttempt] = useState(0);
   const [choosing, setChoosing] = useState(false);
@@ -99,9 +115,23 @@ function Root({ entryKey, connect, fetch = browserFetch, now }: Omit<StaffRootPr
       }
       // A session that ends later (expired, or signed out elsewhere) leads back to the sign-in notice.
       const api = createApi({ fetch, auth, onUnauthenticated: signedOut });
-      const mine = await api.myShops();
+      // A failure to read the accounts must not keep a member of staff from their work: for them it
+      // only means "my debts" is not offered. For a person with no shop it is the whole page, so it fails.
+      const [mine, accounts] = await Promise.all([
+        api.myShops(),
+        customerPage ? api.myAccounts().catch((error: unknown) => toApiError(error)) : [],
+      ]);
+      if (mine.items.length === 0 && !Array.isArray(accounts)) {
+        throw accounts;
+      }
       if (!cancelled) {
-        setPhase({ kind: "ready", api, shops: mine.items, activeShop: mine.activeShop });
+        setPhase({
+          kind: "ready",
+          api,
+          shops: mine.items,
+          activeShop: mine.activeShop,
+          isCustomer: Array.isArray(accounts) && accounts.length > 0,
+        });
       }
     })().catch((error: unknown) => {
       const failure = toApiError(error);
@@ -148,6 +178,22 @@ function Root({ entryKey, connect, fetch = browserFetch, now }: Omit<StaffRootPr
       </Gate>
     );
   }
+  // A person may work in one shop and owe in another. The address decides which side is shown: the
+  // paths under /my are their own accounts, every other path is the staff workspace. A person with
+  // accounts and no shop only has the first side, whatever the path.
+  if (phase.isCustomer && (phase.shops.length === 0 || isCustomerPath(path))) {
+    return (
+      <Suspense
+        fallback={
+          <Gate entryKey={entryKey} title={t("app.name")}>
+            <Loading />
+          </Gate>
+        }
+      >
+        <CustomerArea api={phase.api} staffHome={phase.shops.length > 0} />
+      </Suspense>
+    );
+  }
   if (phase.shops.length === 0) {
     return (
       <Gate entryKey={entryKey} title={t("shops.none.title")}>
@@ -180,15 +226,22 @@ function Root({ entryKey, connect, fetch = browserFetch, now }: Omit<StaffRootPr
   return (
     <StaffRoutes
       entryKey={entryKey}
-      session={{ shopName: shop.name, role: shop.role }}
+      session={{ shopName: shop.name, role: shop.role, membershipId: shop.membershipId }}
       api={shopApi}
       now={now}
       overviewFooter={
-        phase.shops.length > 1 ? (
+        phase.shops.length > 1 || phase.isCustomer ? (
           <p className="actions">
-            <button type="button" className="button" onClick={() => setChoosing(true)}>
-              {t("shops.switch")}
-            </button>
+            {phase.shops.length > 1 ? (
+              <button type="button" className="button" onClick={() => setChoosing(true)}>
+                {t("shops.switch")}
+              </button>
+            ) : null}
+            {phase.isCustomer ? (
+              <Link to={MY_PATH} className="button">
+                {t("my.nav.accounts")}
+              </Link>
+            ) : null}
           </p>
         ) : null
       }
@@ -197,8 +250,9 @@ function Root({ entryKey, connect, fetch = browserFetch, now }: Omit<StaffRootPr
 }
 
 /**
- * The staff workspace connected to the server: signs in, finds the active shop (asking which one when
- * the person works in several), and then shows the screens for that shop and that role.
+ * The application connected to the server: signs in, finds the active shop (asking which one when the
+ * person works in several), and then shows the screens for that shop and that role. With `customerPage`
+ * it also serves a person who is a customer of a shop: see the comment where the two sides are chosen.
  */
 export function StaffRoot({ initialLanguage, ...root }: StaffRootProps) {
   return (

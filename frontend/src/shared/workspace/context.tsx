@@ -7,6 +7,10 @@ import type { Role } from "../navigation";
 export type Workspace = {
   api: ShopApi;
   role: Role;
+  /** The signed-in person's membership in the active shop; null when the server did not say. */
+  membershipId: string | null;
+  /** The bot whose deep links connect customers; null when the build does not name one. */
+  botUsername: string | null;
   /** The current instant; tests pass a fixed one. Calendar dates are always derived in Tashkent time. */
   now: () => Date;
 };

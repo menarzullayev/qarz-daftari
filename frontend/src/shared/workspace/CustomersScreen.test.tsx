@@ -136,3 +136,21 @@ describe("picking a customer for a new entry", () => {
     expect(server.sent[0]?.query).toEqual({ status: "active" });
   });
 });
+
+describe("connecting customers from the customer book", () => {
+  it("leads to the waiting list and to the counter code", async () => {
+    renderScreen(<CustomersScreen />, { fetch: fakeServer(() => page([ALI])).fetch });
+    await screen.findByText("Ali Valiyev");
+    const nav = screen.getByRole("navigation", { name: "Mijozlarni Telegramga ulash" });
+    expect(within(nav).getAllByRole("link").map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
+      ["Ulanishni kutayotganlar", "#/customers/waiting"],
+      ["Peshtaxta kodi", "#/customers/counter-code"],
+    ]);
+  });
+
+  it("does not get in the way of picking a customer for a new entry", async () => {
+    renderScreen(<CustomersScreen pick />, { fetch: fakeServer(() => page([ALI])).fetch });
+    await screen.findByText("Ali Valiyev");
+    expect(screen.queryByRole("navigation")).toBeNull();
+  });
+});

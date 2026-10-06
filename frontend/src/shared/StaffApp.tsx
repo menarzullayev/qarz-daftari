@@ -7,17 +7,21 @@ import { MORE_ITEM, primaryTabCount, staffSections } from "./navigation";
 import { useHashPath } from "./router";
 import { MoreScreen, NotFoundScreen, PlaceholderScreen, SignInRequiredScreen } from "./screens";
 import type { StaffSession } from "./session";
+import { BOT_USERNAME } from "./settings";
 import { Shell } from "./Shell";
 import { AddGoodsScreen } from "./workspace/AddGoodsScreen";
 import { CatalogScreen } from "./workspace/CatalogScreen";
 import { WorkspaceProvider } from "./workspace/context";
+import { CounterCodeScreen } from "./workspace/CounterCodeScreen";
 import { CustomerScreen } from "./workspace/CustomerScreen";
 import { CustomersScreen } from "./workspace/CustomersScreen";
+import { DisputesScreen } from "./workspace/DisputesScreen";
 import { EntryScreen } from "./workspace/EntryScreen";
 import { NewCustomerScreen } from "./workspace/NewCustomerScreen";
 import { OverviewScreen } from "./workspace/OverviewScreen";
 import { matchWorkspaceRoute, type WorkspaceRoute } from "./workspace/routes";
 import { ShopSettingsScreen } from "./workspace/ShopSettingsScreen";
+import { WaitingScreen } from "./workspace/WaitingScreen";
 import "./workspace/workspace.css";
 
 export type StaffRoutesProps = {
@@ -31,6 +35,8 @@ export type StaffRoutesProps = {
   api?: ShopApi | undefined;
   /** Clock for the screens; tests pass a fixed one. */
   now?: (() => Date) | undefined;
+  /** The bot whose deep links connect customers; by default the build's `VITE_BOT_USERNAME`. */
+  botUsername?: string | null | undefined;
   /** Shown under the overview, for example the control that switches shops. */
   overviewFooter?: ReactNode;
 };
@@ -55,6 +61,12 @@ function workspaceScreen(route: WorkspaceRoute, overviewFooter: ReactNode): Reac
       return <EntryScreen key={`${route.customerId}/${route.kind}`} customerId={route.customerId} kind={route.kind} />;
     case "addGoods":
       return <AddGoodsScreen key={route.entryId} customerId={route.customerId} entryId={route.entryId} />;
+    case "waiting":
+      return <WaitingScreen />;
+    case "counterCode":
+      return <CounterCodeScreen />;
+    case "disputes":
+      return <DisputesScreen />;
     case "catalog":
       return <CatalogScreen />;
     case "shopSettings":
@@ -63,11 +75,22 @@ function workspaceScreen(route: WorkspaceRoute, overviewFooter: ReactNode): Reac
 }
 
 /** The routes of the staff workspace inside the shell. The caller provides the language context. */
-export function StaffRoutes({ entryKey, session, api, now = systemClock, overviewFooter }: StaffRoutesProps) {
+export function StaffRoutes({
+  entryKey,
+  session,
+  api,
+  now = systemClock,
+  botUsername = BOT_USERNAME,
+  overviewFooter,
+}: StaffRoutesProps) {
   const { t } = useI18n();
   const path = useHashPath();
   const role = session?.role;
-  const workspace = useMemo(() => (api && role ? { api, role, now } : null), [api, role, now]);
+  const membershipId = session?.membershipId ?? null;
+  const workspace = useMemo(
+    () => (api && role ? { api, role, membershipId, botUsername, now } : null),
+    [api, role, membershipId, botUsername, now],
+  );
 
   if (!session) {
     return (

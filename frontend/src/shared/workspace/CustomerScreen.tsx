@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from "react";
 
 import { useI18n } from "../../i18n/I18nProvider";
-import type { MessageKey } from "../../i18n/types";
 import type { Customer, CustomerDetail, CustomerPatch, Entry } from "../api";
 import { formatCalendarDay, formatDateTime, formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
@@ -9,18 +8,12 @@ import { canManage } from "../navigation";
 import { parseIsoDate } from "../promise";
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
-import { canAddGoods } from "./AddGoodsScreen";
+import { canAddGoods, mayAddGoods } from "./AddGoodsScreen";
 import { useWorkspace } from "./context";
 import { GoodsList } from "./GoodsEditor";
+import { LinkSection } from "./LinkSection";
 import { cleanName, customerFieldErrors, nameProblem } from "./NewCustomerScreen";
-import { errorText, Failure, FieldError, Loading, OverdueLines } from "./parts";
-
-const KIND_LABELS: Readonly<Record<string, MessageKey>> = {
-  credit: "entry.kind.credit",
-  payment: "entry.kind.payment",
-  reversal: "entry.kind.reversal",
-  opening: "entry.kind.opening",
-};
+import { ENTRY_KIND_LABELS, errorText, Failure, FieldError, Loading, OverdueLines } from "./parts";
 
 /**
  * Only a manager or an owner is offered a reversal, and only for an entry the server would accept: not
@@ -151,7 +144,7 @@ function EntryRow({
   return (
     <li className={entry.reversed ? "row row--struck" : "row"}>
       <p className="row__link">
-        <span className="row__name">{t(KIND_LABELS[entry.kind] ?? "entry.kind.other")}</span>
+        <span className="row__name">{t(ENTRY_KIND_LABELS[entry.kind] ?? "entry.kind.other")}</span>
         <span className="row__amount">{formatMoney(entry.amount, language)}</span>
       </p>
       <p className="row__meta">{Number.isNaN(made.getTime()) ? entry.createdAt : formatDateTime(made, language)}</p>
@@ -161,7 +154,13 @@ function EntryRow({
         <p className="row__meta">{t("entry.promised", { date: formatCalendarDay(promised, language) })}</p>
       ) : null}
       {entry.reversed ? <p className="row__meta">{t("entry.reversed")}</p> : null}
-      {entry.disputed ? <p className="row__warning">{t("entry.disputed")}</p> : null}
+      {entry.disputed ? (
+        <p className="row__warning">
+          <span>{t("entry.disputed")}</span>
+          {/* Only a manager or an owner has the list where a dispute is answered. */}
+          {mayManage ? <Link to="/disputes">{t("disputes.open")}</Link> : null}
+        </p>
+      ) : null}
       {goodsPath !== null ? (
         <Link to={goodsPath} className="button button--small">
           {t("goods.later.action")}
@@ -191,9 +190,10 @@ function EntryRow({
 }
 
 function Detail({ customer, reload }: { customer: CustomerDetail; reload: () => void }) {
-  const { api, role, now } = useWorkspace();
+  const { api, role, membershipId, now } = useWorkspace();
   const { t, language } = useI18n();
   const mayManage = canManage(role);
+  const viewer = { role, membershipId };
   const today = now();
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -269,6 +269,8 @@ function Detail({ customer, reload }: { customer: CustomerDetail; reload: () => 
         </section>
       ) : null}
 
+      <LinkSection customerId={customer.id} archived={archived} />
+
       <section aria-labelledby="entries-title">
         <h2 id="entries-title">{t("customer.entries")}</h2>
         {reversal.state.status === "error" ? (
@@ -284,7 +286,11 @@ function Detail({ customer, reload }: { customer: CustomerDetail; reload: () => 
               <EntryRow
                 key={entry.id}
                 entry={entry}
-                goodsPath={canAddGoods(entry, today) ? `/customers/${customer.id}/entries/${entry.id}/goods` : null}
+                goodsPath={
+                  canAddGoods(entry, today) && mayAddGoods(entry, viewer)
+                    ? `/customers/${customer.id}/entries/${entry.id}/goods`
+                    : null
+                }
                 mayManage={mayManage}
                 confirming={confirming === entry.id}
                 pending={busy}

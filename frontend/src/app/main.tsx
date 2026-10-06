@@ -13,7 +13,7 @@ if (!root) {
   throw new Error("root element is missing");
 }
 
-// Staff workspace inside the Telegram Mini App.
+// The Telegram Mini App: the staff workspace, and for a shop's customer their own account.
 const launch = initTelegram();
 const initialLanguage = detectLanguage({
   stored: readStoredLanguage(),
@@ -36,7 +36,7 @@ createRoot(root).render(
     {preview ? (
       <StaffApp entryKey="entry.app" session={preview} initialLanguage={initialLanguage} />
     ) : (
-      <StaffRoot entryKey="entry.app" initialLanguage={initialLanguage} connect={connect} />
+      <StaffRoot entryKey="entry.app" initialLanguage={initialLanguage} connect={connect} customerPage />
     )}
   </StrictMode>,
 );

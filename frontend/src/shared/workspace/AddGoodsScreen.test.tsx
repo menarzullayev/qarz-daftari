@@ -19,7 +19,7 @@ import {
 import { renderScreen } from "../../testing/renderScreen";
 import type { Entry } from "../api";
 import type { Role } from "../navigation";
-import { AddGoodsScreen, canAddGoods } from "./AddGoodsScreen";
+import { AddGoodsScreen, canAddGoods, mayAddGoods } from "./AddGoodsScreen";
 
 afterEach(cleanup);
 
@@ -267,5 +267,50 @@ describe("which entries are offered goods", () => {
   it("only until the end of the day after the sale, Tashkent time", () => {
     expect(canAddGoods(entry(), new Date("2026-10-07T18:59:59.999Z"))).toBe(true);
     expect(canAddGoods(entry(), new Date("2026-10-07T19:00:00.000Z"))).toBe(false);
+  });
+
+  describe("and to whom", () => {
+    const AUTHOR = "33333333-3333-4333-8333-333333333333";
+    const OTHER = "33333333-3333-4333-8333-333333333334";
+    const mine = entry({ authorId: AUTHOR });
+
+    it("the seller who recorded the entry, whatever the letter case of the identifier", () => {
+      expect(mayAddGoods(mine, { role: "seller", membershipId: AUTHOR })).toBe(true);
+      expect(mayAddGoods(entry({ authorId: AUTHOR.toUpperCase() }), { role: "seller", membershipId: AUTHOR })).toBe(true);
+    });
+
+    it("not another seller", () => {
+      expect(mayAddGoods(mine, { role: "seller", membershipId: OTHER })).toBe(false);
+    });
+
+    it.each(["manager", "owner"] as const)("a %s, whoever recorded it", (role) => {
+      expect(mayAddGoods(mine, { role, membershipId: OTHER })).toBe(true);
+    });
+
+    it("anyone when the server does not say who is who: its refusal is then what the seller sees", () => {
+      expect(mayAddGoods(mine, { role: "seller", membershipId: null })).toBe(true);
+      expect(mayAddGoods(entry({ authorId: null }), { role: "seller", membershipId: OTHER })).toBe(true);
+    });
+  });
+});
+
+describe("a seller who did not record the sale", () => {
+  const OTHER = "33333333-3333-4333-8333-333333333334";
+
+  it("is told who can add the goods instead of being given the form, and nothing is sent", async () => {
+    const server = fakeServer(() => ok(detailBody()));
+    renderScreen(<AddGoodsScreen customerId={CUSTOMER_ID} entryId={ENTRY_ID} />, { fetch: server.fetch, membershipId: OTHER });
+    expect(
+      await screen.findByText("Tovarlarni yozuvni yozgan xodim, menejer yoki do'kon egasi qo'sha oladi."),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Tovarlarni saqlash" })).toBeNull();
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(server.writes()).toHaveLength(0);
+  });
+
+  it.each(["manager", "owner"] as const)("does not stop a %s", async (role) => {
+    const server = fakeServer((sent) => (sent.path.endsWith("/catalog") ? ok({ items: [], next_cursor: null }) : ok(detailBody())));
+    renderScreen(<AddGoodsScreen customerId={CUSTOMER_ID} entryId={ENTRY_ID} />, { fetch: server.fetch, role, membershipId: OTHER });
+    expect(await screen.findByRole("button", { name: "Tovarlarni saqlash" })).toBeTruthy();
   });
 });

@@ -2,9 +2,10 @@ import { lineTotal, MAX_LINES, qtyToApi, readServerQty } from "./goods";
 import { isRole, type Role } from "./navigation";
 
 /**
- * Client for the staff API (/api/v1). The server is the authority: it checks the role, the amounts and
- * the dates on every call. This module only shapes requests and refuses a response that does not look
- * like the contract, so a screen never shows a balance that is not a whole number of UZS.
+ * Client for the API (/api/v1): the staff workspace and a customer's own accounts. The server is the
+ * authority: it checks the role, the amounts and the dates on every call. This module only shapes
+ * requests and refuses a response that does not look like the contract, so a screen never shows a
+ * balance that is not a whole number of UZS.
  */
 
 export type Fetch = (input: string, init: RequestInit) => Promise<Response>;
@@ -154,8 +155,75 @@ export type CatalogAction = "hide" | "unhide" | "accept" | "dismiss";
 export type ShopSettings = { id: string; name: string; lang: string; defaultPromiseDays: number };
 export type ShopSettingsPatch = { name?: string; lang?: string; defaultPromiseDays?: number };
 
-export type ShopMembership = { shopId: string; name: string; role: Role };
+export type ShopMembership = {
+  shopId: string;
+  name: string;
+  role: Role;
+  /** The signed-in person's membership in this shop; null when the server does not say. */
+  membershipId: string | null;
+};
 export type MyShops = { items: ShopMembership[]; activeShop: string | null };
+
+/** A customer's objection to one entry. `status`: open, declined, withdrawn, or reversed (the shop agreed). */
+export type Dispute = { id: string; status: string; reason: string; declineReason: string | null };
+
+/** An open dispute as a manager or an owner sees it. `amount` is the disputed entry's. */
+export type OpenDispute = Dispute & {
+  entryId: string;
+  createdAt: string;
+  customerId: string;
+  customerName: string;
+  amount: number;
+};
+
+/** Whether a customer is connected to a Telegram account. `status` is the server's word for the link. */
+export type LinkState = { linked: boolean; status: string | null; since: string | null };
+
+/**
+ * What follows "/start " in the bot's deep link. It is a credential shown once: it lives in component
+ * state only and is never written to the address, to storage or to a log. Null when the server answers
+ * a repeated request, whose stored answer no longer carries it.
+ */
+export type IssuedLink = { start: string | null; expiresAt: string | null };
+
+export type CounterCode = { exists: boolean; since: string | null };
+export type WaitingPerson = { id: string; name: string; since: string };
+
+/** One of the signed-in person's own customer accounts. */
+export type MyAccount = { linkId: string; shopName: string; displayName: string; balance: number };
+
+/** An entry as the customer sees it: no note and no author, which are the shop's own (REQ-045). */
+export type AccountEntry = {
+  id: string;
+  kind: string;
+  amount: number;
+  createdAt: string;
+  promisedDate: string | null;
+  reversesId: string | null;
+  reversed: boolean;
+  disputed: boolean;
+  dispute: Dispute | null;
+  lines: GoodsLine[];
+};
+
+export type AccountDetail = MyAccount & {
+  overdueAmount: number;
+  dueToday: number;
+  removalRequested: boolean;
+  entries: AccountEntry[];
+  entriesTotal: number;
+};
+
+/** `removed`: the data is gone now. Otherwise it waits until `waitingForBalance` UZS are paid. */
+export type RemovalOutcome = { removed: boolean; waitingForBalance: number | null };
+
+/** The text of a dispute or decline reason: 3 to 300 characters once white space is tidied. */
+export const REASON_MIN = 3;
+export const REASON_MAX = 300;
+export function cleanReason(raw: string): string | null {
+  const reason = raw.split(/\s+/).filter(Boolean).join(" ");
+  return reason.length >= REASON_MIN && reason.length <= REASON_MAX ? reason : null;
+}
 
 // --- reading responses -------------------------------------------------------------------------------
 
@@ -395,10 +463,119 @@ function myShops(value: unknown): MyShops {
       if (!isRole(role)) {
         throw new Malformed();
       }
-      return { shopId: text(shop["shop_id"]), name: text(shop["name"]), role };
+      return {
+        shopId: text(shop["shop_id"]),
+        name: text(shop["name"]),
+        role,
+        membershipId: textOrNull(shop["membership_id"]),
+      };
     }),
     activeShop: textOrNull(body["active_shop"]),
   };
+}
+
+function wholeOrNull(value: unknown): number | null {
+  return value === null || value === undefined ? null : whole(value);
+}
+
+function dispute(value: unknown): Dispute {
+  const body = record(value);
+  return {
+    id: text(body["id"]),
+    status: text(body["status"]),
+    reason: text(body["reason"]),
+    declineReason: textOrNull(body["decline_reason"]),
+  };
+}
+
+function openDispute(value: unknown): OpenDispute {
+  const body = record(value);
+  return {
+    ...dispute(body),
+    entryId: text(body["entry_id"]),
+    createdAt: text(body["created_at"]),
+    customerId: text(body["customer_id"]),
+    customerName: text(body["customer_name"]),
+    amount: whole(body["amount"]),
+  };
+}
+
+function linkState(value: unknown): LinkState {
+  const body = record(value);
+  return { linked: flag(body["linked"]), status: textOrNull(body["status"]), since: textOrNull(body["since"]) };
+}
+
+function issuedLink(value: unknown): IssuedLink {
+  const body = record(value);
+  return { start: textOrNull(body["start"]), expiresAt: textOrNull(body["expires_at"]) };
+}
+
+function counterCode(value: unknown): CounterCode {
+  const body = record(value);
+  return { exists: flag(body["exists"]), since: textOrNull(body["since"]) };
+}
+
+function waitingPerson(value: unknown): WaitingPerson {
+  const body = record(value);
+  return { id: text(body["id"]), name: text(body["name"]), since: text(body["since"]) };
+}
+
+function myAccount(value: unknown): MyAccount {
+  const body = record(value);
+  return {
+    linkId: text(body["link_id"]),
+    shopName: text(body["shop_name"]),
+    displayName: text(body["display_name"]),
+    balance: whole(body["balance"]),
+  };
+}
+
+function accountEntry(value: unknown): AccountEntry {
+  const body = record(value);
+  const objection = body["dispute"];
+  return {
+    id: text(body["id"]),
+    kind: text(body["kind"]),
+    amount: whole(body["amount"]),
+    createdAt: text(body["created_at"]),
+    promisedDate: textOrNull(body["promised_date"]),
+    reversesId: textOrNull(body["reverses_id"]),
+    reversed: flag(body["reversed"]),
+    disputed: flag(body["disputed"]),
+    dispute: objection === null || objection === undefined ? null : dispute(objection),
+    lines: goodsLines(body["lines"]),
+  };
+}
+
+function accountDetail(value: unknown): AccountDetail {
+  const body = record(value);
+  const late = record(body["overdue"]);
+  return {
+    ...myAccount(body),
+    overdueAmount: whole(late["amount"]),
+    dueToday: whole(late["due_today"]),
+    removalRequested: flag(body["removal_requested"]),
+    entries: list(body["entries"], accountEntry),
+    entriesTotal: whole(body["entries_total"]),
+  };
+}
+
+function removalOutcome(value: unknown): RemovalOutcome {
+  const body = record(value);
+  return { removed: flag(body["removed"]), waitingForBalance: wholeOrNull(body["waiting_for_balance"]) };
+}
+
+function items<T>(item: (element: unknown) => T): (value: unknown) => T[] {
+  return (value) => list(record(value)["items"], item);
+}
+
+/** The request form of a reason. Refuses, before anything is sent, one the server would refuse. */
+function reasonBody(reason: string): string {
+  const clean = cleanReason(reason);
+  if (clean === null) {
+    throw new RangeError(`a reason takes ${REASON_MIN} to ${REASON_MAX} characters`);
+  }
+  return clean;
 }
 
 async function errorFrom(response: Response): Promise<ApiError> {
@@ -699,6 +876,74 @@ function shopApi(transport: Transport, shopId: string) {
       });
     },
 
+    /** Whether the customer is connected to a Telegram account (REQ-013). */
+    readLink(customerId: string, signal?: AbortSignal): Promise<LinkState> {
+      return call(transport, {
+        method: "GET",
+        path: `${base}/customers/${segment(customerId)}/link`,
+        signal,
+        read: linkState,
+      });
+    },
+
+    /** Issues the customer's personal link. The answer carries the start code once. */
+    createLink(customerId: string, idempotencyKey: string): Promise<IssuedLink> {
+      return call(transport, {
+        method: "POST",
+        path: `${base}/customers/${segment(customerId)}/link`,
+        idempotencyKey,
+        read: issuedLink,
+      });
+    },
+
+    readCounterCode(signal?: AbortSignal): Promise<CounterCode> {
+      return call(transport, { method: "GET", path: `${base}/counter-code`, signal, read: counterCode });
+    },
+
+    /** Issues the shop's counter code and cancels the one before it. Managers and owners only. */
+    rotateCounterCode(idempotencyKey: string): Promise<IssuedLink> {
+      return call(transport, { method: "POST", path: `${base}/counter-code`, idempotencyKey, read: issuedLink });
+    },
+
+    listWaiting(signal?: AbortSignal): Promise<WaitingPerson[]> {
+      return call(transport, { method: "GET", path: `${base}/waiting`, signal, read: items(waitingPerson) });
+    },
+
+    attachWaiting(waitingId: string, customerId: string, idempotencyKey: string): Promise<void> {
+      return call(transport, {
+        method: "POST",
+        path: `${base}/waiting/${segment(waitingId)}/attach`,
+        body: { customer_id: customerId },
+        idempotencyKey,
+        read: () => undefined,
+      });
+    },
+
+    dismissWaiting(waitingId: string, idempotencyKey: string): Promise<void> {
+      return call(transport, {
+        method: "POST",
+        path: `${base}/waiting/${segment(waitingId)}/dismiss`,
+        idempotencyKey,
+        read: () => undefined,
+      });
+    },
+
+    /** Open disputes of the shop. Managers and owners only (REQ-017). */
+    listDisputes(signal?: AbortSignal): Promise<OpenDispute[]> {
+      return call(transport, { method: "GET", path: `${base}/disputes`, signal, read: items(openDispute) });
+    },
+
+    /** Declines a dispute; the reason is sent to the customer. */
+    declineDispute(disputeId: string, reason: string, idempotencyKey: string): Promise<void> {
+      return call(transport, {
+        method: "POST",
+        path: `${base}/disputes/${segment(disputeId)}/decline`,
+        body: { reason: reasonBody(reason) },
+        idempotencyKey,
+        read: () => undefined,
+      });
+    },
+
     readSettings(signal?: AbortSignal): Promise<ShopSettings> {
       return call(transport, { method: "GET", path: base, signal, read: shopSettings });
     },
@@ -741,6 +986,42 @@ function shopApi(transport: Transport, shopId: string) {
 
 export type ShopApi = ReturnType<typeof shopApi>;
 
+/**
+ * A person's own customer account, behind their link. These writes take no Idempotency-Key: each one
+ * ends a state (a link, an open dispute) that the server refuses to end twice.
+ */
+function accountApi(transport: Transport, linkId: string) {
+  const base = `/api/v1/me/accounts/${segment(linkId)}`;
+  return {
+    read(signal?: AbortSignal): Promise<AccountDetail> {
+      return call(transport, { method: "GET", path: base, signal, read: accountDetail });
+    },
+    disconnect(): Promise<void> {
+      return call(transport, { method: "POST", path: `${base}/disconnect`, read: () => undefined });
+    },
+    requestRemoval(): Promise<RemovalOutcome> {
+      return call(transport, { method: "POST", path: `${base}/removal`, read: removalOutcome });
+    },
+    openDispute(entryId: string, reason: string): Promise<Dispute> {
+      return call(transport, {
+        method: "POST",
+        path: `${base}/disputes`,
+        body: { entry_id: entryId, reason: reasonBody(reason) },
+        read: dispute,
+      });
+    },
+    withdrawDispute(disputeId: string): Promise<Dispute> {
+      return call(transport, {
+        method: "POST",
+        path: `${base}/disputes/${segment(disputeId)}/withdraw`,
+        read: dispute,
+      });
+    },
+  };
+}
+
+export type AccountApi = ReturnType<typeof accountApi>;
+
 export function createApi(transport: { fetch: Fetch; auth: ApiAuth; onUnauthenticated?: () => void }) {
   return {
     myShops(signal?: AbortSignal): Promise<MyShops> {
@@ -756,6 +1037,13 @@ export function createApi(transport: { fetch: Fetch; auth: ApiAuth; onUnauthenti
     },
     shop(shopId: string): ShopApi {
       return shopApi(transport, shopId);
+    },
+    /** The accounts where the signed-in person is a customer (REQ-019). */
+    myAccounts(signal?: AbortSignal): Promise<MyAccount[]> {
+      return call(transport, { method: "GET", path: "/api/v1/me/accounts", signal, read: items(myAccount) });
+    },
+    account(linkId: string): AccountApi {
+      return accountApi(transport, linkId);
     },
   };
 }

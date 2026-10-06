@@ -519,3 +519,70 @@ select.input {
 .toggle {
   flex-wrap: wrap;
 }
+
+/* A reason typed by a customer or by staff. */
+textarea.input--text {
+  display: block;
+  resize: vertical;
+}
+
+.consequences {
+  margin: 0 0 0.5rem;
+  padding-left: 1.25rem;
+}
+
+/* A start code shown once: the deep link as text and as a QR code. */
+.startcode {
+  margin: 0.75rem 0;
+}
+
+.startcode__caption {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.startcode__text {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--qd-border);
+  border-radius: 0.5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* Dark on white whatever the theme, with room around it: a scanner needs both. */
+.qr {
+  display: block;
+  width: min(16rem, 100%);
+  height: auto;
+  margin: 0.75rem 0;
+  border: 1px solid var(--qd-border);
+  border-radius: 0.25rem;
+}
+
+/* A printed counter code is the code and its caption, without the application around them. */
+@media print {
+  .shell__header,
+  .shell__nav,
+  .skip-link,
+  .no-print {
+    display: none !important;
+  }
+
+  .shell,
+  .shell__main {
+    display: block;
+    padding: 0;
+  }
+
+  .qr {
+    width: 10cm;
+    border: 0;
+  }
+
+  .startcode__caption {
+    font-size: 1.5rem;
+  }
+}

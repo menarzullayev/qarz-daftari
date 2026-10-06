@@ -5,6 +5,7 @@ import type { CustomerDetail, Entry, NewLine } from "../api";
 import { formatDateTime, formatMoney } from "../format";
 import { goodsWindowOpen } from "../goods";
 import { useLoad, useSubmit } from "../hooks";
+import { canManage, type Role } from "../navigation";
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
 import { useWorkspace } from "./context";
@@ -13,9 +14,7 @@ import { errorText, Failure, Loading } from "./parts";
 
 /**
  * Whether the interface offers "add goods" for an entry (REQ-038): a credit sale that is not reversed,
- * has no goods yet, and is still inside the window. The server also requires the caller to be the
- * entry's author, a manager or an owner; the interface cannot tell who the author is (the API does not
- * say which membership is the signed-in person's), so a seller who is not the author is refused there.
+ * has no goods yet, and is still inside the window. Who may do it is `mayAddGoods`.
  */
 export function canAddGoods(entry: Entry, now: Date): boolean {
   return (
@@ -24,6 +23,18 @@ export function canAddGoods(entry: Entry, now: Date): boolean {
     entry.lines.length === 0 &&
     goodsWindowOpen(new Date(entry.createdAt), now)
   );
+}
+
+/**
+ * Who is offered "add goods": the entry's author, a manager or an owner, as the server requires. When
+ * the server names neither the author nor the signed-in person's membership the rule cannot be applied
+ * here, so the action is offered and the server's refusal is shown.
+ */
+export function mayAddGoods(entry: Entry, viewer: { role: Role; membershipId: string | null }): boolean {
+  if (canManage(viewer.role) || viewer.membershipId === null || entry.authorId === null) {
+    return true;
+  }
+  return entry.authorId.toLowerCase() === viewer.membershipId.toLowerCase();
 }
 
 function AddGoodsForm({ customer, entry }: { customer: CustomerDetail; entry: Entry }) {
@@ -111,7 +122,7 @@ function AddGoodsForm({ customer, entry }: { customer: CustomerDetail; entry: En
 
 /** Adds goods, once, to a credit sale that was recorded as an amount only (REQ-038). */
 export function AddGoodsScreen({ customerId, entryId }: { customerId: string; entryId: string }) {
-  const { api, now } = useWorkspace();
+  const { api, now, role, membershipId } = useWorkspace();
   const { t } = useI18n();
   const { state, reload } = useLoad((signal) => api.readCustomer(customerId, signal), [api, customerId]);
 
@@ -126,14 +137,15 @@ export function AddGoodsScreen({ customerId, entryId }: { customerId: string; en
   if (!entry) {
     return <NotFoundScreen />;
   }
+  const open = canAddGoods(entry, now());
   return (
     <>
       <h2 className="subject">{customer.displayName}</h2>
-      {canAddGoods(entry, now()) ? (
+      {open && mayAddGoods(entry, { role, membershipId }) ? (
         <AddGoodsForm customer={customer} entry={entry} />
       ) : (
         <>
-          <p className="notice">{t("goods.later.closed")}</p>
+          <p className="notice">{open ? t("goods.later.notYours") : t("goods.later.closed")}</p>
           {entry.lines.length > 0 ? <GoodsList lines={entry.lines} /> : null}
           <p className="actions">
             <Link to={`/customers/${customer.id}`} className="button">
