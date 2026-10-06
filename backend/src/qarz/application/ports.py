@@ -133,6 +133,28 @@ class DisputeRecord:
 
 
 @dataclass(frozen=True)
+class ReminderSettings:
+    name: str  # of the shop; a reminder states it
+    lang: str
+    on: bool
+    hour: int
+    template: int
+    sms_on: bool
+
+
+@dataclass(frozen=True)
+class ReminderCandidate:
+    """A customer who owes something, and how they could be reached."""
+
+    customer_id: UUID
+    display_name: str
+    phone: str | None
+    lang: str | None  # the linked person's language if linked, else the one recorded for the customer
+    reminders_off: bool
+    tg_id: int | None  # set only when the customer has an active Telegram link
+
+
+@dataclass(frozen=True)
 class WaitingLink:
     """Someone who started the bot from the counter code and agreed, not yet attached to a record."""
 
@@ -377,8 +399,10 @@ class TenantSession(Protocol):
         """Telegram chat and language of the customer's active link; None when nobody is to be notified."""
         ...
 
-    async def enqueue(self, *, recipient: str, payload: dict[str, Any], dedupe_key: str) -> bool:
-        """Queue a Telegram message in this shop's transaction. False when the key was already queued."""
+    async def enqueue(
+        self, *, recipient: str, payload: dict[str, Any], dedupe_key: str, channel: str = "telegram"
+    ) -> bool:
+        """Queue a message in this shop's transaction. False when the key was already queued."""
         ...
 
     async def record_customer_activity(self, *, action: str, subject_id: UUID) -> None:
@@ -419,6 +443,30 @@ class TenantSession(Protocol):
         """Telegram chat and language of each active member holding one of the roles."""
         ...
 
+    async def reminder_settings(self) -> ReminderSettings | None: ...
+
+    async def update_reminder_settings(
+        self, *, on: bool | None, hour: int | None, template: int | None, sms_on: bool | None
+    ) -> None: ...
+
+    async def reminder_candidates(self, *, after: UUID | None, limit: int) -> list[ReminderCandidate]:
+        """Active customers who owe something, by identifier, a batch at a time."""
+        ...
+
+    async def reminder_candidate(self, customer_id: UUID) -> ReminderCandidate | None: ...
+
+    async def entries_of_many(self, customer_ids: list[UUID]) -> dict[UUID, list[Entry]]: ...
+
+    async def last_automatic_reminders(self, customer_ids: list[UUID]) -> dict[UUID, date]: ...
+
+    async def add_reminder(self, *, customer_id: UUID, kind: str, channel: str, amount: int, sent_on: date) -> bool:
+        """False when this customer already has a reminder of this kind on this day."""
+        ...
+
+    async def sms_reminders_since(self, first_day: date) -> int: ...
+
+    async def platform_setting(self, key: str) -> Any | None: ...
+
     async def lock_request_key(self, key: str) -> None:
         """Serialize concurrent requests that carry the same idempotency key, until the transaction ends."""
         ...
@@ -436,6 +484,12 @@ class PlatformSession(Protocol):
         ...
 
     async def update_seen(self, update_id: int) -> bool: ...
+
+    async def shops_due_for_reminders(self, hour: int) -> list[UUID]: ...
+
+    async def job_done(self, job: str, period: str) -> bool: ...
+
+    async def finish_job(self, job: str, period: str) -> None: ...
 
     async def language_of_telegram_user(self, tg_id: int) -> str | None: ...
 

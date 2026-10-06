@@ -29,6 +29,8 @@ from qarz.application.ports import (
     Membership,
     MyShop,
     OutboxMessage,
+    ReminderCandidate,
+    ReminderSettings,
     SessionInfo,
     ShopSettings,
     ShopTotals,
@@ -102,6 +104,11 @@ _DISPUTE_BY_ID = f"{_DISPUTE_SELECT} WHERE d.id = :id"
 _DISPUTE_BY_ENTRY = f"{_DISPUTE_SELECT} WHERE d.entry_id = :id"
 _DISPUTES_OF_CUSTOMER = f"{_DISPUTE_SELECT} WHERE e.customer_id = :id"
 _OPEN_DISPUTES = f"{_DISPUTE_SELECT} WHERE d.status = 'open' ORDER BY d.created_at, d.id"
+
+
+_REMINDER_SETTINGS = (
+    "SELECT name, lang, reminders_on, reminder_hour, reminder_tpl, sms_on FROM shop WHERE status <> 'erased'"
+)
 
 
 def _like_pattern(part: str) -> str:
@@ -919,16 +926,19 @@ class PgTenantSession:
         ).first()
         return None if row is None else (int(row.tg_id), str(row.lang))
 
-    async def enqueue(self, *, recipient: str, payload: dict[str, Any], dedupe_key: str) -> bool:
+    async def enqueue(
+        self, *, recipient: str, payload: dict[str, Any], dedupe_key: str, channel: str = "telegram"
+    ) -> bool:
         row = (
             await self._conn.execute(
                 text(
                     "INSERT INTO outbox_message (id, channel, recipient, shop_id, payload, dedupe_key) "
-                    "VALUES (:id, 'telegram', :recipient, :shop_id, CAST(:payload AS jsonb), :dedupe_key) "
+                    "VALUES (:id, :channel, :recipient, :shop_id, CAST(:payload AS jsonb), :dedupe_key) "
                     "ON CONFLICT (dedupe_key) DO NOTHING RETURNING id"
                 ),
                 {
                     "id": uuid4(),
+                    "channel": channel,
                     "recipient": recipient,
                     "shop_id": self._shop_id,
                     "payload": json.dumps(payload, ensure_ascii=False),
@@ -1082,6 +1092,162 @@ class PgTenantSession:
         ).all()
         return [(int(row.tg_id), str(row.lang)) for row in rows]
 
+    async def reminder_settings(self) -> ReminderSettings | None:
+        row = (await self._conn.execute(text(_REMINDER_SETTINGS))).first()
+        return (
+            None
+            if row is None
+            else ReminderSettings(
+                str(row.name),
+                str(row.lang),
+                bool(row.reminders_on),
+                int(row.reminder_hour),
+                int(row.reminder_tpl),
+                bool(row.sms_on),
+            )
+        )
+
+    async def update_reminder_settings(
+        self, *, on: bool | None, hour: int | None, template: int | None, sms_on: bool | None
+    ) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE shop SET reminders_on = coalesce(:on, reminders_on), "
+                "reminder_hour = coalesce(:hour, reminder_hour), reminder_tpl = coalesce(:template, reminder_tpl), "
+                "sms_on = coalesce(:sms_on, sms_on) WHERE id = :shop_id"
+            ),
+            {"on": on, "hour": hour, "template": template, "sms_on": sms_on, "shop_id": self._shop_id},
+        )
+
+    async def reminder_candidates(self, *, after: UUID | None, limit: int) -> list[ReminderCandidate]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT c.id, c.display_name, c.phone, c.lang, c.reminders_off, u.tg_id, u.lang AS user_lang "
+                    f"FROM customer c JOIN ({_BALANCES}) b ON b.customer_id = c.id AND b.balance > 0 "
+                    "LEFT JOIN customer_link l ON l.customer_id = c.id AND l.status = 'active' "
+                    "LEFT JOIN app_user u ON u.id = l.user_id AND u.tg_id IS NOT NULL "
+                    "WHERE c.status = 'active' AND (CAST(:after AS uuid) IS NULL OR c.id > CAST(:after AS uuid)) "
+                    "ORDER BY c.id LIMIT :limit"
+                ),
+                {"after": after, "limit": limit},
+            )
+        ).all()
+        return [
+            ReminderCandidate(
+                row.id,
+                str(row.display_name),
+                row.phone,
+                row.user_lang or row.lang,
+                bool(row.reminders_off),
+                None if row.tg_id is None else int(row.tg_id),
+            )
+            for row in rows
+        ]
+
+    async def reminder_candidate(self, customer_id: UUID) -> ReminderCandidate | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT c.id, c.display_name, c.phone, c.lang, c.reminders_off, u.tg_id, u.lang AS user_lang "
+                    "FROM customer c "
+                    "LEFT JOIN customer_link l ON l.customer_id = c.id AND l.status = 'active' "
+                    "LEFT JOIN app_user u ON u.id = l.user_id AND u.tg_id IS NOT NULL "
+                    "WHERE c.id = :id AND c.status = 'active'"
+                ),
+                {"id": customer_id},
+            )
+        ).first()
+        if row is None:
+            return None
+        return ReminderCandidate(
+            row.id,
+            str(row.display_name),
+            row.phone,
+            row.user_lang or row.lang,
+            bool(row.reminders_off),
+            None if row.tg_id is None else int(row.tg_id),
+        )
+
+    async def entries_of_many(self, customer_ids: list[UUID]) -> dict[UUID, list[Entry]]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT e.customer_id, e.id, e.seq, e.kind, e.amount, e.reverses_id, e.created_at, "
+                    f"       {_PROMISED.format(entry='e')} AS promised_date, "
+                    "       (e.kind IN ('credit', 'opening') AND EXISTS ("
+                    "          SELECT 1 FROM dispute d WHERE d.entry_id = e.id AND d.status = 'open')) AS disputed "
+                    "FROM ledger_entry e WHERE e.customer_id = ANY(CAST(:ids AS uuid[])) ORDER BY e.customer_id, e.seq"
+                ),
+                {"ids": customer_ids},
+            )
+        ).all()
+        accounts: dict[UUID, list[Entry]] = {customer_id: [] for customer_id in customer_ids}
+        for row in rows:
+            accounts[row.customer_id].append(
+                Entry(
+                    id=row.id,
+                    seq=row.seq,
+                    kind=EntryKind(row.kind),
+                    amount=int(row.amount),
+                    created_at=row.created_at,
+                    reverses_id=row.reverses_id,
+                    promised_date=row.promised_date,
+                    disputed=bool(row.disputed),
+                )
+            )
+        return accounts
+
+    async def last_automatic_reminders(self, customer_ids: list[UUID]) -> dict[UUID, date]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT customer_id, max(sent_on) AS last FROM reminder "
+                    "WHERE kind = 'auto' AND customer_id = ANY(CAST(:ids AS uuid[])) GROUP BY customer_id"
+                ),
+                {"ids": customer_ids},
+            )
+        ).all()
+        return {row.customer_id: row.last for row in rows}
+
+    async def add_reminder(self, *, customer_id: UUID, kind: str, channel: str, amount: int, sent_on: date) -> bool:
+        row = (
+            await self._conn.execute(
+                text(
+                    "INSERT INTO reminder (id, shop_id, customer_id, kind, channel, amount, sent_on) "
+                    "VALUES (:id, :shop_id, :customer_id, :kind, :channel, :amount, :sent_on) "
+                    "ON CONFLICT (customer_id, kind, sent_on) DO NOTHING RETURNING id"
+                ),
+                {
+                    "id": uuid4(),
+                    "shop_id": self._shop_id,
+                    "customer_id": customer_id,
+                    "kind": kind,
+                    "channel": channel,
+                    "amount": amount,
+                    "sent_on": sent_on,
+                },
+            )
+        ).first()
+        return row is not None
+
+    async def sms_reminders_since(self, first_day: date) -> int:
+        row = (
+            await self._conn.execute(
+                text("SELECT count(*) AS n FROM reminder WHERE channel = 'sms' AND sent_on >= :first_day"),
+                {"first_day": first_day},
+            )
+        ).one()
+        return int(row.n)
+
+    async def platform_setting(self, key: str) -> Any | None:
+        row = (
+            await self._conn.execute(text("SELECT value FROM platform_setting WHERE key = :key"), {"key": key})
+        ).first()
+        if row is None:
+            return None
+        return json.loads(row.value) if isinstance(row.value, str) else row.value
+
     async def lock_request_key(self, key: str) -> None:
         # Transaction-scoped advisory lock: a second request with the same key in the same shop waits here
         # until the first commits, then finds the stored response.
@@ -1121,6 +1287,28 @@ class PgPlatformSession:
             )
         ).first()
         return row is not None
+
+    async def shops_due_for_reminders(self, hour: int) -> list[UUID]:
+        rows = (
+            await self._conn.execute(
+                text("SELECT shop_id FROM shops_due_for_reminders(CAST(:hour AS smallint))"), {"hour": hour}
+            )
+        ).all()
+        return [row.shop_id for row in rows]
+
+    async def job_done(self, job: str, period: str) -> bool:
+        row = (
+            await self._conn.execute(
+                text("SELECT 1 FROM job_run WHERE job = :job AND period = :period"), {"job": job, "period": period}
+            )
+        ).first()
+        return row is not None
+
+    async def finish_job(self, job: str, period: str) -> None:
+        await self._conn.execute(
+            text("INSERT INTO job_run (job, period) VALUES (:job, :period) ON CONFLICT (job, period) DO NOTHING"),
+            {"job": job, "period": period},
+        )
 
     async def update_seen(self, update_id: int) -> bool:
         row = (

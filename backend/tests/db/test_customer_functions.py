@@ -260,3 +260,35 @@ def test_only_a_person_nothing_refers_to_is_forgotten(
     assert owner.execute(
         "SELECT revoked_at IS NOT NULL FROM user_session WHERE user_id = %s", (unused,)
     ).fetchall() == [(True,)]
+
+
+def test_the_reminder_schedule_function_returns_only_shops_that_should_be_served(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+) -> None:
+    row = owner.execute(
+        "SELECT has_function_privilege('qd_app', 'shops_due_for_reminders(smallint)', 'EXECUTE'), "
+        "has_function_privilege('public', 'shops_due_for_reminders(smallint)', 'EXECUTE')"
+    ).fetchone()
+    assert row == (True, False)
+
+    for shop in (shop_a, shop_b):
+        owner.execute(
+            "INSERT INTO subscription (shop_id, state, trial_ends) VALUES (%s, 'trial', current_date + 30)",
+            (shop.shop_id,),
+        )
+    owner.execute("UPDATE shop SET reminders_on = true, reminder_hour = 17 WHERE id = %s", (shop_a.shop_id,))
+    owner.execute("UPDATE shop SET reminder_hour = 17 WHERE id = %s", (shop_b.shop_id,))  # same hour, but off
+
+    def due(hour: int) -> set[uuid.UUID]:
+        with as_app(None) as app:
+            rows = app.execute("SELECT shop_id FROM shops_due_for_reminders(%s::smallint)", (hour,)).fetchall()
+        return {row[0] for row in rows} & {shop_a.shop_id, shop_b.shop_id}
+
+    assert due(17) == {shop_a.shop_id}, "shop B has reminders off"
+    assert due(16) == set() and due(18) == set()
+    owner.execute("UPDATE subscription SET state = 'suspended' WHERE shop_id = %s", (shop_a.shop_id,))
+    assert due(17) == set()
+    owner.execute("UPDATE subscription SET state = 'limited' WHERE shop_id = %s", (shop_a.shop_id,))
+    assert due(17) == {shop_a.shop_id}
+    owner.execute("UPDATE shop SET status = 'deletion_pending' WHERE id = %s", (shop_a.shop_id,))
+    assert due(17) == set()

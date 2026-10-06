@@ -11,12 +11,16 @@ import signal
 from aiogram import Bot
 
 from qarz.application.dispatch import Dispatcher
+from qarz.application.reminders import ReminderService
+from qarz.application.scheduler import Scheduler
 from qarz.infrastructure.db import Database
 from qarz.infrastructure.settings import Settings
+from qarz.infrastructure.sms_sender import ChannelSender, NoSmsProvider
 from qarz.infrastructure.telegram_sender import TelegramSender
 
 log = logging.getLogger("qarz.worker")
 IDLE_SECONDS = 0.5
+SCHEDULE_EVERY_SECONDS = 30.0
 
 
 async def run(settings: Settings, stop: asyncio.Event) -> None:
@@ -24,9 +28,19 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
         raise RuntimeError("QD_BOT_TOKEN is not set")
     database = Database(settings.database_url)
     bot = Bot(settings.bot_token)
-    dispatcher = Dispatcher(database, TelegramSender(bot))
+    # No SMS provider is chosen yet: the SMS path exists, is switched off, and refuses to send.
+    dispatcher = Dispatcher(database, ChannelSender(telegram=TelegramSender(bot), sms=NoSmsProvider()))
+    scheduler = Scheduler(database, ReminderService(database))
+    next_schedule = 0.0
     try:
         while not stop.is_set():
+            if asyncio.get_running_loop().time() >= next_schedule:
+                next_schedule = asyncio.get_running_loop().time() + SCHEDULE_EVERY_SECONDS
+                try:
+                    await scheduler.tick()
+                except Exception:
+                    # Tried again at the next tick; a period is marked done only after its work.
+                    log.exception("schedule_failed")
             try:
                 result = await dispatcher.run_once()
             except Exception:
