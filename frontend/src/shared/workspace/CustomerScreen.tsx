@@ -9,7 +9,9 @@ import { canManage } from "../navigation";
 import { parseIsoDate } from "../promise";
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
+import { canAddGoods } from "./AddGoodsScreen";
 import { useWorkspace } from "./context";
+import { GoodsList } from "./GoodsEditor";
 import { cleanName, customerFieldErrors, nameProblem } from "./NewCustomerScreen";
 import { errorText, Failure, FieldError, Loading, OverdueLines } from "./parts";
 
@@ -125,6 +127,7 @@ function EditForm({ customer, onSaved, onCancel }: { customer: Customer; onSaved
 
 function EntryRow({
   entry,
+  goodsPath,
   mayManage,
   confirming,
   pending,
@@ -133,6 +136,8 @@ function EntryRow({
   onCancel,
 }: {
   entry: Entry;
+  /** Where goods can be added to this entry, or null when that is not offered. */
+  goodsPath: string | null;
   mayManage: boolean;
   confirming: boolean;
   pending: boolean;
@@ -151,11 +156,17 @@ function EntryRow({
       </p>
       <p className="row__meta">{Number.isNaN(made.getTime()) ? entry.createdAt : formatDateTime(made, language)}</p>
       {entry.note ? <p className="row__note">{entry.note}</p> : null}
+      {entry.lines.length > 0 ? <GoodsList lines={entry.lines} /> : null}
       {promised && !entry.reversed ? (
         <p className="row__meta">{t("entry.promised", { date: formatCalendarDay(promised, language) })}</p>
       ) : null}
       {entry.reversed ? <p className="row__meta">{t("entry.reversed")}</p> : null}
       {entry.disputed ? <p className="row__warning">{t("entry.disputed")}</p> : null}
+      {goodsPath !== null ? (
+        <Link to={goodsPath} className="button button--small">
+          {t("goods.later.action")}
+        </Link>
+      ) : null}
       {canReverse(entry, mayManage) ? (
         confirming ? (
           <div className="notice">
@@ -180,9 +191,10 @@ function EntryRow({
 }
 
 function Detail({ customer, reload }: { customer: CustomerDetail; reload: () => void }) {
-  const { api, role } = useWorkspace();
+  const { api, role, now } = useWorkspace();
   const { t, language } = useI18n();
   const mayManage = canManage(role);
+  const today = now();
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
 
@@ -272,6 +284,7 @@ function Detail({ customer, reload }: { customer: CustomerDetail; reload: () => 
               <EntryRow
                 key={entry.id}
                 entry={entry}
+                goodsPath={canAddGoods(entry, today) ? `/customers/${customer.id}/entries/${entry.id}/goods` : null}
                 mayManage={mayManage}
                 confirming={confirming === entry.id}
                 pending={busy}

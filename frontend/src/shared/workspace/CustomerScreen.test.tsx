@@ -9,6 +9,7 @@ import {
   detailBody,
   entryBody,
   fakeServer,
+  lineBody,
   ok,
   refusal,
   type Reply,
@@ -171,6 +172,8 @@ describe("what a role is offered (REQ-033)", () => {
       reversesId: null,
       reversed: false,
       disputed: false,
+      authorId: null,
+      lines: [],
       ...overrides,
     });
     expect(canReverse(entry({}), true)).toBe(true);
@@ -345,5 +348,67 @@ describe("rename and archive", () => {
     expect(await screen.findByRole("button", { name: "Arxivlash" })).toBeTruthy();
     expect(server.writes()[0]?.path).toBe(`${SHOP_BASE}/customers/${CUSTOMER_ID}/unarchive`);
     expect(screen.getByRole("link", { name: "Nasiya yozish" })).toBeTruthy();
+  });
+});
+
+describe("goods on the customer page (REQ-027, REQ-038)", () => {
+  const WITH_GOODS = entryBody({
+    id: CREDIT_ID,
+    amount: 45500,
+    lines: [
+      lineBody({ line_no: 1, name: "Guruch", qty: "1.500", unit: "kg", unit_price: 25000, line_total: 37500 }),
+      lineBody({ line_no: 2, name: "Non", qty: "2", unit: "dona", unit_price: 4000, line_total: 8000, catalog_item_id: null }),
+    ],
+  });
+  const goodsLinks = () => screen.queryAllByRole("link", { name: "Tovarlarni qo'shish" });
+  const withEntries = (...entries: unknown[]) => shop(undefined, () => ok(detailBody({ entries, entries_total: entries.length })));
+
+  it("shows the goods of an entry that has them: name, quantity, unit, price and line total", async () => {
+    await open(withEntries(WITH_GOODS, PAYMENT));
+    const goods = screen.getByRole("list", { name: "Tovarlar" });
+    const lines = within(goods).getAllByRole("listitem").map((line) => line.textContent);
+    expect(lines).toEqual(["Guruch37\u00a0500 so'm1,5 kg × 25\u00a0000 so'm", "Non8\u00a0000 so'm2 dona × 4\u00a0000 so'm"]);
+    // Only the entry with goods has a goods list.
+    expect(screen.getAllByRole("list", { name: "Tovarlar" })).toHaveLength(1);
+  });
+
+  it.each(["seller", "manager", "owner"] as const)("offers a %s to add goods to an amount-only sale inside the window", async (role) => {
+    await open(shop(), role);
+    const links = goodsLinks();
+    expect(links).toHaveLength(1);
+    expect(links[0]?.getAttribute("href")).toBe(`#/customers/${CUSTOMER_ID}/entries/${CREDIT_ID}/goods`);
+    // The link belongs to the credit sale, not to the payment above it.
+    const [payment, credit] = entryRows();
+    expect(within(credit as HTMLElement).queryByRole("link", { name: "Tovarlarni qo'shish" })).not.toBeNull();
+    expect(within(payment as HTMLElement).queryByRole("link", { name: "Tovarlarni qo'shish" })).toBeNull();
+  });
+
+  it.each([
+    ["has goods", WITH_GOODS],
+    ["was reversed", entryBody({ id: CREDIT_ID, reversed: true })],
+    ["is a payment", PAYMENT],
+    ["is a reversal", entryBody({ id: CREDIT_ID, kind: "reversal", reverses_id: PAYMENT_ID })],
+  ])("does not offer it for an entry that %s", async (_what, entry) => {
+    await open(withEntries(entry));
+    expect(goodsLinks()).toHaveLength(0);
+  });
+
+  it("offers it through the end of the day after the sale, Tashkent time, and not a moment later", async () => {
+    // CREDIT was sold at 00:30 on 6 October in Tashkent; 7 October ends there at 19:00 UTC.
+    renderScreen(<CustomerScreen customerId={CUSTOMER_ID} />, { fetch: shop().fetch, now: new Date("2026-10-07T18:59:59.999Z") });
+    await screen.findByRole("heading", { level: 2, name: "Ali Valiyev" });
+    expect(goodsLinks()).toHaveLength(1);
+    cleanup();
+    renderScreen(<CustomerScreen customerId={CUSTOMER_ID} />, { fetch: shop().fetch, now: new Date("2026-10-07T19:00:00Z") });
+    await screen.findByRole("heading", { level: 2, name: "Ali Valiyev" });
+    expect(goodsLinks()).toHaveLength(0);
+  });
+
+  it("reads an entry from a server that does not send goods lines yet as an entry without goods", async () => {
+    const old: Record<string, unknown> = { ...CREDIT };
+    delete old["lines"];
+    await open(withEntries(old));
+    expect(screen.queryByRole("list", { name: "Tovarlar" })).toBeNull();
+    expect(entryRows()).toHaveLength(1);
   });
 });

@@ -51,7 +51,8 @@ describe("staff shell", () => {
 
   it("offers a seller only the seller sections", () => {
     renderStaff("seller");
-    expect(navLabels()).toEqual(["Umumiy ko'rinish", "Mijozlar", "Yangi yozuv"]);
+    expect(navLabels()).toEqual(["Umumiy ko'rinish", "Mijozlar", "Yangi yozuv", "Katalog"]);
+    expect(screen.queryByText("Do'kon sozlamalari")).toBeNull();
     expect(screen.queryByText("Hisobotlar")).toBeNull();
     expect(screen.queryByText("Yana")).toBeNull();
   });
@@ -111,6 +112,7 @@ describe("staff shell", () => {
       "Hisobotlar",
       "E'tirozlar va so'rovlar",
       "Import va eksport",
+      "Do'kon sozlamalari",
     ]);
     expect(links[0]?.getAttribute("href")).toBe("#/catalog");
   });
@@ -140,6 +142,8 @@ describe("routing", () => {
   it("does not open a section the role may not open, even by direct address", () => {
     renderStaff("seller");
     go("#/reports");
+    expect(heading()).toBe("Sahifa topilmadi");
+    go("#/shop-settings");
     expect(heading()).toBe("Sahifa topilmadi");
     go("#/more");
     expect(heading()).toBe("Sahifa topilmadi");
@@ -172,7 +176,7 @@ describe("language switcher", () => {
     fireEvent.click(ruButton);
 
     expect(document.documentElement.lang).toBe("ru");
-    expect(navLabels()).toEqual(["Обзор", "Клиенты", "Новая запись"]);
+    expect(navLabels()).toEqual(["Обзор", "Клиенты", "Новая запись", "Каталог"]);
     expect(heading()).toBe("Обзор");
     expect(screen.getByRole("group", { name: "Язык" })).toBeTruthy();
     expect(ruButton.getAttribute("aria-pressed")).toBe("true");
