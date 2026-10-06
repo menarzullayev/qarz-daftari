@@ -206,11 +206,23 @@ MVP exit criteria for the pilot, proposed by the agent: after eight weeks, most 
 | FEAT-011 | REQ-028, REQ-029 | PROB-002 | METRIC-002 | EVID-027 |
 | FEAT-012 | REQ-030 | PROB-001 | METRIC-001 | EVID-019 |
 
+Non-functional requirements:
+
+| Requirement | Serves | Basis |
+|---|---|---|
+| REQ-N01 | All features | Target users (Uzbek-speaking owners and customers) |
+| REQ-N02, REQ-N03 | FEAT-003, FEAT-004 | METRIC-004; vision principle "faster than the notebook" |
+| REQ-N04, REQ-N05 | FEAT-002, FEAT-005, FEAT-011 | EVID-027 |
+| REQ-N06, REQ-N07 | FEAT-003, FEAT-004, FEAT-010 | PROB-002; EVID-017 |
+| REQ-N08, REQ-N09 | All features | METRIC-002 |
+| REQ-N10 | FEAT-008 | PROB-003; vision principle "protect the relationship" |
+| REQ-N11 | FEAT-005, FEAT-007 | EVID-027 |
+
 Every Must feature traces to at least one problem from Problem Discovery. PROB-001, the primary problem, is addressed directly only by FEAT-006, FEAT-008 and FEAT-012; the rest make the ledger usable enough for those three to matter.
 
 ## Evidence / assumptions
 
-Evidence used: EVID-004, EVID-009, EVID-013, EVID-014, EVID-015, EVID-016, EVID-017, EVID-019, EVID-020, EVID-021, EVID-027, EVID-028. No new evidence was gathered in this stage.
+Evidence used: EVID-004, EVID-009, EVID-013, EVID-014, EVID-015, EVID-016, EVID-017, EVID-019, EVID-020, EVID-021, EVID-027 and EVID-028 (see `docs/evidence/`). No new evidence was gathered in this stage.
 
 Assumptions built into the requirements:
 
@@ -218,7 +230,7 @@ Assumptions built into the requirements:
 - Owners will show customers a QR code and customers will scan it. Untested.
 - Acknowledged debts are repaid more reliably. No evidence either way (EVID-019); the MVP exists to test this.
 - A weekly reminder cap is polite enough for customers and frequent enough for owners. Agent judgment.
-- The default due date model (one day per month per shop) matches how grocers think about payday credit. Agent judgment from EVID-001.
+- The default due date model (one day per month per shop) matches how grocers think about payday credit. Agent judgment based on EVID-001 (credit repaid around payday).
 - The consent step in REQ-014 satisfies the personal data law. Agent inference from EVID-027, not legal advice.
 
 ## Open questions
