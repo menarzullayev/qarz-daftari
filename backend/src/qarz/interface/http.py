@@ -12,6 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from qarz.application.account import AccountService, ActivityService
 from qarz.application.auth import AuthService
+from qarz.application.chat import ChatService
 from qarz.application.customers import CustomerService
 from qarz.application.errors import AppError, Unauthenticated
 from qarz.application.ledger_service import LedgerService
@@ -102,6 +103,7 @@ def create_app(
         )
 
     if webhook_secret is not None and storage is not None:
-        add_webhook_route(app, UpdateProcessor(storage), webhook_secret)
+        chat = ChatService(storage, ShopService(storage, now), StaffService(storage, now), now)
+        add_webhook_route(app, UpdateProcessor(storage, chat), webhook_secret)
 
     return app

@@ -14,6 +14,7 @@ not bound to a registered operation, so nothing can be added without being check
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import psycopg
@@ -131,6 +132,12 @@ CALLS: dict[str, Call] = {
     "ledger.entry.reverse": Call(
         "POST", lambda w, shop: f"/api/v1/shops/{shop}/entries/{w.entry_a}/reversal", None, True, 201
     ),
+    "ledger.entry.promise.choose": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/entries/{w.entry_a}/promise-choice",
+        None,  # the body is a date a few days from now; filled in by _body
+        True,
+    ),
     "overview.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview"),
     "overview.debtors": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview/debtors"),
 }
@@ -160,6 +167,8 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "customers.unarchive": {Role.MANAGER, Role.OWNER},
     "ledger.entry.create": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "ledger.entry.reverse": {Role.MANAGER, Role.OWNER},
+    # Any staff member by role; within the operation only the entry's author or a manager (REQ-008).
+    "ledger.entry.promise.choose": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "overview.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "overview.debtors": {Role.SELLER, Role.MANAGER, Role.OWNER},
 }
@@ -204,6 +213,8 @@ def _key() -> dict[str, str]:
 def _body(world: World, op_name: str, call: Call) -> dict[str, Any] | None:
     if op_name == "ownership.transfer.start":
         return {"membership_id": str(world.manager_a_membership)}
+    if op_name == "ledger.entry.promise.choose":
+        return {"promised_date": (datetime.now(UTC).date() + timedelta(days=3)).isoformat()}
     return call.json
 
 
@@ -245,6 +256,7 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
             (shop,),
         ).fetchall(),
         owner.execute("SELECT count(*) FROM promise WHERE shop_id = %s", (shop,)).fetchone(),
+        owner.execute("SELECT count(*) FROM chat_pending").fetchone(),
         # Measurement rows carry no shop identifier; tests run one at a time, so a total is enough.
         owner.execute("SELECT count(*) FROM measure.event").fetchone(),
     )

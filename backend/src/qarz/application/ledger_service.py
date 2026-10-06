@@ -3,10 +3,13 @@
 Balances, allocation, overdue status and the payment history indicator come from the pure functions in
 `qarz.domain.ledger`; this module loads an account, asks the domain whether a new entry may be added, and
 stores it. Every write locks the customer row first, so two sales to one customer cannot interleave.
+
+The `*_in` functions do one write inside a tenant transaction that the caller has opened and authorized.
+The HTTP API and the chat both use them, each wrapping them in its own idempotent request.
 """
 
 from collections.abc import Callable
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -20,17 +23,18 @@ from qarz.application.customers import (
     require_viewable,
     require_writable,
 )
-from qarz.application.errors import AppError, NotFound, ValidationFailed
+from qarz.application.errors import AppError, ForbiddenRole, NotFound, ValidationFailed
 from qarz.application.operations import operation
-from qarz.application.ports import EntryRow, Storage
+from qarz.application.ports import EntryRow, Membership, Storage, TenantSession
 from qarz.application.shops import require_member
 from qarz.domain import ledger
-from qarz.domain.access import Capability
+from qarz.domain.access import Capability, Role, allows
 from qarz.domain.ledger import EntryKind, Refusal
 from qarz.domain.promise import default_promise_date, tashkent_date, validate_promise_date
 
 RECORD_ENTRY = operation("ledger.entry.create", Capability.RECORD)
 REVERSE_ENTRY = operation("ledger.entry.reverse", Capability.MANAGE)
+CHOOSE_PROMISE = operation("ledger.entry.promise.choose", Capability.RECORD)
 READ_CUSTOMER = operation("customers.read", Capability.RECORD)
 READ_OVERVIEW = operation("overview.read", Capability.RECORD)
 LIST_DEBTORS = operation("overview.debtors", Capability.RECORD)
@@ -38,6 +42,11 @@ LIST_DEBTORS = operation("overview.debtors", Capability.RECORD)
 MIN_AMOUNT = 100
 MAX_AMOUNT = 100_000_000
 HISTORY_PAGE = 100
+# How long after a sale its author may still pick the promised date with one tap (REQ-008).
+PROMISE_CHOICE_WINDOW = timedelta(hours=24)
+# Who set a promise row: the shop default, or a person.
+DEFAULT_ACTOR = "default"
+STAFF_ACTOR = "staff"
 
 _REFUSAL_CODES = {
     Refusal.EXCEEDS_BALANCE: "EXCEEDS_BALANCE",
@@ -53,6 +62,12 @@ class LedgerRefused(AppError):
     def __init__(self, code: str) -> None:
         self.code = code
         super().__init__()
+
+
+class PromiseAlreadySet(AppError):
+    """The one-tap choice is open only while the entry still carries the shop default, for a day."""
+
+    code = "PROMISE_ALREADY_SET"
 
 
 def _refuse(refusal: Refusal) -> AppError:
@@ -91,6 +106,204 @@ def _overdue_body(status: ledger.OverdueStatus) -> dict[str, Any]:
     }
 
 
+def clean_entry(kind: str, amount: int, note: str | None, promised_date: date | None) -> tuple[EntryKind, str | None]:
+    """Check the shape of a new entry. Returns its kind and its tidied note."""
+    fields: dict[str, str] = {}
+    if kind not in ("credit", "payment"):
+        fields["kind"] = "must be credit or payment"
+    if isinstance(amount, bool) or not MIN_AMOUNT <= amount <= MAX_AMOUNT:
+        fields["amount"] = f"a whole amount between {MIN_AMOUNT} and {MAX_AMOUNT} UZS"
+    text = " ".join(note.split()) if note else None
+    if text is not None and len(text) > 200:
+        fields["note"] = "at most 200 characters"
+    if kind == "payment" and promised_date is not None:
+        fields["promised_date"] = "only a credit sale has a promised date"
+    if fields:
+        raise ValidationFailed(fields)
+    return EntryKind(kind), text
+
+
+async def append_entry_in(
+    session: TenantSession,
+    actor: Membership,
+    customer_id: UUID,
+    *,
+    kind: EntryKind,
+    amount: int,
+    note: str | None,
+    promised_date: date | None,
+    now: datetime,
+) -> dict[str, Any]:
+    """Add a credit sale or a payment to one customer's account."""
+    customer = await session.get_customer(customer_id, for_update=True)
+    if customer is None or customer.status == "anonymized":
+        raise NotFound()
+    if customer.status == "archived":
+        raise CustomerArchived()
+
+    account = await session.entries_of(customer_id)
+    refusal = ledger.validate_new_entry([row.entry for row in account], kind, amount)
+    if refusal is not None:
+        raise _refuse(refusal)
+
+    promised: date | None = None
+    promise_actor = STAFF_ACTOR
+    if kind is EntryKind.CREDIT:
+        if promised_date is None:
+            settings = await session.shop_settings()
+            if settings is None:
+                raise NotFound()
+            promised = default_promise_date(now, settings.default_promise_days)
+            promise_actor = DEFAULT_ACTOR
+        else:
+            problem = validate_promise_date(tashkent_date(now), promised_date)
+            if problem is not None:
+                raise ValidationFailed({"promised_date": problem.value})
+            promised = promised_date
+
+    entry_id = uuid4()
+    seq = max((row.entry.seq for row in account), default=0) + 1
+    await session.append_entry(
+        entry_id=entry_id,
+        customer_id=customer_id,
+        seq=seq,
+        kind=kind.value,
+        amount=amount,
+        note=note,
+        reverses_id=None,
+        author_id=actor.membership_id,
+        created_at=now,
+    )
+    if promised is not None:
+        await session.add_promise(entry_id=entry_id, promised_date=promised, actor=promise_actor, created_at=now)
+    await session.record_activity(
+        membership_id=actor.membership_id,
+        action=f"ledger.{kind.value}_recorded",
+        subject_type="customer",
+        subject_id=customer_id,
+    )
+    await session.record_measure(kind=kind.value, entry_ref=entry_id, amount=amount, promised=promised)
+
+    balance = ledger.balance([row.entry for row in account]) + (amount if kind is EntryKind.CREDIT else -amount)
+    return {
+        "entry": {
+            "id": str(entry_id),
+            "seq": seq,
+            "kind": kind.value,
+            "amount": amount,
+            "note": note,
+            "created_at": now.isoformat(),
+            "promised_date": None if promised is None else promised.isoformat(),
+        },
+        "customer": customer_body(customer, balance),
+    }
+
+
+async def reverse_entry_in(
+    session: TenantSession, actor: Membership, entry_id: UUID, *, now: datetime
+) -> dict[str, Any]:
+    """Cancel an entry by adding its reversal. The original stays as it is (REQ-011)."""
+    customer_id = await session.customer_of_entry(entry_id)
+    if customer_id is None:
+        raise NotFound()
+    customer = await session.get_customer(customer_id, for_update=True)
+    if customer is None:
+        raise NotFound()
+    account = await session.entries_of(customer_id)
+    original = next((row.entry for row in account if row.entry.id == entry_id), None)
+    if original is None:
+        raise NotFound()
+    refusal = ledger.validate_new_entry([row.entry for row in account], EntryKind.REVERSAL, original.amount, entry_id)
+    if refusal is not None:
+        raise _refuse(refusal)
+
+    reversal_id = uuid4()
+    seq = max(row.entry.seq for row in account) + 1
+    await session.append_entry(
+        entry_id=reversal_id,
+        customer_id=customer_id,
+        seq=seq,
+        kind=EntryKind.REVERSAL.value,
+        amount=original.amount,
+        note=None,
+        reverses_id=entry_id,
+        author_id=actor.membership_id,
+        created_at=now,
+    )
+    await session.record_activity(
+        membership_id=actor.membership_id,
+        action="ledger.entry_reversed",
+        subject_type="customer",
+        subject_id=customer_id,
+    )
+    await session.record_measure(kind="reversal", entry_ref=reversal_id, amount=original.amount, promised=None)
+
+    debt_increasing = original.kind in (EntryKind.CREDIT, EntryKind.OPENING)
+    balance = ledger.balance([row.entry for row in account]) + (
+        -original.amount if debt_increasing else original.amount
+    )
+    return {
+        "entry": {
+            "id": str(reversal_id),
+            "seq": seq,
+            "kind": "reversal",
+            "amount": original.amount,
+            "reverses_id": str(entry_id),
+            "created_at": now.isoformat(),
+        },
+        "customer": customer_body(customer, balance),
+    }
+
+
+async def choose_promise_in(
+    session: TenantSession, actor: Membership, entry_id: UUID, chosen: date, *, now: datetime
+) -> dict[str, Any]:
+    """The one-tap promised date after a sale (REQ-008).
+
+    Open to the entry's author, and to managers and owners, while the entry still carries the shop
+    default and for a day after the sale. Later changes are a different operation (REQ-067).
+    """
+    customer_id = await session.customer_of_entry(entry_id)
+    if customer_id is None:
+        raise NotFound()
+    customer = await session.get_customer(customer_id, for_update=True)
+    if customer is None:
+        raise NotFound()
+    account = await session.entries_of(customer_id)
+    row = next((candidate for candidate in account if candidate.entry.id == entry_id), None)
+    if row is None:
+        raise NotFound()
+    if row.author_id != actor.membership_id and not allows(actor.role, Capability.MANAGE):
+        raise ForbiddenRole(Role.MANAGER)
+
+    entry = row.entry
+    reversed_ids = {other.entry.reverses_id for other in account}
+    if (
+        entry.kind is not EntryKind.CREDIT
+        or entry.id in reversed_ids
+        or now - entry.created_at > PROMISE_CHOICE_WINDOW
+        or await session.promise_actors(entry_id) != [DEFAULT_ACTOR]
+    ):
+        raise PromiseAlreadySet()
+    problem = validate_promise_date(tashkent_date(entry.created_at), chosen)
+    if problem is not None:
+        raise ValidationFailed({"promised_date": problem.value})
+
+    await session.add_promise(entry_id=entry_id, promised_date=chosen, actor=STAFF_ACTOR, created_at=now)
+    await session.record_activity(
+        membership_id=actor.membership_id,
+        action="ledger.promise_chosen",
+        subject_type="customer",
+        subject_id=customer_id,
+    )
+    await session.record_measure(kind="promise_chosen", entry_ref=entry_id, amount=entry.amount, promised=chosen)
+    balance = ledger.balance([other.entry for other in account])
+    return {
+        "entry": {"id": str(entry_id), "amount": entry.amount, "promised_date": chosen.isoformat()},
+        "customer": customer_body(customer, balance),
+    }
+
+
 class LedgerService:
     def __init__(self, storage: Storage, now: Callable[[], datetime] | None = None) -> None:
         self._storage = storage
@@ -114,89 +327,20 @@ class LedgerService:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, RECORD_ENTRY)
             key = idempotency.validate_key(request_key)
-
-            fields: dict[str, str] = {}
-            if kind not in ("credit", "payment"):
-                fields["kind"] = "must be credit or payment"
-            if isinstance(amount, bool) or not MIN_AMOUNT <= amount <= MAX_AMOUNT:
-                fields["amount"] = f"a whole amount between {MIN_AMOUNT} and {MAX_AMOUNT} UZS"
-            text = " ".join(note.split()) if note else None
-            if text is not None and len(text) > 200:
-                fields["note"] = "at most 200 characters"
-            if kind == "payment" and promised_date is not None:
-                fields["promised_date"] = "only a credit sale has a promised date"
-            if fields:
-                raise ValidationFailed(fields)
-            entry_kind = EntryKind(kind)
+            entry_kind, text = clean_entry(kind, amount, note, promised_date)
             await require_writable(session, self._today(), new_credit=entry_kind is EntryKind.CREDIT)
 
             async def apply() -> dict[str, Any]:
-                now = self._now()
-                customer = await session.get_customer(customer_id, for_update=True)
-                if customer is None or customer.status == "anonymized":
-                    raise NotFound()
-                if customer.status == "archived":
-                    raise CustomerArchived()
-
-                account = await session.entries_of(customer_id)
-                refusal = ledger.validate_new_entry([row.entry for row in account], entry_kind, amount)
-                if refusal is not None:
-                    raise _refuse(refusal)
-
-                promised: date | None = None
-                if entry_kind is EntryKind.CREDIT:
-                    sale_date = tashkent_date(now)
-                    if promised_date is None:
-                        settings = await session.shop_settings()
-                        if settings is None:
-                            raise NotFound()
-                        promised = default_promise_date(now, settings.default_promise_days)
-                    else:
-                        problem = validate_promise_date(sale_date, promised_date)
-                        if problem is not None:
-                            raise ValidationFailed({"promised_date": problem.value})
-                        promised = promised_date
-
-                entry_id = uuid4()
-                seq = max((row.entry.seq for row in account), default=0) + 1
-                await session.append_entry(
-                    entry_id=entry_id,
-                    customer_id=customer_id,
-                    seq=seq,
-                    kind=entry_kind.value,
+                return await append_entry_in(
+                    session,
+                    actor,
+                    customer_id,
+                    kind=entry_kind,
                     amount=amount,
                     note=text,
-                    reverses_id=None,
-                    author_id=actor.membership_id,
-                    created_at=now,
+                    promised_date=promised_date,
+                    now=self._now(),
                 )
-                if promised is not None:
-                    await session.add_promise(entry_id=entry_id, promised_date=promised, actor="staff", created_at=now)
-                await session.record_activity(
-                    membership_id=actor.membership_id,
-                    action=f"ledger.{entry_kind.value}_recorded",
-                    subject_type="customer",
-                    subject_id=customer_id,
-                )
-                await session.record_measure(
-                    kind=entry_kind.value, entry_ref=entry_id, amount=amount, promised=promised
-                )
-
-                balance = ledger.balance([row.entry for row in account]) + (
-                    amount if entry_kind is EntryKind.CREDIT else -amount
-                )
-                return {
-                    "entry": {
-                        "id": str(entry_id),
-                        "seq": seq,
-                        "kind": entry_kind.value,
-                        "amount": amount,
-                        "note": text,
-                        "created_at": now.isoformat(),
-                        "promised_date": None if promised is None else promised.isoformat(),
-                    },
-                    "customer": customer_body(customer, balance),
-                }
 
             return await idempotency.run_once(
                 session,
@@ -221,61 +365,7 @@ class LedgerService:
             await require_writable(session, self._today(), new_credit=False)
 
             async def apply() -> dict[str, Any]:
-                now = self._now()
-                customer_id = await session.customer_of_entry(entry_id)
-                if customer_id is None:
-                    raise NotFound()
-                customer = await session.get_customer(customer_id, for_update=True)
-                if customer is None:
-                    raise NotFound()
-                account = await session.entries_of(customer_id)
-                original = next((row.entry for row in account if row.entry.id == entry_id), None)
-                if original is None:
-                    raise NotFound()
-                refusal = ledger.validate_new_entry(
-                    [row.entry for row in account], EntryKind.REVERSAL, original.amount, entry_id
-                )
-                if refusal is not None:
-                    raise _refuse(refusal)
-
-                reversal_id = uuid4()
-                seq = max(row.entry.seq for row in account) + 1
-                await session.append_entry(
-                    entry_id=reversal_id,
-                    customer_id=customer_id,
-                    seq=seq,
-                    kind=EntryKind.REVERSAL.value,
-                    amount=original.amount,
-                    note=None,
-                    reverses_id=entry_id,
-                    author_id=actor.membership_id,
-                    created_at=now,
-                )
-                await session.record_activity(
-                    membership_id=actor.membership_id,
-                    action="ledger.entry_reversed",
-                    subject_type="customer",
-                    subject_id=customer_id,
-                )
-                await session.record_measure(
-                    kind="reversal", entry_ref=reversal_id, amount=original.amount, promised=None
-                )
-
-                debt_increasing = original.kind in (EntryKind.CREDIT, EntryKind.OPENING)
-                balance = ledger.balance([row.entry for row in account]) + (
-                    -original.amount if debt_increasing else original.amount
-                )
-                return {
-                    "entry": {
-                        "id": str(reversal_id),
-                        "seq": seq,
-                        "kind": "reversal",
-                        "amount": original.amount,
-                        "reverses_id": str(entry_id),
-                        "created_at": now.isoformat(),
-                    },
-                    "customer": customer_body(customer, balance),
-                }
+                return await reverse_entry_in(session, actor, entry_id, now=self._now())
 
             return await idempotency.run_once(
                 session,
@@ -283,6 +373,26 @@ class LedgerService:
                 operation=REVERSE_ENTRY.name,
                 user_id=user_id,
                 request={"entry": str(entry_id)},
+                action=apply,
+            )
+
+    async def choose_promise(
+        self, user_id: UUID, shop_id: UUID, entry_id: UUID, promised_date: date, request_key: str | None
+    ) -> dict[str, Any]:
+        async with self._storage.tenant(shop_id) as session:
+            actor = await require_member(session, user_id, CHOOSE_PROMISE)
+            key = idempotency.validate_key(request_key)
+            await require_writable(session, self._today(), new_credit=False)
+
+            async def apply() -> dict[str, Any]:
+                return await choose_promise_in(session, actor, entry_id, promised_date, now=self._now())
+
+            return await idempotency.run_once(
+                session,
+                key=key,
+                operation=CHOOSE_PROMISE.name,
+                user_id=user_id,
+                request={"entry": str(entry_id), "promised_date": promised_date},
                 action=apply,
             )
 

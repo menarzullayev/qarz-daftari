@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 
 from qarz.application.telegram_updates import UpdateProcessor
 
@@ -35,9 +36,12 @@ def add_webhook_route(app: FastAPI, processor: UpdateProcessor, secret: str) -> 
             return Response(status_code=400)
 
         try:
-            await processor.process(update)
+            processed = await processor.handle(update)
         except Exception:
             # 500 makes Telegram deliver the update again; the failed transaction recorded nothing.
             log.exception("update_failed", extra={"update_id": update.get("update_id")})
             return Response(status_code=500)
+        if processed.webhook_reply is not None:
+            # Telegram runs one Bot API call given as the response body.
+            return JSONResponse(processed.webhook_reply)
         return Response(status_code=200)

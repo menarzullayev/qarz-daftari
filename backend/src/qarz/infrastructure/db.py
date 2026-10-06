@@ -443,6 +443,19 @@ class PgTenantSession:
         ).all()
         return [(self._customer(row), int(row.balance), str(row.name_norm)) for row in rows]
 
+    async def customers_named(self, name_norm: str) -> list[tuple[CustomerRecord, int]]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    f"SELECT {_CUSTOMER_COLUMNS}, coalesce(b.balance, 0) AS balance "
+                    f"FROM customer c LEFT JOIN ({_BALANCES}) b ON b.customer_id = c.id "
+                    "WHERE c.status = 'active' AND c.name_norm = :name ORDER BY c.created_at, c.id"
+                ),
+                {"name": name_norm},
+            )
+        ).all()
+        return [(self._customer(row), int(row.balance)) for row in rows]
+
     async def balances(self, customer_ids: list[UUID]) -> dict[UUID, int]:
         rows = (
             await self._conn.execute(
@@ -491,6 +504,20 @@ class PgTenantSession:
             await self._conn.execute(text("SELECT customer_id FROM ledger_entry WHERE id = :id"), {"id": entry_id})
         ).first()
         return None if row is None else row.customer_id
+
+    async def entry_created_at(self, entry_id: UUID) -> datetime | None:
+        row = (
+            await self._conn.execute(text("SELECT created_at FROM ledger_entry WHERE id = :id"), {"id": entry_id})
+        ).first()
+        return None if row is None else row.created_at
+
+    async def promise_actors(self, entry_id: UUID) -> list[str]:
+        rows = (
+            await self._conn.execute(
+                text("SELECT actor FROM promise WHERE entry_id = :id ORDER BY created_at, id"), {"id": entry_id}
+            )
+        ).all()
+        return [str(row.actor) for row in rows]
 
     async def append_entry(
         self,
@@ -642,6 +669,12 @@ class PgPlatformSession:
         ).first()
         return row is not None
 
+    async def update_seen(self, update_id: int) -> bool:
+        row = (
+            await self._conn.execute(text("SELECT 1 FROM processed_update WHERE update_id = :id"), {"id": update_id})
+        ).first()
+        return row is not None
+
     async def language_of_telegram_user(self, tg_id: int) -> str | None:
         row = (
             await self._conn.execute(text("SELECT lang FROM app_user WHERE tg_id = :tg_id"), {"tg_id": tg_id})
@@ -741,6 +774,70 @@ class PgPlatformSession:
             )
         ).all()
         return [MyShop(row.shop_id, row.shop_name, Role(row.role), row.membership_id) for row in rows]
+
+    async def put_pending(
+        self,
+        *,
+        pending_id: UUID,
+        user_id: UUID,
+        kind: str,
+        payload: dict[str, Any],
+        now: datetime,
+        expires_at: datetime,
+    ) -> None:
+        await self._conn.execute(
+            text("DELETE FROM chat_pending WHERE user_id = :user_id AND expires_at <= :now"),
+            {"user_id": user_id, "now": now},
+        )
+        await self._conn.execute(
+            text(
+                "INSERT INTO chat_pending (id, user_id, kind, payload, created_at, expires_at) "
+                "VALUES (:id, :user_id, :kind, CAST(:payload AS jsonb), :now, :expires_at) "
+                "ON CONFLICT (id) DO NOTHING"
+            ),
+            {
+                "id": pending_id,
+                "user_id": user_id,
+                "kind": kind,
+                "payload": json.dumps(payload, ensure_ascii=False),
+                "now": now,
+                "expires_at": expires_at,
+            },
+        )
+
+    @staticmethod
+    def _payload(value: Any) -> dict[str, Any]:
+        return json.loads(value) if isinstance(value, str) else dict(value)
+
+    async def take_pending(self, pending_id: UUID, user_id: UUID, kind: str, now: datetime) -> dict[str, Any] | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "DELETE FROM chat_pending WHERE id = :id AND user_id = :user_id AND kind = :kind "
+                    "AND expires_at > :now RETURNING payload"
+                ),
+                {"id": pending_id, "user_id": user_id, "kind": kind, "now": now},
+            )
+        ).first()
+        return None if row is None else self._payload(row.payload)
+
+    async def current_pending(self, user_id: UUID, kind: str, now: datetime) -> tuple[UUID, dict[str, Any]] | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT id, payload FROM chat_pending WHERE user_id = :user_id AND kind = :kind "
+                    "AND expires_at > :now ORDER BY created_at DESC, id LIMIT 1"
+                ),
+                {"user_id": user_id, "kind": kind, "now": now},
+            )
+        ).first()
+        return None if row is None else (row.id, self._payload(row.payload))
+
+    async def drop_pending(self, user_id: UUID, kind: str) -> None:
+        await self._conn.execute(
+            text("DELETE FROM chat_pending WHERE user_id = :user_id AND kind = :kind"),
+            {"user_id": user_id, "kind": kind},
+        )
 
     async def accept_staff_invitation(self, token_hash: bytes, user_id: UUID) -> UUID | None:
         try:

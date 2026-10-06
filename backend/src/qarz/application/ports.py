@@ -211,11 +211,21 @@ class TenantSession(Protocol):
         """Customers in name order with their balance and normalized name (the paging position)."""
         ...
 
+    async def customers_named(self, name_norm: str) -> list[tuple[CustomerRecord, int]]:
+        """Active customers whose normalized name is exactly this, with their balances."""
+        ...
+
     async def balances(self, customer_ids: list[UUID]) -> dict[UUID, int]: ...
 
     async def entries_of(self, customer_id: UUID) -> list[EntryRow]: ...
 
     async def customer_of_entry(self, entry_id: UUID) -> UUID | None: ...
+
+    async def entry_created_at(self, entry_id: UUID) -> datetime | None: ...
+
+    async def promise_actors(self, entry_id: UUID) -> list[str]:
+        """Who set each promise of the entry, oldest first."""
+        ...
 
     async def append_entry(
         self,
@@ -261,6 +271,8 @@ class PlatformSession(Protocol):
         """Record a Telegram update identifier. False means it was already processed."""
         ...
 
+    async def update_seen(self, update_id: int) -> bool: ...
+
     async def language_of_telegram_user(self, tg_id: int) -> str | None: ...
 
     async def ensure_user(self, tg_id: int, lang: str) -> UUID:
@@ -295,6 +307,27 @@ class PlatformSession(Protocol):
     async def active_shop(self, user_id: UUID) -> UUID | None: ...
 
     async def my_memberships(self, user_id: UUID) -> list[MyShop]: ...
+
+    async def put_pending(
+        self,
+        *,
+        pending_id: UUID,
+        user_id: UUID,
+        kind: str,
+        payload: dict[str, Any],
+        now: datetime,
+        expires_at: datetime,
+    ) -> None:
+        """Remember what a chat question was about until its button is pressed. Clears the user's expired ones."""
+        ...
+
+    async def take_pending(self, pending_id: UUID, user_id: UUID, kind: str, now: datetime) -> dict[str, Any] | None:
+        """Use up one pending question of this user. None when it is gone, expired, or someone else's."""
+        ...
+
+    async def current_pending(self, user_id: UUID, kind: str, now: datetime) -> tuple[UUID, dict[str, Any]] | None: ...
+
+    async def drop_pending(self, user_id: UUID, kind: str) -> None: ...
 
     async def accept_staff_invitation(self, token_hash: bytes, user_id: UUID) -> UUID | None:
         """Join the shop the invitation belongs to. None when the invitation cannot be used."""

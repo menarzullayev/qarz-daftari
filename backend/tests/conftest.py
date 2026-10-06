@@ -1,7 +1,6 @@
 """Database fixtures: a fresh database per test session, built by the real migrations."""
 
 import os
-import secrets
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
@@ -52,7 +51,9 @@ def database_url() -> Iterator[str]:
 @pytest.fixture(scope="session")
 def app_database_url(database_url: str) -> str:
     """Connection string for qd_app itself, so the API runs under the same restrictions as in production."""
-    password = secrets.token_urlsafe(18)
+    # The role is shared by every database of the server, so two test sessions running at once (two
+    # agents, or two terminals) must set the same password or they lock each other out.
+    password = os.environ.get("QD_TEST_APP_PASSWORD", "test-only-qd-app-password")
     with psycopg.connect(database_url, autocommit=True) as conn:
         conn.execute(psycopg.sql.SQL("ALTER ROLE qd_app LOGIN PASSWORD {}").format(psycopg.sql.Literal(password)))
     parts = urlsplit(database_url)
