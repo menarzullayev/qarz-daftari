@@ -30,6 +30,9 @@ _STATUS = {
     "CATALOG_NAME_TAKEN": 409,
     "CATALOG_ITEM_NOT_LEARNED": 409,
     "CATALOG_MERGE_TARGET_INVALID": 409,
+    "LINES_ALREADY_ADDED": 409,
+    "LINES_SUM_MISMATCH": 409,
+    "LINES_WINDOW_CLOSED": 409,
 }
 
 _MESSAGES = {
@@ -58,6 +61,9 @@ _MESSAGES = {
         "CATALOG_MERGE_TARGET_INVALID": "Faqat katalogda ko'rinadigan, ko'rib chiqilgan mahsulotga birlashtiriladi.",
         "CUSTOMER_ALREADY_LINKED": "Bu mijoz allaqachon Telegram hisobiga ulangan.",
         "DISPUTE_NOT_ALLOWED": "Bu yozuv bo'yicha e'tiroz bildirib bo'lmaydi yoki u allaqachon ko'rib chiqilgan.",
+        "LINES_ALREADY_ADDED": "Bu yozuvga mahsulotlar allaqachon qo'shilgan.",
+        "LINES_SUM_MISMATCH": "Mahsulotlar yig'indisi yozuv summasiga teng emas.",
+        "LINES_WINDOW_CLOSED": "Mahsulot qo'shish muddati o'tgan: bu faqat sotuvdan keyingi kun oxirigacha mumkin.",
         "ERROR": "Xatolik yuz berdi.",
     },
     "ru": {
@@ -85,6 +91,9 @@ _MESSAGES = {
         "CATALOG_MERGE_TARGET_INVALID": "Объединить можно только с проверенным товаром, который виден в каталоге.",
         "CUSTOMER_ALREADY_LINKED": "Этот клиент уже подключён к аккаунту Telegram.",
         "DISPUTE_NOT_ALLOWED": "По этой записи нельзя подать возражение, или оно уже рассмотрено.",
+        "LINES_ALREADY_ADDED": "К этой записи товары уже добавлены.",
+        "LINES_SUM_MISMATCH": "Сумма товаров не равна сумме записи.",
+        "LINES_WINDOW_CLOSED": "Срок добавления товаров истёк: это возможно только до конца дня после продажи.",
         "ERROR": "Произошла ошибка.",
     },
 }

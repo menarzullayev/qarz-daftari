@@ -8,7 +8,7 @@ The `*_in` functions do one write inside a tenant transaction that the caller ha
 The HTTP API and the chat both use them, each wrapping them in its own idempotent request.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -24,8 +24,20 @@ from qarz.application.customers import (
     require_writable,
 )
 from qarz.application.errors import AppError, ForbiddenRole, NotFound, ValidationFailed
+from qarz.application.goods_lines import (
+    ADD_LINES,
+    CleanLine,
+    LineRequest,
+    add_lines_in,
+    clean_lines,
+    line_body,
+    lines_request,
+    lines_sum,
+    require_sum,
+    store_lines_in,
+)
 from qarz.application.operations import operation
-from qarz.application.ports import EntryRow, Membership, Storage, TenantSession
+from qarz.application.ports import EntryRow, GoodsLineRecord, Membership, Storage, TenantSession
 from qarz.application.shops import require_member
 from qarz.domain import ledger
 from qarz.domain.access import Capability, Role, allows
@@ -87,7 +99,7 @@ def _refuse(refusal: Refusal) -> AppError:
     return LedgerRefused(code)
 
 
-def _entry_body(row: EntryRow, reversed_ids: set[UUID]) -> dict[str, Any]:
+def _entry_body(row: EntryRow, reversed_ids: set[UUID], lines: Sequence[GoodsLineRecord] = ()) -> dict[str, Any]:
     entry = row.entry
     return {
         "id": str(entry.id),
@@ -101,6 +113,7 @@ def _entry_body(row: EntryRow, reversed_ids: set[UUID]) -> dict[str, Any]:
         "reversed": entry.id in reversed_ids,
         "disputed": entry.disputed,
         "author_id": str(row.author_id),
+        "lines": [line_body(line) for line in lines],
     }
 
 
@@ -132,6 +145,43 @@ def clean_entry(kind: str, amount: int, note: str | None, promised_date: date | 
     return EntryKind(kind), text
 
 
+def clean_sale(
+    kind: str, amount: int | None, note: str | None, promised_date: date | None, lines: Sequence[LineRequest] | None
+) -> tuple[EntryKind, str | None, int, list[CleanLine] | None]:
+    """Check the shape of a new entry that may carry goods lines (REQ-037).
+
+    Returns the kind, the tidied note, the entry total and the checked lines. With lines the total may be
+    left out, and is then their sum; a total that is given must equal that sum.
+    """
+    fields: dict[str, str] = {}
+    cleaned: list[CleanLine] | None = None
+    if lines is not None:
+        if kind == "credit":
+            try:
+                cleaned = clean_lines(lines)
+            except ValidationFailed as error:
+                fields.update(error.fields)
+        else:
+            fields["lines"] = "only a credit sale has goods lines"
+    total = amount
+    if total is None and cleaned is not None:
+        total = lines_sum(cleaned)
+    checked: tuple[EntryKind, str | None] | None = None
+    try:
+        # Without a total to check (it is missing, or the lines it would come from are wrong) the other
+        # fields are still checked, against the smallest valid amount.
+        checked = clean_entry(kind, MIN_AMOUNT if total is None else total, note, promised_date)
+    except ValidationFailed as error:
+        fields = {**error.fields, **fields}
+    if amount is None and lines is None:
+        fields["amount"] = "required when there are no goods lines"
+    if fields or checked is None or total is None:
+        raise ValidationFailed(fields)
+    if cleaned is not None:
+        require_sum(cleaned, total)
+    return checked[0], checked[1], total, cleaned
+
+
 async def append_entry_in(
     session: TenantSession,
     actor: Membership,
@@ -142,8 +192,12 @@ async def append_entry_in(
     note: str | None,
     promised_date: date | None,
     now: datetime,
+    lines: Sequence[CleanLine] | None = None,
 ) -> dict[str, Any]:
-    """Add a credit sale or a payment to one customer's account."""
+    """Add a credit sale or a payment to one customer's account.
+
+    `lines` are the goods of an itemized credit sale, already checked by `clean_sale`: they sum to `amount`.
+    """
     customer = await session.get_customer(customer_id, for_update=True)
     if customer is None or customer.status == "anonymized":
         raise NotFound()
@@ -185,6 +239,7 @@ async def append_entry_in(
     )
     if promised is not None:
         await session.add_promise(entry_id=entry_id, promised_date=promised, actor=promise_actor, created_at=now)
+    stored_lines = await store_lines_in(session, actor, entry_id, lines) if lines else []
     await session.record_activity(
         membership_id=actor.membership_id,
         action=f"ledger.{kind.value}_recorded",
@@ -203,6 +258,7 @@ async def append_entry_in(
             "note": note,
             "created_at": now.isoformat(),
             "promised_date": None if promised is None else promised.isoformat(),
+            "lines": [line_body(line) for line in stored_lines],
         },
         "customer": customer_body(customer, balance),
     }
@@ -337,15 +393,16 @@ class LedgerService:
         customer_id: UUID,
         *,
         kind: str,
-        amount: int,
+        amount: int | None,
         note: str | None,
         promised_date: date | None,
         request_key: str | None,
+        lines: Sequence[LineRequest] | None = None,
     ) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, RECORD_ENTRY)
             key = idempotency.validate_key(request_key)
-            entry_kind, text = clean_entry(kind, amount, note, promised_date)
+            entry_kind, text, total, goods = clean_sale(kind, amount, note, promised_date, lines)
             await require_writable(session, self._today(), new_credit=entry_kind is EntryKind.CREDIT)
 
             async def apply() -> dict[str, Any]:
@@ -354,24 +411,46 @@ class LedgerService:
                     actor,
                     customer_id,
                     kind=entry_kind,
-                    amount=amount,
+                    amount=total,
                     note=text,
                     promised_date=promised_date,
                     now=self._now(),
+                    lines=goods,
                 )
+
+            request: dict[str, Any] = {
+                "customer": str(customer_id),
+                "kind": kind,
+                "amount": amount,
+                "note": text,
+                "promised_date": promised_date,
+            }
+            if goods is not None:
+                # Only an itemized sale carries the key, so an amount-only request keeps its fingerprint.
+                request["lines"] = lines_request(goods)
+            return await idempotency.run_once(
+                session, key=key, operation=RECORD_ENTRY.name, user_id=user_id, request=request, action=apply
+            )
+
+    async def add_lines(
+        self, user_id: UUID, shop_id: UUID, entry_id: UUID, lines: Sequence[LineRequest], request_key: str | None
+    ) -> dict[str, Any]:
+        async with self._storage.tenant(shop_id) as session:
+            actor = await require_member(session, user_id, ADD_LINES)
+            key = idempotency.validate_key(request_key)
+            goods = clean_lines(lines)
+            # The sale itself was recorded earlier; completing it is not a new credit sale (BR-29).
+            await require_writable(session, self._today(), new_credit=False)
+
+            async def apply() -> dict[str, Any]:
+                return await add_lines_in(session, actor, entry_id, goods, now=self._now())
 
             return await idempotency.run_once(
                 session,
                 key=key,
-                operation=RECORD_ENTRY.name,
+                operation=ADD_LINES.name,
                 user_id=user_id,
-                request={
-                    "customer": str(customer_id),
-                    "kind": kind,
-                    "amount": amount,
-                    "note": text,
-                    "promised_date": promised_date,
-                },
+                request={"entry": str(entry_id), "lines": lines_request(goods)},
                 action=apply,
             )
 
@@ -427,6 +506,8 @@ class LedgerService:
             history = ledger.payment_history(entries, today)
             reversed_ids = {row.entry.reverses_id for row in account if row.entry.reverses_id is not None}
             newest_first = sorted(account, key=lambda row: row.entry.seq, reverse=True)
+            shown = newest_first[:HISTORY_PAGE]
+            lines = await session.goods_lines_of([row.entry.id for row in shown])
             return {
                 **customer_body(customer, ledger.balance(entries)),
                 "overdue": _overdue_body(ledger.overdue(entries, today)),
@@ -439,7 +520,7 @@ class LedgerService:
                     "due_amount": history.due_amount,
                     "longest_delay_days": history.longest_delay_days,
                 },
-                "entries": [_entry_body(row, reversed_ids) for row in newest_first[:HISTORY_PAGE]],
+                "entries": [_entry_body(row, reversed_ids, lines.get(row.entry.id, ())) for row in shown],
                 "entries_total": len(account),
             }
 
