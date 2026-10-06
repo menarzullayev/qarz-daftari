@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qarz-daftari-backend"
+version = "0.1.0"
+description = "Qarz Daftari backend: API and worker"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.30,<1",
+  "aiogram>=3.13,<4",
+  "sqlalchemy[asyncio]>=2.0.35,<3",
+  "asyncpg>=0.29,<1",
+  "alembic>=1.13,<2",
+  "psycopg[binary]>=3.2,<4",
+  "pydantic-settings>=2.5,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "httpx>=0.27",
+  "ruff>=0.6",
+  "mypy>=1.11",
+  "import-linter>=2.0",
+  "pip-audit>=2.7",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = ["db: needs a PostgreSQL server (QD_TEST_ADMIN_URL)"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["src", "tests", "migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM", "RUF"]
+ignore = ["S101"]  # assert is how pytest works
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S608"]  # fixed test identifiers and SQL built from constants
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+
+# Layering from docs/06-architecture: dependencies point inward, the domain depends on nothing.
+[tool.importlinter]
+root_package = "qarz"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layers: interface > infrastructure > application > domain"
+type = "layers"
+layers = [
+  "qarz.interface",
+  "qarz.infrastructure",
+  "qarz.application",
+  "qarz.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "The domain layer uses no framework"
+type = "forbidden"
+source_modules = ["qarz.domain"]
+forbidden_modules = ["fastapi", "aiogram", "sqlalchemy", "asyncpg", "psycopg", "pydantic_settings"]
