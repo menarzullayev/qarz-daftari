@@ -25,3 +25,6 @@ frontend/dist/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Local rehearsal of the two-server design: result logs
+deploy/rehearsal/.out/
