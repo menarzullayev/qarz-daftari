@@ -1,18 +1,20 @@
 """Database fixtures: a fresh database per test session, built by the real migrations."""
 
 import os
+import secrets
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config
 
-BACKEND = Path(__file__).resolve().parents[2]
+BACKEND = Path(__file__).resolve().parents[1]
 
 
 def _admin_url() -> str:
@@ -45,6 +47,18 @@ def database_url() -> Iterator[str]:
             os.environ["QD_MIGRATION_URL"] = previous
         with psycopg.connect(admin_url, autocommit=True) as admin:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+@pytest.fixture(scope="session")
+def app_database_url(database_url: str) -> str:
+    """Connection string for qd_app itself, so the API runs under the same restrictions as in production."""
+    password = secrets.token_urlsafe(18)
+    with psycopg.connect(database_url, autocommit=True) as conn:
+        conn.execute(psycopg.sql.SQL("ALTER ROLE qd_app LOGIN PASSWORD {}").format(psycopg.sql.Literal(password)))
+    parts = urlsplit(database_url)
+    host = parts.hostname or "127.0.0.1"
+    netloc = f"qd_app:{password}@{host}:{parts.port or 5432}"
+    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
 
 
 @pytest.fixture

@@ -1,13 +1,34 @@
-"""HTTP application factory. Only the health endpoint exists so far (technical specification, API contract)."""
+"""HTTP application factory (technical specification, API contract)."""
 
 from collections.abc import Awaitable, Callable
+from typing import Protocol
+from uuid import UUID
 
-from fastapi import FastAPI, Response, status
+from fastapi import FastAPI, Request, Response, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from qarz.application.errors import AppError, Unauthenticated
+from qarz.application.ports import Storage
+from qarz.application.shops import ShopService
+from qarz.interface.errors import app_error_handler, error_response
+from qarz.interface.shops_api import add_shop_routes
 
 HealthCheck = Callable[[], Awaitable[bool]]
 
 
-def create_app(database_reachable: HealthCheck) -> FastAPI:
+class Authenticator(Protocol):
+    """Resolves a request to the signed-in user. Telegram-based implementations arrive with story S2.1."""
+
+    async def user_id(self, request: Request) -> UUID | None: ...
+
+
+def create_app(
+    database_reachable: HealthCheck,
+    authenticator: Authenticator | None = None,
+    storage: Storage | None = None,
+) -> FastAPI:
     app = FastAPI(title="Qarz Daftari", docs_url=None, redoc_url=None, openapi_url=None)
 
     @app.get("/healthz")
@@ -21,5 +42,33 @@ def create_app(database_reachable: HealthCheck) -> FastAPI:
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
             return {"status": "down"}
         return {"status": "ok"}
+
+    app.add_exception_handler(AppError, app_error_handler)
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(request: Request, exc: RequestValidationError) -> JSONResponse:
+        fields = {".".join(str(part) for part in error["loc"][1:]) or "_": error["msg"] for error in exc.errors()}
+        # A malformed identifier in the path must look like any other missing record.
+        if any(error["loc"][0] == "path" for error in exc.errors()):
+            return error_response("NOT_FOUND", getattr(request.state, "lang", "uz"))
+        return error_response("VALIDATION", getattr(request.state, "lang", "uz"), fields)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        code = "NOT_FOUND" if exc.status_code in (404, 405) else "ERROR"
+        response = error_response(code, getattr(request.state, "lang", "uz"))
+        response.status_code = 404 if code == "NOT_FOUND" else exc.status_code
+        return response
+
+    if authenticator is not None and storage is not None:
+
+        async def current_user(request: Request) -> UUID:
+            user_id = await authenticator.user_id(request)
+            if user_id is None:
+                raise Unauthenticated()
+            request.state.lang = await storage.user_language(user_id) or "uz"
+            return user_id
+
+        add_shop_routes(app, ShopService(storage), current_user)
 
     return app
