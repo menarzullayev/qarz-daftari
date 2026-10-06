@@ -86,6 +86,13 @@ def _reminders_due(owner: psycopg.Connection, world: World) -> None:
     )
 
 
+def _deletion_pending(owner: psycopg.Connection, world: World) -> None:
+    owner.execute(
+        "UPDATE shop SET status = 'deletion_pending', deletion_due = now() + interval '30 days' WHERE id = %s",
+        (world.shop_a,),
+    )
+
+
 CALLS: dict[str, Call] = {
     "shop.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}"),
     "shop.update": Call("PATCH", lambda w, shop: f"/api/v1/shops/{shop}", {"name": "Renamed"}, changes_data=True),
@@ -204,6 +211,13 @@ CALLS: dict[str, Call] = {
         "PATCH", lambda w, shop: f"/api/v1/shops/{shop}/credit-settings", {"sellers_may_exceed": False}, True
     ),
     "shop.subscription.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/subscription"),
+    "shop.deletion.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/deletion"),
+    "shop.deletion.request": Call(
+        "POST", lambda w, shop: f"/api/v1/shops/{shop}/deletion", {"confirm_name": "Shop A"}, True, 201
+    ),
+    "shop.deletion.cancel": Call(
+        "DELETE", lambda w, shop: f"/api/v1/shops/{shop}/deletion", None, True, prepare=_deletion_pending
+    ),
     "overview.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview"),
     "overview.debtors": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview/debtors"),
     "catalog.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/catalog"),
@@ -286,6 +300,10 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "shop.credit.update": {Role.MANAGER, Role.OWNER},
     # Specification, authorization table: the subscription is the owner's.
     "shop.subscription.read": {Role.OWNER},
+    # Specification, resources table: request deletion, cancel deletion: owner.
+    "shop.deletion.read": {Role.OWNER},
+    "shop.deletion.request": {Role.OWNER},
+    "shop.deletion.cancel": {Role.OWNER},
     "overview.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "overview.debtors": {Role.SELLER, Role.MANAGER, Role.OWNER},
     # Specification, resources table: "Manager, owner; sellers read".
@@ -386,7 +404,9 @@ def _prepare(owner: psycopg.Connection, world: World, call: Call) -> None:
 def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
     """Everything a refused call could have changed in a shop."""
     return (
-        owner.execute("SELECT name, lang, default_promise_days, status FROM shop WHERE id = %s", (shop,)).fetchone(),
+        owner.execute(
+            "SELECT name, lang, default_promise_days, status, deletion_due FROM shop WHERE id = %s", (shop,)
+        ).fetchone(),
         owner.execute(
             "SELECT reminders_on, reminder_hour, reminder_tpl, sms_on, default_credit_limit, sellers_may_exceed "
             "FROM shop WHERE id = %s",

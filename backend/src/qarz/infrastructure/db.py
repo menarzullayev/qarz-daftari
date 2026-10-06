@@ -34,6 +34,7 @@ from qarz.application.ports import (
     ReminderSettings,
     SessionInfo,
     ShopSettings,
+    ShopToErase,
     ShopTotals,
     StaffInvitation,
     SubscriptionToReview,
@@ -111,6 +112,10 @@ _OPEN_DISPUTES = f"{_DISPUTE_SELECT} WHERE d.status = 'open' ORDER BY d.created_
 _REMINDER_SETTINGS = (
     "SELECT name, lang, reminders_on, reminder_hour, reminder_tpl, sms_on FROM shop WHERE status <> 'erased'"
 )
+
+
+_DELETION_STATE = "SELECT status, deletion_due FROM shop WHERE status <> 'erased'"
+_DELETION_LOCKED = f"{_DELETION_STATE} FOR UPDATE"
 
 
 def _like_pattern(part: str) -> str:
@@ -1305,6 +1310,16 @@ class PgTenantSession:
             {"id": uuid4(), "shop_id": self._shop_id, "action": action, "subject_id": subject_id},
         )
 
+    async def deletion_state(self, *, for_update: bool = False) -> tuple[str, datetime | None]:
+        row = (await self._conn.execute(text(_DELETION_LOCKED if for_update else _DELETION_STATE))).one()
+        return str(row.status), row.deletion_due
+
+    async def set_deletion(self, *, status: str, due: datetime | None) -> None:
+        await self._conn.execute(
+            text("UPDATE shop SET status = :status, deletion_due = :due WHERE id = :shop_id"),
+            {"status": status, "due": due, "shop_id": self._shop_id},
+        )
+
     async def lock_request_key(self, key: str) -> None:
         # Transaction-scoped advisory lock: a second request with the same key in the same shop waits here
         # until the first commits, then finds the stored response.
@@ -1366,6 +1381,21 @@ class PgPlatformSession:
             )
             for row in rows
         ]
+
+    async def shops_to_erase(self) -> list[ShopToErase]:
+        rows = (
+            await self._conn.execute(text("SELECT shop_id, shop_name, owner_tg, owner_lang FROM shops_to_erase()"))
+        ).all()
+        return [
+            ShopToErase(
+                row.shop_id, str(row.shop_name), None if row.owner_tg is None else int(row.owner_tg), row.owner_lang
+            )
+            for row in rows
+        ]
+
+    async def erase_shop(self, shop_id: UUID) -> bool:
+        row = (await self._conn.execute(text("SELECT erase_shop(:shop_id) AS erased"), {"shop_id": shop_id})).one()
+        return bool(row.erased)
 
     async def shops_due_for_reminders(self, hour: int) -> list[UUID]:
         rows = (

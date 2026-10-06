@@ -24,6 +24,7 @@ from qarz.application.links import LinkService
 from qarz.application.ownership import OwnershipService
 from qarz.application.ports import Storage
 from qarz.application.reminders import ReminderService
+from qarz.application.shop_deletion import ShopDeletionService
 from qarz.application.shops import ShopService
 from qarz.application.staff import StaffService
 from qarz.application.subscription import SubscriptionService
@@ -38,6 +39,7 @@ from qarz.interface.errors import app_error_handler, error_response
 from qarz.interface.links_api import add_link_routes
 from qarz.interface.me_api import add_me_routes
 from qarz.interface.reminders_api import add_reminder_routes
+from qarz.interface.shop_deletion_api import add_shop_deletion_routes
 from qarz.interface.shops_api import add_shop_routes
 from qarz.interface.staff_api import add_staff_routes
 from qarz.interface.subscription_api import add_subscription_routes
@@ -113,6 +115,7 @@ def create_app(
         add_staff_routes(app, StaffService(storage), current_user)
         add_link_routes(app, LinkService(storage, now), current_user)
         add_me_routes(app, CustomerAccountService(storage, now), current_user)
+        add_shop_deletion_routes(app, ShopDeletionService(storage, now), current_user)
         add_subscription_routes(app, SubscriptionService(storage, now), current_user)
         add_credit_routes(app, CreditService(storage, now), current_user)
         add_reminder_routes(app, ReminderService(storage, now), current_user)
