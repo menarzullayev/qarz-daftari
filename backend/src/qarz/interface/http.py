@@ -26,6 +26,7 @@ from qarz.application.ownership import OwnershipService
 from qarz.application.payment_notices import PaymentNoticeService
 from qarz.application.ports import FileStore, Storage, TelegramFiles
 from qarz.application.reminders import ReminderService
+from qarz.application.reports import ReportService
 from qarz.application.shop_deletion import ShopDeletionService
 from qarz.application.shops import ShopService
 from qarz.application.staff import StaffService
@@ -42,6 +43,7 @@ from qarz.interface.links_api import add_link_routes
 from qarz.interface.me_api import add_me_routes
 from qarz.interface.payment_notices_api import add_payment_notice_routes
 from qarz.interface.reminders_api import add_reminder_routes
+from qarz.interface.reports_api import add_report_routes
 from qarz.interface.shop_deletion_api import add_shop_deletion_routes
 from qarz.interface.shops_api import add_shop_routes
 from qarz.interface.staff_api import add_staff_routes
@@ -127,6 +129,7 @@ def create_app(
         add_subscription_routes(app, SubscriptionService(storage, now), current_user)
         add_credit_routes(app, CreditService(storage, now), current_user)
         add_reminder_routes(app, ReminderService(storage, now), current_user)
+        add_report_routes(app, ReportService(storage, now), current_user)
         add_dispute_routes(app, DisputeService(storage, now), current_user)
         add_payment_notice_routes(app, PaymentNoticeService(storage, files, now), current_user)
         add_customer_routes(app, CustomerService(storage, now), LedgerService(storage, now), current_user)
