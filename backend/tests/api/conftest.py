@@ -4,6 +4,7 @@ Only authentication is replaced: until story S2.1 delivers Telegram sign-in, a t
 the caller's user identifier from a header. It exists only in the test suite.
 """
 
+import hashlib
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -60,6 +61,9 @@ class World:
     customer_of_a: uuid.UUID
     admin: uuid.UUID
     stranger: uuid.UUID
+    seller_a_membership: uuid.UUID
+    invitation_a: str  # identifier (hex of the token hash) of an issued staff invitation in shop A
+    invitation_a_token: str
 
 
 def _user(conn: psycopg.Connection, lang: str = "uz") -> uuid.UUID:
@@ -70,11 +74,13 @@ def _user(conn: psycopg.Connection, lang: str = "uz") -> uuid.UUID:
     return user_id
 
 
-def _member(conn: psycopg.Connection, shop: uuid.UUID, user: uuid.UUID, role: str, status: str = "active") -> None:
+def _member(conn: psycopg.Connection, shop: uuid.UUID, user: uuid.UUID, role: str, status: str = "active") -> uuid.UUID:
+    membership_id = uuid.uuid4()
     conn.execute(
         "INSERT INTO membership (id, shop_id, user_id, role, status) VALUES (%s, %s, %s, %s, %s)",
-        (uuid.uuid4(), shop, user, role, status),
+        (membership_id, shop, user, role, status),
     )
+    return membership_id
 
 
 @pytest.fixture
@@ -85,7 +91,7 @@ def world(owner: psycopg.Connection) -> World:
     users |= {name: _user(owner) for name in ("customer_of_a", "admin", "stranger")}
     _member(owner, shop_a, users["owner_a"], "owner")
     _member(owner, shop_a, users["manager_a"], "manager")
-    _member(owner, shop_a, users["seller_a"], "seller")
+    seller_membership = _member(owner, shop_a, users["seller_a"], "seller")
     _member(owner, shop_a, users["suspended_a"], "manager", status="suspended")
     _member(owner, shop_b, users["owner_b"], "owner")
 
@@ -102,7 +108,21 @@ def world(owner: psycopg.Connection) -> World:
     )
     # A platform administrator with no support access to any shop.
     owner.execute("INSERT INTO admin_account (user_id, totp_secret) VALUES (%s, %s)", (users["admin"], b"test-only"))
-    return World(shop_a=shop_a, shop_b=shop_b, **users)
+    token = f"world-invitation-{uuid.uuid4().hex}"
+    digest = hashlib.sha256(token.encode()).digest()
+    owner.execute(
+        "INSERT INTO invitation (token_hash, shop_id, kind, role, expires_at) "
+        "VALUES (%s, %s, 'staff', 'seller', now() + interval '7 days')",
+        (digest, shop_a),
+    )
+    return World(
+        shop_a=shop_a,
+        shop_b=shop_b,
+        seller_a_membership=seller_membership,
+        invitation_a=digest.hex(),
+        invitation_a_token=token,
+        **users,
+    )
 
 
 def as_user(user_id: uuid.UUID) -> dict[str, str]:

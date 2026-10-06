@@ -38,11 +38,13 @@ async def run_once(
     user_id: UUID,
     request: dict[str, Any],
     action: Callable[[], Awaitable[dict[str, Any]]],
+    redact: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run `action` unless this key already produced a result in this shop.
 
     Must be called inside the tenant transaction that performs the write, after authorization. The stored
     result is saved in the same transaction, so a failed write stores nothing and can be retried.
+    `redact` removes secrets from the stored copy; a repeat then returns the redacted result.
     """
     await session.lock_request_key(key)
     stored = await session.stored_response(key)
@@ -54,5 +56,5 @@ async def run_once(
         assert isinstance(body, dict)
         return body
     body = await action()
-    await session.store_response(key, {**signature, "body": body})
+    await session.store_response(key, {**signature, "body": redact(body) if redact else body})
     return body

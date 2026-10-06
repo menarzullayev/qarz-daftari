@@ -7,14 +7,23 @@ next use of a pooled connection, and the row-level security policies hide every 
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from qarz.application.ports import Membership, OutboxMessage, SessionInfo, ShopSettings
+from qarz.application.errors import AlreadyMember
+from qarz.application.ports import (
+    MemberRecord,
+    Membership,
+    OutboxMessage,
+    SessionInfo,
+    ShopSettings,
+    StaffInvitation,
+)
 from qarz.domain.access import Role
 
 
@@ -76,6 +85,102 @@ class PgTenantSession:
                 "subject_id": subject_id,
             },
         )
+
+    async def create_shop(self, *, name: str, lang: str) -> ShopSettings:
+        row = (
+            await self._conn.execute(
+                text(
+                    "INSERT INTO shop (id, name, lang) VALUES (:id, :name, :lang) "
+                    "RETURNING id, name, lang, default_promise_days"
+                ),
+                {"id": self._shop_id, "name": name, "lang": lang},
+            )
+        ).one()
+        return ShopSettings(row.id, row.name, row.lang, row.default_promise_days)
+
+    async def add_member(self, *, user_id: UUID, role: Role) -> UUID:
+        membership_id = uuid4()
+        await self._conn.execute(
+            text(
+                "INSERT INTO membership (id, shop_id, user_id, role, status) "
+                "VALUES (:id, :shop_id, :user_id, :role, 'active')"
+            ),
+            {"id": membership_id, "shop_id": self._shop_id, "user_id": user_id, "role": role.value},
+        )
+        return membership_id
+
+    async def create_subscription(self, *, state: str, trial_ends: date | None) -> None:
+        await self._conn.execute(
+            text("INSERT INTO subscription (shop_id, state, trial_ends) VALUES (:shop_id, :state, :trial_ends)"),
+            {"shop_id": self._shop_id, "state": state, "trial_ends": trial_ends},
+        )
+
+    @staticmethod
+    def _member(row: Any) -> MemberRecord:
+        return MemberRecord(row.id, row.user_id, Role(row.role), row.status)
+
+    async def list_members(self) -> list[MemberRecord]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT id, user_id, role, status FROM membership WHERE status <> 'removed' "
+                    "ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 ELSE 2 END, created_at, id"
+                )
+            )
+        ).all()
+        return [self._member(row) for row in rows]
+
+    async def get_member(self, membership_id: UUID) -> MemberRecord | None:
+        row = (
+            await self._conn.execute(
+                text("SELECT id, user_id, role, status FROM membership WHERE id = :id FOR UPDATE"),
+                {"id": membership_id},
+            )
+        ).first()
+        return None if row is None else self._member(row)
+
+    async def update_member(self, membership_id: UUID, *, role: Role | None, status: str | None) -> MemberRecord:
+        row = (
+            await self._conn.execute(
+                text(
+                    "UPDATE membership SET role = coalesce(:role, role), status = coalesce(:status, status) "
+                    "WHERE id = :id RETURNING id, user_id, role, status"
+                ),
+                {"id": membership_id, "role": role.value if role else None, "status": status},
+            )
+        ).one()
+        return self._member(row)
+
+    async def create_staff_invitation(self, token_hash: bytes, role: Role, expires_at: datetime) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO invitation (token_hash, shop_id, kind, role, expires_at) "
+                "VALUES (:token_hash, :shop_id, 'staff', :role, :expires_at)"
+            ),
+            {"token_hash": token_hash, "shop_id": self._shop_id, "role": role.value, "expires_at": expires_at},
+        )
+
+    async def list_staff_invitations(self, now: datetime) -> list[StaffInvitation]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT token_hash, role, expires_at FROM invitation "
+                    "WHERE kind = 'staff' AND status = 'issued' AND expires_at > :now ORDER BY created_at"
+                ),
+                {"now": now},
+            )
+        ).all()
+        return [StaffInvitation(bytes(row.token_hash), Role(row.role), row.expires_at) for row in rows]
+
+    async def cancel_staff_invitation(self, token_hash: bytes) -> bool:
+        result = await self._conn.execute(
+            text(
+                "UPDATE invitation SET status = 'cancelled' "
+                "WHERE token_hash = :token_hash AND kind = 'staff' AND status = 'issued'"
+            ),
+            {"token_hash": token_hash},
+        )
+        return int(result.rowcount) == 1
 
     async def lock_request_key(self, key: str) -> None:
         # Transaction-scoped advisory lock: a second request with the same key in the same shop waits here
@@ -188,6 +293,33 @@ class PgPlatformSession:
             text("UPDATE user_session SET revoked_at = :now WHERE token_hash = :token_hash AND revoked_at IS NULL"),
             {"token_hash": token_hash, "now": now},
         )
+
+    async def platform_setting(self, key: str) -> Any | None:
+        row = (
+            await self._conn.execute(text("SELECT value FROM platform_setting WHERE key = :key"), {"key": key})
+        ).first()
+        if row is None:
+            return None
+        return json.loads(row.value) if isinstance(row.value, str) else row.value
+
+    async def set_active_shop(self, user_id: UUID, shop_id: UUID) -> None:
+        await self._conn.execute(
+            text("UPDATE app_user SET active_shop = :shop_id WHERE id = :id"), {"id": user_id, "shop_id": shop_id}
+        )
+
+    async def accept_staff_invitation(self, token_hash: bytes, user_id: UUID) -> UUID | None:
+        try:
+            row = (
+                await self._conn.execute(
+                    text("SELECT accept_staff_invitation(:token_hash, :user_id) AS shop_id"),
+                    {"token_hash": token_hash, "user_id": user_id},
+                )
+            ).one()
+        except IntegrityError as error:
+            if "already_member" in str(error.orig):
+                raise AlreadyMember() from error
+            raise
+        return None if row.shop_id is None else UUID(str(row.shop_id))
 
     async def enqueue(
         self, *, channel: str, recipient: str, payload: dict[str, Any], dedupe_key: str, shop_id: UUID | None = None

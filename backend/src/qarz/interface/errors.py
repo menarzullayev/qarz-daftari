@@ -11,6 +11,8 @@ _STATUS = {
     "FORBIDDEN_ROLE": 403,
     "VALIDATION": 422,
     "IDEMPOTENCY_KEY_REUSED": 409,
+    "ALREADY_MEMBER": 409,
+    "OWNER_MEMBERSHIP_FIXED": 409,
 }
 
 _MESSAGES = {
@@ -20,6 +22,8 @@ _MESSAGES = {
         "FORBIDDEN_ROLE": "Bu amal uchun sizning rolingiz yetarli emas.",
         "VALIDATION": "Ma'lumotlar noto'g'ri kiritilgan.",
         "IDEMPOTENCY_KEY_REUSED": "Bu so'rov kaliti boshqa amal uchun ishlatilgan.",
+        "ALREADY_MEMBER": "Siz allaqachon shu do'kon xodimisiz.",
+        "OWNER_MEMBERSHIP_FIXED": "Do'kon egasining a'zoligi faqat egalikni o'tkazish orqali o'zgaradi.",
         "ERROR": "Xatolik yuz berdi.",
     },
     "ru": {
@@ -28,6 +32,8 @@ _MESSAGES = {
         "FORBIDDEN_ROLE": "Вашей роли недостаточно для этого действия.",
         "VALIDATION": "Данные введены неверно.",
         "IDEMPOTENCY_KEY_REUSED": "Этот ключ запроса уже использован для другого действия.",
+        "ALREADY_MEMBER": "Вы уже сотрудник этого магазина.",
+        "OWNER_MEMBERSHIP_FIXED": "Участие владельца меняется только через передачу магазина.",
         "ERROR": "Произошла ошибка.",
     },
 }

@@ -1,19 +1,25 @@
 """Shop operations available so far: read and change the shop's own settings."""
 
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
+from zoneinfo import ZoneInfo
 
 from qarz.application import idempotency
 from qarz.application.errors import ForbiddenRole, NotFound, ValidationFailed
-from qarz.application.operations import Operation, operation
+from qarz.application.operations import Operation, operation, self_operation
 from qarz.application.ports import Membership, ShopSettings, Storage, TenantSession
-from qarz.domain.access import Capability, allows, lowest_role_with
+from qarz.domain.access import Capability, Role, allows, lowest_role_with
 
 READ_SHOP = operation("shop.read", Capability.READ_SHOP)
 UPDATE_SHOP = operation("shop.update", Capability.ADMINISTER_SHOP)
+CREATE_SHOP = self_operation("shop.create")
 
 LANGUAGES = ("uz", "ru")
+DEFAULT_TRIAL_DAYS = 30
+TASHKENT = ZoneInfo("Asia/Tashkent")
 
 
 async def require_member(session: TenantSession, user_id: UUID, op: Operation) -> Membership:
@@ -62,8 +68,60 @@ def _as_body(settings: ShopSettings) -> dict[str, Any]:
 
 
 class ShopService:
-    def __init__(self, storage: Storage) -> None:
+    def __init__(self, storage: Storage, now: Callable[[], datetime] | None = None) -> None:
         self._storage = storage
+        self._now = now or (lambda: datetime.now(UTC))
+
+    async def create(self, user_id: UUID, name: str, lang: str, request_key: str | None) -> dict[str, Any]:
+        """Create a shop owned by the caller and start its trial if trials are on (REQ-001, REQ-052)."""
+        key = idempotency.validate_key(request_key)
+        fields: dict[str, str] = {}
+        if not 1 <= len(name.strip()) <= 80:
+            fields["name"] = "length must be between 1 and 80"
+        if lang not in LANGUAGES:
+            fields["lang"] = "must be uz or ru"
+        if fields:
+            raise ValidationFailed(fields)
+
+        async with self._storage.platform() as platform:
+            trial_on = await platform.platform_setting("trial_on")
+            trial_days = await platform.platform_setting("trial_days")
+        trial_on = True if trial_on is None else bool(trial_on)
+        days = (
+            trial_days
+            if isinstance(trial_days, int) and not isinstance(trial_days, bool) and trial_days > 0
+            else DEFAULT_TRIAL_DAYS
+        )
+
+        # The shop's identifier is derived from the caller and the key, so a repeated request lands in
+        # the same tenant and finds its stored response instead of creating a second shop.
+        shop_id = uuid5(NAMESPACE_URL, f"qarz-daftari:shop:{user_id}:{key}")
+        async with self._storage.tenant(shop_id) as session:
+
+            async def apply() -> dict[str, Any]:
+                settings = await session.create_shop(name=name.strip(), lang=lang)
+                membership_id = await session.add_member(user_id=user_id, role=Role.OWNER)
+                today = self._now().astimezone(TASHKENT).date()
+                if trial_on:
+                    await session.create_subscription(state="trial", trial_ends=today + timedelta(days=days))
+                else:
+                    await session.create_subscription(state="limited", trial_ends=None)
+                await session.record_activity(
+                    membership_id=membership_id, action="shop.created", subject_type="shop", subject_id=shop_id
+                )
+                return _as_body(settings)
+
+            body = await idempotency.run_once(
+                session,
+                key=key,
+                operation=CREATE_SHOP.name,
+                user_id=user_id,
+                request={"name": name, "lang": lang},
+                action=apply,
+            )
+        async with self._storage.platform() as platform:
+            await platform.set_active_shop(user_id, shop_id)
+        return body
 
     async def read(self, user_id: UUID, shop_id: UUID) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
