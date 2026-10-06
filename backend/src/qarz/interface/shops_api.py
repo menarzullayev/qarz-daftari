@@ -7,13 +7,20 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, Header
 from pydantic import BaseModel, ConfigDict
 
-from qarz.application.shops import READ_SHOP, UPDATE_SHOP, ShopService, ShopUpdate
+from qarz.application.shops import CREATE_SHOP, READ_SHOP, UPDATE_SHOP, ShopService, ShopUpdate
 
 CurrentUser = Callable[..., Awaitable[UUID]]
 
 # Every write carries this header; a repeat returns the stored result (ADR-006). Its presence and format
 # are checked by the application after authorization, so an outsider cannot tell a write route exists.
 IdempotencyKey = Annotated[str | None, Header(alias="Idempotency-Key")]
+
+
+class ShopCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    name: str
+    lang: str = "uz"
 
 
 class ShopPatch(BaseModel):
@@ -28,6 +35,10 @@ class ShopPatch(BaseModel):
 def add_shop_routes(app: FastAPI, service: ShopService, current_user: CurrentUser) -> None:
     # Routes are added to the application itself so that the authorization suite can enumerate them.
     user = Annotated[UUID, Depends(current_user)]
+
+    @app.post("/api/v1/shops", name=CREATE_SHOP.name, status_code=201)
+    async def create_shop(body: ShopCreate, user_id: user, idempotency_key: IdempotencyKey = None) -> dict[str, Any]:
+        return await service.create(user_id, body.name, body.lang, idempotency_key)
 
     @app.get("/api/v1/shops/{shop_id}", name=READ_SHOP.name)
     async def read_shop(shop_id: UUID, user_id: user) -> dict[str, Any]:

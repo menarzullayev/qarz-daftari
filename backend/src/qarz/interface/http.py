@@ -13,10 +13,12 @@ from qarz.application.auth import AuthService
 from qarz.application.errors import AppError, Unauthenticated
 from qarz.application.ports import Storage
 from qarz.application.shops import ShopService
+from qarz.application.staff import StaffService
 from qarz.application.telegram_updates import UpdateProcessor
 from qarz.interface.auth_api import SessionAuthenticator, add_auth_routes
 from qarz.interface.errors import app_error_handler, error_response
 from qarz.interface.shops_api import add_shop_routes
+from qarz.interface.staff_api import add_staff_routes
 from qarz.interface.telegram_webhook import add_webhook_route
 
 HealthCheck = Callable[[], Awaitable[bool]]
@@ -84,6 +86,7 @@ def create_app(
 
         add_auth_routes(app, auth, current_user)
         add_shop_routes(app, ShopService(storage), current_user)
+        add_staff_routes(app, StaffService(storage), current_user)
 
     if webhook_secret is not None and storage is not None:
         add_webhook_route(app, UpdateProcessor(storage), webhook_secret)

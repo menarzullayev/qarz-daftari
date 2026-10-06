@@ -33,10 +33,13 @@ ROLE_ORDER = [Role.SELLER, Role.MANAGER, Role.OWNER]
 
 @dataclass(frozen=True)
 class Call:
+    """A valid request for a shop operation, addressed to the given shop using shop A's resources."""
+
     method: str
-    path: Callable[[uuid.UUID], str]
+    path: Callable[[World, uuid.UUID], str]
     json: dict[str, Any] | None = None
     changes_data: bool = False
+    ok_status: int = 200
 
 
 @dataclass(frozen=True)
@@ -45,12 +48,27 @@ class PlainCall:
     path: str
     json: dict[str, Any] | None = None
     ok_status: int = 200
+    needs_key: bool = False
+    returns_own_id: bool = True
 
 
-# How to invoke each shop operation with a valid request.
+STAFF_BASE = "/api/v1/shops/{shop}/staff"
+
 CALLS: dict[str, Call] = {
-    "shop.read": Call("GET", lambda shop: f"/api/v1/shops/{shop}"),
-    "shop.update": Call("PATCH", lambda shop: f"/api/v1/shops/{shop}", {"name": "Renamed"}, changes_data=True),
+    "shop.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}"),
+    "shop.update": Call("PATCH", lambda w, shop: f"/api/v1/shops/{shop}", {"name": "Renamed"}, changes_data=True),
+    "staff.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/staff"),
+    "staff.invite": Call(
+        "POST", lambda w, shop: f"/api/v1/shops/{shop}/staff/invitations", {"role": "seller"}, True, ok_status=201
+    ),
+    "staff.invitations.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/staff/invitations"),
+    "staff.invitations.cancel": Call(
+        "DELETE", lambda w, shop: f"/api/v1/shops/{shop}/staff/invitations/{w.invitation_a}", None, True
+    ),
+    "staff.update": Call(
+        "PATCH", lambda w, shop: f"/api/v1/shops/{shop}/staff/{w.seller_a_membership}", {"role": "manager"}, True
+    ),
+    "staff.remove": Call("DELETE", lambda w, shop: f"/api/v1/shops/{shop}/staff/{w.seller_a_membership}", None, True),
 }
 
 # Written by hand from REQ-033 and the specification's authorization table; deliberately not derived
@@ -58,12 +76,25 @@ CALLS: dict[str, Call] = {
 ALLOWED_ROLES: dict[str, set[Role]] = {
     "shop.read": {Role.MANAGER, Role.OWNER},
     "shop.update": {Role.OWNER},
+    "staff.list": {Role.OWNER},
+    "staff.invite": {Role.OWNER},
+    "staff.invitations.list": {Role.OWNER},
+    "staff.invitations.cancel": {Role.OWNER},
+    "staff.update": {Role.OWNER},
+    "staff.remove": {Role.OWNER},
 }
 
 SELF_CALLS: dict[str, PlainCall] = {
     "me.read": PlainCall("GET", "/api/v1/me"),
     "me.update": PlainCall("PATCH", "/api/v1/me", {"lang": "ru"}),
     "auth.sign_out": PlainCall("POST", "/api/v1/auth/sign-out", ok_status=204),
+    "shop.create": PlainCall(
+        "POST", "/api/v1/shops", {"name": "My shop", "lang": "uz"}, 201, needs_key=True, returns_own_id=False
+    ),
+    # An unknown token: for any signed-in user the invitation simply does not exist.
+    "staff.invitations.accept": PlainCall(
+        "POST", "/api/v1/staff-invitations/accept", {"token": "unknown-token-0123456789abcdef"}, 404
+    ),
 }
 
 # Requests that are well formed but not signed by Telegram.
@@ -81,16 +112,29 @@ OUTSIDERS = ["suspended_a", "owner_b", "customer_of_a", "admin", "stranger"]
 NO_CREDENTIALS = [{}, {"X-Test-User": "not-a-uuid"}]
 
 
-def _invoke(client: TestClient, call: Call, shop: uuid.UUID, headers: dict[str, str]) -> Any:
+def _key() -> dict[str, str]:
+    return {"Idempotency-Key": f"suite-{uuid.uuid4().hex}"}
+
+
+def _invoke(client: TestClient, world: World, call: Call, shop: uuid.UUID, headers: dict[str, str]) -> Any:
     if call.changes_data:
-        headers = {**headers, "Idempotency-Key": f"suite-{uuid.uuid4().hex}"}
-    return client.request(call.method, call.path(shop), json=call.json, headers=headers)
+        headers = {**headers, **_key()}
+    return client.request(call.method, call.path(world, shop), json=call.json, headers=headers)
 
 
 def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
-    shop_row = owner.execute("SELECT name, lang, default_promise_days FROM shop WHERE id = %s", (shop,)).fetchone()
-    activity = owner.execute("SELECT count(*) FROM activity WHERE shop_id = %s", (shop,)).fetchone()
-    return (shop_row, activity)
+    """Everything a refused call could have changed in a shop."""
+    return (
+        owner.execute("SELECT name, lang, default_promise_days, status FROM shop WHERE id = %s", (shop,)).fetchone(),
+        owner.execute(
+            "SELECT id, user_id, role, status FROM membership WHERE shop_id = %s ORDER BY id", (shop,)
+        ).fetchall(),
+        owner.execute(
+            "SELECT token_hash, status, role FROM invitation WHERE shop_id = %s ORDER BY token_hash", (shop,)
+        ).fetchall(),
+        owner.execute("SELECT count(*) FROM activity WHERE shop_id = %s", (shop,)).fetchone(),
+        owner.execute("SELECT count(*) FROM request_key WHERE shop_id = %s", (shop,)).fetchone(),
+    )
 
 
 # --- the suite covers everything --------------------------------------------------------------------
@@ -112,6 +156,14 @@ def test_every_api_route_is_a_registered_operation(client: TestClient) -> None:
     )
 
 
+def test_every_write_route_is_marked_as_changing_data(client: TestClient) -> None:
+    """So that the "a refused call must change nothing" checks are not skipped for a new write."""
+    for route in client.app.routes:  # type: ignore[attr-defined]
+        if isinstance(route, APIRoute) and route.name in CALLS:
+            writes = bool(route.methods - {"GET", "HEAD"})
+            assert CALLS[route.name].changes_data is writes, route.name
+
+
 def test_the_code_agrees_with_the_hand_written_table() -> None:
     for op in all_operations():
         if op.scope != "shop":
@@ -131,10 +183,10 @@ def test_staff_are_allowed_or_refused_by_role(
 ) -> None:
     call = CALLS[op_name]
     before = _snapshot(owner, world.shop_a)
-    response = _invoke(client, call, world.shop_a, as_user(getattr(world, caller)))
+    response = _invoke(client, world, call, world.shop_a, as_user(getattr(world, caller)))
 
     if role in ALLOWED_ROLES[op_name]:
-        assert response.status_code == 200, response.text
+        assert response.status_code == call.ok_status, response.text
     else:
         assert response.status_code == 403, response.text
         error = response.json()["error"]
@@ -153,7 +205,7 @@ def test_outsiders_get_not_found_and_change_nothing(
 ) -> None:
     call = CALLS[op_name]
     before = _snapshot(owner, world.shop_a)
-    response = _invoke(client, call, world.shop_a, as_user(getattr(world, caller)))
+    response = _invoke(client, world, call, world.shop_a, as_user(getattr(world, caller)))
     assert response.status_code == 404, response.text
     assert response.json()["error"]["code"] == "NOT_FOUND"
     assert response.json()["error"]["fields"] == {}
@@ -164,24 +216,36 @@ def test_outsiders_get_not_found_and_change_nothing(
 def test_a_member_of_one_shop_cannot_reach_another(
     client: TestClient, world: World, owner: psycopg.Connection, op_name: str
 ) -> None:
+    """owner_b, the most privileged caller in shop B, addresses shop A; then shop B using A's resources."""
     call = CALLS[op_name]
-    before = _snapshot(owner, world.shop_b)
-    # owner_a is the most privileged caller there is in shop A, and nobody in shop B
-    response = _invoke(client, call, world.shop_b, as_user(world.owner_a))
-    assert response.status_code == 404, response.text
-    assert _snapshot(owner, world.shop_b) == before
+    before_a, before_b = _snapshot(owner, world.shop_a), _snapshot(owner, world.shop_b)
+
+    into_a = _invoke(client, world, call, world.shop_a, as_user(world.owner_b))
+    assert into_a.status_code == 404, into_a.text
+
+    # Through their own shop, naming a member or invitation that belongs to shop A.
+    through_b = _invoke(client, world, call, world.shop_b, as_user(world.owner_b))
+    if call.path(world, world.shop_b) != call.path(world, world.shop_a).replace(str(world.shop_a), str(world.shop_b)):
+        raise AssertionError("the path must differ only by the shop identifier")
+    uses_foreign_resource = str(world.seller_a_membership) in call.path(world, world.shop_b) or (
+        world.invitation_a in call.path(world, world.shop_b)
+    )
+    if uses_foreign_resource:
+        assert through_b.status_code == 404, through_b.text
+        assert _snapshot(owner, world.shop_b)[:3] == before_b[:3], "shop B's own data must be untouched"
+    assert _snapshot(owner, world.shop_a) == before_a, "shop A must be untouched either way"
 
 
 @pytest.mark.parametrize("op_name", SHOP_OPS)
 def test_refusals_are_indistinguishable_from_a_missing_shop(client: TestClient, world: World, op_name: str) -> None:
     call = CALLS[op_name]
-    outsider = _invoke(client, call, world.shop_a, as_user(world.owner_b))
-    missing = _invoke(client, call, uuid.uuid4(), as_user(world.owner_b))
+    outsider = _invoke(client, world, call, world.shop_a, as_user(world.owner_b))
+    missing = _invoke(client, world, call, uuid.uuid4(), as_user(world.owner_b))
     malformed = client.request(
         call.method,
-        "/api/v1/shops/not-a-uuid",
+        call.path(world, world.shop_a).replace(str(world.shop_a), "not-a-uuid"),
         json=call.json,
-        headers={**as_user(world.owner_b), "Idempotency-Key": "suite-malformed-path"},
+        headers={**as_user(world.owner_b), **_key()},
     )
     assert outsider.status_code == missing.status_code == malformed.status_code == 404
     assert outsider.json() == missing.json() == malformed.json()
@@ -194,13 +258,34 @@ def test_unauthenticated_shop_calls_are_refused(
 ) -> None:
     call = CALLS[op_name]
     before = _snapshot(owner, world.shop_a)
-    response = _invoke(client, call, world.shop_a, headers)
+    response = _invoke(client, world, call, world.shop_a, headers)
     assert response.status_code == 401, response.text
     assert response.json()["error"]["code"] == "UNAUTHENTICATED"
     assert _snapshot(owner, world.shop_a) == before
 
 
+@pytest.mark.parametrize("op_name", [name for name in SHOP_OPS if CALLS[name].changes_data])
+def test_writes_need_an_idempotency_key_but_outsiders_still_see_not_found(
+    client: TestClient, world: World, owner: psycopg.Connection, op_name: str
+) -> None:
+    call = CALLS[op_name]
+    before = _snapshot(owner, world.shop_a)
+    path = call.path(world, world.shop_a)
+    member = client.request(call.method, path, json=call.json, headers=as_user(world.owner_a))
+    assert member.status_code == 422, member.text
+    assert "Idempotency-Key" in member.json()["error"]["fields"]
+    outsider = client.request(call.method, path, json=call.json, headers=as_user(world.owner_b))
+    assert outsider.status_code == 404
+    assert _snapshot(owner, world.shop_a) == before
+
+
 # --- self operations: need a signed-in user, and act only on that user --------------------------------
+
+
+def _users(owner: psycopg.Connection, except_for: uuid.UUID | None = None) -> list[Any]:
+    return owner.execute(
+        "SELECT id, lang FROM app_user WHERE id IS DISTINCT FROM %s ORDER BY id", (except_for,)
+    ).fetchall()
 
 
 @pytest.mark.parametrize("op_name", SELF_OPS)
@@ -209,10 +294,12 @@ def test_unauthenticated_self_calls_are_refused(
     client: TestClient, world: World, owner: psycopg.Connection, op_name: str, headers: dict[str, str]
 ) -> None:
     call = SELF_CALLS[op_name]
-    languages = owner.execute("SELECT id, lang FROM app_user ORDER BY id").fetchall()
-    response = client.request(call.method, call.path, json=call.json, headers=headers)
+    users, shops = _users(owner), owner.execute("SELECT count(*) FROM shop").fetchone()
+    extra = _key() if call.needs_key else {}
+    response = client.request(call.method, call.path, json=call.json, headers={**headers, **extra})
     assert response.status_code == 401, response.text
-    assert owner.execute("SELECT id, lang FROM app_user ORDER BY id").fetchall() == languages
+    assert _users(owner) == users
+    assert owner.execute("SELECT count(*) FROM shop").fetchone() == shops
 
 
 @pytest.mark.parametrize("op_name", SELF_OPS)
@@ -222,12 +309,15 @@ def test_any_signed_in_user_may_act_on_their_own_account_only(
 ) -> None:
     call = SELF_CALLS[op_name]
     me = getattr(world, caller)
-    others = owner.execute("SELECT id, lang FROM app_user WHERE id <> %s ORDER BY id", (me,)).fetchall()
-    response = client.request(call.method, call.path, json=call.json, headers=as_user(me))
+    others = _users(owner, except_for=me)
+    shops = (_snapshot(owner, world.shop_a), _snapshot(owner, world.shop_b))
+    extra = _key() if call.needs_key else {}
+    response = client.request(call.method, call.path, json=call.json, headers={**as_user(me), **extra})
     assert response.status_code == call.ok_status, response.text
-    if response.content:
+    if response.content and call.returns_own_id and response.status_code < 300:
         assert response.json()["id"] == str(me)
-    assert owner.execute("SELECT id, lang FROM app_user WHERE id <> %s ORDER BY id", (me,)).fetchall() == others
+    assert _users(owner, except_for=me) == others, "nobody else's account may change"
+    assert (_snapshot(owner, world.shop_a), _snapshot(owner, world.shop_b)) == shops, "no existing shop may change"
 
 
 # --- public operations: callable without a session, but only Telegram's signature signs anyone in -----

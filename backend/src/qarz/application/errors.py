@@ -33,3 +33,9 @@ class ForbiddenRole(AppError):
 
 class ValidationFailed(AppError):
     code = "VALIDATION"
+
+
+class AlreadyMember(AppError):
+    """The person is already a member of the shop they were invited to."""
+
+    code = "ALREADY_MEMBER"

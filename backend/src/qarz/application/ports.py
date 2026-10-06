@@ -2,7 +2,7 @@
 
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -21,6 +21,21 @@ class ShopSettings:
     name: str
     lang: str
     default_promise_days: int
+
+
+@dataclass(frozen=True)
+class MemberRecord:
+    membership_id: UUID
+    user_id: UUID
+    role: Role
+    status: str
+
+
+@dataclass(frozen=True)
+class StaffInvitation:
+    token_hash: bytes
+    role: Role
+    expires_at: datetime
 
 
 @dataclass(frozen=True)
@@ -54,6 +69,24 @@ class TenantSession(Protocol):
     async def record_activity(
         self, *, membership_id: UUID, action: str, subject_type: str, subject_id: UUID
     ) -> None: ...
+
+    async def create_shop(self, *, name: str, lang: str) -> ShopSettings: ...
+
+    async def add_member(self, *, user_id: UUID, role: Role) -> UUID: ...
+
+    async def create_subscription(self, *, state: str, trial_ends: date | None) -> None: ...
+
+    async def list_members(self) -> list[MemberRecord]: ...
+
+    async def get_member(self, membership_id: UUID) -> MemberRecord | None: ...
+
+    async def update_member(self, membership_id: UUID, *, role: Role | None, status: str | None) -> MemberRecord: ...
+
+    async def create_staff_invitation(self, token_hash: bytes, role: Role, expires_at: datetime) -> None: ...
+
+    async def list_staff_invitations(self, now: datetime) -> list[StaffInvitation]: ...
+
+    async def cancel_staff_invitation(self, token_hash: bytes) -> bool: ...
 
     async def lock_request_key(self, key: str) -> None:
         """Serialize concurrent requests that carry the same idempotency key, until the transaction ends."""
@@ -97,6 +130,14 @@ class PlatformSession(Protocol):
         ...
 
     async def revoke_session(self, token_hash: bytes, now: datetime) -> None: ...
+
+    async def platform_setting(self, key: str) -> Any | None: ...
+
+    async def set_active_shop(self, user_id: UUID, shop_id: UUID) -> None: ...
+
+    async def accept_staff_invitation(self, token_hash: bytes, user_id: UUID) -> UUID | None:
+        """Join the shop the invitation belongs to. None when the invitation cannot be used."""
+        ...
 
     async def enqueue(
         self, *, channel: str, recipient: str, payload: dict[str, Any], dedupe_key: str, shop_id: UUID | None = None
