@@ -4,6 +4,7 @@ They run with their owner's rights and cross the tenant boundary on purpose, so 
 the user it is given. The chat checks the same things first; these tests remove the chat from the picture.
 """
 
+import datetime
 import hashlib
 import uuid
 from typing import Any
@@ -292,3 +293,35 @@ def test_the_reminder_schedule_function_returns_only_shops_that_should_be_served
     assert due(17) == {shop_a.shop_id}
     owner.execute("UPDATE shop SET status = 'deletion_pending' WHERE id = %s", (shop_a.shop_id,))
     assert due(17) == set()
+
+
+def test_the_subscription_review_function_is_for_the_application_role_and_lists_only_what_is_due(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+) -> None:
+    row = owner.execute(
+        "SELECT has_function_privilege('qd_app', 'subscriptions_to_review(date)', 'EXECUTE'), "
+        "has_function_privilege('public', 'subscriptions_to_review(date)', 'EXECUTE')"
+    ).fetchone()
+    assert row == (True, False)
+
+    owner.execute(
+        "INSERT INTO subscription (shop_id, state, trial_ends, paid_through) VALUES "
+        "(%s, 'trial', DATE '2060-03-08', NULL), (%s, 'active', NULL, DATE '2060-03-20')",
+        (shop_a.shop_id, shop_b.shop_id),
+    )
+
+    def listed(today: str) -> dict[uuid.UUID, tuple[Any, ...]]:
+        with as_app(None) as app:
+            rows = app.execute(
+                "SELECT shop_id, state, ends_on, owner_tg IS NOT NULL FROM subscriptions_to_review(%s::date)", (today,)
+            ).fetchall()
+        return {r[0]: r[1:] for r in rows if r[0] in (shop_a.shop_id, shop_b.shop_id)}
+
+    assert listed("2060-03-01") == {shop_a.shop_id: ("trial", datetime.date(2060, 3, 8), True)}  # seven days before
+    assert listed("2060-03-02") == {}
+    assert set(listed("2060-03-07")) == {shop_a.shop_id}  # the day before
+    assert listed("2060-03-08") == {}  # the last day itself: nothing to say
+    assert set(listed("2060-03-09")) == {shop_a.shop_id}  # ended
+    assert set(listed("2060-03-13")) == {shop_a.shop_id, shop_b.shop_id}  # B: seven days before the 20th
+    owner.execute("UPDATE subscription SET state = 'limited' WHERE shop_id = %s", (shop_a.shop_id,))
+    assert set(listed("2060-03-09")) == set(), "a shop already limited is not listed again"

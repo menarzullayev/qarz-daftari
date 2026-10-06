@@ -162,6 +162,16 @@ class CreditSettings:
 
 
 @dataclass(frozen=True)
+class SubscriptionToReview:
+    shop_id: UUID
+    shop_name: str
+    state: str
+    ends_on: date | None
+    owner_tg: int | None
+    owner_lang: str | None
+
+
+@dataclass(frozen=True)
 class WaitingLink:
     """Someone who started the bot from the counter code and agreed, not yet attached to a record."""
 
@@ -482,6 +492,12 @@ class TenantSession(Protocol):
         self, *, set_default: bool, default_limit: int | None, sellers_may_exceed: bool | None
     ) -> None: ...
 
+    async def limit_subscription(self, now: datetime) -> None:
+        """Store that the period has ended, remembering the state it ended from."""
+        ...
+
+    async def record_system_activity(self, *, action: str, subject_id: UUID) -> None: ...
+
     async def lock_request_key(self, key: str) -> None:
         """Serialize concurrent requests that carry the same idempotency key, until the transaction ends."""
         ...
@@ -501,6 +517,8 @@ class PlatformSession(Protocol):
     async def update_seen(self, update_id: int) -> bool: ...
 
     async def shops_due_for_reminders(self, hour: int) -> list[UUID]: ...
+
+    async def subscriptions_to_review(self, today: date) -> list[SubscriptionToReview]: ...
 
     async def job_done(self, job: str, period: str) -> bool: ...
 

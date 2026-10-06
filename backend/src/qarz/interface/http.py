@@ -26,6 +26,7 @@ from qarz.application.ports import Storage
 from qarz.application.reminders import ReminderService
 from qarz.application.shops import ShopService
 from qarz.application.staff import StaffService
+from qarz.application.subscription import SubscriptionService
 from qarz.application.telegram_updates import UpdateProcessor
 from qarz.interface.account_api import add_account_routes
 from qarz.interface.auth_api import SessionAuthenticator, add_auth_routes
@@ -39,6 +40,7 @@ from qarz.interface.me_api import add_me_routes
 from qarz.interface.reminders_api import add_reminder_routes
 from qarz.interface.shops_api import add_shop_routes
 from qarz.interface.staff_api import add_staff_routes
+from qarz.interface.subscription_api import add_subscription_routes
 from qarz.interface.telegram_webhook import add_webhook_route
 
 HealthCheck = Callable[[], Awaitable[bool]]
@@ -111,6 +113,7 @@ def create_app(
         add_staff_routes(app, StaffService(storage), current_user)
         add_link_routes(app, LinkService(storage, now), current_user)
         add_me_routes(app, CustomerAccountService(storage, now), current_user)
+        add_subscription_routes(app, SubscriptionService(storage, now), current_user)
         add_credit_routes(app, CreditService(storage, now), current_user)
         add_reminder_routes(app, ReminderService(storage, now), current_user)
         add_dispute_routes(app, DisputeService(storage, now), current_user)

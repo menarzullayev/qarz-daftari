@@ -606,7 +606,7 @@ def test_commands(client: TestClient, world: World, owner: psycopg.Connection) -
     seller = chat_of(client, owner, world.seller_a)
     assert seller.say("/start").text == say("uz", "welcome_staff", shop="Shop A")
     assert seller.say("/yordam@qarzdaftari_dev_bot").text == say("uz", "help")
-    assert seller.say("/obuna").text == say("uz", "soon")
+    assert seller.say("/ilova").text == say("uz", "soon")
     assert seller.say("/nimadir").text == say("uz", "help")
 
 
