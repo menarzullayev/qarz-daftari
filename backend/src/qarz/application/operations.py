@@ -8,6 +8,11 @@ Scopes:
 - "shop": acts on one shop; the caller must be an active member whose role has the capability.
 - "self": acts only on the signed-in caller's own account.
 - "public": callable without signing in (the sign-in endpoints themselves).
+- "admin": the platform administrator's side; the caller must be on the allow-list, have an active
+  administrator account, and hold an admin session obtained by passing the second factor (ADR-017).
+- "admin_entry": the door to that side, where the second factor is enrolled and passed; the caller must
+  be on the allow-list, and a disabled administrator account is refused. Nothing more can be asked of
+  someone who has not passed the factor yet.
 """
 
 from dataclasses import dataclass
@@ -15,7 +20,7 @@ from typing import Literal
 
 from qarz.domain.access import Capability
 
-Scope = Literal["shop", "self", "public"]
+Scope = Literal["shop", "self", "public", "admin", "admin_entry"]
 
 
 @dataclass(frozen=True)
@@ -52,6 +57,16 @@ def self_operation(name: str) -> Operation:
 def public_operation(name: str) -> Operation:
     """An operation that needs no sign-in."""
     return _register(Operation(name, "public"))
+
+
+def admin_operation(name: str) -> Operation:
+    """An operation of the platform administrator, behind the second factor."""
+    return _register(Operation(name, "admin"))
+
+
+def admin_entry_operation(name: str) -> Operation:
+    """An operation an allow-listed person needs before they hold an admin session."""
+    return _register(Operation(name, "admin_entry"))
 
 
 def all_operations() -> tuple[Operation, ...]:

@@ -11,6 +11,8 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from qarz.application.account import AccountService, ActivityService
+from qarz.application.admin import AdminService
+from qarz.application.admin_access import AdminAccess
 from qarz.application.auth import AuthService
 from qarz.application.catalog import CatalogService
 from qarz.application.chat import ChatService
@@ -32,6 +34,7 @@ from qarz.application.staff import StaffService
 from qarz.application.subscription import SubscriptionService
 from qarz.application.telegram_updates import UpdateProcessor
 from qarz.interface.account_api import add_account_routes
+from qarz.interface.admin_api import add_admin_routes
 from qarz.interface.auth_api import SessionAuthenticator, add_auth_routes
 from qarz.interface.catalog_api import add_catalog_routes
 from qarz.interface.credit_api import add_credit_routes
@@ -63,6 +66,7 @@ def create_app(
     storage: Storage | None = None,
     *,
     auth: AuthService | None = None,
+    admin: AdminAccess | None = None,
     authenticator: Authenticator | None = None,
     webhook_secret: str | None = None,
     now: Callable[[], datetime] | None = None,
@@ -71,7 +75,8 @@ def create_app(
 
     With only a health check it serves `/healthz`. With storage and an auth service it serves the API,
     authenticating through Telegram-backed sessions; `authenticator` replaces that only in tests, and `now`
-    replaces the clock of the ledger only in tests.
+    replaces the clock of the ledger only in tests. The administrator's side is served only when `admin`
+    is given, which production does only with an allow-list and a key for the second-factor secrets.
     """
     app = FastAPI(title="Qarz Daftari", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -131,6 +136,9 @@ def create_app(
         add_account_routes(
             app, AccountService(storage), ActivityService(storage), OwnershipService(storage), current_user
         )
+
+        if admin is not None:
+            add_admin_routes(app, admin, AdminService(storage, admin, now), resolver.user_id, storage.user_language)
 
     if webhook_secret is not None and storage is not None:
         chat = ChatService(storage, ShopService(storage, now), StaffService(storage, now), now)

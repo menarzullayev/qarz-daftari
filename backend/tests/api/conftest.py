@@ -4,24 +4,34 @@ Only authentication is replaced: until story S2.1 delivers Telegram sign-in, a t
 the caller's user identifier from a header. It exists only in the test suite.
 """
 
+import base64
 import hashlib
+import os
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import psycopg
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 
+from qarz.application.admin_access import AdminAccess
 from qarz.application.auth import AuthService
+from qarz.domain import totp
 from qarz.infrastructure.db import Database
+from qarz.infrastructure.secret_box import SecretBox
 from qarz.interface.http import create_app
 
 TEST_USER_HEADER = "X-Test-User"
 WEBHOOK_SECRET = "test-webhook-secret-0123456789"
 TEST_BOT_TOKEN = "1234567890:TEST-ONLY-token-not-a-real-bot"
+# Encrypts second-factor secrets in tests only; it protects nothing real.
+TEST_SECRETS_KEY = base64.b64encode(b"test-only-secrets-key-32-bytes!!").decode()
+ADMIN_API = "/api/admin/v1"
+ADMIN_COOKIE = "qd_admin"
 
 
 class HeaderAuthenticator:
@@ -35,12 +45,62 @@ class HeaderAuthenticator:
             return None
 
 
+class MovableClock:
+    """The real time plus an offset a test may move; `freeze` stops it, for limits measured to the instant."""
+
+    def __init__(self) -> None:
+        self.offset = timedelta(0)
+        self._frozen: datetime | None = None
+
+    def freeze(self) -> None:
+        self._frozen = datetime.now(UTC)
+
+    def now(self) -> datetime:
+        return (self._frozen or datetime.now(UTC)) + self.offset
+
+
+@dataclass
+class AdminEnv:
+    """What makes someone an administrator in the test application, and its clock.
+
+    `allowed` is the allow-list the application holds: a test adds a Telegram identifier to it instead of
+    setting an environment variable. The clock is the real time until a test moves it.
+    """
+
+    allowed: set[int]
+    clock: MovableClock
+    box: SecretBox
+
+
+@pytest.fixture(scope="session")
+def _settings_cleaner(database_url: str) -> Iterator[psycopg.Connection]:
+    """One connection for the whole session: opening one per test would cost more than the tests."""
+    with psycopg.connect(database_url, autocommit=True) as conn:
+        yield conn
+
+
 @pytest.fixture
-def client(app_database_url: str) -> Iterator[TestClient]:
+def admin_env(_settings_cleaner: psycopg.Connection) -> Iterator[AdminEnv]:
+    yield AdminEnv(set(), MovableClock(), SecretBox(TEST_SECRETS_KEY))
+    # Platform settings are global and the test database lives for the whole session: what an
+    # administrator changed in one test must not reach the next. The API signs a change with the
+    # administrator's user identifier.
+    _settings_cleaner.execute("DELETE FROM platform_setting WHERE updated_by ~ '^[0-9a-f]{8}-[0-9a-f-]{27}$'")
+
+
+@pytest.fixture
+def client(app_database_url: str, admin_env: AdminEnv) -> Iterator[TestClient]:
     database = Database(app_database_url)
     auth = AuthService(database, TEST_BOT_TOKEN)
+    admin = AdminAccess(database, allowed_tg_ids=admin_env.allowed, cipher=admin_env.box, now=admin_env.clock.now)
     app = create_app(
-        database.reachable, database, auth=auth, authenticator=HeaderAuthenticator(), webhook_secret=WEBHOOK_SECRET
+        database.reachable,
+        database,
+        auth=auth,
+        admin=admin,
+        authenticator=HeaderAuthenticator(),
+        webhook_secret=WEBHOOK_SECRET,
+        now=admin_env.clock.now,
     )
     with TestClient(app) as test_client:
         yield test_client
@@ -182,12 +242,44 @@ def as_user(user_id: uuid.UUID) -> dict[str, str]:
     return {TEST_USER_HEADER: str(user_id)}
 
 
-class MovableClock:
-    def __init__(self) -> None:
-        self.offset = timedelta(0)
+def allow_list(owner: psycopg.Connection, env: AdminEnv, user_id: uuid.UUID) -> int:
+    """Put the user's Telegram identifier on the allow-list."""
+    row = owner.execute("SELECT tg_id FROM app_user WHERE id = %s", (user_id,)).fetchone()
+    assert row is not None
+    env.allowed.add(int(row[0]))
+    return int(row[0])
 
-    def now(self) -> datetime:
-        return datetime.now(UTC) + self.offset
+
+def make_admin(owner: psycopg.Connection, env: AdminEnv, user_id: uuid.UUID, *, confirmed: bool = True) -> bytes:
+    """Make the user an administrator with a second factor of their own; returns its secret."""
+    allow_list(owner, env, user_id)
+    secret = os.urandom(totp.SECRET_BYTES)
+    owner.execute(
+        "INSERT INTO admin_account (user_id, totp_secret, confirmed_at) VALUES (%s, %s, %s) "
+        "ON CONFLICT (user_id) DO UPDATE SET totp_secret = EXCLUDED.totp_secret, status = 'active', "
+        "confirmed_at = EXCLUDED.confirmed_at, failed_codes = 0, locked_until = NULL, last_step = NULL",
+        (user_id, env.box.encrypt(secret, user_id.bytes), env.clock.now() if confirmed else None),
+    )
+    return secret
+
+
+def fresh_code(env: AdminEnv, secret: bytes) -> str:
+    """Move the clock to the next time step and return its code: a code is accepted only once."""
+    env.clock.offset += timedelta(seconds=totp.STEP_SECONDS)
+    return totp.code_at(secret, env.clock.now())
+
+
+def admin_cookie(response: Any) -> str:
+    return str(response.headers["set-cookie"]).split(f"{ADMIN_COOKIE}=")[1].split(";")[0]
+
+
+def elevate(client: TestClient, env: AdminEnv, user_id: uuid.UUID, secret: bytes) -> dict[str, str]:
+    """Pass the second factor; returns the headers of a signed-in administrator holding an admin session."""
+    response = client.post(
+        f"{ADMIN_API}/auth/session", json={"code": fresh_code(env, secret)}, headers=as_user(user_id)
+    )
+    assert response.status_code == 201, response.text
+    return {**as_user(user_id), "Cookie": f"{ADMIN_COOKIE}={admin_cookie(response)}"}
 
 
 @dataclass

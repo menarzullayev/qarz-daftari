@@ -43,6 +43,11 @@ _STATUS = {
     "LINES_ALREADY_ADDED": 409,
     "LINES_SUM_MISMATCH": 409,
     "LINES_WINDOW_CLOSED": 409,
+    "SECOND_FACTOR_INVALID": 403,
+    "SECOND_FACTOR_LOCKED": 429,
+    "ADMIN_ALREADY_ENROLLED": 409,
+    "ADMIN_NOT_ENROLLED": 409,
+    "SUBSCRIPTION_CHANGE_REFUSED": 409,
 }
 
 _MESSAGES = {
@@ -84,6 +89,11 @@ _MESSAGES = {
         "LIMIT_REACHED": "Bu savdo mijozning nasiya limitidan oshadi. Menejer yoki do'kon egasi yoza oladi.",
         "DELETION_ALREADY_REQUESTED": "Do'konni o'chirish allaqachon so'ralgan.",
         "DELETION_NOT_REQUESTED": "Do'konni o'chirish so'ralmagan.",
+        "SECOND_FACTOR_INVALID": "Kod noto'g'ri, eskirgan yoki allaqachon ishlatilgan. Yangi kodni kiriting.",
+        "SECOND_FACTOR_LOCKED": "Juda ko'p noto'g'ri kod kiritildi. Birozdan keyin qayta urinib ko'ring.",
+        "ADMIN_ALREADY_ENROLLED": "Ikkinchi omil allaqachon ulangan. Almashtirish uchun operatorga murojaat qiling.",
+        "ADMIN_NOT_ENROLLED": "Avval ikkinchi omilni (autentifikator ilovasini) ulang.",
+        "SUBSCRIPTION_CHANGE_REFUSED": "Obunaning hozirgi holatida bu o'zgarishni qilib bo'lmaydi.",
         "ERROR": "Xatolik yuz berdi.",
     },
     "ru": {
@@ -124,6 +134,11 @@ _MESSAGES = {
         "LIMIT_REACHED": "Эта продажа превысит лимит клиента. Записать может менеджер или владелец.",
         "DELETION_ALREADY_REQUESTED": "Удаление магазина уже запрошено.",
         "DELETION_NOT_REQUESTED": "Удаление магазина не запрашивалось.",
+        "SECOND_FACTOR_INVALID": "Код неверный, устарел или уже использован. Введите новый код.",
+        "SECOND_FACTOR_LOCKED": "Слишком много неверных кодов. Повторите попытку позже.",
+        "ADMIN_ALREADY_ENROLLED": "Второй фактор уже подключён. Чтобы заменить его, обратитесь к оператору.",
+        "ADMIN_NOT_ENROLLED": "Сначала подключите второй фактор (приложение-аутентификатор).",
+        "SUBSCRIPTION_CHANGE_REFUSED": "При текущем состоянии подписки это изменение невозможно.",
         "ERROR": "Произошла ошибка.",
     },
 }

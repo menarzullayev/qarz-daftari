@@ -58,6 +58,11 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
         "LINES_ALREADY_ADDED",  # goods lines are entered in the Mini App, not in the chat
         "LINES_SUM_MISMATCH",
         "LINES_WINDOW_CLOSED",
+        "SECOND_FACTOR_INVALID",  # the administrator's side is a web panel; none of it is in the chat
+        "SECOND_FACTOR_LOCKED",
+        "ADMIN_ALREADY_ENROLLED",
+        "ADMIN_NOT_ENROLLED",
+        "SUBSCRIPTION_CHANGE_REFUSED",
     }
     assert set(_STATUS) - spoken_elsewhere <= set(UZ)
 
