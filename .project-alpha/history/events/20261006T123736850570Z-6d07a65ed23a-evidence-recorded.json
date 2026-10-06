@@ -1,0 +1,14 @@
+{
+  "event_id": "6d07a65ed23a",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T12:37:36+00:00",
+  "path": "docs\\evidence\\EVID-035.md",
+  "stage": "04-prd",
+  "claim": "The founder states that accepting subscription payments by transfer to a personal bank card, without a registered business entity, is lawful, and has decided to proceed on that basis. The agent has not verified this and no lawyer or tax adviser has been consulted.",
+  "source": "Founder statement through the question form on 2026-10-06",
+  "date": "2026-10-06",
+  "confidence": "low",
+  "type": "ASSUMPTION",
+  "risk": "MEDIUM",
+  "evidence_id": "EVID-035"
+}

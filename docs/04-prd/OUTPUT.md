@@ -1,6 +1,6 @@
 # Product Requirements Document
 
-Version 2. Status: revised after the founder's change of direction (DEC-012 / APR-012); awaiting human approval of the release 1 scope (DEC-013). Prepared 2026-10-06.
+Version 2. Status: release 1 scope approved by the founder on 2026-10-06 (DEC-013 / APR-013), including four added features (FEAT-024 to FEAT-027) and the decision to release everything at once.
 Version 1 (pilot MVP, DEC-005) is superseded and remains in version history.
 Upstream: Vision (DEC-002), Problem Discovery (DEC-003, provisional), Market Research (DEC-004, pricing superseded by DEC-012).
 
@@ -84,8 +84,12 @@ A customer without Telegram must still be recordable; for them the product is a 
 | FEAT-021 | Platform administration | Shops, subscriptions, payment approvals, switches, support tools | Yes |
 | FEAT-022 | Russian interface | Second interface language | Yes |
 | FEAT-023 | Activity log | Who did what and when, visible to the owner | Yes |
+| FEAT-024 | Customer payment notice | A customer tells the shop they have paid, optionally with a receipt; staff accept or decline | Yes |
+| FEAT-025 | Ledger import | Existing customers and opening balances loaded from a spreadsheet | Yes |
+| FEAT-026 | Several shops per person | One person can own or work in more than one shop and switch between them | Yes |
+| FEAT-027 | Promised date change request | A customer asks to move a promised date; staff accept or decline | Yes |
 
-The founder also asked for "many more functions" in release 1. Those are not specified here because none was named. Candidates the agent can see, listed for the founder to accept or reject, each of which would add scope: customer-initiated "I have paid" notices with a receipt; a customer request to move a promised date; import of an existing paper ledger; several shops under one owner; scheduled report delivery; a referral scheme. None is in release 1 unless added by decision.
+The founder asked for more functions in release 1 and, offered six candidates, chose four: FEAT-024 to FEAT-027. Scheduled report delivery and a referral scheme were not chosen and are not in release 1.
 
 ## User stories
 
@@ -220,6 +224,19 @@ Subscription and administration:
 | REQ-058 | Administrators have a panel to list and search shops, see subscription state and payment history, approve receipts, change switches and prices, suspend a shop, and act on support requests. Every administrator action is logged. | FEAT-021 | New |
 | REQ-059 | An administrator cannot read a shop's customers or entries except through an explicit support access that is logged and visible to the shop owner. | FEAT-021 | New |
 
+Features added on approval:
+
+| ID | Requirement | Feature | Status |
+|---|---|---|---|
+| REQ-060 | A linked customer can send the shop a payment notice stating an amount, optionally with a receipt image. A notice never changes the balance by itself. | FEAT-024 | New |
+| REQ-061 | Staff accept a payment notice, which records a payment attributed to the accepting staff member and linked to the notice, or decline it with a reason. The customer is told the outcome. | FEAT-024 | New |
+| REQ-062 | An owner or manager can import customers with opening balances and promised dates from a spreadsheet in a published template. The import is validated and previewed before anything is saved, and rejected rows are listed with reasons. | FEAT-025 | New |
+| REQ-063 | Imported balances are stored as opening-balance entries marked as imported, with author and time. A whole import can be undone within 24 hours, which reverses every entry it created. | FEAT-025 | New |
+| REQ-064 | One person can be owner or staff in several shops. Every client lets them choose the active shop, and chat entry applies to the active shop, which is always shown in the reply. | FEAT-026 | New |
+| REQ-065 | Each shop has its own subscription, staff, catalog, and customers. An owner can see combined totals across the shops they own; customer records are never merged or matched across shops, even under one owner. | FEAT-026 | New |
+| REQ-066 | A linked customer can ask to move the promised date of a credit entry, with an optional reason. One request can be open per entry. | FEAT-027 | New |
+| REQ-067 | An owner or manager accepts or declines a date change request. On acceptance the new date applies to reminders and overdue status, and the original date and the change remain in the history. | FEAT-027 | New |
+
 ## Non-functional requirements
 
 | ID | Requirement | Status |
@@ -252,13 +269,15 @@ Everything marked "Yes" under Features is in release 1 by founder decision. With
 | 4 | Reminders and credit control | FEAT-008, FEAT-018, FEAT-013 |
 | 5 | Reports, web panel, second language | FEAT-019, FEAT-020, FEAT-022, FEAT-011 |
 | 6 | Subscription and administration | FEAT-015, FEAT-021, FEAT-012 |
+| With group 1 | Several shops per person; import | FEAT-026, FEAT-025 |
+| With group 3 | Customer payment notice; date change request | FEAT-024, FEAT-027 |
 
-The agent's advice remains to put the product in front of a few shops after group 3, before building groups 5 and 6.
+The agent advised putting the product in front of a few shops after group 3. On 2026-10-06 the founder decided instead that all of release 1 is built before any shop uses it. The consequence is that the first feedback from real use arrives only after the whole build.
 
 ## Constraints
 
 - One founder working full time with AI agents; no dedicated budget.
-- No registered business entity exists yet. Consequences: online payment systems and SMS providers that require a contract with a registered entity cannot be used until one exists, so both ship switched off; subscription income collected by transfer to a personal card may count as unregistered business activity. This last point is a legal and tax question that must be answered before any payment is accepted.
+- No registered business entity exists yet. Online payment systems and SMS providers that require a contract with a registered entity cannot be used until one exists, so both ship switched off. Subscription payments are collected by transfer to a personal card. The founder states that this is lawful and has decided to proceed (EVID-035); the agent has not verified it and no adviser has been consulted, so it is carried as an unverified assumption and a risk, not as an established fact.
 - Selling a subscription through a Telegram bot outside Telegram's own payment mechanism may conflict with Telegram's rules for digital services (EVID-028).
 - Personal data must be hosted in Uzbekistan and the database may need registration before processing (EVID-027).
 - No lending, interest, or money movement on behalf of customers (EVID-009).
@@ -309,6 +328,10 @@ Acceptance criteria for FEAT-001, FEAT-002, FEAT-004, FEAT-005, FEAT-007 to FEAT
 | FEAT-021 | REQ-055, REQ-058, REQ-059 | PROB-001 | METRIC-005 | EVID-027 |
 | FEAT-022 | REQ-051 | PROB-002 | METRIC-002 | EVID-034 |
 | FEAT-023 | REQ-035, REQ-047 | PROB-002 | METRIC-002 | EVID-034 |
+| FEAT-024 | REQ-060, REQ-061 | PROB-001, PROB-003 | METRIC-001 | EVID-034 |
+| FEAT-025 | REQ-062, REQ-063 | PROB-004 | METRIC-002 | EVID-034 |
+| FEAT-026 | REQ-064, REQ-065 | PROB-004 | METRIC-002 | EVID-034 |
+| FEAT-027 | REQ-066, REQ-067 | PROB-001, PROB-003 | METRIC-001 | EVID-034 |
 
 Non-functional requirements:
 
@@ -342,12 +365,12 @@ Assumptions built into the requirements:
 
 ## Open questions
 
-1. **Accepting subscription payments on a personal card without a registered entity.** Is it lawful, and how is it taxed? This must be answered before the first payment is accepted.
+1. **Accepting subscription payments on a personal card without a registered entity.** Decided by the founder on 2026-10-06: he states it is lawful and will proceed (EVID-035). Not verified; how such income is taxed has not been looked at.
 2. **Telegram's payment rules.** Does collecting a subscription through the bot by card transfer breach the Stars requirement (EVID-028), and what is the consequence if it does?
 3. Legal questions carried from version 1: recording a customer before consent; delaying removal while a balance is owed; notifications through Telegram's servers abroad; the consent text. Added by this revision: retention of payment receipts, which contain the payer's card details, and the lawfulness of SMS to customers who have not consented.
 4. Which SMS provider, at what price, and does it require a registered entity?
 5. Who sits in the receipt review group, and what stops a forged receipt from being approved?
-6. Which of the candidate functions listed under Features, if any, join release 1?
+6. Resolved on 2026-10-06: four candidate functions joined release 1 as FEAT-024 to FEAT-027.
 7. Does the web panel need anything the Mini App cannot do, or is it the same screens on a larger display?
 
 ## Decisions / approvals
@@ -356,4 +379,4 @@ Assumptions built into the requirements:
 |---|---|---|
 | DEC-005 / APR-005 | Version 1 MVP scope | Superseded by DEC-012 |
 | DEC-012 / APR-012 | Change of direction to a full production-grade product | Approved 2026-10-06 |
-| DEC-013 | Release 1 scope as defined in this version: features FEAT-001 to FEAT-023, roles, itemized entries, notification with dispute, two languages, subscription with manual payment approval, and the non-functional requirements including scale and recovery targets | Approval pending |
+| DEC-013 / APR-013 | Release 1 scope: features FEAT-001 to FEAT-027, released all at once; roles, itemized entries, notification with dispute, two languages, subscription with manual payment approval on a personal card, and the non-functional requirements including scale and recovery targets | Approved 2026-10-06 |
