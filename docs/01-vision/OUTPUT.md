@@ -67,7 +67,7 @@ Each goal is tied to a metric. No baselines exist yet (see the evidence gaps in 
 
 ## Evidence
 
-This stage adds no new evidence. It relies on the records from Idea Selection: EVID-001, EVID-003, EVID-005, EVID-007, EVID-009, EVID-011, EVID-012, EVID-013. The mission and vision are statements of intent, not factual claims; every factual claim above cites a record or is marked as an assumption.
+This stage adds no new evidence. It relies on the records from Idea Selection: EVID-001, EVID-003, EVID-005, EVID-007, EVID-009, EVID-011, EVID-012 and EVID-013 (all recorded in Idea Selection). The mission and vision are statements of intent, not factual claims; every factual claim above cites a record or is marked as an assumption.
 
 ## Open questions
 

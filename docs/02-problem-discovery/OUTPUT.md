@@ -81,7 +81,7 @@ Product metrics carried from the vision, with what Stage 02 learned about each:
 | Metric | Finding |
 |---|---|
 | METRIC-001 Repayment within term | No baseline exists. Interviews must ask shopkeepers to estimate the share repaid on time and the share written off. |
-| METRIC-002 Weekly active shops | Depends on entry speed; see METRIC-004. |
+| METRIC-002 Weekly active shops | Depends on entry speed (METRIC-004). |
 | METRIC-003 Customer confirmation rate | Whether confirmation improves repayment is unproven (EVID-019). |
 | METRIC-004 Time to record a sale | The notebook is the benchmark; measure it during shop visits. |
 | METRIC-005 Revenue per shop | Willingness to pay is still an assumption (EVID-013). |
@@ -98,7 +98,7 @@ Validation criteria for this stage, proposed by the agent and open to change by 
 
 ## Evidence
 
-Records added in this stage: EVID-014 to EVID-019. Records reused from earlier stages: EVID-001, EVID-003, EVID-004, EVID-005, EVID-012, EVID-013.
+Records added in this stage: EVID-014 to EVID-019. Records reused from earlier stages: EVID-001, EVID-003, EVID-004, EVID-005, EVID-012 and EVID-013 (see `docs/evidence/`).
 
 Limits of this evidence:
 
@@ -134,4 +134,4 @@ Limits of this evidence:
 The founder is asked to choose how this stage closes:
 
 - **Option 1 (recommended): hold the stage until interviews are done.** Run the interviews in `interview-guide.md`, record the results as evidence, then pass the stage. This follows the product principle "evidence before build".
-- **Option 2: approve provisionally and continue.** Pass the stage now on desk research, start Market Research in parallel, and accept that later stages may need rework if interviews contradict PROB-001.
+- **Option 2: approve provisionally and continue.** Pass the stage now on desk research, start Market Research in parallel, and accept that later stages may need rework if interviews contradict the primary problem (PROB-001).
