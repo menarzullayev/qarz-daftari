@@ -29,13 +29,17 @@ blocked_reason:
 - Production Ready requires explicit human approval of the global audit.
 
 ## Pending approvals
-None.
+- Production launch approval (launch criterion 11 in docs/10-operations/OUTPUT.md): not requested; cannot be given until criteria 1 to 10 are met.
 
 ## Blockers
-None.
+- 10-operations is held in REVIEW by founder decision (2026-10-06) until the production launch criteria are met. Not a workflow BLOCKED state.
+- Global audit cannot pass with framework 1.0.0 as released: early-stage EVID and DEC references are reported as forward references, and approval APR-001 lacks a Decision field the documented CLI command never asked for. A framework fix has been proposed but not made.
 
 ## Open questions
-None.
+- Field validation outstanding: 15 to 20 shopkeeper interviews and a hands-on pDaftar test (gate before milestone M3).
+- Legal review outstanding: four questions and the consent text (gate before any real customer data).
+- Hosting and backup providers in Uzbekistan not chosen.
+- Final product name not chosen; "Qarz Daftari" is a working title.
 
 ## Last validation
 - Structural: not run

@@ -1,0 +1,12 @@
+{
+  "event_id": "72b1374e0da0",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T10:41:46+00:00",
+  "path": ".project-alpha\\approvals\\APR-011.md",
+  "stage": "10-operations",
+  "decision_id": "DEC-011",
+  "decision": "Operations definition as written; not a production launch approval; stage 10 remains in REVIEW until launch criteria are met",
+  "approval_id": "APR-011",
+  "approver": "Saidakbar Narzullayev",
+  "status": "approved"
+}

@@ -1,6 +1,6 @@
 # Quality & Operations
 
-Status: draft for review. This document defines how the MVP is tested, released, watched, and recovered. It does **not** claim the product is ready to launch: nothing has been built, and most launch criteria below are unmet by design. Prepared 2026-10-06.
+Status: operations definition approved by the founder on 2026-10-06 (DEC-011 / APR-011). By the founder's decision the stage stays in REVIEW and is not passed until the launch criteria below are met. This document defines how the MVP is tested, released, watched, and recovered. It does **not** claim the product is ready to launch: nothing has been built, and most launch criteria below are unmet by design. Prepared 2026-10-06.
 Upstream: Development Plan (DEC-010), Technical Specification (DEC-009), decision records ADR-001 to ADR-010 (DEC-008).
 
 Scale assumed throughout: one operator (the founder), one server, about ten pilot shops.
@@ -205,5 +205,5 @@ No operational evidence exists yet: no test run, no deployment, no restore, no a
 | Record | Subject | Status |
 |---|---|---|
 | DEC-010 / APR-010 | Development plan and gates | Approved 2026-10-06 |
-| DEC-011 | Operations definition in this document: test strategy, manual gated releases, monitoring and alerting, daily encrypted backups with recovery targets of 4 hours and 24 hours, single-operator incident handling, and the eleven launch criteria | Approval pending |
+| DEC-011 | Operations definition in this document: test strategy, manual gated releases, monitoring and alerting, daily encrypted backups with recovery targets of 4 hours and 24 hours, single-operator incident handling, and the eleven launch criteria | Approved 2026-10-06 |
 | Production launch approval | Launch criterion 11 | Not requested; cannot be given until criteria 1 to 10 are met |
