@@ -2,7 +2,26 @@ import { ru } from "./ru";
 import type { Language, Message, MessageKey, MessageParams, RuPlural } from "./types";
 import { uz } from "./uz";
 
-export const catalogs: Readonly<Record<Language, Readonly<Record<MessageKey, Message>>>> = { uz, ru };
+const loaded: Record<Language, Record<string, Message>> = { uz: { ...uz }, ru: { ...ru } };
+
+/**
+ * The messages this entry point has loaded: the main catalog, and for the web panel its own as well.
+ * The type names every key; a key of a catalog that was not added is absent, and `translate` says so.
+ */
+export const catalogs: Readonly<Record<Language, Readonly<Record<MessageKey, Message>>>> = loaded as Record<
+  Language,
+  Record<MessageKey, Message>
+>;
+
+/**
+ * Adds an entry point's own catalog to the loaded messages. The web panel calls it once, before it
+ * renders; the Mini App never does, so the panel's text is not part of its download (NFR-010).
+ */
+export function addMessages(extra: Readonly<Record<Language, Readonly<Record<string, Message>>>>): void {
+  for (const language of Object.keys(loaded) as Language[]) {
+    Object.assign(loaded[language], extra[language]);
+  }
+}
 
 export type RuPluralCategory = keyof RuPlural;
 
@@ -69,7 +88,10 @@ function templateFor(lang: Language, key: MessageKey, message: Message, params: 
  * sentence: a seller must never see "{count} kun kechikkan", and the mistake surfaces in the first test.
  */
 export function translate(lang: Language, key: MessageKey, params: MessageParams = {}): string {
-  const message = catalogs[lang][key];
+  const message: Message | undefined = catalogs[lang][key];
+  if (message === undefined) {
+    throw new Error(`message "${key}" is not loaded: it belongs to a catalog this entry point did not add`);
+  }
   return interpolate(key, templateFor(lang, key, message, params), params);
 }
 

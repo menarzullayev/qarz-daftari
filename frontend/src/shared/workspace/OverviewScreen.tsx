@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 import { useI18n } from "../../i18n/I18nProvider";
 import { formatCustomerCount, formatMoney } from "../format";
 import { useLoad, usePagedList } from "../hooks";
+import { useDesktop } from "../layout";
 import { Link } from "../router";
 import { useWorkspace } from "./context";
 import { Empty, Failure, Loading, LoadMore, OverdueLines } from "./parts";
@@ -43,6 +44,7 @@ function Totals() {
 function Debtors() {
   const { api } = useWorkspace();
   const { t, language } = useI18n();
+  const desktop = useDesktop();
   const [onlyOverdue, setOnlyOverdue] = useState(false);
   const { state, reload, loadMore } = usePagedList(
     (cursor, signal) => api.debtors({ overdue: onlyOverdue, cursor }, signal),
@@ -59,17 +61,21 @@ function Debtors() {
   } else {
     body = (
       <>
-        <ul className="rows">
-          {state.items.map((debtor) => (
-            <li key={debtor.id} className="row">
-              <Link to={`/customers/${debtor.id}`} className="row__link">
-                <span className="row__name">{debtor.displayName}</span>
-                <span className="row__amount">{formatMoney(debtor.balance, language)}</span>
-              </Link>
-              <OverdueLines overdue={debtor.overdue} />
-            </li>
-          ))}
-        </ul>
+        {desktop ? (
+          <desktop.DebtorsTable items={state.items} />
+        ) : (
+          <ul className="rows">
+            {state.items.map((debtor) => (
+              <li key={debtor.id} className="row">
+                <Link to={`/customers/${debtor.id}`} className="row__link">
+                  <span className="row__name">{debtor.displayName}</span>
+                  <span className="row__amount">{formatMoney(debtor.balance, language)}</span>
+                </Link>
+                <OverdueLines overdue={debtor.overdue} />
+              </li>
+            ))}
+          </ul>
+        )}
         {state.nextCursor !== null ? (
           <LoadMore loading={state.loadingMore} error={state.moreError} onClick={loadMore} />
         ) : null}
@@ -94,13 +100,14 @@ function Debtors() {
 }
 
 /** Home of the workspace: what the shop is owed in total, and who owes it, largest debt first. */
-export function OverviewScreen({ footer }: { footer?: ReactNode }) {
+export function OverviewScreen({ footer, extra }: { footer?: ReactNode; extra?: ReactNode }) {
   return (
     <>
       <SubscriptionBanner />
       <Totals />
       <Debtors />
       {footer}
+      {extra}
     </>
   );
 }

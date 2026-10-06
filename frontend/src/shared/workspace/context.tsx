@@ -1,6 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react";
 
-import type { ShopApi } from "../api";
+import type { ShopApi, ShopMembership } from "../api";
 import type { Role } from "../navigation";
 import type { ShopMode } from "./shopMode";
 
@@ -18,6 +18,10 @@ export type Workspace = {
   shopName?: string | undefined;
   /** What the server's refusals have said about the shop since it was opened; see `shopMode.ts`. */
   shopMode?: ShopMode | null | undefined;
+  /** Every shop the person works in, when the caller knows them (REQ-064). */
+  shops?: readonly ShopMembership[] | undefined;
+  /** Reads the person's shops and roles again, after something that changes them (an accepted transfer). */
+  reloadSession?: (() => void) | undefined;
 };
 
 const WorkspaceContext = createContext<Workspace | null>(null);
