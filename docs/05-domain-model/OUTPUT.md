@@ -173,7 +173,7 @@ Deliberately outside, with the boundary stated so later stages do not cross it b
 | Shop totals and overdue list (derived) | REQ-026 |
 | Export (a read of DOM-002 and DOM-003) | REQ-028 |
 
-Requirements with no domain element because they constrain the interface or operations, not the model: REQ-N01, REQ-N02, REQ-N03, REQ-N04, REQ-N08, REQ-N09. They pass to Architecture and the Technical Specification.
+Requirements with no domain element because they constrain the interface or operations, not the model: REQ-N01, REQ-N02, REQ-N03, REQ-N04, REQ-N08 and REQ-N09; these pass to Architecture and the Technical Specification.
 
 Every functional requirement from REQ-001 to REQ-030 appears above.
 
