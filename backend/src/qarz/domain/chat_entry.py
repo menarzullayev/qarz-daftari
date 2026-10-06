@@ -225,6 +225,31 @@ def _parse(text: str) -> ParsedEntry | ParseErrorCode:
     return ParsedEntry(kind=kind, name=name, normalized_name=normalize_name(name), amount=value, note=note or None)
 
 
+def parse_amount(text: str) -> int | ParseError:
+    """Read a message that is an amount and nothing else, in the same grammar as an entry's amount.
+
+    "50000", "50 000", "50.000", "50k", "50 ming so'm" are amounts. A name, a minus sign, a payment word
+    or a note make the message something else, and it is refused rather than guessed at.
+    """
+    if len(text) > MAX_INPUT_LENGTH:
+        return ParseError(ParseErrorCode.TOO_LONG)
+    stripped = text.strip()
+    if not stripped:
+        return ParseError(ParseErrorCode.EMPTY)
+    if any(_is_hidden(ch) for ch in stripped) or any(ch in _LINE_BREAKS for ch in stripped):
+        return ParseError(ParseErrorCode.INVALID_CHARACTERS)
+    tokens = stripped.split()
+    if tokens[0][0] not in _DIGITS:
+        return ParseError(ParseErrorCode.NO_AMOUNT)
+    amount = _read_amount(tokens, 0)
+    if isinstance(amount, ParseErrorCode):
+        return ParseError(amount)
+    kind, value, rest = amount
+    if kind is not EntryKind.CREDIT or rest != len(tokens):
+        return ParseError(ParseErrorCode.AMBIGUOUS)
+    return value
+
+
 def parse_entry(text: str) -> ParsedEntry | ParseError:
     """Parse one chat message into a credit sale or a payment, or say with a code why it is not one."""
     result = _parse(text)

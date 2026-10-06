@@ -9,6 +9,7 @@ import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -17,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from qarz.application.auth import AuthService
 from qarz.infrastructure.db import Database
+from qarz.infrastructure.file_store import FilesystemFileStore
 from qarz.interface.http import create_app
 
 TEST_USER_HEADER = "X-Test-User"
@@ -35,12 +37,57 @@ class HeaderAuthenticator:
             return None
 
 
+class FakeTelegramFiles:
+    """Stands in for the Bot API's getFile: a test puts content under a file identifier."""
+
+    def __init__(self) -> None:
+        self.files: dict[str, bytes] = {}
+        self.asked: list[str] = []
+
+    async def fetch(self, file_id: str, max_bytes: int) -> bytes | None:
+        self.asked.append(file_id)
+        content = self.files.get(file_id)
+        return content if content is not None and len(content) <= max_bytes else None
+
+
+# Where the file store of the running test keeps its objects, for code that seeds a file without a fixture.
+_file_root: list[Path] = []
+
+
+def current_file_root() -> Path:
+    return _file_root[-1]
+
+
 @pytest.fixture
-def client(app_database_url: str) -> Iterator[TestClient]:
+def file_root(tmp_path: Path) -> Iterator[Path]:
+    """The directory of the test file store; empty until a file is kept."""
+    root = tmp_path / "file-store"
+    _file_root.append(root)
+    yield root
+    _file_root.remove(root)
+
+
+@pytest.fixture
+def telegram_files() -> FakeTelegramFiles:
+    return FakeTelegramFiles()
+
+
+def stored_objects(root: Path) -> list[Path]:
+    return sorted(path for path in root.rglob("*") if path.is_file())
+
+
+@pytest.fixture
+def client(app_database_url: str, file_root: Path, telegram_files: FakeTelegramFiles) -> Iterator[TestClient]:
     database = Database(app_database_url)
     auth = AuthService(database, TEST_BOT_TOKEN)
     app = create_app(
-        database.reachable, database, auth=auth, authenticator=HeaderAuthenticator(), webhook_secret=WEBHOOK_SECRET
+        database.reachable,
+        database,
+        auth=auth,
+        authenticator=HeaderAuthenticator(),
+        webhook_secret=WEBHOOK_SECRET,
+        file_store=FilesystemFileStore(file_root),
+        telegram_files=telegram_files,
     )
     with TestClient(app) as test_client:
         yield test_client

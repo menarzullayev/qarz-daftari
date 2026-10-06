@@ -14,6 +14,7 @@ from qarz.application import removal
 from qarz.application.errors import NotFound
 from qarz.application.goods_lines import line_body
 from qarz.application.ledger_service import HISTORY_PAGE
+from qarz.application.notice_view import NOTICES_SHOWN, notice_body
 from qarz.application.operations import self_operation
 from qarz.application.ports import DisputeRecord, Storage
 from qarz.domain import ledger
@@ -116,6 +117,11 @@ class CustomerAccountService:
                     for row in shown
                 ],
                 "entries_total": len(account),
+                # The customer's own payment notices with their outcome, newest first (REQ-061).
+                "payment_notices": [
+                    notice_body(record, self._now())
+                    for record in await session.notices_of_customer(customer_id, NOTICES_SHOWN)
+                ],
             }
 
     async def disconnect(self, user_id: UUID, link_id: UUID) -> dict[str, Any]:

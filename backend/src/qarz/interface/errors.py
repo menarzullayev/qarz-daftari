@@ -40,6 +40,9 @@ _STATUS = {
     "LINES_ALREADY_ADDED": 409,
     "LINES_SUM_MISMATCH": 409,
     "LINES_WINDOW_CLOSED": 409,
+    "PAYMENT_NOTICE_NOT_ALLOWED": 409,
+    "PAYMENT_NOTICE_NOT_OPEN": 409,
+    "FILE_STORE_UNAVAILABLE": 503,
 }
 
 _MESSAGES = {
@@ -78,6 +81,9 @@ _MESSAGES = {
         "LIMIT_REACHED": "Bu savdo mijozning nasiya limitidan oshadi. Menejer yoki do'kon egasi yoza oladi.",
         "DELETION_ALREADY_REQUESTED": "Do'konni o'chirish allaqachon so'ralgan.",
         "DELETION_NOT_REQUESTED": "Do'konni o'chirish so'ralmagan.",
+        "PAYMENT_NOTICE_NOT_ALLOWED": "Ko'rib chiqilmagan to'lov xabarlaringiz juda ko'p. Do'kon javobini kuting.",
+        "PAYMENT_NOTICE_NOT_OPEN": "Bu to'lov xabari allaqachon ko'rib chiqilgan yoki muddati o'tgan.",
+        "FILE_STORE_UNAVAILABLE": "Fayllarni saqlash hozir ishlamayapti. Birozdan keyin qayta urinib ko'ring.",
         "ERROR": "Xatolik yuz berdi.",
     },
     "ru": {
@@ -115,6 +121,9 @@ _MESSAGES = {
         "LIMIT_REACHED": "Эта продажа превысит лимит клиента. Записать может менеджер или владелец.",
         "DELETION_ALREADY_REQUESTED": "Удаление магазина уже запрошено.",
         "DELETION_NOT_REQUESTED": "Удаление магазина не запрашивалось.",
+        "PAYMENT_NOTICE_NOT_ALLOWED": "У вас слишком много нерассмотренных сообщений об оплате. Дождитесь ответа.",
+        "PAYMENT_NOTICE_NOT_OPEN": "Это сообщение об оплате уже рассмотрено или его срок истёк.",
+        "FILE_STORE_UNAVAILABLE": "Хранилище файлов сейчас недоступно. Попробуйте ещё раз чуть позже.",
         "ERROR": "Произошла ошибка.",
     },
 }

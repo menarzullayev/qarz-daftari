@@ -88,6 +88,7 @@ def test_a_customer_reads_their_own_account_without_the_shops_private_fields(
         "removal_requested",
         "entries",
         "entries_total",
+        "payment_notices",
     }
     assert (body["shop_name"], body["display_name"], body["balance"]) == ("Shop A", "Ali", 65000)
     assert [(e["kind"], e["amount"]) for e in body["entries"]] == [

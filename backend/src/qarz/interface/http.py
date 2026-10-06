@@ -19,10 +19,12 @@ from qarz.application.customer_account import CustomerAccountService
 from qarz.application.customers import CustomerService
 from qarz.application.disputes import DisputeService
 from qarz.application.errors import AppError, Unauthenticated
+from qarz.application.files import FileService
 from qarz.application.ledger_service import LedgerService
 from qarz.application.links import LinkService
 from qarz.application.ownership import OwnershipService
-from qarz.application.ports import Storage
+from qarz.application.payment_notices import PaymentNoticeService
+from qarz.application.ports import FileStore, Storage, TelegramFiles
 from qarz.application.reminders import ReminderService
 from qarz.application.shop_deletion import ShopDeletionService
 from qarz.application.shops import ShopService
@@ -38,6 +40,7 @@ from qarz.interface.disputes_api import add_dispute_routes
 from qarz.interface.errors import app_error_handler, error_response
 from qarz.interface.links_api import add_link_routes
 from qarz.interface.me_api import add_me_routes
+from qarz.interface.payment_notices_api import add_payment_notice_routes
 from qarz.interface.reminders_api import add_reminder_routes
 from qarz.interface.shop_deletion_api import add_shop_deletion_routes
 from qarz.interface.shops_api import add_shop_routes
@@ -62,12 +65,15 @@ def create_app(
     authenticator: Authenticator | None = None,
     webhook_secret: str | None = None,
     now: Callable[[], datetime] | None = None,
+    file_store: FileStore | None = None,
+    telegram_files: TelegramFiles | None = None,
 ) -> FastAPI:
     """Build the application.
 
     With only a health check it serves `/healthz`. With storage and an auth service it serves the API,
     authenticating through Telegram-backed sessions; `authenticator` replaces that only in tests, and `now`
-    replaces the clock of the ledger only in tests.
+    replaces the clock of the ledger only in tests. Without a `file_store` receipts are refused; without
+    `telegram_files` a receipt sent to the bot cannot be fetched.
     """
     app = FastAPI(title="Qarz Daftari", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -100,7 +106,9 @@ def create_app(
         response.status_code = 404 if code == "NOT_FOUND" else exc.status_code
         return response
 
-    if storage is not None and auth is not None:
+    files = None if storage is None else FileService(storage, file_store)
+
+    if storage is not None and auth is not None and files is not None:
         resolver: Authenticator = authenticator or SessionAuthenticator(auth)
 
         async def current_user(request: Request) -> UUID:
@@ -120,6 +128,7 @@ def create_app(
         add_credit_routes(app, CreditService(storage, now), current_user)
         add_reminder_routes(app, ReminderService(storage, now), current_user)
         add_dispute_routes(app, DisputeService(storage, now), current_user)
+        add_payment_notice_routes(app, PaymentNoticeService(storage, files, now), current_user)
         add_customer_routes(app, CustomerService(storage, now), LedgerService(storage, now), current_user)
         add_catalog_routes(app, CatalogService(storage, now), current_user)
         add_account_routes(
@@ -127,7 +136,7 @@ def create_app(
         )
 
     if webhook_secret is not None and storage is not None:
-        chat = ChatService(storage, ShopService(storage, now), StaffService(storage, now), now)
-        add_webhook_route(app, UpdateProcessor(storage, chat), webhook_secret)
+        chat = ChatService(storage, ShopService(storage, now), StaffService(storage, now), now, files)
+        add_webhook_route(app, UpdateProcessor(storage, chat, telegram_files), webhook_secret)
 
     return app

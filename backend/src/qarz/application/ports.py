@@ -193,6 +193,20 @@ class StoredFileRecord:
 
 
 @dataclass(frozen=True)
+class PaymentNoticeRecord:
+    notice_id: UUID
+    customer_id: UUID
+    amount: int  # what the customer says they paid
+    file_id: UUID | None
+    status: str
+    payment_entry: UUID | None
+    recorded_amount: int | None  # of the payment an accepted notice produced
+    decline_reason: str | None
+    created_at: datetime
+    closed_at: datetime | None
+
+
+@dataclass(frozen=True)
 class WaitingLink:
     """Someone who started the bot from the counter code and agreed, not yet attached to a record."""
 
@@ -506,6 +520,45 @@ class TenantSession(Protocol):
         """Forget a file whose object has been deleted, and whatever notice still pointed to it."""
         ...
 
+    async def stored_object_keys(self) -> list[str]:
+        """The key of every file kept for the shop, whatever its purpose."""
+        ...
+
+    async def add_payment_notice(
+        self, *, notice_id: UUID, customer_id: UUID, amount: int, file_id: UUID | None, now: datetime
+    ) -> PaymentNoticeRecord: ...
+
+    async def get_payment_notice(self, notice_id: UUID) -> PaymentNoticeRecord | None: ...
+
+    async def notices_of_customer(self, customer_id: UUID, limit: int) -> list[PaymentNoticeRecord]:
+        """Newest first."""
+        ...
+
+    async def count_open_notices(self, customer_id: UUID) -> int:
+        """Notices of the customer marked as waiting for the shop. Stale ones count until they are marked expired."""
+        ...
+
+    async def open_payment_notices(self, since: datetime) -> list[tuple[PaymentNoticeRecord, str]]:
+        """Notices waiting for the shop and sent no earlier than `since`, oldest first, with the customer's name."""
+        ...
+
+    async def close_payment_notice(
+        self,
+        notice_id: UUID,
+        *,
+        status: str,
+        payment_entry: UUID | None,
+        decline_reason: str | None,
+        decided_by: UUID | None,
+        now: datetime,
+    ) -> PaymentNoticeRecord: ...
+
+    async def expire_payment_notices(
+        self, *, before: datetime, now: datetime, customer_id: UUID | None, files_delete_after: datetime
+    ) -> int:
+        """Mark as expired the waiting notices sent before `before`; their receipts get the given deadline."""
+        ...
+
     async def staff_recipients(self, roles: list[str]) -> list[tuple[int, str]]:
         """Telegram chat and language of each active member holding one of the roles."""
         ...
@@ -738,4 +791,12 @@ class FileStore(Protocol):
 
     async def delete(self, key: str) -> None:
         """Deleting what is not there is not an error."""
+        ...
+
+
+class TelegramFiles(Protocol):
+    """Files people send to the bot (Bot API `getFile`)."""
+
+    async def fetch(self, file_id: str, max_bytes: int) -> bytes | None:
+        """The content, or None when it is larger than `max_bytes` or cannot be had."""
         ...

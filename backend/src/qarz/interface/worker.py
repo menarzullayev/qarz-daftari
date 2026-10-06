@@ -15,7 +15,9 @@ from qarz.application.reminders import ReminderService
 from qarz.application.scheduler import Scheduler
 from qarz.application.shop_deletion import ShopDeletionService
 from qarz.application.subscription import SubscriptionService
+from qarz.domain.files import MAX_FILE_BYTES
 from qarz.infrastructure.db import Database
+from qarz.infrastructure.file_store import build_file_store
 from qarz.infrastructure.settings import Settings
 from qarz.infrastructure.sms_sender import ChannelSender, NoSmsProvider
 from qarz.infrastructure.telegram_sender import TelegramSender
@@ -36,7 +38,8 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
         database,
         ReminderService(database),
         subscriptions=SubscriptionService(database),
-        deletion=ShopDeletionService(database),
+        # Erasing a shop deletes its receipts from the file store too.
+        deletion=ShopDeletionService(database, files=build_file_store(settings, max_object_bytes=MAX_FILE_BYTES)),
     )
     next_schedule = 0.0
     try:

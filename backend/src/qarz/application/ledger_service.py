@@ -37,6 +37,7 @@ from qarz.application.goods_lines import (
     require_sum,
     store_lines_in,
 )
+from qarz.application.notice_view import open_notices_of
 from qarz.application.operations import operation
 from qarz.application.ports import EntryRow, GoodsLineRecord, Membership, Storage, TenantSession
 from qarz.application.shops import require_member
@@ -543,6 +544,8 @@ class LedgerService:
                 },
                 "entries": [_entry_body(row, reversed_ids, lines.get(row.entry.id, ())) for row in shown],
                 "entries_total": len(account),
+                # Payment notices of this customer that wait for a decision (REQ-061).
+                "payment_notices": await open_notices_of(session, customer_id, self._now()),
             }
 
     async def overview(self, user_id: UUID, shop_id: UUID) -> dict[str, Any]:
