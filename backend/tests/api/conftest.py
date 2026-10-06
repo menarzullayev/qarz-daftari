@@ -17,6 +17,7 @@ from qarz.infrastructure.db import Database
 from qarz.interface.http import create_app
 
 TEST_USER_HEADER = "X-Test-User"
+WEBHOOK_SECRET = "test-webhook-secret-0123456789"
 
 
 class HeaderAuthenticator:
@@ -33,7 +34,7 @@ class HeaderAuthenticator:
 @pytest.fixture
 def client(app_database_url: str) -> Iterator[TestClient]:
     database = Database(app_database_url)
-    app = create_app(database.reachable, HeaderAuthenticator(), database)
+    app = create_app(database.reachable, HeaderAuthenticator(), database, webhook_secret=WEBHOOK_SECRET)
     with TestClient(app) as test_client:
         yield test_client
         test_client.portal.call(database.dispose)  # type: ignore[union-attr]

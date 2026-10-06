@@ -4,14 +4,17 @@ Every tenant transaction sets `qd.shop_id` with transaction scope, so the settin
 next use of a pooled connection, and the row-level security policies hide every other shop's rows.
 """
 
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from qarz.application.ports import Membership, ShopSettings
+from qarz.application.ports import Membership, OutboxMessage, ShopSettings
 from qarz.domain.access import Role
 
 
@@ -74,6 +77,135 @@ class PgTenantSession:
             },
         )
 
+    async def lock_request_key(self, key: str) -> None:
+        # Transaction-scoped advisory lock: a second request with the same key in the same shop waits here
+        # until the first commits, then finds the stored response.
+        await self._conn.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:scope, 0))"),
+            {"scope": f"request_key:{self._shop_id}:{key}"},
+        )
+
+    async def stored_response(self, key: str) -> dict[str, Any] | None:
+        row = (
+            await self._conn.execute(text("SELECT response FROM request_key WHERE key = :key"), {"key": key})
+        ).first()
+        if row is None:
+            return None
+        response = row.response
+        return json.loads(response) if isinstance(response, str) else dict(response)
+
+    async def store_response(self, key: str, response: dict[str, Any]) -> None:
+        await self._conn.execute(
+            text("INSERT INTO request_key (shop_id, key, response) VALUES (:shop_id, :key, CAST(:response AS jsonb))"),
+            {"shop_id": self._shop_id, "key": key, "response": json.dumps(response, ensure_ascii=False)},
+        )
+
+
+class PgPlatformSession:
+    def __init__(self, conn: AsyncConnection) -> None:
+        self._conn = conn
+
+    async def claim_update(self, update_id: int) -> bool:
+        row = (
+            await self._conn.execute(
+                text(
+                    "INSERT INTO processed_update (update_id) VALUES (:id) "
+                    "ON CONFLICT (update_id) DO NOTHING RETURNING update_id"
+                ),
+                {"id": update_id},
+            )
+        ).first()
+        return row is not None
+
+    async def language_of_telegram_user(self, tg_id: int) -> str | None:
+        row = (
+            await self._conn.execute(text("SELECT lang FROM app_user WHERE tg_id = :tg_id"), {"tg_id": tg_id})
+        ).first()
+        return None if row is None else str(row.lang)
+
+    async def enqueue(
+        self, *, channel: str, recipient: str, payload: dict[str, Any], dedupe_key: str, shop_id: UUID | None = None
+    ) -> bool:
+        row = (
+            await self._conn.execute(
+                text(
+                    "INSERT INTO outbox_message (id, channel, recipient, shop_id, payload, dedupe_key) "
+                    "VALUES (:id, :channel, :recipient, :shop_id, CAST(:payload AS jsonb), :dedupe_key) "
+                    "ON CONFLICT (dedupe_key) DO NOTHING RETURNING id"
+                ),
+                {
+                    "id": uuid4(),
+                    "channel": channel,
+                    "recipient": recipient,
+                    "shop_id": shop_id,
+                    "payload": json.dumps(payload, ensure_ascii=False),
+                    "dedupe_key": dedupe_key,
+                },
+            )
+        ).first()
+        return row is not None
+
+    async def claim_due_messages(self, *, now: datetime, lease_seconds: int, limit: int) -> list[OutboxMessage]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "UPDATE outbox_message SET next_try_at = :lease_until "
+                    "WHERE id IN (SELECT id FROM outbox_message WHERE status = 'pending' AND next_try_at <= :now "
+                    "             ORDER BY created_at, id LIMIT :limit FOR UPDATE SKIP LOCKED) "
+                    "RETURNING id, channel, recipient, payload, attempts, created_at"
+                ),
+                {"now": now, "lease_until": now + timedelta(seconds=lease_seconds), "limit": limit},
+            )
+        ).all()
+        messages = [
+            OutboxMessage(
+                message_id=row.id,
+                channel=row.channel,
+                recipient=row.recipient,
+                payload=json.loads(row.payload) if isinstance(row.payload, str) else dict(row.payload),
+                attempts=row.attempts,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ]
+        # RETURNING does not preserve the subquery's order.
+        return sorted(messages, key=lambda m: (m.created_at, str(m.message_id)))
+
+    async def mark_sent(self, message_id: UUID, *, now: datetime) -> None:
+        await self._conn.execute(
+            text("UPDATE outbox_message SET status = 'sent', sent_at = :now WHERE id = :id AND status = 'pending'"),
+            {"id": message_id, "now": now},
+        )
+
+    async def reschedule(self, message_id: UUID, *, next_try_at: datetime, count_attempt: bool) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE outbox_message SET next_try_at = :next_try_at, attempts = attempts + :inc "
+                "WHERE id = :id AND status = 'pending'"
+            ),
+            {"id": message_id, "next_try_at": next_try_at, "inc": 1 if count_attempt else 0},
+        )
+
+    async def mark_failed(self, message_id: UUID) -> None:
+        await self._conn.execute(
+            text("UPDATE outbox_message SET status = 'failed' WHERE id = :id AND status = 'pending'"),
+            {"id": message_id},
+        )
+
+    async def fail_pending_for(self, *, channel: str, recipient: str) -> int:
+        result = await self._conn.execute(
+            text(
+                "UPDATE outbox_message SET status = 'failed' "
+                "WHERE status = 'pending' AND channel = :channel AND recipient = :recipient"
+            ),
+            {"channel": channel, "recipient": recipient},
+        )
+        return int(result.rowcount)
+
+    async def mark_recipient_unreachable(self, tg_id: int) -> int:
+        row = (await self._conn.execute(text("SELECT mark_recipient_unreachable(:tg_id) AS n"), {"tg_id": tg_id})).one()
+        return int(row.n)
+
 
 class Database:
     """Connection pool for the application role, which cannot bypass row-level security."""
@@ -89,6 +221,11 @@ class Database:
             # is_local = true: the setting ends with this transaction.
             await conn.execute(text("SELECT set_config('qd.shop_id', :shop_id, true)"), {"shop_id": str(shop_id)})
             yield PgTenantSession(conn, shop_id)
+
+    @asynccontextmanager
+    async def platform(self) -> AsyncIterator[PgPlatformSession]:
+        async with self._engine.begin() as conn:
+            yield PgPlatformSession(conn)
 
     async def user_language(self, user_id: UUID) -> str | None:
         async with self._engine.connect() as conn:
