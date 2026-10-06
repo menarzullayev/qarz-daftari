@@ -6,6 +6,7 @@ import { useLoad, usePagedList } from "../hooks";
 import { Link } from "../router";
 import { useWorkspace } from "./context";
 import { Empty, Failure, Loading, LoadMore, OverdueLines } from "./parts";
+import { SubscriptionBanner } from "./SubscriptionScreen";
 
 function Totals() {
   const { api } = useWorkspace();
@@ -96,6 +97,7 @@ function Debtors() {
 export function OverviewScreen({ footer }: { footer?: ReactNode }) {
   return (
     <>
+      <SubscriptionBanner />
       <Totals />
       <Debtors />
       {footer}

@@ -13,6 +13,8 @@ export type WorkspaceRoute =
   | { screen: "counterCode" }
   | { screen: "disputes" }
   | { screen: "catalog" }
+  | { screen: "reminders" }
+  | { screen: "subscription" }
   | { screen: "shopSettings" };
 
 export type WorkspaceMatch = {
@@ -48,6 +50,10 @@ export function matchWorkspaceRoute(path: string): WorkspaceMatch | null {
       return { route: { screen: "pickCustomer" }, sectionPath: "/new", titleKey: "nav.newEntry" };
     case "/catalog":
       return { route: { screen: "catalog" }, sectionPath: "/catalog", titleKey: "nav.catalog" };
+    case "/reminders":
+      return { route: { screen: "reminders" }, sectionPath: "/reminders", titleKey: "nav.reminders" };
+    case "/subscription":
+      return { route: { screen: "subscription" }, sectionPath: "/subscription", titleKey: "nav.subscription" };
     case "/shop-settings":
       return { route: { screen: "shopSettings" }, sectionPath: "/shop-settings", titleKey: "nav.shopSettings" };
   }

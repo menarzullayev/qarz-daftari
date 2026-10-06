@@ -562,6 +562,33 @@ textarea.input--text {
   border-radius: 0.25rem;
 }
 
+/* A reminder wording to choose: the choice, then what a customer will read, in each language. */
+.template {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--qd-border);
+  border-radius: 0.5rem;
+}
+
+.wording__when {
+  margin: 0.5rem 0 0.25rem;
+  color: var(--qd-muted);
+  font-size: 0.875rem;
+}
+
+.wording {
+  margin: 0 0 0.5rem;
+  padding-left: 0.75rem;
+  border-left: 0.25rem solid var(--qd-border);
+  overflow-wrap: anywhere;
+}
+
+.facts__note {
+  display: block;
+  color: var(--qd-muted);
+  font-weight: 400;
+}
+
 /* A printed counter code is the code and its caption, without the application around them. */
 @media print {
   .shell__header,

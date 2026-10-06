@@ -20,6 +20,8 @@ describe("matchWorkspaceRoute", () => {
     ["/disputes", { screen: "disputes" }, "/disputes"],
     ["/catalog", { screen: "catalog" }, "/catalog"],
     ["/shop-settings", { screen: "shopSettings" }, "/shop-settings"],
+    ["/reminders", { screen: "reminders" }, "/reminders"],
+    ["/subscription", { screen: "subscription" }, "/subscription"],
   ])("%s", (path, route, sectionPath) => {
     expect(matchWorkspaceRoute(path)).toMatchObject({ route, sectionPath });
   });
@@ -49,6 +51,10 @@ describe("matchWorkspaceRoute", () => {
     "/catalog/new",
     `/catalog/${ID}`,
     "/shop-settings/edit",
+    "/reminders/unreachable",
+    "/reminders/manual",
+    "/subscription/receipt",
+    "/credit-settings",
   ])("does not match %s", (path) => {
     expect(matchWorkspaceRoute(path)).toBeNull();
   });

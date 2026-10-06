@@ -6,6 +6,7 @@ import type { Language } from "../i18n/types";
 import { createApi, type Fetch } from "../shared/api";
 import type { Role } from "../shared/navigation";
 import { WorkspaceProvider } from "../shared/workspace/context";
+import type { ShopMode } from "../shared/workspace/shopMode";
 import { MEMBERSHIP_ID, NOON, SHOP_ID } from "./fakeServer";
 
 /** Renders a screen as StaffApp would: inside the language and workspace contexts, against a fake server. */
@@ -19,6 +20,10 @@ export function renderScreen(
     /** The signed-in person's membership; by default the author of `entryBody()`. Null: not known. */
     membershipId?: string | null;
     botUsername?: string | null;
+    /** The active shop's name, when the screen shows it. */
+    shopName?: string;
+    /** What the server's refusals have said about the shop so far. */
+    shopMode?: ShopMode | null;
   },
 ) {
   const api = createApi({ fetch: options.fetch, auth: { kind: "bearer", token: "test-session" } }).shop(SHOP_ID);
@@ -32,6 +37,8 @@ export function renderScreen(
           membershipId: options.membershipId === undefined ? MEMBERSHIP_ID : options.membershipId,
           botUsername: options.botUsername === undefined ? BOT : options.botUsername,
           now: () => now,
+          shopName: options.shopName,
+          shopMode: options.shopMode ?? null,
         }}
       >
         {screen}

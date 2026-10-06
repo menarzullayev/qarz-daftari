@@ -10,10 +10,13 @@ import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
 import { canAddGoods, mayAddGoods } from "./AddGoodsScreen";
 import { useWorkspace } from "./context";
+import { CreditLimitSection } from "./CreditLimitSection";
 import { GoodsList } from "./GoodsEditor";
 import { LinkSection } from "./LinkSection";
 import { cleanName, customerFieldErrors, nameProblem } from "./NewCustomerScreen";
 import { ENTRY_KIND_LABELS, errorText, Failure, FieldError, Loading, OverdueLines } from "./parts";
+import { PaymentHistoryNote } from "./PaymentHistoryNote";
+import { ReminderAction } from "./ReminderAction";
 
 /**
  * Only a manager or an owner is offered a reversal, and only for an entry the server would accept: not
@@ -203,7 +206,6 @@ function Detail({ customer, reload }: { customer: CustomerDetail; reload: () => 
   const archiving = useSubmit((archived: boolean, key) => api.setArchived(customer.id, archived, key).then(reload));
 
   const archived = customer.status === "archived";
-  const history = customer.paymentHistory;
   const busy = reversal.state.status === "pending" || archiving.state.status === "pending";
 
   return (
@@ -221,14 +223,6 @@ function Detail({ customer, reload }: { customer: CustomerDetail; reload: () => 
         <span>{t("customer.balance")}</span> <strong>{formatMoney(customer.balance, language)}</strong>
       </p>
       <OverdueLines overdue={customer.overdue} />
-      {history ? (
-        <p className="row__meta">
-          <span>{t("customer.history.onTime", { percent: history.onTimePercent })}</span>
-          {history.longestDelayDays > 0 ? (
-            <span> {t("customer.history.longestDelay", { count: history.longestDelayDays })}</span>
-          ) : null}
-        </p>
-      ) : null}
 
       {archived ? null : (
         <p className="actions">
@@ -266,9 +260,13 @@ function Detail({ customer, reload }: { customer: CustomerDetail; reload: () => 
               </button>
             </p>
           )}
+          {/* Sending a reminder is a manager's and an owner's action; a seller is not shown it. */}
+          {archived || editing ? null : <ReminderAction customerId={customer.id} />}
         </section>
       ) : null}
 
+      <PaymentHistoryNote history={customer.paymentHistory} />
+      <CreditLimitSection customer={customer} onSaved={reload} />
       <LinkSection customerId={customer.id} archived={archived} />
 
       <section aria-labelledby="entries-title">
