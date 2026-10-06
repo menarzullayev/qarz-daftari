@@ -3,6 +3,7 @@
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -85,6 +86,19 @@ class EntryRow:
     entry: Entry
     note: str | None
     author_id: UUID
+
+
+@dataclass(frozen=True)
+class GoodsLineRecord:
+    """One good of a credit sale. It keeps its own name, unit and price (INV-17)."""
+
+    line_no: int
+    catalog_item_id: UUID | None
+    name: str
+    qty: Decimal
+    unit: str
+    unit_price: int
+    line_total: int
 
 
 @dataclass(frozen=True)
@@ -291,6 +305,14 @@ class TenantSession(Protocol):
 
     async def record_measure(self, *, kind: str, entry_ref: UUID, amount: int, promised: date | None) -> None:
         """One row for product measurement. Carries no name, phone, or Telegram identity."""
+        ...
+
+    async def add_goods_lines(self, entry_id: UUID, lines: list[GoodsLineRecord]) -> None:
+        """Store all the goods lines of one entry as its single batch (INV-8)."""
+        ...
+
+    async def goods_lines_of(self, entry_ids: list[UUID]) -> dict[UUID, list[GoodsLineRecord]]:
+        """The goods lines of the given entries in line order. An entry without lines is absent."""
         ...
 
     async def shop_totals(self, today: date) -> ShopTotals: ...
