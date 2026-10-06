@@ -13,14 +13,18 @@ import { AddGoodsScreen } from "./workspace/AddGoodsScreen";
 import { CatalogScreen } from "./workspace/CatalogScreen";
 import { WorkspaceProvider } from "./workspace/context";
 import { CounterCodeScreen } from "./workspace/CounterCodeScreen";
+import { CreditSettingsSection } from "./workspace/CreditSettingsSection";
 import { CustomerScreen } from "./workspace/CustomerScreen";
 import { CustomersScreen } from "./workspace/CustomersScreen";
 import { DisputesScreen } from "./workspace/DisputesScreen";
 import { EntryScreen } from "./workspace/EntryScreen";
 import { NewCustomerScreen } from "./workspace/NewCustomerScreen";
 import { OverviewScreen } from "./workspace/OverviewScreen";
+import { RemindersScreen } from "./workspace/RemindersScreen";
 import { matchWorkspaceRoute, type WorkspaceRoute } from "./workspace/routes";
+import type { ShopMode } from "./workspace/shopMode";
 import { ShopSettingsScreen } from "./workspace/ShopSettingsScreen";
+import { SubscriptionScreen } from "./workspace/SubscriptionScreen";
 import { WaitingScreen } from "./workspace/WaitingScreen";
 import "./workspace/workspace.css";
 
@@ -39,6 +43,8 @@ export type StaffRoutesProps = {
   botUsername?: string | null | undefined;
   /** Shown under the overview, for example the control that switches shops. */
   overviewFooter?: ReactNode;
+  /** What the server's refusals have said about the shop: limited, suspended, or nothing so far. */
+  shopMode?: ShopMode | null | undefined;
 };
 
 type StaffAppProps = StaffRoutesProps & { initialLanguage: Language };
@@ -69,8 +75,18 @@ function workspaceScreen(route: WorkspaceRoute, overviewFooter: ReactNode): Reac
       return <DisputesScreen />;
     case "catalog":
       return <CatalogScreen />;
+    case "reminders":
+      return <RemindersScreen />;
+    case "subscription":
+      return <SubscriptionScreen />;
     case "shopSettings":
-      return <ShopSettingsScreen />;
+      // The shop's own settings are the owner's to change; its credit rules are a manager's too.
+      return (
+        <>
+          <ShopSettingsScreen />
+          <CreditSettingsSection />
+        </>
+      );
   }
 }
 
@@ -82,14 +98,16 @@ export function StaffRoutes({
   now = systemClock,
   botUsername = BOT_USERNAME,
   overviewFooter,
+  shopMode = null,
 }: StaffRoutesProps) {
   const { t } = useI18n();
   const path = useHashPath();
   const role = session?.role;
   const membershipId = session?.membershipId ?? null;
+  const shopName = session?.shopName;
   const workspace = useMemo(
-    () => (api && role ? { api, role, membershipId, botUsername, now } : null),
-    [api, role, membershipId, botUsername, now],
+    () => (api && role ? { api, role, membershipId, botUsername, now, shopName, shopMode } : null),
+    [api, role, membershipId, botUsername, now, shopName, shopMode],
   );
 
   if (!session) {

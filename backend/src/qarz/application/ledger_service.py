@@ -8,6 +8,7 @@ The `*_in` functions do one write inside a tenant transaction that the caller ha
 The HTTP API and the chat both use them, each wrapping them in its own idempotent request.
 """
 
+import time
 from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -301,6 +302,7 @@ async def append_entry_in(
     promised_date: date | None,
     now: datetime,
     lines: Sequence[CleanLine] | None = None,
+    started: float | None = None,
 ) -> dict[str, Any]:
     """Add a credit sale or a payment to one customer's account.
 
@@ -371,7 +373,18 @@ async def append_entry_in(
         subject_type="customer",
         subject_id=customer_id,
     )
-    await session.record_measure(kind=kind.value, entry_ref=entry_id, amount=amount, promised=promised)
+    handle_ms = None if started is None else max(0, round((time.perf_counter() - started) * 1000))
+    await session.record_measure(
+        kind=kind.value, entry_ref=entry_id, amount=amount, promised=promised, handle_ms=handle_ms
+    )
+    if kind is EntryKind.PAYMENT:
+        # METRIC-001: how much of what was lent comes back within the agreed term.
+        paid = Entry(id=entry_id, seq=seq, kind=kind, amount=amount, created_at=now)
+        in_time, late = ledger.payment_timeliness([*(row.entry for row in account), paid], entry_id)
+        if in_time:
+            await session.record_measure(kind="repaid_in_time", entry_ref=entry_id, amount=in_time, promised=None)
+        if late:
+            await session.record_measure(kind="repaid_late", entry_ref=entry_id, amount=late, promised=None)
     written = Entry(id=entry_id, seq=seq, kind=kind, amount=amount, created_at=now, promised_date=promised)
     await expire_settled_date_requests(session, customer_id, [*(row.entry for row in account), written], now)
 
@@ -600,6 +613,7 @@ class LedgerService:
         request_key: str | None,
         lines: Sequence[LineRequest] | None = None,
     ) -> dict[str, Any]:
+        started = time.perf_counter()
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, RECORD_ENTRY)
             key = idempotency.validate_key(request_key)
@@ -616,6 +630,7 @@ class LedgerService:
                     note=text,
                     promised_date=promised_date,
                     now=self._now(),
+                    started=started,
                     lines=goods,
                 )
 

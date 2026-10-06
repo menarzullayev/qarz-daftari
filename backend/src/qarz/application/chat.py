@@ -110,6 +110,7 @@ class Incoming:
     lang: str
     message_id: int | None = None  # the message a pressed button belongs to
     profile_name: str | None = None  # the name in the person's Telegram profile
+    received: float | None = None  # time.perf_counter() when the update arrived; for the handling time
 
     @property
     def key(self) -> str:
@@ -834,7 +835,15 @@ class ChatService:
             if target is None:
                 raise NotFound()
             return await append_entry_in(
-                session, actor, target, kind=kind, amount=amount, note=note, promised_date=None, now=self._now()
+                session,
+                actor,
+                target,
+                kind=kind,
+                amount=amount,
+                note=note,
+                promised_date=None,
+                now=self._now(),
+                started=incoming.received,
             )
 
         return await idempotency.run_once(

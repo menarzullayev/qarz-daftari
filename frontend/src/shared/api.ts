@@ -52,6 +52,8 @@ export type Customer = {
   phone: string | null;
   status: string;
   remindersOff: boolean;
+  /** The customer's own credit limit in whole UZS; null when the shop's default applies (REQ-044). */
+  creditLimit: number | null;
   /** Whole UZS the customer owes. */
   balance: number;
 };
@@ -130,9 +132,63 @@ export type RecordedEntry = {
   entry: { id: string; kind: string; amount: number; promisedDate: string | null; lines: GoodsLine[] };
   /** The customer after the entry; `balance` is the new balance. */
   customer: Customer;
+  /** Set when the sale was saved although it took the balance above the limit that applies (REQ-044). */
+  limitWarning: LimitFigures | null;
 };
 
-export type CustomerPatch = { displayName?: string; phone?: string | null; remindersOff?: boolean };
+/** A credit limit and the balance that met it, both in whole UZS. */
+export type LimitFigures = { limit: number; balance: number };
+
+/** `creditLimit`: a number sets the customer's own limit, null removes it, absent leaves it. */
+export type CustomerPatch = {
+  displayName?: string;
+  phone?: string | null;
+  remindersOff?: boolean;
+  creditLimit?: number | null;
+};
+
+/** The shop's rules for selling on credit (REQ-044). `bounds` are what the server accepts as a limit. */
+export type CreditSettings = {
+  defaultLimit: number | null;
+  sellersMayExceed: boolean;
+  bounds: { min: number; max: number };
+};
+export type CreditSettingsPatch = { defaultLimit?: number | null; sellersMayExceed?: boolean };
+
+/** One fixed wording of a reminder, in every language the server has it: language code to text. */
+export type ReminderTemplate = {
+  id: number;
+  dueToday: Readonly<Record<string, string>>;
+  overdue: Readonly<Record<string, string>>;
+};
+export type ReminderSettings = {
+  on: boolean;
+  /** The Tashkent hour at which automatic reminders go out. */
+  hour: number;
+  template: number;
+  smsOn: boolean;
+  /** The first and the last hour a shop may choose. */
+  hours: { first: number; last: number };
+  templates: ReminderTemplate[];
+};
+export type ReminderSettingsPatch = { on?: boolean; hour?: number; template?: number; smsOn?: boolean };
+
+/** A reminder that was sent by hand: through which channel ("telegram" or "sms") and for what amount. */
+export type SentReminder = { channel: string; amount: number };
+
+/** A customer with something due and no channel to be reminded through (REQ-043). */
+export type UnreachableCustomer = { customerId: string; displayName: string; phone: string | null; amount: number };
+
+/** The shop's subscription as its owner sees it. `state`: trial, active, limited or suspended. */
+export type Subscription = {
+  state: string;
+  /** The last day of the trial or paid period, as an ISO date; null when no period is running. */
+  endsOn: string | null;
+  daysLeft: number | null;
+  priceUzs: number;
+  /** Where to transfer the payment; null until the administrator has set it. */
+  cardNumber: string | null;
+};
 
 export type AddedLines = { id: string; amount: number; lines: GoodsLine[] };
 export type ChosenPromise = { id: string; amount: number; promisedDate: string };
@@ -279,6 +335,7 @@ function customer(value: unknown): Customer {
     phone: textOrNull(body["phone"]),
     status: text(body["status"]),
     remindersOff: flag(body["reminders_off"]),
+    creditLimit: wholeOrNull(body["credit_limit"]),
     balance: whole(body["balance"]),
   };
 }
@@ -392,6 +449,89 @@ function recordedEntry(value: unknown): RecordedEntry {
       lines: goodsLines(made["lines"]),
     },
     customer: customer(body["customer"]),
+    limitWarning: limitFigures(body["limit_warning"]),
+  };
+}
+
+function limitFigures(value: unknown): LimitFigures | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const body = record(value);
+  return { limit: whole(body["limit"]), balance: whole(body["balance"]) };
+}
+
+/** Two whole numbers in order, such as the smallest and the largest value the server accepts. */
+function range(value: unknown): [number, number] {
+  const ends = list(value, whole);
+  const [first, last] = ends;
+  if (ends.length !== 2 || first === undefined || last === undefined || first > last) {
+    throw new Malformed();
+  }
+  return [first, last];
+}
+
+function creditSettings(value: unknown): CreditSettings {
+  const body = record(value);
+  const [min, max] = range(body["limit_bounds"]);
+  return {
+    defaultLimit: wholeOrNull(body["default_credit_limit"]),
+    sellersMayExceed: flag(body["sellers_may_exceed"]),
+    bounds: { min, max },
+  };
+}
+
+function wordings(value: unknown): Record<string, string> {
+  const texts: Record<string, string> = {};
+  for (const [language, wording] of Object.entries(record(value))) {
+    texts[language] = text(wording);
+  }
+  return texts;
+}
+
+function reminderSettings(value: unknown): ReminderSettings {
+  const body = record(value);
+  const [first, last] = range(body["hours"]);
+  return {
+    on: flag(body["on"]),
+    hour: whole(body["hour"]),
+    template: whole(body["template"]),
+    smsOn: flag(body["sms_on"]),
+    hours: { first, last },
+    templates: list(body["templates"], (element) => {
+      const template = record(element);
+      return {
+        id: whole(template["id"]),
+        dueToday: wordings(template["due_today"]),
+        overdue: wordings(template["overdue"]),
+      };
+    }),
+  };
+}
+
+function sentReminder(value: unknown): SentReminder {
+  const body = record(value);
+  return { channel: text(body["channel"]), amount: whole(body["amount"]) };
+}
+
+function unreachableCustomer(value: unknown): UnreachableCustomer {
+  const body = record(value);
+  return {
+    customerId: text(body["customer_id"]),
+    displayName: text(body["display_name"]),
+    phone: textOrNull(body["phone"]),
+    amount: whole(body["amount"]),
+  };
+}
+
+function subscription(value: unknown): Subscription {
+  const body = record(value);
+  return {
+    state: text(body["state"]),
+    endsOn: textOrNull(body["ends_on"]),
+    daysLeft: wholeOrNull(body["days_left"]),
+    priceUzs: whole(body["price_uzs"]),
+    cardNumber: textOrNull(body["card_number"]),
   };
 }
 
@@ -606,7 +746,13 @@ type Call<T> = {
   read: (value: unknown) => T;
 };
 
-type Transport = { fetch: Fetch; auth: ApiAuth | null; onUnauthenticated?: (() => void) | undefined };
+type Transport = {
+  fetch: Fetch;
+  auth: ApiAuth | null;
+  onUnauthenticated?: (() => void) | undefined;
+  /** Told of every refusal, whoever asked: the shell learns from it that the shop is limited or suspended. */
+  onRefusal?: ((error: ApiError) => void) | undefined;
+};
 
 async function call<T>(transport: Transport, request: Call<T>): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
@@ -655,6 +801,7 @@ async function call<T>(transport: Transport, request: Call<T>): Promise<T> {
     if (response.status === 401) {
       transport.onUnauthenticated?.();
     }
+    transport.onRefusal?.(failure);
     throw failure;
   }
   try {
@@ -725,6 +872,12 @@ function shopApi(transport: Transport, shopId: string) {
       }
       if (patch.remindersOff !== undefined) {
         body["reminders_off"] = patch.remindersOff;
+      }
+      if (patch.creditLimit !== undefined) {
+        if (patch.creditLimit !== null && !Number.isSafeInteger(patch.creditLimit)) {
+          throw new RangeError("a credit limit must be a whole number of UZS");
+        }
+        body["credit_limit"] = patch.creditLimit; // null removes the customer's own limit
       }
       return call(transport, {
         method: "PATCH",
@@ -965,6 +1118,84 @@ function shopApi(transport: Transport, shopId: string) {
       return call(transport, { method: "PATCH", path: base, body, idempotencyKey, read: shopSettings });
     },
 
+    /** The shop's credit rules. Every member of staff may read them (REQ-044). */
+    readCreditSettings(signal?: AbortSignal): Promise<CreditSettings> {
+      return call(transport, { method: "GET", path: `${base}/credit-settings`, signal, read: creditSettings });
+    },
+
+    /** Managers and owners only. A null default limit removes it. */
+    updateCreditSettings(patch: CreditSettingsPatch, idempotencyKey: string): Promise<CreditSettings> {
+      const body: Json = {};
+      if (patch.defaultLimit !== undefined) {
+        if (patch.defaultLimit !== null && !Number.isSafeInteger(patch.defaultLimit)) {
+          throw new RangeError("a credit limit must be a whole number of UZS");
+        }
+        body["default_credit_limit"] = patch.defaultLimit;
+      }
+      if (patch.sellersMayExceed !== undefined) {
+        body["sellers_may_exceed"] = patch.sellersMayExceed;
+      }
+      return call(transport, {
+        method: "PATCH",
+        path: `${base}/credit-settings`,
+        body,
+        idempotencyKey,
+        read: creditSettings,
+      });
+    },
+
+    /** Reminder settings with the wordings to choose from. Managers and owners only (REQ-042). */
+    readReminders(signal?: AbortSignal): Promise<ReminderSettings> {
+      return call(transport, { method: "GET", path: `${base}/reminders`, signal, read: reminderSettings });
+    },
+
+    updateReminders(patch: ReminderSettingsPatch, idempotencyKey: string): Promise<ReminderSettings> {
+      const body: Json = {};
+      if (patch.on !== undefined) {
+        body["on"] = patch.on;
+      }
+      for (const [name, value] of [
+        ["hour", patch.hour],
+        ["template", patch.template],
+      ] as const) {
+        if (value !== undefined) {
+          if (!Number.isSafeInteger(value)) {
+            throw new RangeError(`${name} must be a whole number`);
+          }
+          body[name] = value;
+        }
+      }
+      if (patch.smsOn !== undefined) {
+        body["sms_on"] = patch.smsOn;
+      }
+      return call(transport, { method: "PATCH", path: `${base}/reminders`, body, idempotencyKey, read: reminderSettings });
+    },
+
+    /** Sends one reminder now. The server allows one a day per customer (REQ-025). */
+    sendReminder(customerId: string, idempotencyKey: string): Promise<SentReminder> {
+      return call(transport, {
+        method: "POST",
+        path: `${base}/reminders/manual`,
+        body: { customer_id: customerId },
+        idempotencyKey,
+        read: sentReminder,
+      });
+    },
+
+    listUnreachable(signal?: AbortSignal): Promise<UnreachableCustomer[]> {
+      return call(transport, {
+        method: "GET",
+        path: `${base}/reminders/unreachable`,
+        signal,
+        read: items(unreachableCustomer),
+      });
+    },
+
+    /** The owner only; the owner may read it in every mode, because it says how to leave the mode. */
+    readSubscription(signal?: AbortSignal): Promise<Subscription> {
+      return call(transport, { method: "GET", path: `${base}/subscription`, signal, read: subscription });
+    },
+
     overview(signal?: AbortSignal): Promise<Overview> {
       return call(transport, { method: "GET", path: `${base}/overview`, signal, read: overview });
     },
@@ -1022,7 +1253,12 @@ function accountApi(transport: Transport, linkId: string) {
 
 export type AccountApi = ReturnType<typeof accountApi>;
 
-export function createApi(transport: { fetch: Fetch; auth: ApiAuth; onUnauthenticated?: () => void }) {
+export function createApi(transport: {
+  fetch: Fetch;
+  auth: ApiAuth;
+  onUnauthenticated?: () => void;
+  onRefusal?: (error: ApiError) => void;
+}) {
   return {
     myShops(signal?: AbortSignal): Promise<MyShops> {
       return call(transport, { method: "GET", path: "/api/v1/me/shops", signal, read: myShops });
