@@ -3,7 +3,7 @@
 Status: draft for review; awaiting human approval of core business rules (DEC-006). Prepared 2026-10-06.
 Upstream: `docs/04-prd/OUTPUT.md` (MVP scope approved, DEC-005 / APR-005).
 
-This model covers the MVP only. It names the concepts and rules the PRD implies and settles the ambiguities the PRD left open. Where a rule goes beyond what the PRD states, it is marked **decided here** and listed for approval under DEC-006.
+This model covers the MVP only. It names the concepts and rules the PRD implies and settles the ambiguities the PRD left open. Where a rule goes beyond what the PRD states, it is marked **decided here** and listed for approval (DEC-006) at the end of this document.
 
 ## Entities
 
