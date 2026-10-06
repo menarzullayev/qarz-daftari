@@ -1,7 +1,7 @@
 # Project State
 
 framework_version: 1.0.0
-current_stage: 03-market-research
+current_stage: 04-prd
 lifecycle: REVIEW
 global_audit_status: BLOCKED
 blocked_stage:
@@ -11,8 +11,8 @@ blocked_reason:
 - idea-selection: PASSED
 - 01-vision: PASSED
 - 02-problem-discovery: PASSED
-- 03-market-research: REVIEW
-- 04-prd: NOT_STARTED
+- 03-market-research: PASSED
+- 04-prd: REVIEW
 - 05-domain-model: NOT_STARTED
 - 06-architecture: NOT_STARTED
 - 07-adr: NOT_STARTED

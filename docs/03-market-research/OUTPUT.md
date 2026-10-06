@@ -1,6 +1,6 @@
 # Market Research
 
-Status: desk research complete; awaiting human decision on positioning and pricing direction (DEC-004). Prepared 2026-10-06.
+Status: positioning and pricing direction approved by the founder on 2026-10-06 (DEC-004 / APR-004). Field checks are still outstanding.
 Upstream: `docs/02-problem-discovery/OUTPUT.md` (passed provisionally, DEC-003 / APR-003; field interviews still outstanding).
 
 **Headline finding.** The closest competitor is stronger than Idea Selection assumed. pDaftar already offers a Telegram bot, Telegram reminders, a customer-facing debt link, and a free tier, and it claims thousands of daily business users (EVID-020, EVID-021). The idea approved in DEC-001 is therefore not a gap in the market. What remains open is narrower: whether a product built only for the mahalla grocer, and centered on the customer acknowledging each debt, performs better on repayment (PROB-001) than a general-purpose ledger.
@@ -148,9 +148,8 @@ Limits: competitor reach figures are self-reported; several figures come from se
 | Record | Subject | Status |
 |---|---|---|
 | DEC-003 / APR-003 | Primary user and problem, provisional | Approved 2026-10-06 |
-| DEC-004 | Positioning option B (grocer-only, acknowledgement-first) and pricing direction (free core, paid tier at 20,000 to 40,000 UZS a month), with the three stop conditions | Approval pending |
+| DEC-004 | Positioning option B (grocer-only, acknowledgement-first) and pricing direction (free core, paid tier at 20,000 to 40,000 UZS a month), with the three stop conditions | Approved 2026-10-06 |
 
-The founder is asked to decide between:
+The founder chose to **continue with positioning B to the PRD** on 2026-10-06. The agent's recommendation, to pause until pDaftar had been tested hands-on and shopkeepers interviewed, was not taken.
 
-- **Continue with positioning B** to the PRD, accepting that differentiation is thin and unproven; or
-- **Pause before the PRD** until two cheap checks are done: a hands-on test of pDaftar, and the shopkeeper interviews. This is the agent's recommendation, because both checks bear directly on the stop conditions and neither requires building anything.
+Consequence accepted with this choice: the PRD is written against a differentiation that is thin and unproven. The three stop conditions under Positioning remain in force, and the two checks remain the cheapest way to test them.

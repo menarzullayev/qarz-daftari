@@ -1,0 +1,9 @@
+{
+  "event_id": "0f9f587430a5",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T08:59:15+00:00",
+  "stage": "03-market-research",
+  "decision": "PASS",
+  "approver": "Saidakbar Narzullayev",
+  "reason": "Founder approved DEC-004 and chose to continue to the PRD in chat on 2026-10-06"
+}

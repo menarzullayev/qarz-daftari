@@ -1,0 +1,19 @@
+{
+  "event_id": "cbcc7cf6ad8b",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T09:00:53+00:00",
+  "path": ".project-alpha\\decisions\\DEC-005.md",
+  "stage": "04-prd",
+  "title": "Approve MVP scope",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-005",
+  "decision": "MVP consists of features FEAT-001 to FEAT-012 as specified in docs/04-prd/OUTPUT.md: free, Telegram-only, Uzbek-only, sized for a pilot of about ten shops; billing, SMS fallback and multiple sellers are deferred",
+  "context": "Positioning B was approved in DEC-004; the MVP is scoped to test whether customer acknowledgement and Telegram reminders improve repayment and whether entry is fast enough to replace the notebook",
+  "chosen_option": "Free Telegram-only MVP with acknowledgement, reminders and pilot measurement",
+  "rationale": "Smallest scope that tests the unproven differentiation (EVID-019) while respecting data localization (EVID-027) and avoiding unresolved payment rules (EVID-028)",
+  "impact": "High",
+  "reversibility": "Medium",
+  "evidence": "EVID-019, EVID-020, EVID-027, EVID-028, EVID-013",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

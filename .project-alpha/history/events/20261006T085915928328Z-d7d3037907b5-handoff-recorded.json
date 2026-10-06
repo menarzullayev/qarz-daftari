@@ -1,0 +1,9 @@
+{
+  "event_id": "d7d3037907b5",
+  "event_type": "handoff.recorded",
+  "timestamp": "2026-10-06T08:59:15+00:00",
+  "from_stage": "03-market-research",
+  "to_stage": "04-prd",
+  "path": ".project-alpha\\handoffs\\03-market-research__to__04-prd.md",
+  "status": "READY"
+}

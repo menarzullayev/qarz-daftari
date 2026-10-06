@@ -1,0 +1,9 @@
+{
+  "event_id": "9f4f9d9632d9",
+  "event_type": "stage.passed",
+  "timestamp": "2026-10-06T08:59:15+00:00",
+  "stage": "03-market-research",
+  "from_status": "REVIEW",
+  "to_status": "PASSED",
+  "reason": "Founder approved DEC-004 and chose to continue to the PRD in chat on 2026-10-06"
+}
