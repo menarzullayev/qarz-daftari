@@ -45,6 +45,8 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
         "NOT_TRANSFER_TARGET",
         "CUSTOMER_HAS_BALANCE",  # archiving is not a chat action
         "PROMISE_ALREADY_SET",  # said as "promise_closed"
+        "DELETION_ALREADY_REQUESTED",  # deleting a shop is done in the Mini App or the panel
+        "DELETION_NOT_REQUESTED",
         "REMINDERS_OFF",  # reminders are managed in the Mini App, not in the chat
         "REMINDER_NOT_DUE",
         "REMINDER_LIMIT_REACHED",

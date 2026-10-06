@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 
 from qarz.application.ports import Storage
 from qarz.application.reminders import ReminderService
+from qarz.application.shop_deletion import ShopDeletionService
 from qarz.application.subscription import SubscriptionService
 from qarz.domain.promise import TASHKENT
 from qarz.domain.reminders import hours_to_run
@@ -17,6 +18,7 @@ from qarz.domain.reminders import hours_to_run
 REMINDERS = "reminders"
 SUBSCRIPTIONS = "subscriptions"
 SUBSCRIPTION_HOUR = 9
+ERASURE = "erasure"
 
 
 class Scheduler:
@@ -26,10 +28,12 @@ class Scheduler:
         reminders: ReminderService,
         now: Callable[[], datetime] | None = None,
         subscriptions: SubscriptionService | None = None,
+        deletion: ShopDeletionService | None = None,
     ) -> None:
         self._storage = storage
         self._reminders = reminders
         self._subscriptions = subscriptions
+        self._deletion = deletion
         self._now = now or (lambda: datetime.now(UTC))
 
     async def tick(self) -> int:
@@ -44,6 +48,14 @@ class Scheduler:
             sent += await self._reminders.run_hour(hour)
             async with self._storage.platform() as session:
                 await session.finish_job(REMINDERS, period)
+        if self._deletion is not None:
+            period = f"{local.date().isoformat()}T{local.hour:02d}"
+            async with self._storage.platform() as session:
+                done = await session.job_done(ERASURE, period)
+            if not done:
+                await self._deletion.erase_due()
+                async with self._storage.platform() as session:
+                    await session.finish_job(ERASURE, period)
         if self._subscriptions is not None and local.hour >= SUBSCRIPTION_HOUR:
             period = local.date().isoformat()
             async with self._storage.platform() as session:

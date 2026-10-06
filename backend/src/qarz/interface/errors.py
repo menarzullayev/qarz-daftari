@@ -27,6 +27,8 @@ _STATUS = {
     "PROMISE_ALREADY_SET": 409,
     "CUSTOMER_ALREADY_LINKED": 409,
     "DISPUTE_NOT_ALLOWED": 409,
+    "DELETION_ALREADY_REQUESTED": 409,
+    "DELETION_NOT_REQUESTED": 409,
     "LIMIT_REACHED": 409,
     "REMINDERS_OFF": 409,
     "REMINDER_NOT_DUE": 409,
@@ -80,6 +82,8 @@ _MESSAGES = {
         "REMINDER_LIMIT_REACHED": "Bu mijozga bugun eslatma allaqachon yuborilgan. Kuniga bitta mumkin.",
         "CUSTOMER_UNREACHABLE": "Bu mijozga yetib bo'lmaydi: Telegram ulanmagan, SMS esa o'chiq yoki raqam yo'q.",
         "LIMIT_REACHED": "Bu savdo mijozning nasiya limitidan oshadi. Menejer yoki do'kon egasi yoza oladi.",
+        "DELETION_ALREADY_REQUESTED": "Do'konni o'chirish allaqachon so'ralgan.",
+        "DELETION_NOT_REQUESTED": "Do'konni o'chirish so'ralmagan.",
         "ERROR": "Xatolik yuz berdi.",
     },
     "ru": {
@@ -118,6 +122,8 @@ _MESSAGES = {
         "REMINDER_LIMIT_REACHED": "Этому клиенту сегодня уже отправлено напоминание. Можно одно в день.",
         "CUSTOMER_UNREACHABLE": "С этим клиентом нет связи: Telegram не подключён, а SMS выключены или нет номера.",
         "LIMIT_REACHED": "Эта продажа превысит лимит клиента. Записать может менеджер или владелец.",
+        "DELETION_ALREADY_REQUESTED": "Удаление магазина уже запрошено.",
+        "DELETION_NOT_REQUESTED": "Удаление магазина не запрашивалось.",
         "ERROR": "Произошла ошибка.",
     },
 }

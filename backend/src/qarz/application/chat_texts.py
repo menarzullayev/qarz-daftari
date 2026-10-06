@@ -197,6 +197,12 @@ UZ = {
     ),
     "n_date_declined": "{shop}\n{amount} nasiya muddatini {date} ga ko'chirish so'rovingiz rad etildi.",
     "n_date_changed": "{shop}\n{name}, {amount} nasiyaning to'lash muddati o'zgartirildi: {old} → {date}",
+    "shop_deletion_requested": (
+        "«{shop}» do'konini o'chirish so'raldi. Ma'lumotlar {date} kuni butunlay o'chiriladi. Shu kungacha "
+        "eksport qilishingiz yoki bekor qilishingiz mumkin."
+    ),
+    "shop_deletion_cancelled": "«{shop}» do'konini o'chirish bekor qilindi. Do'kon avvalgidek ishlaydi.",
+    "shop_erased": "«{shop}» do'koni va uning barcha ma'lumotlari o'chirildi.",
     "currency": "so'm",
 }
 
@@ -384,6 +390,12 @@ RU = {
     "n_date_accepted": "{shop}\nВаша просьба перенести срок оплаты долга {amount} принята.\nНовый срок оплаты: {date}",
     "n_date_declined": "{shop}\nВаша просьба перенести срок оплаты долга {amount} на {date} отклонена.",
     "n_date_changed": "{shop}\n{name}, срок оплаты долга {amount} изменён: {old} → {date}",
+    "shop_deletion_requested": (
+        "Запрошено удаление магазина «{shop}». Данные будут полностью удалены {date}. До этого дня можно "
+        "выгрузить данные или отменить удаление."
+    ),
+    "shop_deletion_cancelled": "Удаление магазина «{shop}» отменено. Магазин работает как раньше.",
+    "shop_erased": "Магазин «{shop}» и все его данные удалены.",
     "currency": "сум",
 }
 

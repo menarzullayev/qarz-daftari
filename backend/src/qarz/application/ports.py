@@ -200,6 +200,14 @@ class PromiseRecord:
 
 
 @dataclass(frozen=True)
+class ShopToErase:
+    shop_id: UUID
+    shop_name: str
+    owner_tg: int | None
+    owner_lang: str | None
+
+
+@dataclass(frozen=True)
 class WaitingLink:
     """Someone who started the bot from the counter code and agreed, not yet attached to a record."""
 
@@ -550,6 +558,12 @@ class TenantSession(Protocol):
 
     async def record_system_activity(self, *, action: str, subject_id: UUID) -> None: ...
 
+    async def deletion_state(self, *, for_update: bool = False) -> tuple[str, datetime | None]:
+        """The shop's status (active or deletion_pending) and when it is due to be erased."""
+        ...
+
+    async def set_deletion(self, *, status: str, due: datetime | None) -> None: ...
+
     async def lock_request_key(self, key: str) -> None:
         """Serialize concurrent requests that carry the same idempotency key, until the transaction ends."""
         ...
@@ -569,6 +583,12 @@ class PlatformSession(Protocol):
     async def update_seen(self, update_id: int) -> bool: ...
 
     async def shops_due_for_reminders(self, hour: int) -> list[UUID]: ...
+
+    async def shops_to_erase(self) -> list[ShopToErase]: ...
+
+    async def erase_shop(self, shop_id: UUID) -> bool:
+        """Erase a shop whose waiting period is over by the database's clock. False when it is not due."""
+        ...
 
     async def subscriptions_to_review(self, today: date) -> list[SubscriptionToReview]: ...
 

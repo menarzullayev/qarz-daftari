@@ -1,10 +1,10 @@
 """Date change requests: a decline reason, the chat question for the date, an index of open requests.
 
-Applied after 0013 and 0014, which reached the main branch first: the numbers name the stories' order, the
+Applied after 0013, 0014 and 0017, which reached the main branch first: the numbers name the stories' order, the
 revisions below the order in which a database is built.
 
 Revision ID: 0011
-Revises: 0014
+Revises: 0017
 """
 
 from pathlib import Path
@@ -12,7 +12,7 @@ from pathlib import Path
 from alembic import op
 
 revision = "0011"
-down_revision = "0014"
+down_revision = "0017"
 branch_labels = None
 depends_on = None
 
