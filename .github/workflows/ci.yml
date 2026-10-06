@@ -79,8 +79,8 @@ jobs:
         run: npm run typecheck
       - name: Tests
         run: npm test
-      - name: Build
-        run: npm run build
+      - name: Build and bundle budget (NFR-010)
+        run: npm run size
       - name: Dependency vulnerabilities
         run: npm audit --audit-level=high
 
