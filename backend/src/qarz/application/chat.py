@@ -33,6 +33,7 @@ from qarz.application.links import COUNTER_PREFIX, PERSONAL_PREFIX
 from qarz.application.ports import Membership, MyShop, PlatformSession, Storage, TenantSession
 from qarz.application.shops import ShopService, require_member
 from qarz.application.staff import StaffService, token_hash
+from qarz.application.subscription import SubscriptionService
 from qarz.domain.access import Capability, allows
 from qarz.domain.chat_entry import ParsedEntry, ParseError, ParseErrorCode, parse_entry
 from qarz.domain.disputes import clean_reason
@@ -59,7 +60,7 @@ _PARSE_TEXTS = {
     ParseErrorCode.AMOUNT_TOO_SMALL: "amount_range",
     ParseErrorCode.AMOUNT_TOO_LARGE: "amount_range",
 }
-_LATER_COMMANDS = frozenset({"/ilova", "/toladim", "/obuna"})
+_LATER_COMMANDS = frozenset({"/ilova", "/toladim"})
 
 Keyboard = list[list[tuple[str, str]]]
 
@@ -159,6 +160,7 @@ class ChatService:
         self._staff = staff
         self._accounts_service = CustomerAccountService(storage, now)
         self._disputes = DisputeService(storage, now)
+        self._subscriptions = SubscriptionService(storage, now)
         self._now = now or (lambda: datetime.now(UTC))
 
     def _today(self) -> date:
@@ -272,6 +274,18 @@ class ChatService:
                         for account in accounts[:20]
                     ],
                 )
+        elif command == "/obuna":
+            shops = await session.my_memberships(incoming.user_id)
+            shop = await self._active_shop(session, incoming.user_id, shops)
+            if not shops:
+                await replies.send(say(lang, "no_shops"), self._open_shop(lang))
+            elif shop is None:
+                await replies.send(say(lang, "choose_shop"), self._shop_buttons(shops))
+            else:
+                try:
+                    await replies.send(await self._subscriptions.chat_text(incoming.user_id, shop.shop_id, lang))
+                except AppError as error:
+                    await replies.send(self._error_text(lang, error))
         elif command == "/yordam":
             await replies.send(say(lang, "help"))
         elif command in _LATER_COMMANDS:

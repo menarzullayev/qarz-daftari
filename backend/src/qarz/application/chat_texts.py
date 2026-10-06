@@ -154,6 +154,22 @@ UZ = {
     "sms_overdue": "{shop}: {name}, {amount} qarz muddati o'tgan. Iltimos, to'lab qo'ying.",
     "LIMIT_REACHED": "Bu savdo mijozning nasiya limitidan oshadi. Uni menejer yoki do'kon egasi yoza oladi.",
     "limit_warning": "⚠️ Qarz limitdan oshdi: limit {limit}, qarz {balance}.",
+    "sub_header": "«{shop}» — obuna",
+    "sub_state_trial": "Sinov muddati: {date} gacha ({days} kun qoldi).",
+    "sub_state_active": "To'langan: {date} gacha ({days} kun qoldi).",
+    "sub_state_limited": (
+        "Muddat tugagan: yangi nasiya yozilmaydi. To'lov qabul qilish, ko'rish va mijozlarga xabarlar ishlayveradi."
+    ),
+    "sub_state_suspended": "Do'kon vaqtincha to'xtatilgan. Qo'llab-quvvatlashga murojaat qiling.",
+    "sub_price": "Narxi: oyiga {price}.",
+    "sub_pay_to": "To'lov uchun karta: {card}. O'tkazmadan so'ng chekni shu yerga yuboring.",
+    "sub_no_card": "To'lov rekvizitlari hali kiritilmagan.",
+    "sub_trial_ending": "«{shop}»: sinov muddati {days} kundan keyin, {date} kuni tugaydi. Davom ettirish: /obuna",
+    "sub_paid_ending": "«{shop}»: to'langan muddat {days} kundan keyin, {date} kuni tugaydi. Uzaytirish: /obuna",
+    "sub_limited": (
+        "«{shop}»: obuna muddati tugadi. Endi yangi nasiya yozilmaydi; to'lov qabul qilish, ko'rish va "
+        "mijozlarga xabarlar ishlayveradi. To'lash: /obuna"
+    ),
     "currency": "so'm",
 }
 
@@ -302,6 +318,22 @@ RU = {
     "sms_overdue": "{shop}: {name}, срок оплаты долга {amount} прошёл. Пожалуйста, оплатите.",
     "LIMIT_REACHED": "Эта продажа превысит лимит клиента. Записать её может менеджер или владелец.",
     "limit_warning": "⚠️ Долг превысил лимит: лимит {limit}, долг {balance}.",
+    "sub_header": "«{shop}» — подписка",
+    "sub_state_trial": "Пробный период: до {date} (осталось дней: {days}).",
+    "sub_state_active": "Оплачено: до {date} (осталось дней: {days}).",
+    "sub_state_limited": (
+        "Срок истёк: новые продажи в долг не записываются. Приём оплат, просмотр и сообщения клиентам работают."
+    ),
+    "sub_state_suspended": "Магазин временно приостановлен. Обратитесь в поддержку.",
+    "sub_price": "Цена: {price} в месяц.",
+    "sub_pay_to": "Карта для оплаты: {card}. После перевода отправьте чек сюда.",
+    "sub_no_card": "Реквизиты для оплаты пока не указаны.",
+    "sub_trial_ending": "«{shop}»: пробный период закончится через {days} дн., {date}. Продолжить: /obuna",
+    "sub_paid_ending": "«{shop}»: оплаченный период закончится через {days} дн., {date}. Продлить: /obuna",
+    "sub_limited": (
+        "«{shop}»: срок подписки истёк. Новые продажи в долг не записываются; приём оплат, просмотр и "
+        "сообщения клиентам работают. Оплатить: /obuna"
+    ),
     "currency": "сум",
 }
 

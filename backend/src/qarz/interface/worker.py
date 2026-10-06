@@ -13,6 +13,7 @@ from aiogram import Bot
 from qarz.application.dispatch import Dispatcher
 from qarz.application.reminders import ReminderService
 from qarz.application.scheduler import Scheduler
+from qarz.application.subscription import SubscriptionService
 from qarz.infrastructure.db import Database
 from qarz.infrastructure.settings import Settings
 from qarz.infrastructure.sms_sender import ChannelSender, NoSmsProvider
@@ -30,7 +31,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
     bot = Bot(settings.bot_token)
     # No SMS provider is chosen yet: the SMS path exists, is switched off, and refuses to send.
     dispatcher = Dispatcher(database, ChannelSender(telegram=TelegramSender(bot), sms=NoSmsProvider()))
-    scheduler = Scheduler(database, ReminderService(database))
+    scheduler = Scheduler(database, ReminderService(database), subscriptions=SubscriptionService(database))
     next_schedule = 0.0
     try:
         while not stop.is_set():

@@ -17,6 +17,7 @@ from qarz.domain.credit import MAX_LIMIT, MIN_LIMIT, valid_limit
 from qarz.domain.names import normalize_name
 from qarz.domain.phones import normalize_phone
 from qarz.domain.promise import tashkent_date
+from qarz.domain.subscription import effective_state
 
 CREATE_CUSTOMER = operation("customers.create", Capability.RECORD)
 LIST_CUSTOMERS = operation("customers.list", Capability.RECORD)
@@ -54,13 +55,7 @@ async def effective_subscription(session: TenantSession, today: date) -> str:
     if row is None:
         return "limited"
     state, trial_ends, paid_through = row
-    if state == "suspended":
-        return "suspended"
-    if state == "trial" and (trial_ends is None or trial_ends < today):
-        return "limited"
-    if state == "active" and (paid_through is None or paid_through < today):
-        return "limited"
-    return state
+    return effective_state(state, trial_ends, paid_through, today)
 
 
 async def require_writable(session: TenantSession, today: date, *, new_credit: bool) -> None:

@@ -203,6 +203,7 @@ CALLS: dict[str, Call] = {
     "shop.credit.update": Call(
         "PATCH", lambda w, shop: f"/api/v1/shops/{shop}/credit-settings", {"sellers_may_exceed": False}, True
     ),
+    "shop.subscription.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/subscription"),
     "overview.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview"),
     "overview.debtors": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview/debtors"),
     "catalog.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/catalog"),
@@ -283,6 +284,8 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     # A seller must know the rule they sell under; an owner or manager sets it (REQ-044).
     "shop.credit.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "shop.credit.update": {Role.MANAGER, Role.OWNER},
+    # Specification, authorization table: the subscription is the owner's.
+    "shop.subscription.read": {Role.OWNER},
     "overview.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "overview.debtors": {Role.SELLER, Role.MANAGER, Role.OWNER},
     # Specification, resources table: "Manager, owner; sellers read".

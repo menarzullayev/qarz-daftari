@@ -36,6 +36,7 @@ from qarz.application.ports import (
     ShopSettings,
     ShopTotals,
     StaffInvitation,
+    SubscriptionToReview,
     TransferRecord,
     WaitingLink,
 )
@@ -1257,9 +1258,7 @@ class PgTenantSession:
         row = (
             await self._conn.execute(text("SELECT value FROM platform_setting WHERE key = :key"), {"key": key})
         ).first()
-        if row is None:
-            return None
-        return json.loads(row.value) if isinstance(row.value, str) else row.value
+        return None if row is None else row.value
 
     async def credit_settings(self) -> CreditSettings:
         row = (
@@ -1286,6 +1285,24 @@ class PgTenantSession:
                 "may_exceed": sellers_may_exceed,
                 "shop_id": self._shop_id,
             },
+        )
+
+    async def limit_subscription(self, now: datetime) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE subscription SET prior_state = state, state = 'limited', updated_at = :now "
+                "WHERE state IN ('trial', 'active')"
+            ),
+            {"now": now},
+        )
+
+    async def record_system_activity(self, *, action: str, subject_id: UUID) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO activity (id, shop_id, actor_kind, actor_id, action, subject_type, subject_id) "
+                "VALUES (:id, :shop_id, 'system', NULL, :action, 'shop', :subject_id)"
+            ),
+            {"id": uuid4(), "shop_id": self._shop_id, "action": action, "subject_id": subject_id},
         )
 
     async def lock_request_key(self, key: str) -> None:
@@ -1327,6 +1344,28 @@ class PgPlatformSession:
             )
         ).first()
         return row is not None
+
+    async def subscriptions_to_review(self, today: date) -> list[SubscriptionToReview]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT shop_id, shop_name, state, ends_on, owner_tg, owner_lang "
+                    "FROM subscriptions_to_review(:today)"
+                ),
+                {"today": today},
+            )
+        ).all()
+        return [
+            SubscriptionToReview(
+                row.shop_id,
+                str(row.shop_name),
+                str(row.state),
+                row.ends_on,
+                None if row.owner_tg is None else int(row.owner_tg),
+                row.owner_lang,
+            )
+            for row in rows
+        ]
 
     async def shops_due_for_reminders(self, hour: int) -> list[UUID]:
         rows = (
@@ -1432,9 +1471,7 @@ class PgPlatformSession:
         row = (
             await self._conn.execute(text("SELECT value FROM platform_setting WHERE key = :key"), {"key": key})
         ).first()
-        if row is None:
-            return None
-        return json.loads(row.value) if isinstance(row.value, str) else row.value
+        return None if row is None else row.value
 
     async def set_active_shop(self, user_id: UUID, shop_id: UUID) -> None:
         await self._conn.execute(
