@@ -1,7 +1,7 @@
 # Quality & Operations
 
 Status: draft for review. This document defines how the MVP is tested, released, watched, and recovered. It does **not** claim the product is ready to launch: nothing has been built, and most launch criteria below are unmet by design. Prepared 2026-10-06.
-Upstream: Development Plan (DEC-010), Technical Specification (DEC-009), decision records ADR-001 to ADR-010.
+Upstream: Development Plan (DEC-010), Technical Specification (DEC-009), decision records ADR-001 to ADR-010 (DEC-008).
 
 Scale assumed throughout: one operator (the founder), one server, about ten pilot shops.
 
@@ -81,7 +81,7 @@ Each alert is triggered deliberately once before the pilot to prove it arrives. 
 
 ## Backup
 
-Implements ADR-009.
+Implements the backup decision record (ADR-009).
 
 | Item | Specification |
 |---|---|
@@ -180,9 +180,9 @@ None of the eleven is met. That is the expected state for a documentation pipeli
 ## Evidence
 
 - Schema and immutability checks executed in PostgreSQL 16 on 2026-10-06 (recorded in the Technical Specification).
-- Hosting availability and price range in Uzbekistan: EVID-031.
-- Telegram rate limits that the dispatcher and alert thresholds respect: EVID-032.
-- Legal basis for the hosting and consent requirements: EVID-027; Telegram message storage: EVID-033.
+- Hosting availability and price range in Uzbekistan (EVID-031).
+- Telegram rate limits that the dispatcher and alert thresholds respect (EVID-032).
+- Legal basis for the hosting and consent requirements (EVID-027) and Telegram message storage (EVID-033).
 
 No operational evidence exists yet: no test run, no deployment, no restore, no alert has been exercised, because there is no system.
 
