@@ -61,6 +61,7 @@ describe("requests", () => {
       phone: "+998901234567",
       status: "active",
       remindersOff: false,
+      creditLimit: null,
       balance: 120000,
     });
 

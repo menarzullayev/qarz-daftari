@@ -6,6 +6,7 @@ import { type CalendarDay, formatCalendarDay, formatMoney, tashkentDay } from ".
 import { linesSumProblem, MAX_LINES_SUM, MIN_LINES_SUM } from "../goods";
 import { useLoad, useSubmit } from "../hooks";
 import { type AmountProblem, formatUzs, MAX_AMOUNT, MIN_AMOUNT, parseAmount } from "../money";
+import { canManage } from "../navigation";
 import {
   addDays,
   MAX_PROMISE_DAYS,
@@ -19,6 +20,7 @@ import {
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
 import { useWorkspace } from "./context";
+import { effectiveLimit, exceedsLimit, refusedLimit } from "./creditRules";
 import { type DraftLine, GoodsEditor, GoodsList, readDrafts } from "./GoodsEditor";
 import { errorText, Failure, FieldError, Loading } from "./parts";
 
@@ -100,7 +102,7 @@ function isFinalRefusal(error: ApiError): boolean {
 function Recorded({ saved, today, onAnother }: { saved: Saved; today: CalendarDay; onAnother: () => void }) {
   const { api } = useWorkspace();
   const { t, language } = useI18n();
-  const { entry, customer } = saved.recorded;
+  const { entry, customer, limitWarning } = saved.recorded;
   // A sale saved with the usual term may get its date once, with one tap (REQ-008).
   const choice = useSubmit((date: string, key): Promise<ChosenPromise> => api.choosePromise(entry.id, date, key));
   const chosen = choice.state.status === "done" ? choice.state.result.promisedDate : null;
@@ -119,6 +121,15 @@ function Recorded({ saved, today, onAnother }: { saved: Saved; today: CalendarDa
       <p className="balance">
         <span>{t("customer.balance.new")}</span> <strong>{formatMoney(customer.balance, language)}</strong>
       </p>
+      {/* The server saved the sale above the limit and says so to its author (REQ-044). */}
+      {limitWarning ? (
+        <p className="row__warning">
+          {t("credit.saved.over", {
+            balance: formatMoney(limitWarning.balance, language),
+            limit: formatMoney(limitWarning.limit, language),
+          })}
+        </p>
+      ) : null}
       {entry.lines.length > 0 ? <GoodsList lines={entry.lines} /> : null}
       {promised ? <p>{t("entry.promised", { date: formatCalendarDay(promised, language) })}</p> : null}
       {refusal ? (
@@ -164,8 +175,13 @@ function Recorded({ saved, today, onAnother }: { saved: Saved; today: CalendarDa
 }
 
 function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; kind: EntryKind; onRecorded: () => void }) {
-  const { api, now } = useWorkspace();
+  const { api, now, role } = useWorkspace();
   const { t, language } = useI18n();
+  // The shop's default limit and its rule for sellers; a payment meets no limit and asks for nothing.
+  const credit = useLoad(
+    (signal) => (kind === "credit" ? api.readCreditSettings(signal) : Promise.resolve(null)),
+    [api, kind],
+  );
   const [amountText, setAmountText] = useState("");
   const [note, setNote] = useState("");
   const [choice, setChoice] = useState<PromiseChoice>("default");
@@ -192,6 +208,14 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
   const itemized = kind === "credit" && goods.length > 0;
   const reading = readDrafts(goods);
   const sumProblem = itemized && reading.lines !== null ? linesSumProblem(reading.sum) : null;
+
+  // A warning before saving, never a block: the server decides (BR-8). When the shop's settings could
+  // not be read, the customer's own limit is still known and still warns.
+  const creditSettings = credit.state.status === "ready" ? credit.state.data : null;
+  const limit = effectiveLimit(customer.creditLimit, creditSettings?.defaultLimit ?? null);
+  const sale = itemized ? reading.sum : parsed.ok ? parsed.amount : null;
+  const overLimit = kind === "credit" && limit !== null && sale !== null && exceedsLimit(limit, customer.balance, sale);
+  const mayProceed = canManage(role) ? true : (creditSettings?.sellersMayExceed ?? null);
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -224,6 +248,7 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
 
   const failure = state.status === "error" ? state.error : null;
   const refused = refusedFields(failure, t);
+  const refusedAt = refusedLimit(failure);
   const shown: FieldErrors = {
     amount: errors.amount ?? refused.amount,
     note: errors.note ?? refused.note,
@@ -240,6 +265,14 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
       {failure ? (
         <div className="notice notice--error" role="alert">
           <p>{errorText(failure, t)}</p>
+          {refusedAt ? (
+            <p>
+              {t("credit.refused.figures", {
+                limit: formatMoney(refusedAt.limit, language),
+                balance: formatMoney(refusedAt.balance, language),
+              })}
+            </p>
+          ) : null}
           {failure.serverMessage === null ? <p>{t("entry.retrySafe")}</p> : null}
         </div>
       ) : null}
@@ -299,6 +332,20 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
           ) : null}
         </div>
       )}
+
+      {overLimit && limit !== null && sale !== null ? (
+        <div className="notice" role="note">
+          <p>
+            {t("credit.warn.over", {
+              balance: formatMoney(customer.balance + sale, language),
+              limit: formatMoney(limit, language),
+            })}
+          </p>
+          {mayProceed === null ? null : (
+            <p>{t(mayProceed ? "credit.warn.allowed" : "credit.limit.sellersStopped")}</p>
+          )}
+        </div>
+      ) : null}
 
       <div className="field">
         <label htmlFor="entry-note">{t("entry.note")}</label>

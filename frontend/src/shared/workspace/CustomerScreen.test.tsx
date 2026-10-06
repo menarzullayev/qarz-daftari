@@ -3,6 +3,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/re
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  creditSettingsBody,
   CUSTOMER_ID,
   customerBody,
   deferred,
@@ -44,6 +45,9 @@ function shop(onWrite: (sent: Sent, attempt: number) => Reply = () => ok({}), de
   return fakeServer((sent) => {
     if (sent.method !== "GET") {
       return onWrite(sent, attempt++);
+    }
+    if (sent.path.endsWith("/credit-settings")) {
+      return ok(creditSettingsBody());
     }
     return sent.path.endsWith("/link") ? ok(linkBody()) : detail();
   });

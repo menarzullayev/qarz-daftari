@@ -9,6 +9,7 @@ import { SignInRequiredScreen } from "./screens";
 import { Shell } from "./Shell";
 import { StaffRoutes } from "./StaffApp";
 import { Failure, Loading } from "./workspace/parts";
+import { modeOfRefusal, type ShopMode } from "./workspace/shopMode";
 
 type StaffRootProps = {
   entryKey: MessageKey;
@@ -98,6 +99,9 @@ function Root({
   const [attempt, setAttempt] = useState(0);
   const [choosing, setChoosing] = useState(false);
   const [choice, setChoice] = useState<{ pending: boolean; error: ApiError | null }>({ pending: false, error: null });
+  // What the active shop's refusals have said about it. Only the owner may read the subscription, so
+  // for other staff this is the one source; it is forgotten when another shop is chosen.
+  const [shopMode, setShopMode] = useState<ShopMode | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,7 +118,17 @@ function Root({
         return;
       }
       // A session that ends later (expired, or signed out elsewhere) leads back to the sign-in notice.
-      const api = createApi({ fetch, auth, onUnauthenticated: signedOut });
+      const api = createApi({
+        fetch,
+        auth,
+        onUnauthenticated: signedOut,
+        onRefusal: (error) => {
+          const mode = modeOfRefusal(error);
+          if (mode !== null && !cancelled) {
+            setShopMode(mode);
+          }
+        },
+      });
       // A failure to read the accounts must not keep a member of staff from their work: for them it
       // only means "my debts" is not offered. For a person with no shop it is the whole page, so it fails.
       const [mine, accounts] = await Promise.all([
@@ -208,6 +222,7 @@ function Root({
       () => {
         setChoice({ pending: false, error: null });
         setChoosing(false);
+        setShopMode(null);
         setPhase({ ...phase, activeShop: chosen.shopId });
         navigate("/");
       },
@@ -229,6 +244,7 @@ function Root({
       session={{ shopName: shop.name, role: shop.role, membershipId: shop.membershipId }}
       api={shopApi}
       now={now}
+      shopMode={shopMode}
       overviewFooter={
         phase.shops.length > 1 || phase.isCustomer ? (
           <p className="actions">

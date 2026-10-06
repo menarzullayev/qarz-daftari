@@ -71,7 +71,45 @@ export function customerBody(overrides: Record<string, unknown> = {}) {
     phone: "+998901234567",
     status: "active",
     reminders_off: false,
+    credit_limit: null,
     balance: 120000,
+    ...overrides,
+  };
+}
+
+/** GET /shops/{id}/credit-settings: no default limit, and a seller is stopped at a customer's limit. */
+export function creditSettingsBody(overrides: Record<string, unknown> = {}) {
+  return { default_credit_limit: null, sellers_may_exceed: false, limit_bounds: [1000, 10000000000], ...overrides };
+}
+
+/** The three fixed wordings as the server returns them (application/chat_texts.py), shortened to two forms each. */
+export const REMINDER_TEMPLATES = [1, 2, 3].map((id) => ({
+  id,
+  due_today: {
+    uz: `${id}: «{shop}»: {name}, bugun {amount} to'lash kuni.`,
+    ru: `${id}: «{shop}»: {name}, сегодня срок оплаты {amount}.`,
+  },
+  overdue: {
+    uz: `${id}: «{shop}»: {name}, {amount} qarzning to'lash muddati o'tgan.`,
+    ru: `${id}: «{shop}»: {name}, срок оплаты долга {amount} прошёл.`,
+  },
+}));
+
+/** GET /shops/{id}/reminders: off, at ten o'clock, the first wording, no SMS. */
+export function remindersBody(overrides: Record<string, unknown> = {}) {
+  return { on: false, hour: 10, template: 1, sms_on: false, hours: [8, 20], templates: REMINDER_TEMPLATES, ...overrides };
+}
+
+/** GET /shops/{id}/subscription: a trial with twenty days left, and a card to pay to. */
+export function subscriptionBody(overrides: Record<string, unknown> = {}) {
+  return {
+    state: "trial",
+    trial_ends: "2026-10-26",
+    paid_through: null,
+    ends_on: "2026-10-26",
+    days_left: 20,
+    price_uzs: 100000,
+    card_number: "8600 1234 5678 9012",
     ...overrides,
   };
 }
