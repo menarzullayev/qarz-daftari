@@ -74,3 +74,9 @@
 - Approver: Saidakbar Narzullayev
 - Timestamp: 2026-10-06T10:29:11+00:00
 - Reason: Founder accepted all ten ADRs through the question form on 2026-10-06 (DEC-008, APR-008)
+
+## Approval — 08-technical-spec
+- Decision: PASS
+- Approver: Saidakbar Narzullayev
+- Timestamp: 2026-10-06T10:35:55+00:00
+- Reason: Founder approved DEC-009 through the question form on 2026-10-06

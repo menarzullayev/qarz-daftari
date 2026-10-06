@@ -1,0 +1,19 @@
+{
+  "event_id": "92a608aec737",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T10:37:19+00:00",
+  "path": ".project-alpha\\decisions\\DEC-010.md",
+  "stage": "09-development-plan",
+  "title": "Approve development plan and gates",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-010",
+  "decision": "Build in the order M1 to M6 with an estimate of 18 to 31 focused days and no calendar commitment; interviews and a hands-on pDaftar test must finish before M3; legal review must finish before any real customer data is processed",
+  "context": "Two validation checks were deferred at earlier stages by founder decision; the plan places them as hard gates where a stop decision is cheapest",
+  "chosen_option": "Six milestones with two hard gates",
+  "rationale": "Builds the cheap one-sided ledger first, tests the unproven differentiation before investing in it (EVID-019, EVID-020), and keeps real personal data out until compliance is reviewed (EVID-027)",
+  "impact": "High",
+  "reversibility": "High",
+  "evidence": "EVID-019, EVID-020, EVID-027, EVID-031",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

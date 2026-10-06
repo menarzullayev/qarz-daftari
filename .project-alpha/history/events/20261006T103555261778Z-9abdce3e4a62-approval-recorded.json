@@ -1,0 +1,12 @@
+{
+  "event_id": "9abdce3e4a62",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T10:35:55+00:00",
+  "path": ".project-alpha\\approvals\\APR-009.md",
+  "stage": "08-technical-spec",
+  "decision_id": "DEC-009",
+  "decision": "Technical specification as written, with two founder choices: notifications include the customer's name as the shop wrote it, and each owner chooses the reminder hour",
+  "approval_id": "APR-009",
+  "approver": "Saidakbar Narzullayev",
+  "status": "approved"
+}

@@ -1,7 +1,7 @@
 # Project State
 
 framework_version: 1.0.0
-current_stage: 08-technical-spec
+current_stage: 09-development-plan
 lifecycle: REVIEW
 global_audit_status: BLOCKED
 blocked_stage:
@@ -16,8 +16,8 @@ blocked_reason:
 - 05-domain-model: PASSED
 - 06-architecture: PASSED
 - 07-adr: PASSED
-- 08-technical-spec: REVIEW
-- 09-development-plan: NOT_STARTED
+- 08-technical-spec: PASSED
+- 09-development-plan: REVIEW
 - 10-operations: NOT_STARTED
 
 ## Workflow invariants

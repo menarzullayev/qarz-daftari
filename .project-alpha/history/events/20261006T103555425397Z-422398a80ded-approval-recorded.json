@@ -1,0 +1,9 @@
+{
+  "event_id": "422398a80ded",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T10:35:55+00:00",
+  "stage": "08-technical-spec",
+  "decision": "PASS",
+  "approver": "Saidakbar Narzullayev",
+  "reason": "Founder approved DEC-009 through the question form on 2026-10-06"
+}

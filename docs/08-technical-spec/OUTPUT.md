@@ -1,6 +1,6 @@
 # Technical Specification
 
-Status: draft for review; awaiting human approval of security, data and compliance details (DEC-009). Prepared 2026-10-06.
+Status: approved by the founder on 2026-10-06 (DEC-009 / APR-009). Legal review of the consent text and four legal questions remains a gate before the pilot.
 Upstream: PRD (DEC-005), Domain Model (DEC-006), Architecture (DEC-007), decision records ADR-001 to ADR-010 (DEC-008).
 
 Scope: the MVP only. The system has no public HTTP API; its contract with users is the Telegram conversation, and its contract with Telegram is the webhook and Bot API calls.
@@ -48,7 +48,7 @@ Every successful entry gets one reply stating customer, amount, due date, new ba
 | `/qarzlar` | Total outstanding and customers by balance | REQ-026 |
 | `/muddati` | Overdue customers with days overdue and a "send reminder" button | REQ-025, REQ-026 |
 | `/ulash` | Produce a customer's personal link and QR image | REQ-013 |
-| `/eslatma` | Turn shop reminders on or off, choose the template | REQ-022, REQ-024 |
+| `/eslatma` | Turn shop reminders on or off, choose the template and the hour reminders go out (08:00 to 20:00) | REQ-022, REQ-024 |
 | `/sozlama` | Shop name and default due day | REQ-008 |
 | `/eksport` | Send the ledger as an `.xlsx` file | REQ-028 |
 | `/yordam` | Help with examples | REQ-N01 |
@@ -58,7 +58,7 @@ Every successful entry gets one reply stating customer, amount, due date, new ba
 | Trigger | Behavior | Requirements |
 |---|---|---|
 | `/start <token>` from a link or QR | Show the consent text with "Roziman" and "Rad etaman" buttons. Agree: create link and consent record, show balance. Decline: store nothing, token stays usable. | REQ-013, REQ-014 |
-| Entry notification | Amount, shop, new balance, buttons "Tasdiqlayman" and "E'tiroz" | REQ-015, REQ-016 |
+| Entry notification | Greeting with the name the shop uses for the customer, amount, shop, new balance, buttons "Tasdiqlayman" and "E'tiroz" | REQ-015, REQ-016 |
 | "E'tiroz" | Bot asks for a short reason (3 to 200 characters), then records the dispute | REQ-016, REQ-017 |
 | `/qarzim` | Balance and paged history per linked shop, with status of each entry and buttons to confirm, dispute, or withdraw a dispute | REQ-019 |
 | `/uzish` | Disconnect from a shop after confirmation | REQ-021 |
@@ -96,6 +96,7 @@ CREATE TABLE shop (
   due_day         smallint NOT NULL DEFAULT 5 CHECK (due_day BETWEEN 1 AND 31),
   reminders_on    boolean NOT NULL DEFAULT false,
   reminder_tpl    smallint NOT NULL DEFAULT 1,
+  reminder_hour   smallint NOT NULL DEFAULT 10 CHECK (reminder_hour BETWEEN 8 AND 20),  -- Tashkent time
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 
@@ -230,7 +231,7 @@ Domain events are produced inside the transaction and consumed synchronously in 
 | LinkUnreachable | Dispatcher on Telegram error 403 | Link status change; no owner notice |
 | CustomerAnonymized | Removal processor | Owner notice without the former name |
 
-Scheduled jobs (in-process scheduler, Tashkent time): reminders at 10:00 daily; removal-request processing hourly; retention cleanup weekly; operator digest at 21:00 daily. The reminder job is idempotent through the unique constraint on `reminder`.
+Scheduled jobs (in-process scheduler, Tashkent time): reminders every hour on the hour from 08:00 to 20:00, each run serving the shops whose `reminder_hour` matches; removal-request processing hourly; retention cleanup weekly; operator digest at 21:00 daily. The reminder job is idempotent through the unique constraint on `reminder`.
 
 ## Authentication / authorization
 
@@ -373,14 +374,14 @@ Every requirement from the PRD and every decision record from ADR-001 to ADR-010
 ## Open questions
 
 1. Legal review, now four items: recording a customer before consent; delaying removal while a balance is owed; notifications passing through Telegram's servers abroad (EVID-033); and the consent text above. All four bear on the personal data law (EVID-027).
-2. Should notifications to customers omit the name the shop uses for them? It reduces what passes through Telegram at no cost to the customer.
+2. Resolved on 2026-10-06: the founder chose that notifications include the name the shop uses for the customer. The agent had recommended omitting it. Consequence: the name, as well as the amount, passes through and is stored by Telegram abroad (EVID-033), which adds weight to legal question 1.
 3. Hosting provider and backup location are not chosen (ADR-008), so the backup transport is specified as two alternatives.
 4. Should the owner's reply include the customer's confirmation status history, or only on request? Affects message length.
-5. Is a reminder time of 10:00 right, or should the owner choose?
+5. Resolved on 2026-10-06: the founder chose that each owner sets the reminder hour. The specification limits the choice to 08:00 to 20:00 so that no reminder arrives at night; that limit is an agent decision.
 
 ## Approvals
 
 | Record | Subject | Status |
 |---|---|---|
 | DEC-008 / APR-008 | Decision records ADR-001 to ADR-010 | Approved 2026-10-06 |
-| DEC-009 | Security, data and compliance specification in this document: authentication by Telegram identity, authorization matrix, database roles enforcing immutability, token handling, log and retention rules, and the draft consent text subject to legal review before the pilot | Approval pending |
+| DEC-009 | Security, data and compliance specification in this document: authentication by Telegram identity, authorization matrix, database roles enforcing immutability, token handling, log and retention rules, and the draft consent text subject to legal review before the pilot | Approved 2026-10-06 |
