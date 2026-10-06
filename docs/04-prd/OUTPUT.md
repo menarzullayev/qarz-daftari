@@ -126,7 +126,7 @@ Shop, staff, and customers:
 | ID | Requirement | Feature | Status |
 |---|---|---|---|
 | REQ-001 | A person can create a shop by starting the bot, choosing a language, and entering a shop name. | FEAT-001 | Changed |
-| REQ-002 | Withdrawn. Version 1 limited a shop to one Telegram account; replaced by REQ-031 to REQ-035. | FEAT-014 | Withdrawn |
+| REQ-002 | Withdrawn. Version 1 limited a shop to one Telegram account; replaced by the staff requirements (REQ-031 to REQ-035 inclusive) | FEAT-014 | Withdrawn |
 | REQ-003 | Staff can add a customer with a display name only. A phone number is optional. | FEAT-002 | Kept |
 | REQ-004 | Staff can find a customer by part of the name or phone; matching ignores case and tolerates Latin and Cyrillic spelling. | FEAT-002 | Changed |
 | REQ-005 | An owner or manager can rename or archive a customer. A customer with a non-zero balance cannot be archived. | FEAT-002 | Changed |
@@ -151,7 +151,7 @@ Recording:
 | REQ-041 | Changing a catalog price never changes any saved entry. | FEAT-016 | New |
 | REQ-009 | Staff can record a full or partial payment; the balance is reduced, oldest debt first. | FEAT-004 | Kept |
 | REQ-010 | After each entry or payment the author sees the customer's new balance. | FEAT-003, FEAT-004 | Kept |
-| REQ-011 | A saved entry or payment is never edited or deleted, apart from the one-time addition of goods lines in REQ-038. A mistake is corrected by a reversing entry that references the original; both remain visible. | FEAT-010 | Changed |
+| REQ-011 | A saved entry or payment is never edited or deleted, apart from the one-time addition of goods lines (REQ-038); a mistake is corrected by a reversing entry that references the original; both remain visible. | FEAT-010 | Changed |
 | REQ-012 | A reversal on a linked customer's account is sent to that customer like any other entry. | FEAT-010, FEAT-006 | Kept |
 
 Customer side:
@@ -230,7 +230,7 @@ Subscription and administration:
 | REQ-N04 | Data location: all personal data is stored on servers physically located in Uzbekistan (EVID-027). | Kept |
 | REQ-N05 | Data minimization: personal data is limited to display name, optional phone, Telegram identifier, language, and ledger content. Payment receipts are kept only as long as needed for accounting and disputes. | Changed |
 | REQ-N06 | Money: amounts are whole UZS stored as integers; quantities may be fractional to three decimals; line totals are rounded to whole UZS and entry totals equal the sum of line totals. Balances are derivable from history. | Changed |
-| REQ-N07 | Integrity: no interface, including administrative ones, can alter or delete a saved entry beyond REQ-038. Every change of state records time and actor. | Changed |
+| REQ-N07 | Integrity: no interface, including administrative ones, can alter or delete a saved entry beyond the one-time addition of goods lines (REQ-038); every change of state records time and actor. | Changed |
 | REQ-N08 | Durability: a saved entry survives the loss of a server. At most 5 minutes of entries may be lost in a disaster. | Changed |
 | REQ-N09 | Availability: at least 99.5% during 06:00 to 23:00 local time, measured monthly; service restored within 1 hour of a server loss. | Changed |
 | REQ-N10 | Abuse limits: reminder limits are enforced by the system and cannot be raised by a shop. | Kept |
