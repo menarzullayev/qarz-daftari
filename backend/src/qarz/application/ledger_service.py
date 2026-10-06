@@ -14,6 +14,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from qarz.application import idempotency, notify, removal
+from qarz.application.credit import LimitReached
 from qarz.application.customers import (
     MAX_PAGE,
     CustomerArchived,
@@ -41,6 +42,7 @@ from qarz.application.ports import EntryRow, GoodsLineRecord, Membership, Storag
 from qarz.application.shops import require_member
 from qarz.domain import ledger
 from qarz.domain.access import Capability, Role, allows
+from qarz.domain.credit import LimitOutcome, check_limit, effective_limit
 from qarz.domain.ledger import EntryKind, Refusal
 from qarz.domain.promise import default_promise_date, tashkent_date, validate_promise_date
 
@@ -209,6 +211,23 @@ async def append_entry_in(
     if refusal is not None:
         raise _refuse(refusal)
 
+    balance = ledger.balance([row.entry for row in account]) + (amount if kind is EntryKind.CREDIT else -amount)
+    limit_warning: dict[str, int] | None = None
+    if kind is EntryKind.CREDIT:
+        # BR-8: a manager or owner is warned; a seller is warned or stopped, as the shop has chosen.
+        credit = await session.credit_settings()
+        limit = effective_limit(customer.credit_limit, credit.default_limit)
+        outcome = check_limit(
+            limit,
+            balance,
+            may_manage=allows(actor.role, Capability.MANAGE),
+            sellers_may_exceed=credit.sellers_may_exceed,
+        )
+        if outcome is not LimitOutcome.WITHIN and limit is not None:
+            limit_warning = {"limit": limit, "balance": balance}
+        if outcome is LimitOutcome.REFUSE:
+            raise LimitReached({key: str(value) for key, value in (limit_warning or {}).items()})
+
     promised: date | None = None
     promise_actor = STAFF_ACTOR
     if kind is EntryKind.CREDIT:
@@ -248,8 +267,7 @@ async def append_entry_in(
     )
     await session.record_measure(kind=kind.value, entry_ref=entry_id, amount=amount, promised=promised)
 
-    balance = ledger.balance([row.entry for row in account]) + (amount if kind is EntryKind.CREDIT else -amount)
-    body = {
+    body: dict[str, Any] = {
         "entry": {
             "id": str(entry_id),
             "seq": seq,
@@ -262,6 +280,9 @@ async def append_entry_in(
         },
         "customer": customer_body(customer, balance),
     }
+    if limit_warning is not None:
+        # For the author only: the customer's message says nothing of limits.
+        body["limit_warning"] = limit_warning
     await notify.entry_recorded(session, customer_id, body)
     await removal.complete_if_due(session, customer_id, balance, now)
     return body

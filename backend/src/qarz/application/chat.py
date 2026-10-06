@@ -656,6 +656,10 @@ class ChatService:
                 [(say(lang, choice.value), callback("pd", entry_hex, code)) for code, choice in _QUICK.items()]
             )
             keyboard.append([(say(lang, "other_date"), callback("pd", entry_hex, "p"))])
+            warning = body.get("limit_warning")
+            if warning:
+                limit, owed = money(lang, warning["limit"]), money(lang, warning["balance"])
+                text = "\n".join([text, say(lang, "limit_warning", limit=limit, balance=owed)])
         else:
             text = say(lang, "payment_saved", **values)
         if allows(shop.role, Capability.MANAGE):

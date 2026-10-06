@@ -199,6 +199,10 @@ CALLS: dict[str, Call] = {
         prepare=_reminders_due,
     ),
     "reminders.unreachable": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/reminders/unreachable"),
+    "shop.credit.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/credit-settings"),
+    "shop.credit.update": Call(
+        "PATCH", lambda w, shop: f"/api/v1/shops/{shop}/credit-settings", {"sellers_may_exceed": False}, True
+    ),
     "overview.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview"),
     "overview.debtors": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview/debtors"),
     "catalog.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/catalog"),
@@ -276,6 +280,9 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "reminders.settings.update": {Role.MANAGER, Role.OWNER},
     "reminders.send": {Role.MANAGER, Role.OWNER},
     "reminders.unreachable": {Role.MANAGER, Role.OWNER},
+    # A seller must know the rule they sell under; an owner or manager sets it (REQ-044).
+    "shop.credit.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "shop.credit.update": {Role.MANAGER, Role.OWNER},
     "overview.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "overview.debtors": {Role.SELLER, Role.MANAGER, Role.OWNER},
     # Specification, resources table: "Manager, owner; sellers read".
@@ -378,7 +385,9 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
     return (
         owner.execute("SELECT name, lang, default_promise_days, status FROM shop WHERE id = %s", (shop,)).fetchone(),
         owner.execute(
-            "SELECT reminders_on, reminder_hour, reminder_tpl, sms_on FROM shop WHERE id = %s", (shop,)
+            "SELECT reminders_on, reminder_hour, reminder_tpl, sms_on, default_credit_limit, sellers_may_exceed "
+            "FROM shop WHERE id = %s",
+            (shop,),
         ).fetchone(),
         owner.execute("SELECT count(*) FROM reminder WHERE shop_id = %s", (shop,)).fetchone(),
         owner.execute(
@@ -394,7 +403,7 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
             (shop,),
         ).fetchall(),
         owner.execute(
-            "SELECT id, display_name, name_norm, phone, status, reminders_off FROM customer "
+            "SELECT id, display_name, name_norm, phone, status, reminders_off, credit_limit FROM customer "
             "WHERE shop_id = %s ORDER BY id",
             (shop,),
         ).fetchall(),

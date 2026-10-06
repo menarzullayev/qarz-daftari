@@ -46,6 +46,8 @@ class CustomerPatch(BaseModel):
     # Absent leaves the phone as it is; null removes it.
     phone: str | None = Field(default=None, max_length=40)
     reminders_off: bool | None = None
+    # Absent leaves the limit as it is; null removes it, and the shop default then applies.
+    credit_limit: int | None = None
 
 
 class GoodsLine(BaseModel):
@@ -126,6 +128,7 @@ def add_customer_routes(
             phone=body.phone if "phone" in body.model_fields_set else UNSET,
             reminders_off=body.reminders_off,
             request_key=idempotency_key,
+            credit_limit=body.credit_limit if "credit_limit" in body.model_fields_set else UNSET,
         )
 
     @app.post(base + "/{customer_id}/archive", name=ARCHIVE_CUSTOMER.name)

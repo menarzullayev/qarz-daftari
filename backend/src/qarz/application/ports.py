@@ -64,6 +64,7 @@ class CustomerRecord:
     phone: str | None
     status: str
     reminders_off: bool
+    credit_limit: int | None = None
 
 
 @dataclass(frozen=True)
@@ -152,6 +153,12 @@ class ReminderCandidate:
     lang: str | None  # the linked person's language if linked, else the one recorded for the customer
     reminders_off: bool
     tg_id: int | None  # set only when the customer has an active Telegram link
+
+
+@dataclass(frozen=True)
+class CreditSettings:
+    default_limit: int | None
+    sellers_may_exceed: bool
 
 
 @dataclass(frozen=True)
@@ -277,6 +284,8 @@ class TenantSession(Protocol):
         set_phone: bool,
         phone: str | None,
         reminders_off: bool | None,
+        set_limit: bool = False,
+        credit_limit: int | None = None,
     ) -> CustomerRecord: ...
 
     async def set_customer_status(self, customer_id: UUID, status: str) -> CustomerRecord: ...
@@ -466,6 +475,12 @@ class TenantSession(Protocol):
     async def sms_reminders_since(self, first_day: date) -> int: ...
 
     async def platform_setting(self, key: str) -> Any | None: ...
+
+    async def credit_settings(self) -> CreditSettings: ...
+
+    async def update_credit_settings(
+        self, *, set_default: bool, default_limit: int | None, sellers_may_exceed: bool | None
+    ) -> None: ...
 
     async def lock_request_key(self, key: str) -> None:
         """Serialize concurrent requests that carry the same idempotency key, until the transaction ends."""

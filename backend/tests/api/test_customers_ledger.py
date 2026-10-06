@@ -145,6 +145,7 @@ def test_a_customer_needs_only_a_name(client: TestClient, world: World) -> None:
         "phone": None,
         "status": "active",
         "reminders_off": False,
+        "credit_limit": None,
         "balance": 0,
     }
 

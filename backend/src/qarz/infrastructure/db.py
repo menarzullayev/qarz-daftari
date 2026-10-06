@@ -19,6 +19,7 @@ from qarz.application.errors import AlreadyMember
 from qarz.application.ports import (
     ActivityRow,
     CatalogItemRecord,
+    CreditSettings,
     CustomerAccount,
     CustomerRecord,
     DebtFigures,
@@ -45,7 +46,7 @@ from qarz.domain.ledger import Entry, EntryKind
 # identifier itself (ADR-010).
 _MEASURE_NAMESPACE = UUID("6f1d1c0e-8f0b-5d55-9d0a-51a7c0de0a10")
 
-_CUSTOMER_COLUMNS = "c.id, c.display_name, c.phone, c.status, c.reminders_off"
+_CUSTOMER_COLUMNS = "c.id, c.display_name, c.phone, c.status, c.reminders_off, c.credit_limit"
 _CUSTOMER_BY_ID = f"SELECT {_CUSTOMER_COLUMNS} FROM customer c WHERE c.id = :id"
 _CUSTOMER_LOCKED = f"{_CUSTOMER_BY_ID} FOR UPDATE"
 
@@ -373,7 +374,14 @@ class PgTenantSession:
 
     @staticmethod
     def _customer(row: Any) -> CustomerRecord:
-        return CustomerRecord(row.id, row.display_name, row.phone, row.status, row.reminders_off)
+        return CustomerRecord(
+            row.id,
+            row.display_name,
+            row.phone,
+            row.status,
+            row.reminders_off,
+            None if row.credit_limit is None else int(row.credit_limit),
+        )
 
     async def create_customer(
         self, *, customer_id: UUID, display_name: str, name_norm: str, phone: str | None
@@ -404,6 +412,8 @@ class PgTenantSession:
         set_phone: bool,
         phone: str | None,
         reminders_off: bool | None,
+        set_limit: bool = False,
+        credit_limit: int | None = None,
     ) -> CustomerRecord:
         row = (
             await self._conn.execute(
@@ -411,7 +421,8 @@ class PgTenantSession:
                     "UPDATE customer AS c SET display_name = coalesce(:name, c.display_name), "
                     "name_norm = coalesce(:norm, c.name_norm), "
                     "phone = CASE WHEN :set_phone THEN CAST(:phone AS text) ELSE c.phone END, "
-                    "reminders_off = coalesce(:reminders_off, c.reminders_off) "
+                    "reminders_off = coalesce(:reminders_off, c.reminders_off), "
+                    "credit_limit = CASE WHEN :set_limit THEN CAST(:credit_limit AS bigint) ELSE c.credit_limit END "
                     f"WHERE c.id = :id RETURNING {_CUSTOMER_COLUMNS}"
                 ),
                 {
@@ -421,6 +432,8 @@ class PgTenantSession:
                     "set_phone": set_phone,
                     "phone": phone,
                     "reminders_off": reminders_off,
+                    "set_limit": set_limit,
+                    "credit_limit": credit_limit,
                 },
             )
         ).one()
@@ -1247,6 +1260,33 @@ class PgTenantSession:
         if row is None:
             return None
         return json.loads(row.value) if isinstance(row.value, str) else row.value
+
+    async def credit_settings(self) -> CreditSettings:
+        row = (
+            await self._conn.execute(
+                text("SELECT default_credit_limit, sellers_may_exceed FROM shop WHERE status <> 'erased'")
+            )
+        ).one()
+        return CreditSettings(
+            None if row.default_credit_limit is None else int(row.default_credit_limit), bool(row.sellers_may_exceed)
+        )
+
+    async def update_credit_settings(
+        self, *, set_default: bool, default_limit: int | None, sellers_may_exceed: bool | None
+    ) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE shop SET default_credit_limit = CASE WHEN :set_default THEN CAST(:default_limit AS bigint) "
+                "ELSE default_credit_limit END, sellers_may_exceed = coalesce(:may_exceed, sellers_may_exceed) "
+                "WHERE id = :shop_id"
+            ),
+            {
+                "set_default": set_default,
+                "default_limit": default_limit,
+                "may_exceed": sellers_may_exceed,
+                "shop_id": self._shop_id,
+            },
+        )
 
     async def lock_request_key(self, key: str) -> None:
         # Transaction-scoped advisory lock: a second request with the same key in the same shop waits here
