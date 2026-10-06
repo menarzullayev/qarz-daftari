@@ -1,0 +1,14 @@
+{
+  "event_id": "69a8acf0cc92",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:44:57+00:00",
+  "path": "docs\\evidence\\EVID-011.md",
+  "stage": "idea-selection",
+  "claim": "Uzbekistan ranks second worldwide by number of Telegram channels (over 123,000 channels, 2023); no figure for Telegram user share among shopkeepers was found.",
+  "source": "https://kun.uz/en/news/2023/03/23/uzbekistan-ranks-second-in-the-world-in-terms-of-number-of-telegram-channels",
+  "date": "2026-10-06",
+  "confidence": "medium",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-011"
+}

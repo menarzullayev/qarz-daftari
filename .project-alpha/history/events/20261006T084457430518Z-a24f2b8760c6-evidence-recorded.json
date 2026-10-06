@@ -1,0 +1,14 @@
+{
+  "event_id": "a24f2b8760c6",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:44:57+00:00",
+  "path": "docs\\evidence\\EVID-007.md",
+  "stage": "idea-selection",
+  "claim": "Indian ledger apps give the ledger away free and plan to monetize through financial services (lending, payments) built on top of it.",
+  "source": "https://ibsintelligence.com/ibsi-news/khatabook-raises-100-million-usd-in-series-c-funding-round/ ; https://ameya.substack.com/p/how-khatabook-became-the-premier",
+  "date": "2026-10-06",
+  "confidence": "medium",
+  "type": "INFERENCE",
+  "risk": "MEDIUM",
+  "evidence_id": "EVID-007"
+}

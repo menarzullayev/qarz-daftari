@@ -1,0 +1,14 @@
+{
+  "event_id": "467219dd54d0",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:44:56+00:00",
+  "path": "docs\\evidence\\EVID-003.md",
+  "stage": "idea-selection",
+  "claim": "pDaftar is a live iOS app in Uzbekistan offering debtor ledger, SMS reminders, installment schedules, cash register, multi-store, UZS/USD and voice entry; free with paid tiers; 4.7 rating from 179 ratings.",
+  "source": "https://apps.apple.com/uz/app/pdaftar-business-and-finance/id6511237681",
+  "date": "2026-10-06",
+  "confidence": "high",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-003"
+}

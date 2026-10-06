@@ -1,0 +1,20 @@
+{
+  "framework_version": "1.0.0",
+  "current_stage": "idea-selection",
+  "lifecycle": "REVIEW",
+  "global_audit_status": "NOT_RUN",
+  "stages": {
+    "idea-selection": "REVIEW",
+    "01-vision": "NOT_STARTED",
+    "02-problem-discovery": "NOT_STARTED",
+    "03-market-research": "NOT_STARTED",
+    "04-prd": "NOT_STARTED",
+    "05-domain-model": "NOT_STARTED",
+    "06-architecture": "NOT_STARTED",
+    "07-adr": "NOT_STARTED",
+    "08-technical-spec": "NOT_STARTED",
+    "09-development-plan": "NOT_STARTED",
+    "10-operations": "NOT_STARTED"
+  },
+  "updated_at": "2026-10-06T08:46:13+00:00"
+}

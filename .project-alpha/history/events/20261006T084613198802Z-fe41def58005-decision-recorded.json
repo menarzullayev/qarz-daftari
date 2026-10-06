@@ -1,0 +1,19 @@
+{
+  "event_id": "fe41def58005",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T08:46:13+00:00",
+  "path": ".project-alpha\\decisions\\DEC-001.md",
+  "stage": "idea-selection",
+  "title": "Select idea for the pipeline",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-001",
+  "decision": "Enter Stage 01 with candidate B: a Telegram-first two-sided credit ledger for mahalla shops, positioned around repayment",
+  "context": "Five candidates built on the nasiya ledger practice were scored against nine criteria; see docs/idea-selection/OUTPUT.md",
+  "chosen_option": "B - Telegram-first two-sided ledger",
+  "rationale": "Highest total score (33 of 45): addresses collection, low install friction, feasible MVP, no licensing exposure. Demand itself remains unvalidated.",
+  "impact": "High",
+  "reversibility": "High",
+  "evidence": "EVID-001, EVID-003, EVID-004, EVID-009, EVID-012, EVID-013",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

@@ -1,0 +1,14 @@
+{
+  "event_id": "9348a081da7b",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:44:58+00:00",
+  "path": "docs\\evidence\\EVID-013.md",
+  "stage": "idea-selection",
+  "claim": "Shopkeepers will pay a monthly subscription for a tool that measurably improves repayment.",
+  "source": "Agent assumption; no willingness-to-pay data found",
+  "date": "2026-10-06",
+  "confidence": "low",
+  "type": "ASSUMPTION",
+  "risk": "MEDIUM",
+  "evidence_id": "EVID-013"
+}

@@ -1,0 +1,14 @@
+{
+  "event_id": "a50bbd87fb43",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:44:57+00:00",
+  "path": "docs\\evidence\\EVID-009.md",
+  "stage": "idea-selection",
+  "claim": "Lending and microfinance activity in Uzbekistan requires a Central Bank license; non-bank credit organizations are regulated and supervised by the Central Bank.",
+  "source": "https://admin.mondaq.com/financial-services/1186856/the-law-on-non-banking-credit-organizations-and-microfinance-activities-has-been-adopted-in-uzbekistan ; https://cbu.uz/en/credit-organizations/licensing/452892/",
+  "date": "2026-10-06",
+  "confidence": "medium",
+  "type": "FACT",
+  "risk": "MEDIUM",
+  "evidence_id": "EVID-009"
+}

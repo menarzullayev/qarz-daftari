@@ -1,0 +1,14 @@
+{
+  "event_id": "8056526945d0",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:44:56+00:00",
+  "path": "docs\\evidence\\EVID-002.md",
+  "stage": "idea-selection",
+  "claim": "Independent small grocers account for 48% of grocery retail sales in Uzbekistan (Euromonitor, seen only as a search snippet; reference year not verified).",
+  "source": "https://www-euromonitor-com.elibrary.nirmauni.ac.in/retail-in-uzbekistan/report",
+  "date": "2026-10-06",
+  "confidence": "low",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-002"
+}

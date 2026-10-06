@@ -1,0 +1,9 @@
+{
+  "event_id": "fd54a71e9000",
+  "event_type": "stage.started",
+  "timestamp": "2026-10-06T08:42:39+00:00",
+  "stage": "idea-selection",
+  "from_status": "NOT_STARTED",
+  "to_status": "IN_PROGRESS",
+  "reason": null
+}

@@ -1,0 +1,14 @@
+{
+  "event_id": "51aaade3b461",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:44:57+00:00",
+  "path": "docs\\evidence\\EVID-008.md",
+  "stage": "idea-selection",
+  "claim": "In Turkey the Istanbul Grocers Chamber moved to digitize the veresiye ledger across 1,750 registered grocers with Beyoglu as pilot (article date not verified).",
+  "source": "https://www.cnnturk.com/ekonomi/veresiye-defterleri-kayip-defterine-donusuyor-491353",
+  "date": "2026-10-06",
+  "confidence": "medium",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-008"
+}

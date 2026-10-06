@@ -1,0 +1,14 @@
+{
+  "event_id": "a586e170a0f6",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:44:58+00:00",
+  "path": "docs\\evidence\\EVID-012.md",
+  "stage": "idea-selection",
+  "claim": "The shopkeeper's primary pain is collecting debts, not recording them.",
+  "source": "Agent inference from EVID-001; not validated by interviews",
+  "date": "2026-10-06",
+  "confidence": "low",
+  "type": "ASSUMPTION",
+  "risk": "MEDIUM",
+  "evidence_id": "EVID-012"
+}

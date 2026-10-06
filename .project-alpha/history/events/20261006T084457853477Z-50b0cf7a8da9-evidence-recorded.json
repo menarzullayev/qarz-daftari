@@ -1,0 +1,14 @@
+{
+  "event_id": "50b0cf7a8da9",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:44:57+00:00",
+  "path": "docs\\evidence\\EVID-010.md",
+  "stage": "idea-selection",
+  "claim": "A Central Bank of Uzbekistan study found goods bought on a one-year installment plan can cost up to 52% more than the cash price, signalling regulatory attention to consumer credit markups.",
+  "source": "https://jch.kun.uz/en/news/2025/06/16/buy-now-pay-more-hidden-costs-of-installment-plans-raise-concerns-in-uzbekistan",
+  "date": "2026-10-06",
+  "confidence": "medium",
+  "type": "FACT",
+  "risk": "MEDIUM",
+  "evidence_id": "EVID-010"
+}

@@ -1,0 +1,14 @@
+{
+  "event_id": "ee9bb77782e2",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:44:57+00:00",
+  "path": "docs\\evidence\\EVID-005.md",
+  "stage": "idea-selection",
+  "claim": "Other local debt-ledger products exist: QARZDAFTAR (iOS), Daftar Qarz (iOS), daftar.uz (iOS), qarz-app Telegram Mini App, and REGOS POS with sell-on-credit; no adoption figures were found for any of them.",
+  "source": "https://apps.apple.com/app/id6754274680 ; https://github.com/gptify/qarz-app ; https://regos.uz/uz/blog/sotish-va-marketing/regos-online-web-ilovasida-qurilish-materiallarini-qarzga-qanday-sotish-mumkin",
+  "date": "2026-10-06",
+  "confidence": "medium",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-005"
+}

@@ -1,0 +1,9 @@
+{
+  "event_id": "994de61eca98",
+  "event_type": "stage.reviewed",
+  "timestamp": "2026-10-06T08:46:13+00:00",
+  "stage": "idea-selection",
+  "from_status": "IN_PROGRESS",
+  "to_status": "REVIEW",
+  "reason": null
+}
