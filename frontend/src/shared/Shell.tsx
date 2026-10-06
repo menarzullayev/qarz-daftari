@@ -31,6 +31,10 @@ type ShellProps = {
   navPath?: string;
   /** Title of the current screen; becomes the page heading and the document title. */
   title: string;
+  /** Controls under the navigation list of a wide screen (the web panel's shop switcher and sign-out). */
+  side?: ReactNode;
+  /** Shown between the page heading and the screen. */
+  banner?: ReactNode;
   children?: ReactNode;
 };
 
@@ -68,6 +72,8 @@ export function Shell({
   currentPath,
   navPath = currentPath,
   title,
+  side,
+  banner,
   children,
 }: ShellProps) {
   const { t } = useI18n();
@@ -132,11 +138,13 @@ export function Shell({
               </li>
             ) : null}
           </ul>
+          {side ? <div className="nav__side">{side}</div> : null}
         </nav>
       ) : null}
 
       <main className="shell__main" ref={mainRef} tabIndex={-1}>
         <h1 className="shell__title">{title}</h1>
+        {banner}
         {children}
       </main>
     </div>
