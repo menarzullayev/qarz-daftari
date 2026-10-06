@@ -106,6 +106,7 @@ def test_a_customer_reads_their_own_account_without_the_shops_private_fields(
         "reversed",
         "disputed",
         "dispute",
+        "lines",
     }
     assert "ichki izoh" not in str(body)
     assert "777000" not in str(body)
@@ -334,3 +335,49 @@ def test_an_owner_sees_the_totals_of_the_shops_they_own(
             "items": [],
             "total": {"outstanding": 0, "debtors": 0, "overdue": 0, "due_today": 0},
         }
+
+
+def test_goods_are_shown_on_the_customers_page_and_in_the_message(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    lines = [
+        {"name": "Guruch", "qty": "2.5", "unit": "kg", "unit_price": 12000},
+        {"catalog_item_id": str(world.catalog_item_a), "qty": "3", "unit_price": 4000},
+    ]
+    sale = client.post(
+        f"{shop(world)}/customers/{world.customer_a}/entries",
+        json={"kind": "credit", "lines": lines},
+        headers={**as_user(world.seller_a), **key()},
+    )
+    assert sale.status_code == 201, sale.text
+    stored = sale.json()["entry"]["lines"]
+    assert sale.json()["entry"]["amount"] == 42000
+
+    page = client.get(f"{ME}/{link_of(owner, world.customer_a)}", headers=as_user(world.customer_of_a)).json()
+    assert page["entries"][0]["lines"] == stored
+    assert page["entries"][1]["lines"] == [], "an entry without goods has an empty list"
+
+    told = notices(owner, world)[-1][1]
+    assert say("uz", "n_line", name="Guruch", qty="2.5", unit="kg", total=money("uz", 30000)) in told
+    assert (
+        say("uz", "n_line", name=stored[1]["name"], qty="3", unit=stored[1]["unit"], total=money("uz", 12000)) in told
+    )
+    assert told.index("Guruch") < told.index("To'lash muddati"), "goods come before the promised date"
+
+
+def test_the_shop_list_tells_a_client_which_membership_is_the_callers(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    mine = client.get("/api/v1/me/shops", headers=as_user(world.seller_a)).json()["items"]
+    assert mine == [
+        {
+            "shop_id": str(world.shop_a),
+            "name": "Shop A",
+            "role": "seller",
+            "membership_id": str(world.seller_a_membership),
+        }
+    ]
+    entry = record(client, world, world.customer_a, "credit", 1000).json()["entry"]["id"]
+    detail = client.get(f"{shop(world)}/customers/{world.customer_a}", headers=as_user(world.seller_a)).json()
+    written = next(e for e in detail["entries"] if e["id"] == entry)
+    assert written["author_id"] == mine[0]["membership_id"]

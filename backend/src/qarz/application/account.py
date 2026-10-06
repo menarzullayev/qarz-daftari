@@ -29,7 +29,16 @@ class AccountService:
             active = await session.active_shop(user_id)
         ids = {shop.shop_id for shop in shops}
         return {
-            "items": [{"shop_id": str(shop.shop_id), "name": shop.name, "role": shop.role.value} for shop in shops],
+            "items": [
+                {
+                    "shop_id": str(shop.shop_id),
+                    "name": shop.name,
+                    "role": shop.role.value,
+                    # Lets a client tell which entries the caller wrote (`author_id` on an entry).
+                    "membership_id": str(shop.membership_id),
+                }
+                for shop in shops
+            ],
             # An active shop the user has since lost access to is not reported.
             "active_shop": str(active) if active in ids else None,
         }
