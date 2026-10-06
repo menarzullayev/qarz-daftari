@@ -37,7 +37,7 @@ Ten records follow, one per decision proposed in the architecture. Seven formali
 
 **Consequences.** History and overdue lists (REQ-026, REQ-027) are rendered as text and paged with buttons; long histories are awkward. Export (REQ-028) covers the case where an owner wants the full picture. Adding a Mini App later does not disturb the application or domain layers.
 
-**Evidence.** EVID-004, EVID-020, EVID-025.
+**Evidence.** EVID-004, EVID-020, EVID-025
 
 **Reversibility.** High.
 
@@ -111,7 +111,7 @@ Ten records follow, one per decision proposed in the architecture. Seven formali
 
 **Consequences.** The queue is a table polled by the dispatcher, adequate at pilot volume and well beyond. If throughput ever demands it, a broker can be introduced behind the dispatcher without touching application code.
 
-**Evidence.** EVID-032.
+**Evidence.** EVID-032
 
 **Reversibility.** Medium.
 
@@ -160,7 +160,7 @@ Ten records follow, one per decision proposed in the architecture. Seven formali
 
 **Consequences.** The server needs a public HTTPS endpoint and a valid certificate, handled by the reverse proxy. If Telegram cannot reliably reach hosts in Uzbekistan, which is untested, switching to long polling is a configuration change.
 
-**Evidence.** EVID-032.
+**Evidence.** EVID-032
 
 **Reversibility.** High.
 
@@ -184,7 +184,7 @@ Ten records follow, one per decision proposed in the architecture. Seven formali
 
 **Consequences.** Notifications are delivered at least once; a message may rarely arrive twice, so confirm and dispute actions must be safe to repeat. Delivery is slightly delayed, well within the one-minute criterion in the PRD. Messages to customers who blocked the bot fail permanently and mark the link unreachable.
 
-**Evidence.** EVID-032.
+**Evidence.** EVID-032
 
 **Reversibility.** High.
 
@@ -209,7 +209,7 @@ Ten records follow, one per decision proposed in the architecture. Seven formali
 
 **Consequences.** No managed database, no automatic failover; the operator handles patching, monitoring, and recovery. Provider reliability is unverified. Messages still pass through Telegram's servers abroad (EVID-033); this decision does not resolve that legal question.
 
-**Evidence.** EVID-027, EVID-031, EVID-033.
+**Evidence.** EVID-027, EVID-031, EVID-033
 
 **Reversibility.** Medium. Moving to another provider in Uzbekistan is a restore from backup; moving abroad is not open while the rule stands.
 
@@ -234,7 +234,7 @@ Ten records follow, one per decision proposed in the architecture. Seven formali
 
 **Consequences.** A server loss can erase up to a day of entries, and pilot owners must be told this plainly. The backup key is kept off the server; losing it makes the backups useless. A restore is rehearsed before the pilot and the measured time is recorded.
 
-**Evidence.** EVID-031.
+**Evidence.** EVID-031
 
 **Reversibility.** High; option 2 can be added without changing the application.
 
@@ -255,11 +255,11 @@ Ten records follow, one per decision proposed in the architecture. Seven formali
 
 **Selected solution.** Option 2.
 
-**Rationale.** Option 1 loses information when a customer is anonymized and tempts analysis to join against personal data. Option 3 would send data to a provider abroad, in conflict with ADR-008. Separate identity-free records survive anonymization and can be exported for analysis safely.
+**Rationale.** Option 1 loses information when a customer is anonymized and tempts analysis to join against personal data. Option 3 would send data to a provider abroad, in conflict with the hosting decision (ADR-008). Separate identity-free records survive anonymization and can be exported for analysis safely.
 
 **Consequences.** A little more is written per command. Whether an opaque identifier that can still be joined to a customer record inside the same database counts as personal data is a legal nuance; the records must not be exported together with the mapping.
 
-**Evidence.** EVID-027.
+**Evidence.** EVID-027
 
 **Reversibility.** Medium.
 
