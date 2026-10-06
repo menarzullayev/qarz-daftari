@@ -25,6 +25,8 @@ async def require_member(session: TenantSession, user_id: UUID, op: Operation) -
     membership = await session.active_membership(user_id)
     if membership is None:
         raise NotFound()
+    if op.capability is None:
+        raise ValueError(f"{op.name} is not a shop operation")
     if not allows(membership.role, op.capability):
         raise ForbiddenRole(lowest_role_with(op.capability))
     return membership
