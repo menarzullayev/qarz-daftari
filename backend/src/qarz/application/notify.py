@@ -49,8 +49,16 @@ async def _send(session: TenantSession, customer_id: UUID, dedupe_key: str, key:
     promised = values.pop("promised", None)
     if promised is not None:
         values["date"] = day(promised)
-    text = say(lang, key, shop=shop, amount=amount, balance=balance, **values)
-    await session.enqueue(recipient=str(tg_id), payload={"text": text}, dedupe_key=dedupe_key)
+    dispute_entry = values.pop("dispute_entry", None)
+    payload: dict[str, Any] = {"text": say(lang, key, shop=shop, amount=amount, balance=balance, **values)}
+    if dispute_entry is not None:
+        # There is no confirm button and never will be (BR-10): objecting is the only thing asked.
+        payload["reply_markup"] = {
+            "inline_keyboard": [
+                [{"text": say(lang, "dispute_button"), "callback_data": f"v2:dsp:{UUID(dispute_entry).hex}"}]
+            ]
+        }
+    await session.enqueue(recipient=str(tg_id), payload=payload, dedupe_key=dedupe_key)
 
 
 async def entry_recorded(session: TenantSession, customer_id: UUID, body: dict[str, Any]) -> None:
@@ -64,6 +72,7 @@ async def entry_recorded(session: TenantSession, customer_id: UUID, body: dict[s
             f"entry:{entry['id']}:notify",
             "n_credit",
             lines=list(entry.get("lines") or []),
+            dispute_entry=entry["id"],
             promised=date.fromisoformat(entry["promised_date"]),
             **common,
         )

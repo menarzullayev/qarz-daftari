@@ -107,6 +107,18 @@ class ShopTotals:
 
 
 @dataclass(frozen=True)
+class DisputeRecord:
+    dispute_id: UUID
+    entry_id: UUID
+    customer_id: UUID
+    amount: int  # of the disputed entry
+    reason: str
+    status: str
+    decline_reason: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class WaitingLink:
     """Someone who started the bot from the counter code and agreed, not yet attached to a record."""
 
@@ -359,6 +371,30 @@ class TenantSession(Protocol):
 
     async def anonymize_customer(self, customer_id: UUID, *, label: str, name_norm: str, now: datetime) -> None:
         """Replace the name, erase phone and links, and forget the person if nothing else refers to them."""
+        ...
+
+    async def dispute_of_entry(self, entry_id: UUID) -> DisputeRecord | None:
+        """The dispute ever opened on the entry, open or not: there is at most one (BR-11)."""
+        ...
+
+    async def get_dispute(self, dispute_id: UUID) -> DisputeRecord | None: ...
+
+    async def disputes_of_customer(self, customer_id: UUID) -> dict[UUID, DisputeRecord]:
+        """By entry."""
+        ...
+
+    async def open_dispute(self, *, dispute_id: UUID, entry_id: UUID, reason: str, now: datetime) -> DisputeRecord: ...
+
+    async def close_dispute(
+        self, dispute_id: UUID, *, status: str, decline_reason: str | None, decided_by: UUID | None, now: datetime
+    ) -> DisputeRecord: ...
+
+    async def open_disputes(self) -> list[tuple[DisputeRecord, str]]:
+        """Open disputes of the shop, oldest first, each with the customer's name."""
+        ...
+
+    async def staff_recipients(self, roles: list[str]) -> list[tuple[int, str]]:
+        """Telegram chat and language of each active member holding one of the roles."""
         ...
 
     async def lock_request_key(self, key: str) -> None:

@@ -56,6 +56,15 @@ _REFUSAL_CODES = {
 }
 
 
+async def close_dispute_on_reversal(session: TenantSession, actor: Membership, entry_id: UUID, now: datetime) -> None:
+    """Reversing a disputed entry is the shop agreeing with the customer: the dispute ends with it (BR-12)."""
+    record = await session.dispute_of_entry(entry_id)
+    if record is not None and record.status == "open":
+        await session.close_dispute(
+            record.dispute_id, status="reversed", decline_reason=None, decided_by=actor.membership_id, now=now
+        )
+
+
 class LedgerRefused(AppError):
     """The domain rules do not allow this entry. The code says which rule."""
 
@@ -240,6 +249,7 @@ async def reverse_entry_in(
         subject_id=customer_id,
     )
     await session.record_measure(kind="reversal", entry_ref=reversal_id, amount=original.amount, promised=None)
+    await close_dispute_on_reversal(session, actor, entry_id, now)
 
     debt_increasing = original.kind in (EntryKind.CREDIT, EntryKind.OPENING)
     balance = ledger.balance([row.entry for row in account]) + (

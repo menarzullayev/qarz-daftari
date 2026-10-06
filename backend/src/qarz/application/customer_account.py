@@ -14,7 +14,7 @@ from qarz.application import removal
 from qarz.application.errors import NotFound
 from qarz.application.ledger_service import HISTORY_PAGE
 from qarz.application.operations import self_operation
-from qarz.application.ports import Storage
+from qarz.application.ports import DisputeRecord, Storage
 from qarz.domain import ledger
 from qarz.domain.access import Role
 from qarz.domain.promise import tashkent_date
@@ -26,6 +26,27 @@ REQUEST_REMOVAL = self_operation("me.accounts.removal")
 OWNER_TOTALS = self_operation("me.owner_totals")
 
 
+def _dispute(record: DisputeRecord | None) -> dict[str, Any] | None:
+    if record is None:
+        return None
+    return {
+        "id": str(record.dispute_id),
+        "status": record.status,
+        "reason": record.reason,
+        "decline_reason": record.decline_reason,
+    }
+
+
+async def resolve_link(storage: Storage, user_id: UUID, link_id: UUID) -> tuple[UUID, UUID]:
+    """Shop and customer behind a live link of this user. Anything else does not exist for them."""
+    async with storage.platform() as session:
+        found = await session.my_link(user_id, link_id)
+    if found is None:
+        # Not theirs, ended, or not a link at all: the same answer.
+        raise NotFound()
+    return found
+
+
 class CustomerAccountService:
     def __init__(self, storage: Storage, now: Callable[[], datetime] | None = None) -> None:
         self._storage = storage
@@ -35,12 +56,7 @@ class CustomerAccountService:
         return tashkent_date(self._now())
 
     async def _resolve(self, user_id: UUID, link_id: UUID) -> tuple[UUID, UUID]:
-        async with self._storage.platform() as session:
-            found = await session.my_link(user_id, link_id)
-        if found is None:
-            # Not theirs, ended, or not a link at all: the same answer.
-            raise NotFound()
-        return found
+        return await resolve_link(self._storage, user_id, link_id)
 
     async def accounts(self, user_id: UUID) -> dict[str, Any]:
         async with self._storage.platform() as session:
@@ -68,6 +84,7 @@ class CustomerAccountService:
             entries = [row.entry for row in account]
             today = self._today()
             status = ledger.overdue(entries, today)
+            disputes = await session.disputes_of_customer(customer_id)
             reversed_ids = {row.entry.reverses_id for row in account if row.entry.reverses_id is not None}
             newest_first = sorted(account, key=lambda row: row.entry.seq, reverse=True)
             # No note, no author and no payment indicator: those are the shop's own (REQ-045).
@@ -90,6 +107,7 @@ class CustomerAccountService:
                         "reverses_id": None if row.entry.reverses_id is None else str(row.entry.reverses_id),
                         "reversed": row.entry.id in reversed_ids,
                         "disputed": row.entry.disputed,
+                        "dispute": _dispute(disputes.get(row.entry.id)),
                     }
                     for row in newest_first[:HISTORY_PAGE]
                 ],

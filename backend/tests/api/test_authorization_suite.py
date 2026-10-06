@@ -65,6 +65,17 @@ def _pending_transfer(owner: psycopg.Connection, world: World) -> None:
     )
 
 
+def _dispute_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-dispute:{world.entry_a}")
+
+
+def _open_dispute(owner: psycopg.Connection, world: World) -> None:
+    owner.execute(
+        "INSERT INTO dispute (id, shop_id, entry_id, reason) VALUES (%s, %s, %s, 'Men buni olmaganman')",
+        (_dispute_id(world), world.shop_a, world.entry_a),
+    )
+
+
 CALLS: dict[str, Call] = {
     "shop.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}"),
     "shop.update": Call("PATCH", lambda w, shop: f"/api/v1/shops/{shop}", {"name": "Renamed"}, changes_data=True),
@@ -152,6 +163,14 @@ CALLS: dict[str, Call] = {
         True,
     ),
     "waiting.dismiss": Call("POST", lambda w, shop: f"/api/v1/shops/{shop}/waiting/{w.waiting_a}/dismiss", None, True),
+    "disputes.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/disputes"),
+    "disputes.decline": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/disputes/{_dispute_id(w)}/decline",
+        {"reason": "Mahsulot berilgan"},
+        True,
+        prepare=_open_dispute,
+    ),
     "overview.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview"),
     "overview.debtors": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview/debtors"),
     "catalog.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/catalog"),
@@ -218,6 +237,9 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "waiting.list": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "waiting.attach": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "waiting.dismiss": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    # Flagged to the owner and managers (REQ-017); a seller sees only that an entry is disputed.
+    "disputes.list": {Role.MANAGER, Role.OWNER},
+    "disputes.decline": {Role.MANAGER, Role.OWNER},
     "overview.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "overview.debtors": {Role.SELLER, Role.MANAGER, Role.OWNER},
     # Specification, resources table: "Manager, owner; sellers read".
@@ -253,6 +275,17 @@ SELF_CALLS: dict[str, PlainCall] = {
         "POST", "/api/v1/me/accounts/00000000-0000-4000-8000-000000000000/removal", ok_status=404
     ),
     "me.owner_totals": PlainCall("GET", "/api/v1/me/owner-totals", returns_own_id=False),
+    "me.accounts.disputes.open": PlainCall(
+        "POST",
+        "/api/v1/me/accounts/00000000-0000-4000-8000-000000000000/disputes",
+        {"entry_id": "00000000-0000-4000-8000-000000000000", "reason": "Men olmaganman"},
+        404,
+    ),
+    "me.accounts.disputes.withdraw": PlainCall(
+        "POST",
+        "/api/v1/me/accounts/00000000-0000-4000-8000-000000000000/disputes/00000000-0000-4000-8000-000000000000/withdraw",
+        ok_status=404,
+    ),
     # A shop nobody is a member of: for any signed-in user it does not exist.
     "me.active_shop.set": PlainCall(
         "PUT", "/api/v1/me/active-shop", {"shop_id": "00000000-0000-4000-8000-000000000000"}, 404
@@ -335,6 +368,9 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
         ).fetchall(),
         owner.execute("SELECT count(*) FROM outbox_message WHERE shop_id = %s", (shop,)).fetchone(),
         owner.execute("SELECT id, status FROM removal_request WHERE shop_id = %s ORDER BY id", (shop,)).fetchall(),
+        owner.execute(
+            "SELECT id, status, decline_reason FROM dispute WHERE shop_id = %s ORDER BY id", (shop,)
+        ).fetchall(),
         owner.execute(
             "SELECT id, name, name_norm, unit, price, learned, status, merged_into FROM catalog_item "
             "WHERE shop_id = %s ORDER BY id",
@@ -452,6 +488,7 @@ def test_a_member_of_one_shop_cannot_reach_another(
         world.catalog_item_a,
         world.learned_item_a,
         world.waiting_a,
+        _dispute_id(world),
     )
     uses_foreign_resource = any(str(resource) in call.path(world, world.shop_b) for resource in foreign)
     if uses_foreign_resource:

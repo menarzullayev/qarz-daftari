@@ -22,6 +22,7 @@ from qarz.application.ports import (
     CustomerAccount,
     CustomerRecord,
     DebtFigures,
+    DisputeRecord,
     EntryRow,
     MemberRecord,
     Membership,
@@ -90,6 +91,16 @@ _FIGURES = (
     "         coalesce(sum(remaining) FILTER (WHERE promised = :today), 0)::bigint AS due_today "
     "    FROM owed GROUP BY customer_id) "
 )
+
+
+_DISPUTE_SELECT = (
+    "SELECT d.id, d.entry_id, e.customer_id, e.amount, d.reason, d.status, d.decline_reason, d.created_at, "
+    "c.display_name FROM dispute d JOIN ledger_entry e ON e.id = d.entry_id JOIN customer c ON c.id = e.customer_id "
+)
+_DISPUTE_BY_ID = f"{_DISPUTE_SELECT} WHERE d.id = :id"
+_DISPUTE_BY_ENTRY = f"{_DISPUTE_SELECT} WHERE d.entry_id = :id"
+_DISPUTES_OF_CUSTOMER = f"{_DISPUTE_SELECT} WHERE e.customer_id = :id"
+_OPEN_DISPUTES = f"{_DISPUTE_SELECT} WHERE d.status = 'open' ORDER BY d.created_at, d.id"
 
 
 def _like_pattern(part: str) -> str:
@@ -943,6 +954,78 @@ class PgTenantSession:
         # The person's Telegram identity is forgotten too when nothing else refers to them.
         for user_id in {row.user_id for row in users if row.user_id is not None}:
             await self._conn.execute(text("SELECT forget_user_if_unused(:user_id)"), {"user_id": user_id})
+
+    @staticmethod
+    def _dispute(row: Any) -> DisputeRecord:
+        return DisputeRecord(
+            row.id,
+            row.entry_id,
+            row.customer_id,
+            int(row.amount),
+            str(row.reason),
+            str(row.status),
+            row.decline_reason,
+            row.created_at,
+        )
+
+    async def dispute_of_entry(self, entry_id: UUID) -> DisputeRecord | None:
+        row = (await self._conn.execute(text(_DISPUTE_BY_ENTRY), {"id": entry_id})).first()
+        return None if row is None else self._dispute(row)
+
+    async def get_dispute(self, dispute_id: UUID) -> DisputeRecord | None:
+        row = (await self._conn.execute(text(_DISPUTE_BY_ID), {"id": dispute_id})).first()
+        return None if row is None else self._dispute(row)
+
+    async def disputes_of_customer(self, customer_id: UUID) -> dict[UUID, DisputeRecord]:
+        rows = (await self._conn.execute(text(_DISPUTES_OF_CUSTOMER), {"id": customer_id})).all()
+        return {row.entry_id: self._dispute(row) for row in rows}
+
+    async def open_dispute(self, *, dispute_id: UUID, entry_id: UUID, reason: str, now: datetime) -> DisputeRecord:
+        await self._conn.execute(
+            text(
+                "INSERT INTO dispute (id, shop_id, entry_id, reason, status, created_at) "
+                "VALUES (:id, :shop_id, :entry_id, :reason, 'open', :now)"
+            ),
+            {"id": dispute_id, "shop_id": self._shop_id, "entry_id": entry_id, "reason": reason, "now": now},
+        )
+        row = (await self._conn.execute(text(_DISPUTE_BY_ID), {"id": dispute_id})).one()
+        return self._dispute(row)
+
+    async def close_dispute(
+        self, dispute_id: UUID, *, status: str, decline_reason: str | None, decided_by: UUID | None, now: datetime
+    ) -> DisputeRecord:
+        await self._conn.execute(
+            text(
+                "UPDATE dispute SET status = :status, decline_reason = :decline_reason, decided_by = :decided_by, "
+                "closed_at = :now WHERE id = :id AND status = 'open'"
+            ),
+            {
+                "id": dispute_id,
+                "status": status,
+                "decline_reason": decline_reason,
+                "decided_by": decided_by,
+                "now": now,
+            },
+        )
+        row = (await self._conn.execute(text(_DISPUTE_BY_ID), {"id": dispute_id})).one()
+        return self._dispute(row)
+
+    async def open_disputes(self) -> list[tuple[DisputeRecord, str]]:
+        rows = (await self._conn.execute(text(_OPEN_DISPUTES))).all()
+        return [(self._dispute(row), str(row.display_name)) for row in rows]
+
+    async def staff_recipients(self, roles: list[str]) -> list[tuple[int, str]]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT u.tg_id, u.lang FROM membership m JOIN app_user u ON u.id = m.user_id "
+                    "WHERE m.status = 'active' AND m.role = ANY(CAST(:roles AS text[])) AND u.tg_id IS NOT NULL "
+                    "ORDER BY m.created_at, m.id"
+                ),
+                {"roles": roles},
+            )
+        ).all()
+        return [(int(row.tg_id), str(row.lang)) for row in rows]
 
     async def lock_request_key(self, key: str) -> None:
         # Transaction-scoped advisory lock: a second request with the same key in the same shop waits here

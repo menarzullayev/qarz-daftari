@@ -18,6 +18,7 @@ from qarz.application import idempotency
 from qarz.application.chat_texts import CONSENT_VERSION, LANGUAGE_NAMES, day, money, say
 from qarz.application.customer_account import CustomerAccountService
 from qarz.application.customers import CREATE_CUSTOMER, create_customer_in, require_writable
+from qarz.application.disputes import DECLINE_DISPUTE, DisputeService, decline_in
 from qarz.application.errors import AlreadyMember, AppError, ForbiddenRole, NotFound, ValidationFailed
 from qarz.application.ledger_service import (
     CHOOSE_PROMISE,
@@ -29,11 +30,12 @@ from qarz.application.ledger_service import (
     reverse_entry_in,
 )
 from qarz.application.links import COUNTER_PREFIX, PERSONAL_PREFIX
-from qarz.application.ports import MyShop, PlatformSession, Storage, TenantSession
+from qarz.application.ports import Membership, MyShop, PlatformSession, Storage, TenantSession
 from qarz.application.shops import ShopService, require_member
 from qarz.application.staff import StaffService, token_hash
 from qarz.domain.access import Capability, allows
 from qarz.domain.chat_entry import ParsedEntry, ParseError, ParseErrorCode, parse_entry
+from qarz.domain.disputes import clean_reason
 from qarz.domain.ledger import EntryKind
 from qarz.domain.promise import QuickChoice, parse_day_month, quick_choice_date, tashkent_date
 
@@ -156,6 +158,7 @@ class ChatService:
         self._shops = shops
         self._staff = staff
         self._accounts_service = CustomerAccountService(storage, now)
+        self._disputes = DisputeService(storage, now)
         self._now = now or (lambda: datetime.now(UTC))
 
     def _today(self) -> date:
@@ -172,6 +175,16 @@ class ChatService:
 
         if await session.current_pending(incoming.user_id, "shop_name", self._now()) is not None:
             await self._create_shop(session, incoming, replies, text)
+            return
+
+        # A reason that was asked for is taken before anything else is read into the message.
+        asked = await session.current_pending(incoming.user_id, "dispute", self._now())
+        if asked is not None:
+            await self._dispute_reason(session, incoming, replies, asked[1], text)
+            return
+        asked = await session.current_pending(incoming.user_id, "decline", self._now())
+        if asked is not None:
+            await self._decline_reason(session, incoming, replies, asked[1], text)
             return
 
         shops = await session.my_memberships(incoming.user_id)
@@ -300,6 +313,30 @@ class ChatService:
             await replies.show(say(lang, "shop_switched", shop=mine[shop_id].name))
         elif action in ("ok", "no") and arguments:
             await self._consent_answer(session, incoming, replies, action, arguments[0])
+        elif action in ("dsp", "dcl") and arguments:
+            target = _uuid(arguments[0])
+            if target is None:
+                await replies.buttons(None)
+                return
+            kind, field, question = (
+                ("dispute", "entry", "ask_dispute_reason")
+                if action == "dsp"
+                else (
+                    "decline",
+                    "dispute",
+                    "ask_decline_reason",
+                )
+            )
+            await session.drop_pending(incoming.user_id, kind)
+            await session.put_pending(
+                pending_id=self._pending_id(incoming),
+                user_id=incoming.user_id,
+                kind=kind,
+                payload={field: target.hex},
+                now=self._now(),
+                expires_at=self._now() + PENDING_LIFETIME,
+            )
+            await replies.send(say(lang, question))
         elif action in ("del", "delok", "delno") and arguments:
             await self._removal_answer(session, incoming, replies, action, arguments[0])
         elif action == "unl" and arguments:
@@ -470,6 +507,73 @@ class ChatService:
                     balance=money(lang, int(result["waiting_for_balance"])),
                 )
             )
+
+    # --- disputes ------------------------------------------------------------------------------------
+
+    async def _dispute_reason(
+        self, session: PlatformSession, incoming: Incoming, replies: Replies, payload: dict[str, Any], text: str
+    ) -> None:
+        """The customer's next message after pressing "dispute" is the reason (REQ-016)."""
+        lang = incoming.lang
+        entry_id = _uuid(str(payload.get("entry", "")))
+        await session.drop_pending(incoming.user_id, "dispute")
+        if entry_id is None:
+            await replies.send(say(lang, "expired"))
+            return
+        for account in await session.my_accounts(incoming.user_id):
+            try:
+                await self._disputes.open(incoming.user_id, account.link_id, entry_id, text)
+            except NotFound:
+                continue  # the entry is not on this account; perhaps on another
+            except ValidationFailed:
+                await replies.send(say(lang, "reason_invalid"))
+                return
+            except AppError as error:
+                await replies.send(self._error_text(lang, error))
+                return
+            await replies.send(say(lang, "dispute_sent", shop=account.shop_name))
+            return
+        await replies.send(say(lang, "not_found"))
+
+    async def _decline_reason(
+        self, session: PlatformSession, incoming: Incoming, replies: Replies, payload: dict[str, Any], text: str
+    ) -> None:
+        """A manager's next message after pressing "decline" is the reason given to the customer (BR-12)."""
+        lang = incoming.lang
+        dispute_id = _uuid(str(payload.get("dispute", "")))
+        await session.drop_pending(incoming.user_id, "decline")
+        reason = clean_reason(text)
+        if dispute_id is None:
+            await replies.send(say(lang, "expired"))
+            return
+        if reason is None:
+            await replies.send(say(lang, "reason_invalid"))
+            return
+        for shop in await session.my_memberships(incoming.user_id):
+            try:
+                async with self._storage.tenant(shop.shop_id) as tenant:
+                    if await tenant.get_dispute(dispute_id) is None:
+                        continue
+                    actor = await require_member(tenant, incoming.user_id, DECLINE_DISPUTE)
+                    await require_writable(tenant, self._today(), new_credit=False)
+
+                    async def apply(tenant: TenantSession = tenant, actor: Membership = actor) -> dict[str, Any]:
+                        return await decline_in(tenant, actor, dispute_id, reason, self._now())
+
+                    await idempotency.run_once(
+                        tenant,
+                        key=incoming.key,
+                        operation="chat.dispute.decline",
+                        user_id=incoming.user_id,
+                        request={"dispute": str(dispute_id), "reason": reason},
+                        action=apply,
+                    )
+            except AppError as error:
+                await replies.send(self._error_text(lang, error))
+                return
+            await replies.send(say(lang, "dispute_declined_staff"))
+            return
+        await replies.send(say(lang, "not_found"))
 
     # --- shops ---------------------------------------------------------------------------------------
 
