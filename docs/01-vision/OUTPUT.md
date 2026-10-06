@@ -1,6 +1,6 @@
 # Vision
 
-Status: awaiting human approval of strategic direction (DEC-002). Prepared 2026-10-06.
+Status: strategic direction approved by the founder on 2026-10-06 (DEC-002 / APR-002).
 Upstream: `docs/idea-selection/OUTPUT.md` (candidate B approved, DEC-001 / APR-001).
 
 ## Mission
@@ -86,4 +86,4 @@ Questions 1 to 5 are inputs to Stages 02 and 03. Questions 6 and 7 need an answe
 | Record | Subject | Status |
 |---|---|---|
 | DEC-001 / APR-001 | Candidate B enters the pipeline | Approved 2026-10-06 |
-| DEC-002 | Mission, vision, and strategic direction as stated in this document | Approval pending |
+| DEC-002 / APR-002 | Mission, vision, and strategic direction as stated in this document | Approved 2026-10-06 |

@@ -1,0 +1,12 @@
+{
+  "event_id": "8f673b1184c0",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T08:51:24+00:00",
+  "path": ".project-alpha\\approvals\\APR-002.md",
+  "stage": "01-vision",
+  "decision_id": "DEC-002",
+  "decision": "Adopt the mission, vision, principles and scope boundaries in docs/01-vision/OUTPUT.md as the product direction",
+  "approval_id": "APR-002",
+  "approver": "Saidakbar Narzullayev",
+  "status": "approved"
+}

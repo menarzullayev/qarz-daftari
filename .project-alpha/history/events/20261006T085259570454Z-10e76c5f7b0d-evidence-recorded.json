@@ -1,0 +1,14 @@
+{
+  "event_id": "10e76c5f7b0d",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:52:59+00:00",
+  "path": "docs\\evidence\\EVID-016.md",
+  "stage": "02-problem-discovery",
+  "claim": "A Kazakhstan parliament deputy stated that rural shop owners sell to neighbors on interest-free credit tracked in debt notebooks, that such debt can exceed 50% of a shop's working capital, and that about 40,000 small shops serve about 7.5 million rural residents. This is a political statement without a cited dataset.",
+  "source": "https://tengrinews.kz/kazakhstan_news/tetrad-dolgov-vmesto-kreditov-predlojili-magazinov-doma-609751/",
+  "date": "2026-09-30",
+  "confidence": "medium",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-016"
+}

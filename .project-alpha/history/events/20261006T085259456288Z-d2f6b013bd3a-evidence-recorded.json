@@ -1,0 +1,14 @@
+{
+  "event_id": "d2f6b013bd3a",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:52:59+00:00",
+  "path": "docs\\evidence\\EVID-015.md",
+  "stage": "02-problem-discovery",
+  "claim": "A field study of 26 neighborhood grocery stores in a low-income Mumbai settlement (750,000+ transactions, 12,000+ customers) found about 12% of customers receive store credit in a month, they generate over 30% of store revenue, 78% of them shop only at the lending store, owners spend about 8 hours a week tracking and enforcing repayment, and only about half of surveyed owners keep written records.",
+  "source": "https://wheelerblog.london.edu/between-trust-and-trade-on-informal-credit-networks-in-india-2/",
+  "date": "2026-04-13",
+  "confidence": "medium",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-015"
+}

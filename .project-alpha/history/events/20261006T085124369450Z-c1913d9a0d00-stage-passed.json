@@ -1,0 +1,9 @@
+{
+  "event_id": "c1913d9a0d00",
+  "event_type": "stage.passed",
+  "timestamp": "2026-10-06T08:51:24+00:00",
+  "stage": "01-vision",
+  "from_status": "REVIEW",
+  "to_status": "PASSED",
+  "reason": "Founder approved strategic direction in chat on 2026-10-06 (DEC-002, APR-002)"
+}

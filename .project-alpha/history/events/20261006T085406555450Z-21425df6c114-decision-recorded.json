@@ -1,0 +1,19 @@
+{
+  "event_id": "21425df6c114",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T08:54:06+00:00",
+  "path": ".project-alpha\\decisions\\DEC-003.md",
+  "stage": "02-problem-discovery",
+  "title": "Select primary user and primary problem",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-003",
+  "decision": "Primary user is the owner-operator of a mahalla grocery shop who sells on credit; primary problem is PROB-001 (late or unpaid credit). Both are provisional until shopkeeper interviews are completed.",
+  "context": "Desk research found consistent but unmeasured support for PROB-001 in Uzbekistan and quantified support only from one Mumbai study; no field interviews have been done",
+  "chosen_option": "Shop owner as primary user, PROB-001 as primary problem, provisional",
+  "rationale": "PROB-001 is the only problem supported by Uzbekistan-specific sources (EVID-001, EVID-014) and matches the approved vision; EVID-015 and EVID-016 point the same way in comparable markets",
+  "impact": "High",
+  "reversibility": "High",
+  "evidence": "EVID-001, EVID-014, EVID-015, EVID-016, EVID-012",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

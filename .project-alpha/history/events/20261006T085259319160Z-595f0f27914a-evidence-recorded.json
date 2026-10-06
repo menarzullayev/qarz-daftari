@@ -1,0 +1,14 @@
+{
+  "event_id": "595f0f27914a",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:52:59+00:00",
+  "path": "docs\\evidence\\EVID-014.md",
+  "stage": "02-problem-discovery",
+  "claim": "A 2023 Uzbek press account describes mahalla shop credit in detail: a shopkeeper gave up a rented shop after six months; the same individuals appeared in every neighborhood shop's ledger; one shopkeeper who went to collect recovered roughly a tenth of what was recorded; another burned his ledgers; well-off neighbors also bought on credit; old debts lost value through inflation. Details are from a machine summary of the article and are anecdotal.",
+  "source": "https://zamin.uz/uz/jamiyat/115583-mahallada-dokondor-bolishning-mashaqqatlari-haqida-hayotiy-hikoya.html",
+  "date": "2023-04-29",
+  "confidence": "medium",
+  "type": "FACT",
+  "risk": "MEDIUM",
+  "evidence_id": "EVID-014"
+}

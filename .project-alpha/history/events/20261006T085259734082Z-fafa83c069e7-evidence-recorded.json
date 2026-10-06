@@ -1,0 +1,14 @@
+{
+  "event_id": "fafa83c069e7",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:52:59+00:00",
+  "path": "docs\\evidence\\EVID-017.md",
+  "stage": "02-problem-discovery",
+  "claim": "A 2018 Uzbek religious Q&A describes a grocer who records credit sales by product name instead of amount and charges the price current at repayment; the ruling says the price must be fixed as an exact amount at the time of sale.",
+  "source": "https://zamin.uz/uz/hayot-tarzi/38375-nasiya-savdosi-haqida.html",
+  "date": "2018-06-21",
+  "confidence": "medium",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-017"
+}
