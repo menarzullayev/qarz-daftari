@@ -1,5 +1,7 @@
 """Behavior of the shop operations beyond who may call them."""
 
+import uuid
+
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
@@ -7,6 +9,10 @@ from fastapi.testclient import TestClient
 from .conftest import World, as_user
 
 pytestmark = pytest.mark.db
+
+
+def as_owner_writing(world: World) -> dict[str, str]:
+    return {**as_user(world.owner_a), "Idempotency-Key": f"test-{uuid.uuid4().hex}"}
 
 
 def test_owner_reads_the_shop(client: TestClient, world: World) -> None:
@@ -21,7 +27,7 @@ def test_owner_updates_settings_and_the_change_is_logged(
     response = client.patch(
         f"/api/v1/shops/{world.shop_a}",
         json={"name": "  Baraka do'koni  ", "lang": "ru", "default_promise_days": 14},
-        headers=as_user(world.owner_a),
+        headers=as_owner_writing(world),
     )
     assert response.status_code == 200, response.text
     assert response.json()["name"] == "Baraka do'koni"
@@ -45,7 +51,7 @@ def test_owner_updates_settings_and_the_change_is_logged(
 
 def test_a_partial_update_keeps_the_other_settings(client: TestClient, world: World) -> None:
     response = client.patch(
-        f"/api/v1/shops/{world.shop_a}", json={"default_promise_days": 7}, headers=as_user(world.owner_a)
+        f"/api/v1/shops/{world.shop_a}", json={"default_promise_days": 7}, headers=as_owner_writing(world)
     )
     assert response.status_code == 200
     assert response.json() == {"id": str(world.shop_a), "name": "Shop A", "lang": "uz", "default_promise_days": 7}
@@ -71,7 +77,7 @@ def test_a_partial_update_keeps_the_other_settings(client: TestClient, world: Wo
 def test_invalid_updates_are_rejected_and_change_nothing(
     client: TestClient, world: World, owner: psycopg.Connection, body: dict[str, object], field: str
 ) -> None:
-    response = client.patch(f"/api/v1/shops/{world.shop_a}", json=body, headers=as_user(world.owner_a))
+    response = client.patch(f"/api/v1/shops/{world.shop_a}", json=body, headers=as_owner_writing(world))
     assert response.status_code == 422, response.text
     error = response.json()["error"]
     assert error["code"] == "VALIDATION"

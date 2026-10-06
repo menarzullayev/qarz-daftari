@@ -1,8 +1,10 @@
 """Shop operations available so far: read and change the shop's own settings."""
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from typing import Any
 from uuid import UUID
 
+from qarz.application import idempotency
 from qarz.application.errors import ForbiddenRole, NotFound, ValidationFailed
 from qarz.application.operations import Operation, operation
 from qarz.application.ports import Membership, ShopSettings, Storage, TenantSession
@@ -48,32 +50,53 @@ class ShopUpdate:
             raise ValidationFailed(fields)
 
 
+def _as_body(settings: ShopSettings) -> dict[str, Any]:
+    return {
+        "id": str(settings.shop_id),
+        "name": settings.name,
+        "lang": settings.lang,
+        "default_promise_days": settings.default_promise_days,
+    }
+
+
 class ShopService:
     def __init__(self, storage: Storage) -> None:
         self._storage = storage
 
-    async def read(self, user_id: UUID, shop_id: UUID) -> ShopSettings:
+    async def read(self, user_id: UUID, shop_id: UUID) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
             await require_member(session, user_id, READ_SHOP)
             settings = await session.shop_settings()
             if settings is None:
                 raise NotFound()
-            return settings
+            return _as_body(settings)
 
-    async def update(self, user_id: UUID, shop_id: UUID, change: ShopUpdate) -> ShopSettings:
+    async def update(self, user_id: UUID, shop_id: UUID, change: ShopUpdate, request_key: str | None) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
             # Authorize before validating, so a non-member learns nothing about what the shop accepts.
             membership = await require_member(session, user_id, UPDATE_SHOP)
+            key = idempotency.validate_key(request_key)
             change.validate()
-            settings = await session.update_shop_settings(
-                name=change.name.strip() if change.name is not None else None,
-                lang=change.lang,
-                default_promise_days=change.default_promise_days,
+
+            async def apply() -> dict[str, Any]:
+                settings = await session.update_shop_settings(
+                    name=change.name.strip() if change.name is not None else None,
+                    lang=change.lang,
+                    default_promise_days=change.default_promise_days,
+                )
+                await session.record_activity(
+                    membership_id=membership.membership_id,
+                    action="shop.settings_changed",
+                    subject_type="shop",
+                    subject_id=shop_id,
+                )
+                return _as_body(settings)
+
+            return await idempotency.run_once(
+                session,
+                key=key,
+                operation=UPDATE_SHOP.name,
+                user_id=user_id,
+                request=asdict(change),
+                action=apply,
             )
-            await session.record_activity(
-                membership_id=membership.membership_id,
-                action="shop.settings_changed",
-                subject_type="shop",
-                subject_id=shop_id,
-            )
-            return settings

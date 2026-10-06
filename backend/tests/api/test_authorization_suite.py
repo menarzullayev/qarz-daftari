@@ -51,6 +51,8 @@ OUTSIDERS = ["suspended_a", "owner_b", "customer_of_a", "admin", "stranger"]
 
 
 def _invoke(client: TestClient, call: Call, shop: uuid.UUID, headers: dict[str, str]) -> Any:
+    if call.changes_data:
+        headers = {**headers, "Idempotency-Key": f"suite-{uuid.uuid4().hex}"}
     return client.request(call.method, call.path(shop), json=call.json, headers=headers)
 
 
@@ -137,7 +139,12 @@ def test_refusals_are_indistinguishable_from_a_missing_shop(client: TestClient, 
     call = CALLS[op_name]
     outsider = _invoke(client, call, world.shop_a, as_user(world.owner_b))
     missing = _invoke(client, call, uuid.uuid4(), as_user(world.owner_b))
-    malformed = client.request(call.method, "/api/v1/shops/not-a-uuid", json=call.json, headers=as_user(world.owner_b))
+    malformed = client.request(
+        call.method,
+        "/api/v1/shops/not-a-uuid",
+        json=call.json,
+        headers={**as_user(world.owner_b), "Idempotency-Key": "suite-malformed-path"},
+    )
     assert outsider.status_code == missing.status_code == malformed.status_code == 404
     assert outsider.json() == missing.json() == malformed.json()
 

@@ -10,6 +10,7 @@ _STATUS = {
     "NOT_FOUND": 404,
     "FORBIDDEN_ROLE": 403,
     "VALIDATION": 422,
+    "IDEMPOTENCY_KEY_REUSED": 409,
 }
 
 _MESSAGES = {
@@ -18,6 +19,7 @@ _MESSAGES = {
         "NOT_FOUND": "Topilmadi.",
         "FORBIDDEN_ROLE": "Bu amal uchun sizning rolingiz yetarli emas.",
         "VALIDATION": "Ma'lumotlar noto'g'ri kiritilgan.",
+        "IDEMPOTENCY_KEY_REUSED": "Bu so'rov kaliti boshqa amal uchun ishlatilgan.",
         "ERROR": "Xatolik yuz berdi.",
     },
     "ru": {
@@ -25,6 +27,7 @@ _MESSAGES = {
         "NOT_FOUND": "Не найдено.",
         "FORBIDDEN_ROLE": "Вашей роли недостаточно для этого действия.",
         "VALIDATION": "Данные введены неверно.",
+        "IDEMPOTENCY_KEY_REUSED": "Этот ключ запроса уже использован для другого действия.",
         "ERROR": "Произошла ошибка.",
     },
 }

@@ -12,8 +12,10 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from qarz.application.errors import AppError, Unauthenticated
 from qarz.application.ports import Storage
 from qarz.application.shops import ShopService
+from qarz.application.telegram_updates import UpdateProcessor
 from qarz.interface.errors import app_error_handler, error_response
 from qarz.interface.shops_api import add_shop_routes
+from qarz.interface.telegram_webhook import add_webhook_route
 
 HealthCheck = Callable[[], Awaitable[bool]]
 
@@ -28,6 +30,7 @@ def create_app(
     database_reachable: HealthCheck,
     authenticator: Authenticator | None = None,
     storage: Storage | None = None,
+    webhook_secret: str | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Qarz Daftari", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -70,5 +73,8 @@ def create_app(
             return user_id
 
         add_shop_routes(app, ShopService(storage), current_user)
+
+    if webhook_secret is not None and storage is not None:
+        add_webhook_route(app, UpdateProcessor(storage), webhook_secret)
 
     return app
