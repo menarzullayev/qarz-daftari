@@ -1,235 +1,276 @@
 # Development Plan
 
-> **Stale since 2026-10-06.** This document was written for PRD version 1 (pilot MVP). The founder changed direction to a full production-grade product (DEC-012 / APR-012) and the PRD is now version 2. This document has not yet been revised and must not be relied on where it conflicts with `docs/04-prd/OUTPUT.md`.
+Version 2. Status: rewritten for release 1 as defined in PRD version 2 (DEC-013 / APR-013); awaiting the founder's end-of-sequence review (DEC-018). Prepared 2026-10-06.
+Version 1 (pilot MVP, 18 to 31 days, DEC-010) is superseded and remains in version history.
 
-Status: approved by the founder on 2026-10-06 (DEC-010 / APR-010), with both gates kept.
-Upstream: Technical Specification (DEC-009), decision records ADR-001 to ADR-010, PRD (DEC-005).
+**How to read the estimates.** Focused working days for one founder working full time with AI agents. They are agent estimates with no historical data from this project behind them, given as ranges. They are not commitments. The total is about five times the version 1 plan, because the scope is.
 
-**How to read the estimates.** They are in focused working days for one founder working with AI agents. They are agent estimates with no historical data behind them, so each is a range. On 2026-10-06 the founder stated full-time availability (five or more days a week), which turns the build total of 18 to 31 days into roughly four to six weeks of elapsed time, followed by the eight-week pilot. These remain estimates, not commitments; the validation track competes for the same days.
+**What the founder decided about sequencing.** Everything in release 1 is built before any shop uses it (2026-10-06). The plan follows that. The agent's advice, a trial with two or three shops after the customer side is built, is recorded as declined; the plan marks the point where that trial would fit, so the choice can be revisited without replanning.
 
 ## Milestones
 
 | ID | Milestone | Outcome | Exit condition |
 |---|---|---|---|
-| M0 | Validation and legal gate | The four open checks are answered | See "Validation track" below; gates M6, and partly M3 |
-| M1 | Foundation | Repository, continuous integration, schema, and an empty bot deployed to the production server | `/start` answers from the server in Uzbekistan; migrations run; CI is green |
-| M2 | One-sided ledger | An owner can run their whole notebook in the bot without any customer involved | FEAT-001 to FEAT-004, FEAT-009, FEAT-010 pass their acceptance criteria |
-| M3 | Two-sided ledger | Customers link, see balances, confirm and dispute | FEAT-005 to FEAT-007 pass their acceptance criteria |
-| M4 | Reminders, data rights, measurement | Reminders, export, removal, pilot metrics | FEAT-008, FEAT-011, FEAT-012 pass their acceptance criteria |
-| M5 | Pilot readiness | The system is safe to give to real shops | Restore rehearsed and timed; alerts proven; runbooks written; usability test done; legal gate passed |
-| M6 | Pilot | Eight weeks with about ten shops | Pilot exit criteria from the PRD evaluated; continue, change, or stop decided |
+| M0 | Validation and legal track | Open checks answered | See below; runs in parallel; gates as stated |
+| M1 | Platform foundation | Repository, CI, schema with tenant isolation, authentication for all clients, empty API and front end deployed to two servers | A user signs in through chat, Mini App, and web; cross-tenant test suite runs; failover rehearsed once on empty data |
+| M2 | Shops, staff, core ledger | Staff with roles record amount-only sales and payments in chat and Mini App, reverse, and see balances; several shops per person | FEAT-001 to FEAT-004, FEAT-009, FEAT-010, FEAT-014, FEAT-023, FEAT-026 pass acceptance |
+| M3 | Catalog and itemized entry | Catalog, learned goods, lines, promised dates | FEAT-016, FEAT-003 in full, FEAT-017 for staff |
+| M4 | Customer side | Linking with consent, notifications, debt page, disputes, payment notices, date requests | FEAT-005, FEAT-006, FEAT-007, FEAT-024, FEAT-027 |
+| M5 | Reminders and credit control | Reminders on Telegram, SMS adapter behind its switch, limits, payment history indicator | FEAT-008, FEAT-013, FEAT-018 |
+| M6 | Reports, export, import, web panel, Russian | Owner reports, exports, ledger import, desktop layouts, full second language | FEAT-019, FEAT-011, FEAT-025, FEAT-020, FEAT-022 |
+| M7 | Subscription and administration | Trial, limited mode, receipts and approval, admin panel, switches, support access, payment adapters off | FEAT-015, FEAT-021, FEAT-012 |
+| M8 | Hardening and launch readiness | Load test, security review, failover and restore rehearsals, runbooks, language and usability review | Launch criteria in Stage 10 met except the founder's approval |
+| M9 | Launch | First shops onboarded on the production service | Founder's launch approval recorded |
 
-**Validation track (M0), run by the founder in parallel with M1 and M2.** None of it requires code.
+**Validation and legal track (M0).** No code. The first two gates were approved in DEC-010 and have not been withdrawn.
 
-| Check | Why it gates | Must finish before |
+| Check | Gates | Must finish before |
 |---|---|---|
-| Hands-on test of pDaftar | Stop condition 2 in Market Research; shows whether per-entry confirmation already exists | M3 (the customer side is the differentiation) |
-| 15 to 20 shopkeeper interviews (`docs/02-problem-discovery/interview-guide.md`) | Stop conditions 1 and 3; tests EVID-012 and EVID-013 | M3 |
-| Legal review: four questions and the consent text (Technical Specification, open question 1) | Compliance with the personal data law (EVID-027) | M6; ideally before M3, because an adverse answer changes the linking design |
-| Hosting provider and backup location chosen | ADR-008 leaves it open | End of M1 |
-
-If the interviews or the pDaftar test trip a stop condition, work stops after M2 at the latest. M2 is useful to build either way only in the sense that it is cheap; it is not differentiated.
+| 15 to 20 shopkeeper interviews; the founder's own answers (EVID-034) say what to listen for | Stop conditions from Market Research; nearly all of release 1 rests on EVID-034 | M4 |
+| Hands-on test of pDaftar | Whether the incumbent already covers the scope | M4 |
+| Legal review of the open questions in the Technical Specification, including payments to a personal card (EVID-035) and the consent text | Any real customer data; any payment | M9; much better before M4 |
+| Two hosting providers or facilities in Uzbekistan chosen and reachable from Telegram | ADR-014 | End of M1 |
+| Review group and administrator procedures agreed | REQ-055 | M7 |
 
 ## Epics
 
-| ID | Epic | Milestone | Features |
-|---|---|---|---|
-| E1 | Platform foundation | M1 | Enables all |
-| E2 | Shop and customer management | M2 | FEAT-001, FEAT-002 |
-| E3 | Ledger core | M2 | FEAT-003, FEAT-004, FEAT-009, FEAT-010 |
-| E4 | Customer linking and consent | M3 | FEAT-005 |
-| E5 | Acknowledgement and customer view | M3 | FEAT-006, FEAT-007 |
-| E6 | Reminders | M4 | FEAT-008 |
-| E7 | Data rights and measurement | M4 | FEAT-011, FEAT-012 |
-| E8 | Operations and pilot readiness | M5 | Non-functional requirements |
+| ID | Epic | Milestone |
+|---|---|---|
+| E1 | Foundation: repository, CI, schema, tenant isolation, sessions, deployment on two servers | M1 |
+| E2 | Identity and clients: chat, Mini App, web sign-in, language | M1 |
+| E3 | Shops and staff: memberships, roles, invitations, ownership, active shop | M2 |
+| E4 | Customers and core ledger: customers, entries, payments, reversals, balances, overview | M2 |
+| E5 | Activity log | M2 |
+| E6 | Catalog and goods lines | M3 |
+| E7 | Promised dates | M3 |
+| E8 | Staff workspace screens | M3 |
+| E9 | Customer linking, notifications, debt page | M4 |
+| E10 | Disputes, payment notices, date requests | M4 |
+| E11 | Reminders and SMS adapter | M5 |
+| E12 | Credit limits and payment history | M5 |
+| E13 | Reports and export | M6 |
+| E14 | Import | M6 |
+| E15 | Web panel layouts | M6 |
+| E16 | Russian language | M6 |
+| E17 | Subscription, receipts, limited mode, payment adapters | M7 |
+| E18 | Administration panel and measurement | M7 |
+| E19 | Hardening: load, security, recovery, runbooks | M8 |
 
 ## Stories
 
 | ID | Story | Requirements | Epic |
 |---|---|---|---|
-| S1.1 | Project skeleton with layered structure, linting, type checking, tests, and CI | REQ-N07 | E1 |
-| S1.2 | Database schema, migrations, and separate roles with immutability enforced | REQ-011, REQ-N06, REQ-N07 | E1 |
-| S1.3 | Webhook endpoint with secret check, duplicate handling, and health endpoint | REQ-N11, REQ-N09 | E1 |
-| S1.4 | Outbox table and dispatcher with rate limits and retry | REQ-015 | E1 |
-| S1.5 | Production server in Uzbekistan, Docker Compose deployment, TLS | REQ-N04 | E1 |
-| S2.1 | Owner creates a shop with `/start` | REQ-001, REQ-002 | E2 |
-| S2.2 | Owner adds, finds, renames, and archives customers, with Latin and Cyrillic matching | REQ-003, REQ-004, REQ-005 | E2 |
-| S3.1 | Entry parser for "name amount" messages, including amount formats and notes | REQ-006, REQ-N01, REQ-N03 | E3 |
-| S3.2 | Record a credit sale with default and custom due dates; reply with balance | REQ-006, REQ-007, REQ-008, REQ-010 | E3 |
-| S3.3 | Record a payment; reject overpayment | REQ-009, REQ-010 | E3 |
-| S3.4 | Reverse an entry; history shows both | REQ-011, REQ-012 | E3 |
-| S3.5 | Balance, allocation, and overdue calculation in the domain layer | REQ-009, REQ-N06 | E3 |
-| S3.6 | Totals, customer list by balance, overdue list, customer history | REQ-026, REQ-027 | E3 |
-| S4.1 | Owner generates a personal link and QR image; tokens hashed and single use | REQ-013, REQ-N11 | E4 |
-| S4.2 | Customer consent screen; link created only on agreement | REQ-014 | E4 |
-| S4.3 | Customer disconnects; owner is told | REQ-021 | E4 |
-| S5.1 | Customer is notified of every entry, payment, and reversal | REQ-015, REQ-012 | E5 |
-| S5.2 | Customer confirms or disputes; owner sees disputes flagged | REQ-016, REQ-017, REQ-018 | E5 |
-| S5.3 | Customer views balance and history; isolation between shops and customers | REQ-019, REQ-020 | E5 |
-| S6.1 | Owner turns reminders on, picks template and hour, opts customers out | REQ-022, REQ-024 | E6 |
-| S6.2 | Hourly reminder job with eligibility rules and frequency limits | REQ-023, REQ-N10 | E6 |
-| S6.3 | Manual reminder from the overdue list, once a day per customer | REQ-025, REQ-N10 | E6 |
-| S7.1 | Ledger export as a spreadsheet | REQ-028 | E7 |
-| S7.2 | Removal request and anonymization, immediate or deferred | REQ-029, REQ-N05 | E7 |
-| S7.3 | Identity-free measurement records and weekly metrics export | REQ-030 | E7 |
-| S8.1 | Encrypted daily backups to a second location; restore rehearsed and timed | REQ-N08 | E8 |
-| S8.2 | Uptime check, alerts, daily operator digest | REQ-N09 | E8 |
-| S8.3 | Usability test of recording speed with two or three owners | REQ-N02 | E8 |
-| S8.4 | Uzbek message catalog reviewed by a native speaker; build fails on missing strings | REQ-N01 | E8 |
+| S1.1 | Repository, layered modules with import rules, linting, typing, tests, CI for backend and front end | REQ-N07 | E1 |
+| S1.2 | Schema from `schema.sql` as migrations; roles; row-level security; the schema checks as automated tests | REQ-011, REQ-N06, REQ-N07, REQ-N12 | E1 |
+| S1.3 | Tenant context and authorization framework; cross-tenant and cross-role test harness | REQ-N11, REQ-N12 | E1 |
+| S1.4 | Webhook, idempotency for updates and API writes, outbox and dispatcher | REQ-015 | E1 |
+| S1.5 | Two servers: proxy, Compose, replication, archiving, file store, scripted failover | REQ-N04, REQ-N08, REQ-N09 | E1 |
+| S2.1 | Sign-in from chat, Mini App launch data, and Telegram Login; sessions | REQ-050, REQ-N11 | E2 |
+| S2.2 | Front-end shell with three entry points, generated API client, message catalogs | REQ-049, REQ-051, REQ-N15 | E2 |
+| S3.1 | Create shop; settings | REQ-001 | E3 |
+| S3.2 | Invite, join, suspend, remove staff; role checks everywhere | REQ-031, REQ-032, REQ-033, REQ-034 | E3 |
+| S3.3 | Ownership transfer | REQ-036 | E3 |
+| S3.4 | Several shops per person; active shop; owner combined totals | REQ-064, REQ-065 | E3 |
+| S4.1 | Customers: add, search with transliteration, edit, archive | REQ-003, REQ-004, REQ-005 | E4 |
+| S4.2 | Chat fast entry parser in two languages | REQ-006, REQ-N02, REQ-N03 | E4 |
+| S4.3 | Record credit and payment; balance and allocation; reply with balance | REQ-007, REQ-009, REQ-010, REQ-N06 | E4 |
+| S4.4 | Reversal by managers and owners | REQ-011, REQ-012 | E4 |
+| S4.5 | Overview: totals, balances, overdue, filters; customer detail | REQ-026, REQ-027 | E4 |
+| S5.1 | Activity records on every change; owner's activity view | REQ-035, REQ-047 | E5 |
+| S6.1 | Catalog management; learned items and their review | REQ-039, REQ-040, REQ-041 | E6 |
+| S6.2 | Itemized entry screen and API; line rounding; totals | REQ-037, REQ-N02 | E6 |
+| S6.3 | Add lines later to an amount-only entry | REQ-038 | E6 |
+| S7.1 | Promised date choices in chat and Mini App; shop default | REQ-008 | E7 |
+| S8.1 | Staff workspace screens: customers, entry, overview, settings by role | REQ-049 | E8 |
+| S9.1 | Counter code, waiting list, personal link, consent | REQ-013, REQ-014 | E9 |
+| S9.2 | Customer notifications for entries, payments, reversals, with goods and dates | REQ-015 | E9 |
+| S9.3 | Customer debt page; isolation; disconnect; removal request and anonymization | REQ-019, REQ-020, REQ-021, REQ-029 | E9 |
+| S10.1 | Disputes: open, decline, withdraw, close on reversal | REQ-016, REQ-017 | E10 |
+| S10.2 | Payment notices with receipt upload; accept and decline | REQ-060, REQ-061 | E10 |
+| S10.3 | Date change requests; promise history | REQ-066, REQ-067 | E10 |
+| S11.1 | Reminder settings, templates per language, hour | REQ-022, REQ-024, REQ-042 | E11 |
+| S11.2 | Hourly job, eligibility, limits, dispute exclusion; manual reminder | REQ-023, REQ-025, REQ-N10 | E11 |
+| S11.3 | SMS adapter, quota, switch; not-reachable list | REQ-043 | E11 |
+| S12.1 | Credit limits and warnings by role | REQ-044 | E12 |
+| S12.2 | Payment history indicator | REQ-045 | E12 |
+| S13.1 | Period reports | REQ-046 | E13 |
+| S13.2 | Exports as jobs with signed downloads | REQ-028 | E13 |
+| S14.1 | Import: template, validation, preview, apply, undo | REQ-062, REQ-063 | E14 |
+| S15.1 | Desktop layouts for the web panel; staff, activity, subscription screens | REQ-050, REQ-N15 | E15 |
+| S16.1 | Russian catalogs for chat, notifications, and screens; reviewed by a native speaker | REQ-051, REQ-N01 | E16 |
+| S17.1 | Trial, paid-through, warnings, limited and suspended modes | REQ-052, REQ-053, REQ-057 | E17 |
+| S17.2 | Pay by card transfer: card display, receipt upload, forwarding, approve and reject | REQ-054, REQ-055 | E17 |
+| S17.3 | Click and Payme adapters behind the switch | REQ-056 | E17 |
+| S18.1 | Admin sign-in with allow-list and second factor; shops, receipts, settings, suspension | REQ-058, REQ-N14 | E18 |
+| S18.2 | Support access with owner visibility; admin audit | REQ-059 | E18 |
+| S18.3 | Measurement records and weekly export | REQ-030 | E18 |
+| S18.4 | Shop deletion with waiting period and erasure | REQ-048 | E18 |
+| S19.1 | Load test with generated data against the performance targets | REQ-N13 | E19 |
+| S19.2 | Security review: authorization matrix, tenant suite, file handling, session handling | REQ-N11, REQ-N12 | E19 |
+| S19.3 | Failover and point-in-time restore rehearsals, timed | REQ-N08, REQ-N09 | E19 |
+| S19.4 | Runbooks, alerts proven, usability sessions, copy review | REQ-N02, REQ-N05 | E19 |
 
 ## Tasks
 
-Tasks are listed per story at the level needed to start; finer breakdown happens when a milestone begins.
+Each story is broken into tasks when its milestone starts. The first milestone is broken down now because it carries the most risk:
 
-**M1**
-- S1.1: create the code repository; set up package layout (`interface`, `application`, `domain`, `infrastructure`); configure formatter, linter, type checker, test runner; CI workflow running all four plus a dependency scan.
-- S1.2: write the first migration from the specification's schema; create roles `qd_owner`, `qd_app`, `qd_ro`, `qd_backup`; test that `qd_app` cannot update or delete entries.
-- S1.3: webhook handler; constant-time secret check; `processed_update` deduplication; `/healthz`.
-- S1.4: outbox repository; dispatcher loop with per-chat and global limits; handling of Telegram errors 429 and 403.
-- S1.5: order the server; harden it (firewall, SSH keys, updates); Compose file for `bot`, `db`, `proxy`; register the bot and set the webhook; deploy script.
-
-**M2**
-- S2.1, S2.2: conversation handlers; name normalization and transliteration; search; archive rule.
-- S3.1: grammar parser with a table of test cases covering every example in the specification plus malformed input.
-- S3.2 to S3.4: application commands with row locking; replies; reverse button and confirmation step.
-- S3.5: pure domain functions with property-based tests: balance never negative, reversal restores the previous balance, total equals the sum of account balances.
-- S3.6: overview queries; paging of long lists.
-
-**M3**
-- S4.1: token generation and hashing; deep link; QR image.
-- S4.2: consent text version 1 as reviewed; accept and decline paths; uniqueness rules for links.
-- S4.3: disconnect flow.
-- S5.1: notification templates; events wired to the outbox inside the command transaction.
-- S5.2: callback handlers; dispute reason prompt; state machine tests for every allowed and forbidden transition.
-- S5.3: `/qarzim` with paging; authorization tests that try every cross-shop and cross-customer access.
-
-**M4**
-- S6.1 to S6.3: settings handlers; hourly job; eligibility query; dispute exclusion; limit tests including the "no reminder at zero balance" and "opted-out" cases.
-- S7.1: spreadsheet generation.
-- S7.2: anonymization procedure; deferred processing job; test that no identifying field survives.
-- S7.3: measurement writes; weekly export script; schema test that the measurement schema holds no identifying columns.
-
-**M5**
-- S8.1: backup script, encryption, shipping, pruning; full restore onto a fresh server with the time recorded.
-- S8.2: external check; alert rules; digest; a deliberate failure of each alert to prove it fires.
-- S8.3: sit with owners, time them, adjust the grammar.
-- S8.4: language review.
-- Runbooks and launch checklist as defined in Stage 10.
+- **S1.1** Monorepo with `backend` and `frontend`; module layout mirroring the architecture; import-rule check; formatter, linter, type checker, unit and integration test runners; CI with a PostgreSQL service; dependency scans.
+- **S1.2** Convert `schema.sql` to migrations run by a separate owner role; port `tests/schema_checks.sql` to the test suite; add a clock-controlled test for the goods-line time limit.
+- **S1.3** Request context carrying user, shop, role; transaction wrapper that sets the tenant; authorization decorator; harness that calls every registered operation as each role and as members of another shop.
+- **S1.4** Webhook handler; processed-update table; idempotency-key middleware; outbox repository and dispatcher with per-channel limits and retry.
+- **S1.5** Order two servers; private tunnel; Compose files; streaming replica; pgBackRest; file store with replication; failover script; staging on the standby.
+- **S2.1** Three sign-in flows with signature validation and age checks; session store; language preference.
+- **S2.2** Front-end build with three entry points; API client generation; catalogs; a first screen in each.
 
 ## Estimates
 
 | Milestone | Low | High | Main uncertainty |
 |---|---|---|---|
-| M1 Foundation | 3 | 5 | Ordering and reaching a server in Uzbekistan; untested webhook reachability |
-| M2 One-sided ledger | 4 | 7 | Parser edge cases; overview rendering in chat |
-| M3 Two-sided ledger | 4 | 7 | Consent and linking rules; authorization tests |
-| M4 Reminders, data rights, measurement | 4 | 6 | Reminder eligibility logic |
-| M5 Pilot readiness | 3 | 6 | Restore rehearsal; usability findings may send work back to M2 |
-| **Build total** | **18** | **31** | |
-| M6 Pilot | 8 weeks elapsed | | Roughly half a day a week of support, plus recruiting shops |
+| M1 Platform foundation | 12 | 18 | Two-server setup in Uzbekistan; row-level security with pooled connections; three sign-in flows |
+| M2 Shops, staff, core ledger | 12 | 18 | Role checks across every operation; chat parser in two languages |
+| M3 Catalog and itemized entry | 10 | 15 | Entry screen speed on low-end phones |
+| M4 Customer side | 12 | 18 | Linking at the counter; three request types with their limits |
+| M5 Reminders and credit control | 8 | 12 | SMS adapter without a provider to test against |
+| M6 Reports, export, import, web panel, Russian | 16 | 24 | Report correctness; import validation; a whole second language |
+| M7 Subscription and administration | 12 | 18 | Payment adapters without merchant accounts; admin security |
+| M8 Hardening and launch readiness | 10 | 15 | Findings from load and security work send work back |
+| **Build total** | **92** | **138** | |
 
-Validation track effort, founder's own time: interviews two to four days; pDaftar test half a day; lawyer consultation unknown.
+At five focused days a week this is roughly 18 to 28 weeks before the first shop uses the product, not counting the validation track, illness, or rework. Estimates of this size made in advance are usually low.
 
-Recurring cost during build and pilot: one server at about 125,000 to 250,000 UZS a month (EVID-031), backup storage at a second provider (price not researched), and a legal consultation (price not researched). No other paid service is required.
+Recurring cost during build and after: two servers at about 125,000 to 250,000 UZS a month each (EVID-031); a domain; backup storage if a third location is found; a legal consultation; SMS and payment provider costs only once those are switched on.
 
 ## Dependencies
 
 | Item | Depends on |
 |---|---|
-| M1 deployment (S1.5) | Hosting provider chosen (M0) |
-| M2 | M1 schema and webhook |
-| M3 | M2; pDaftar test and interviews done (M0); ideally legal answers |
-| S4.2 consent screen | Reviewed consent text (M0 legal) for production; the draft is enough for development |
-| M4 | M3 for reminders (need links); S7.1 and S7.3 depend only on M2 |
-| M5 | M4; backup location chosen (M0) |
-| M6 | M5; legal gate passed; ten shops recruited |
-| External | Telegram Bot API availability; a registered bot; a domain name and certificate for the webhook |
+| Everything | M1 |
+| M3, M4 | M2 |
+| M4 customer notifications with goods | M3 |
+| M5 reminders | M4 links; M3 promises |
+| M6 reports | M2 to M5 data; import depends only on M2 |
+| M7 limited mode | M2 commands, which must already consult subscription state |
+| M8 | M1 to M7 |
+| M9 | M8; legal review; launch approval |
+| External | Two hosting providers in Uzbekistan; a domain and certificates; Telegram Bot API, Mini App, and Login; a native Russian reviewer |
+| Blocked until a registered entity exists | Production use of SMS and of Click and Payme |
 
 ## Critical path
 
-M1 → M2 → M3 → M4 → M5 → M6, with two gates from the validation track:
+M1 → M2 → M3 → M4 → M5 → M6 → M7 → M8 → M9.
 
-1. **Before M3:** interviews and the pDaftar test. This is where a stop decision is cheapest, after 7 to 12 days of build.
-2. **Before M6:** legal review. No real customer data is processed before it.
+Work off the critical path: import (S14.1) and activity view (S5.1) any time after M2; Russian catalogs can be filled as each milestone ends instead of all in M6; the administration panel shell can start after M1.
 
-Work that can run off the critical path: export (S7.1) and measurement (S7.3) any time after M2; backup scripting (S8.1) any time after M1; recruiting pilot shops during M3 and M4, which the interviews can start.
+Decision points on the path:
+
+1. **After M4**, about 46 to 69 days in: the product can record itemized credit, link customers, and handle disputes and requests. This is the earliest point at which real shops could try it. The founder has decided not to; the interviews and the pDaftar test are due here regardless.
+2. **Before M9**: legal review complete.
 
 ## Risks
 
 | Risk | Likelihood | Impact | Response |
 |---|---|---|---|
-| A stop condition is met by interviews or the pDaftar test | Medium | Project ends or pivots | Do M0 early; limit spend to M1 and M2 before the gate |
-| Legal review rejects recording unlinked customers or Telegram notifications | Medium | Redesign of linking or notifications; possibly no viable product | Seek advice before M3; fallback of nickname-only records is already identified in the PRD |
-| Recording is slower than the notebook in real use | Medium | Owners abandon in week one | Usability test in M5 (S8.3) and again in the first pilot week; grammar is cheap to change |
-| Customers do not link | Medium | Differentiation unused; pilot cannot answer its main question | Track link rate from day one; give owners a QR card for the counter |
-| Too few pilot shops recruited | Medium | Pilot inconclusive | Start recruiting during interviews |
-| Solo founder unavailable | Medium | Schedule slips; during the pilot, outages go unattended | No calendar commitments; pilot shops keep notebooks; runbooks for the common failures |
-| Hosting in Uzbekistan unreliable or webhook unreachable | Low to medium | Outages; fall back to long polling (ADR-006) or change provider | Test reachability in M1 before building on it |
-| Estimates are wrong | High | Longer build | Ranges given; re-estimate at each milestone |
-| Telegram policy or access change | Low | Product unavailable | Accepted for the MVP (ADR-001) |
+| The product is built for five months on untested assumptions and shops do not want it, or want something different | High | Most of the build wasted | Interviews before M4; the optional trial after M4 remains available |
+| A stop condition is met when the validation track finally runs | Medium | Project ends late and expensively | Run M0 now, in parallel with M1 |
+| Estimates are low | High | Launch slips by months | Re-estimate at every milestone; cut scope by decision, not by drift |
+| Shops will not pay 100,000 UZS against a free incumbent tier (EVID-021) | High | No revenue | Price is a setting (ADR-018); ask in interviews |
+| Payments to a personal card, or selling through a bot outside Telegram's mechanism, turn out not to be permissible (EVID-035, EVID-028) | Medium | Revenue blocked; bot restricted | Legal review; adapters ready for when an entity exists |
+| Legal review rejects recording before consent, the reliability indicator, or Telegram notifications with goods | Medium | Redesign | Seek advice before M4 |
+| One person builds and operates everything | High | Any absence stops the project; after launch, outages go unattended | Runbooks; a second person able to fail over, named before launch |
+| Row-level security or session handling is implemented wrongly | Medium | Data of one shop exposed to another | Test harness from M1; security review in M8 |
+| Two-server operation in Uzbekistan is unreliable | Medium | Availability target missed | Rehearse failover in M1 and M8; measure before promising |
+| SMS and payment adapters are wrong when first switched on | Medium | Failures at the moment of first revenue | Switch on for one shop first; keep manual receipts as fallback |
+| Scope grows again | High | Further delay | Every addition is a recorded decision with its estimate |
 
 ## Release plan
 
-| Stage | Who uses it | Entry condition | Data |
+| Stage | Who | Entry condition | Data |
 |---|---|---|---|
-| Development | Founder, with a separate test bot | M1 | Invented data only |
-| Internal alpha | Founder acting as owner and customer on the production server | M3 | Invented data only |
-| Friendly test | One or two shop owners the founder knows, recording alongside their notebook | M4, and legal gate passed | Real data, with consent |
-| Pilot | About ten shops for eight weeks | M5 complete and launch criteria from Stage 10 met | Real data, with consent |
+| Development | Founder with test bots | M1 | Invented |
+| Staging | Founder, on the standby server | M1 onward, every milestone | Invented, generated at scale for load tests |
+| Internal acceptance | Founder acting in every role across two test shops | End of each milestone | Invented |
+| Launch | First real shops | M8 complete; legal review; founder's launch approval | Real, with consent |
 
-Release mechanics: every change goes through CI; releases are tagged and deployed manually outside shop hours (ADR-008); migrations are forward-only, so rollback means redeploying the previous image and, if a migration must be undone, restoring from the pre-release backup taken as part of every release. During the pilot, changes are limited to fixes and grammar adjustments unless a pilot finding requires more.
+By the founder's decision there is no pilot stage between internal acceptance and launch. To limit the damage of a fault found only in real use, launch onboards shops one at a time for the first two weeks; this is an operational safeguard the agent added and the founder may remove.
 
-After the pilot the founder decides, using the PRD's exit criteria, among three outcomes: continue toward a paid product (which reopens billing, SMS fallback, and multiple sellers, deferred as FEAT-013 to FEAT-015), change direction, or stop.
+Release mechanics: continuous integration on every change; tagged releases deployed by script outside shop hours; forward-only, backward-compatible migrations so that rollback is a redeploy of the previous images; point-in-time recovery available for mistakes (ADR-015).
 
 ## Traceability to requirements
 
 | Requirements | Stories |
 |---|---|
-| REQ-001, REQ-002 | S2.1 |
-| REQ-003, REQ-004, REQ-005 | S2.2 |
-| REQ-006, REQ-007, REQ-008, REQ-010 | S3.1, S3.2 |
-| REQ-009 | S3.3, S3.5 |
-| REQ-011, REQ-012 | S1.2, S3.4, S5.1 |
-| REQ-013, REQ-014 | S4.1, S4.2 |
-| REQ-015 | S1.4, S5.1 |
-| REQ-016, REQ-017, REQ-018 | S5.2 |
-| REQ-019, REQ-020, REQ-021 | S5.3, S4.3 |
-| REQ-022, REQ-023, REQ-024, REQ-025 | S6.1, S6.2, S6.3 |
-| REQ-026, REQ-027 | S3.6 |
-| REQ-028 | S7.1 |
-| REQ-029 | S7.2 |
-| REQ-030 | S7.3 |
-| REQ-N01 | S3.1, S8.4 |
-| REQ-N02, REQ-N03 | S3.1, S8.3 |
-| REQ-N04 | S1.5, S8.1 |
-| REQ-N05 | S7.2, S7.3 |
-| REQ-N06, REQ-N07 | S1.1, S1.2, S3.5 |
-| REQ-N08, REQ-N09 | S1.3, S8.1, S8.2 |
-| REQ-N10 | S6.2, S6.3 |
-| REQ-N11 | S1.3, S4.1 |
+| REQ-001 | S3.1 |
+| REQ-003, REQ-004, REQ-005 | S4.1 |
+| REQ-006 | S4.2 |
+| REQ-007, REQ-009, REQ-010 | S4.3 |
+| REQ-008 | S7.1 |
+| REQ-011, REQ-012 | S1.2, S4.4 |
+| REQ-013, REQ-014 | S9.1 |
+| REQ-015 | S1.4, S9.2 |
+| REQ-016, REQ-017 | S10.1 |
+| REQ-019, REQ-020, REQ-021, REQ-029 | S9.3 |
+| REQ-022, REQ-024, REQ-042 | S11.1 |
+| REQ-023, REQ-025 | S11.2 |
+| REQ-026, REQ-027 | S4.5 |
+| REQ-028 | S13.2 |
+| REQ-030 | S18.3 |
+| REQ-031, REQ-032, REQ-033, REQ-034 | S3.2 |
+| REQ-035, REQ-047 | S5.1 |
+| REQ-036 | S3.3 |
+| REQ-037 | S6.2 |
+| REQ-038 | S6.3 |
+| REQ-039, REQ-040, REQ-041 | S6.1 |
+| REQ-043 | S11.3 |
+| REQ-044 | S12.1 |
+| REQ-045 | S12.2 |
+| REQ-046 | S13.1 |
+| REQ-048 | S18.4 |
+| REQ-049 | S2.2, S8.1 |
+| REQ-050 | S2.1, S15.1 |
+| REQ-051 | S2.2, S16.1 |
+| REQ-052, REQ-053, REQ-057 | S17.1 |
+| REQ-054, REQ-055 | S17.2 |
+| REQ-056 | S17.3 |
+| REQ-058 | S18.1 |
+| REQ-059 | S18.2 |
+| REQ-060, REQ-061 | S10.2 |
+| REQ-062, REQ-063 | S14.1 |
+| REQ-064, REQ-065 | S3.4 |
+| REQ-066, REQ-067 | S10.3 |
+| REQ-N01 | S16.1 |
+| REQ-N02, REQ-N03 | S4.2, S6.2, S19.4 |
+| REQ-N04 | S1.5 |
+| REQ-N05 | S9.3, S19.4 |
+| REQ-N06, REQ-N07 | S1.1, S1.2, S4.3 |
+| REQ-N08, REQ-N09 | S1.5, S19.3 |
+| REQ-N10 | S11.2 |
+| REQ-N11, REQ-N12 | S1.3, S2.1, S19.2 |
+| REQ-N13 | S19.1 |
+| REQ-N14 | S18.1 |
+| REQ-N15 | S2.2, S15.1 |
 
-Decision records and where they are implemented: ADR-001 in S3.1 and S3.6; ADR-002 and ADR-003 in S1.1; ADR-004 and ADR-005 in S1.2; ADR-006 in S1.3; ADR-007 in S1.4; ADR-008 in S1.5; ADR-009 in S8.1; ADR-010 in S7.3.
+Decision records and where they are implemented: ADR-002, ADR-003, ADR-012 and ADR-013 in S1.1 and S2.2; ADR-004, ADR-005 and ADR-016 in S1.2 and S1.3; ADR-006 and ADR-007 in S1.4; ADR-014, ADR-015 and ADR-020 in S1.5; ADR-017 in S2.1 and S18.1; ADR-011 in S2.2 and S8.1; ADR-018 and ADR-019 in S17.1 to S18.1; ADR-010 in S18.3; ADR-021 in S2.2 and S16.1.
 
-Every requirement in the PRD is covered by at least one story.
+Every requirement of PRD version 2 that is not withdrawn appears in the table.
 
 ## Assumptions
 
-- The founder builds with AI agents, full time (stated by the founder on 2026-10-06).
-- Ten shops can be recruited through the founder's own contacts and the interviews.
-- A lawyer familiar with the personal data law can be consulted at a cost the founder accepts.
-- Pilot owners will keep their paper notebooks for the eight weeks.
-- No one else contributes code or operations.
+- The founder works on this full time (stated 2026-10-06) with AI agents doing most implementation.
+- No one else contributes code, design, or operations. Design of the interfaces is done by the founder and agents without a designer.
+- A native Russian speaker is available for review.
+- Two hosting providers in Uzbekistan can be contracted by an individual.
+- The scope does not grow again during the build.
 
 ## Open questions
 
-1. Resolved on 2026-10-06: the founder is available full time.
-2. Will the validation track really run before M3, given that it was deferred at two earlier stages?
-3. Which city or district supplies the pilot shops?
-4. Who answers when a pilot shop has a problem and the founder is unavailable?
+1. Will the validation track run now, given that it has been deferred at four earlier points?
+2. Who is the second person able to fail over and to post an outage notice?
+3. How will the first shops be recruited for launch, and how many at once?
+4. Is five months of full-time work without revenue or user feedback acceptable to the founder? This is a personal and financial question the plan cannot answer.
 
 ## Approvals
 
 | Record | Subject | Status |
 |---|---|---|
-| DEC-009 / APR-009 | Technical specification | Approved 2026-10-06 |
-| DEC-010 | Development plan: milestone order M1 to M6, build estimate of 18 to 31 focused days without calendar commitment, a hard gate before M3 (interviews and pDaftar test) and a hard gate before any real customer data (legal review) | Approved 2026-10-06 |
+| DEC-010 / APR-010 | Version 1 plan | Superseded; its two gates are carried into M0 |
+| DEC-018 | Version 2 plan: milestones M1 to M9, a build estimate of 92 to 138 focused days without calendar commitment, no pilot stage by founder decision, shops onboarded one at a time for the first two weeks, and the validation and legal track with its gates | Pending end-of-sequence review |

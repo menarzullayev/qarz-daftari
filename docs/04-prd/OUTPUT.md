@@ -89,7 +89,7 @@ A customer without Telegram must still be recordable; for them the product is a 
 | FEAT-026 | Several shops per person | One person can own or work in more than one shop and switch between them | Yes |
 | FEAT-027 | Promised date change request | A customer asks to move a promised date; staff accept or decline | Yes |
 
-The founder asked for more functions in release 1 and, offered six candidates, chose four: FEAT-024 to FEAT-027. Scheduled report delivery and a referral scheme were not chosen and are not in release 1.
+The founder asked for more functions in release 1 and, offered six candidates, chose four (FEAT-024 to FEAT-027 inclusive). Scheduled report delivery and a referral scheme were not chosen and are not in release 1.
 
 ## User stories
 
@@ -370,7 +370,7 @@ Assumptions built into the requirements:
 3. Legal questions carried from version 1: recording a customer before consent; delaying removal while a balance is owed; notifications through Telegram's servers abroad; the consent text. Added by this revision: retention of payment receipts, which contain the payer's card details, and the lawfulness of SMS to customers who have not consented.
 4. Which SMS provider, at what price, and does it require a registered entity?
 5. Who sits in the receipt review group, and what stops a forged receipt from being approved?
-6. Resolved on 2026-10-06: four candidate functions joined release 1 as FEAT-024 to FEAT-027.
+6. Resolved on 2026-10-06: four candidate functions joined release 1 (FEAT-024 to FEAT-027 inclusive).
 7. Does the web panel need anything the Mini App cannot do, or is it the same screens on a larger display?
 
 ## Decisions / approvals

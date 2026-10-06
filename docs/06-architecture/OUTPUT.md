@@ -1,229 +1,237 @@
 # System Architecture
 
-> **Stale since 2026-10-06.** This document was written for PRD version 1 (pilot MVP). The founder changed direction to a full production-grade product (DEC-012 / APR-012) and the PRD is now version 2. This document has not yet been revised and must not be relied on where it conflicts with `docs/04-prd/OUTPUT.md`.
+Version 2. Status: rewritten for PRD version 2 (DEC-013 / APR-013); awaiting the founder's end-of-sequence review (DEC-015). Prepared 2026-10-06.
+Version 1 (single server, chat only, DEC-007) is superseded and remains in version history.
 
-Status: architecture direction approved by the founder on 2026-10-06 (DEC-007 / APR-007).
-Upstream: PRD (DEC-005), Domain Model (DEC-006).
-
-**Design stance.** This is a system for about ten pilot shops, built and run by one person. The architecture is deliberately the smallest thing that satisfies the PRD: one server in Uzbekistan, one application process, one database. Anything that would only pay off at a scale the product has not earned is left out and named under Key trade-offs.
+**Design stance.** Release 1 is now a multi-tenant product with three clients, staff roles, a subscription, and stated targets for scale and recovery (REQ-N08, REQ-N09, REQ-N13). It is still built and run by one person. The architecture therefore adds what those targets require, a standby server, continuous database archiving, an HTTP API, and a web front end, and refuses everything else. Where a choice trades operational simplicity for capability, simplicity wins unless a requirement forbids it.
 
 ## System context
 
 ```mermaid
 flowchart LR
-    Owner["Shop owner<br/>(Telegram app)"]
-    Customer["Customer<br/>(Telegram app)"]
-    TG["Telegram platform<br/>(Bot API)"]
-    QD["Qarz Daftari<br/>(server in Uzbekistan)"]
-    Operator["Founder as operator"]
-    Backup["Backup storage<br/>(second location in Uzbekistan)"]
+    Staff["Owner, manager, seller"]
+    Customer["Customer"]
+    Admin["Platform administrator"]
+    TG["Telegram platform"]
+    SMS["SMS provider (switched off)"]
+    Pay["Click / Payme (switched off)"]
+    QD["Qarz Daftari service<br/>(two servers in Uzbekistan)"]
+    Store["Backup and archive storage<br/>(Uzbekistan)"]
 
-    Owner <--> TG
-    Customer <--> TG
-    TG <-->|"HTTPS webhook and API calls"| QD
-    Operator -->|"SSH, logs, alerts"| QD
-    QD -->|"encrypted daily backup"| Backup
+    Staff <-->|"chat, Mini App"| TG
+    Customer <-->|"chat, Mini App"| TG
+    TG <-->|"webhook, Bot API"| QD
+    Staff <-->|"web panel (HTTPS)"| QD
+    Admin <-->|"admin panel (HTTPS)"| QD
+    QD -.->|"reminders"| SMS
+    Pay -.->|"payment callbacks"| QD
+    QD -->|"encrypted backups, WAL archive"| Store
 ```
 
 | Actor or system | Role |
 |---|---|
-| Shop owner | Records sales and payments, reads balances, controls reminders; uses only the Telegram app |
-| Customer | Links, acknowledges or disputes entries, reads their balance; uses only the Telegram app |
-| Telegram platform | Carries every message between people and the system; the only external runtime dependency |
-| Qarz Daftari | Holds the ledger and applies the domain rules |
-| Operator | The founder: deploys, monitors, restores |
-| Backup storage | Holds encrypted database backups in a different facility inside Uzbekistan |
-
-There is no web site, no mobile app, no Mini App, no payment provider, and no SMS gateway in the MVP.
+| Staff | Record and manage through chat, the Mini App, and the web panel |
+| Customer | Receives notifications; views debt, disputes, sends payment notices and date requests through chat and a Mini App page |
+| Administrator | Approves subscription receipts, manages switches, supports shops |
+| Telegram | Messaging, Mini App host, and the identity provider for every user |
+| SMS provider | Reminder fallback; integrated, off until a contract exists (REQ-043) |
+| Click and Payme | Online subscription payment; integrated, off (REQ-056) |
+| Storage | Encrypted database backups and write-ahead-log archive in a second facility |
 
 ## Containers
 
-| Container | Responsibility | Technology (recommended; to be fixed as decision records in Stage 07) |
+| Container | Responsibility | Technology |
 |---|---|---|
-| Bot application | Receives Telegram updates, runs the domain logic, sends replies and notifications, runs scheduled jobs | Python 3.12 with aiogram 3, one process |
-| Database | System of record for all domain data and the job queue | PostgreSQL 16 |
-| Reverse proxy | Terminates TLS for the Telegram webhook, forwards only the webhook path | Caddy |
-| Backup job | Dumps, encrypts, and ships the database daily; prunes old copies | Scheduled script on the host |
+| API | HTTP API for the Mini App, web panel, and admin panel; Telegram webhook endpoint; payment callbacks | Python 3.12, FastAPI, aiogram 3 for update handling |
+| Worker | Outbox delivery to Telegram and SMS, scheduled jobs (reminders, expiries, subscription warnings, cleanup), import processing, report exports | Same codebase, separate process |
+| Web front end | One single-page application with three entry points: staff workspace (Mini App and web panel share screens, laid out responsively), customer page, admin panel | TypeScript, React, built to static files |
+| Database | System of record, job and outbox tables, platform settings | PostgreSQL 16, primary and streaming standby |
+| File store | Receipt images and import files | S3-compatible object store self-hosted on the same servers |
+| Reverse proxy | TLS, static files, routing, request limits | Caddy |
+| Backup agent | Base backups and continuous log archiving, restore tooling | pgBackRest |
 
-All four run on one virtual server through Docker Compose. The database is not reachable from outside the server.
+API and worker are stateless and share one codebase organized as a modular monolith.
 
 ## Components
 
-Inside the bot application, as a modular monolith. Dependencies point inward: interface depends on application, application on domain; the domain depends on nothing.
+Modules of the backend. Each owns its tables and exposes application commands; modules call each other only through those commands.
 
-| Layer | Component | Responsibility | Domain elements |
-|---|---|---|---|
-| Interface | Update router | Verifies the webhook secret, discards duplicates, identifies the sender as owner, linked customer, or unknown | - |
-| Interface | Owner conversation | Parses "name amount" messages, commands, and button presses into application commands; renders replies in Uzbek | - |
-| Interface | Customer conversation | Link and consent flow, confirm and dispute buttons, balance view | - |
-| Application | Ledger service | Record credit, record payment, reverse entry; one database transaction per command | DOM-002, DOM-003 |
-| Application | Customer service | Add, find, rename, archive, anonymize | DOM-002, DOM-008 |
-| Application | Linking service | Issue invitation, accept with consent, disconnect, mark unreachable | DOM-004, DOM-005 |
-| Application | Acknowledgement service | Confirm, dispute, withdraw; closes on reversal | DOM-006 |
-| Application | Reminder service | Decides who is due a reminder and enforces the frequency limits | DOM-007 |
-| Application | Overview and export | Totals, overdue list, spreadsheet export | DOM-001, DOM-002, DOM-003 |
-| Application | Measurement | Writes identity-free records for the pilot metrics | DOM-009 |
-| Domain | Account model | Balance, allocation, overdue calculation, invariants, lifecycle transitions; pure functions with no input or output | DOM-002, DOM-003, DOM-006 |
-| Infrastructure | Repository | Reads and writes aggregates; append-only for entries | All |
-| Infrastructure | Outbox dispatcher | Sends queued Telegram messages within rate limits, retries, records delivery or failure | - |
-| Infrastructure | Scheduler | Wakes the reminder service and the removal-request processor at set times | - |
+| Module | Responsibility | Domain elements |
+|---|---|---|
+| Identity | Users, Telegram authentication for each client, sessions, language | DOM-010 |
+| Shops and staff | Shops, memberships, staff invitations, role checks, active shop | DOM-001, DOM-005, DOM-011 |
+| Catalog | Catalog items, learned items | DOM-013 |
+| Customers | Customer book, search, credit limits, payment history indicator, archive, anonymization | DOM-002, DOM-008 |
+| Ledger | Entries, goods lines, promises, reversals, balance and overdue calculation | DOM-003, DOM-012, DOM-014 |
+| Customer relations | Links and consent, disputes, payment notices, date change requests | DOM-004, DOM-006, DOM-015, DOM-016 |
+| Reminders | Eligibility, channel choice, frequency limits, templates, SMS quota | DOM-007 |
+| Reports and export | Period reports, combined totals, spreadsheet generation | Derived |
+| Import | Template, validation, preview, apply, undo | DOM-017 |
+| Subscription | Trial, paid-through date, limited mode, receipts, online payment adapters | DOM-018, DOM-019 |
+| Administration | Platform settings, receipt review, shop search, suspension, support access | DOM-020, DOM-022 |
+| Activity and measurement | Activity log, identity-free measurement records | DOM-021, DOM-009 |
+| Messaging | Outbox, Telegram dispatcher, SMS adapter, message catalogs in two languages | - |
+| Files | Upload, virus and type checks, storage, signed short-lived access | DOM-023 |
+
+Cross-cutting: authorization (role and tenant on every command), tenant context (sets the shop for the database session), audit (time and actor on every change), feature switches read from platform settings.
 
 ## Deployment
 
 | Aspect | Design |
 |---|---|
-| Location | One virtual server in a commercial data center in Uzbekistan (REQ-N04, EVID-027). Local providers exist at roughly 125,000 to 250,000 UZS a month (EVID-031). |
-| Size | 2 CPU cores, 2 to 4 GB RAM, 40 GB SSD is ample for the pilot |
-| Runtime | Docker Compose: `bot`, `db`, `proxy`. Images are built from the repository and pinned by digest. |
-| Network | Only ports 443 (webhook) and a non-default SSH port are open. SSH by key only. |
-| Configuration | Secrets (bot token, webhook secret, database password, backup key) in an environment file on the server, readable only by the service user; never in the repository |
-| Releases | Manual, by the operator, outside shop hours (REQ-N09). Database migrations are forward-only and run before the new version starts. |
-| Environments | Production and a local development setup that uses a separate test bot. No staging server for the pilot. |
-| Backups | Daily encrypted dump to storage at a second provider inside Uzbekistan; 14 daily and 8 weekly copies kept; a restore is rehearsed before the pilot starts (REQ-N08) |
+| Location | Two virtual servers in Uzbekistan, at two different providers or facilities (REQ-N04, EVID-027, EVID-031) |
+| Primary server | Proxy, API (several worker processes), worker, PostgreSQL primary, file store |
+| Standby server | PostgreSQL streaming replica, file store replica, the application images ready to start, backup repository |
+| Failover | Manual and scripted: promote the replica, start API and worker on the standby, repoint DNS and the Telegram webhook. Target within 1 hour (REQ-N09). Automatic failover is deliberately not used with two nodes because it risks both servers accepting writes. |
+| Data loss bound | Streaming replication plus log archiving every minute keeps the bound under 5 minutes (REQ-N08) |
+| Size | Primary: 4 cores, 8 GB RAM, 100 GB SSD. Standby: 2 cores, 4 GB RAM, 100 GB SSD. Sized for the design capacity in REQ-N13 with margin; to be confirmed by a load test. |
+| Runtime | Docker Compose on each server; images built in continuous integration and pinned by digest |
+| Network | Public: 443 only. SSH by key on a non-default port. Database, file store, and replication reachable only over a private tunnel between the two servers. |
+| Environments | Production; a staging environment on the standby server with separate database and bots; local development |
+| Releases | Scripted, by the operator, outside shop hours; migrations forward-only and compatible with the previous version |
 
 ## Data flow
 
-**Recording a credit sale (REQ-006, REQ-010, REQ-015):**
+**Fast credit sale in chat (REQ-006).** Seller sends "Ali 45000" → Telegram webhook → API authenticates the update, resolves user and active shop, checks role and subscription state → Ledger command in one transaction: entry with default promise, activity record, outbox notification for a linked customer, measurement record → reply with balance and one-tap date choices → worker delivers the customer notification.
 
-1. The owner sends "Ali 45000" in the bot chat. Telegram delivers the update to the webhook.
-2. The update router checks the secret and the update's identifier, and resolves the sender to a shop.
-3. The owner conversation parses name and amount and finds the customer.
-4. The ledger service, in one transaction: appends the entry with its due date, creates the acknowledgement as unconfirmed if the customer is linked, queues the customer notification in the outbox, and writes the measurement record.
-5. The reply with the new balance is sent to the owner.
-6. The outbox dispatcher delivers the notification to the customer with confirm and dispute buttons.
+**Itemized sale in the Mini App (REQ-037, REQ-040).** Mini App obtains a session from Telegram launch data → seller picks the customer and goods → one API call carries all lines → Ledger validates totals, limit, and role, and writes entry, lines, learned catalog items, and outbox messages in one transaction.
 
-Because the entry and the queued notification are saved in the same transaction, a crash cannot produce an entry without its notification or a notification without its entry.
+**Customer dispute, payment notice, date request (REQ-016, REQ-060, REQ-066).** Customer acts from a message button or their Mini App page → API verifies the link → request saved, staff notified through the outbox → a staff decision is a second command that may create a payment or change a promise in the same transaction as the decision.
 
-**Acknowledging (REQ-016):** the customer presses a button; the router resolves the sender to an active link; the acknowledgement service changes the state and queues a short notice to the owner if it is a dispute.
+**Reminder run (REQ-023, REQ-043).** Hourly, the worker takes the shops whose reminder hour matches, selects eligible customers, chooses Telegram or SMS, records each reminder and queues it in one transaction, and spreads delivery.
 
-**Reminders (REQ-023):** once a day at a fixed morning hour the scheduler asks the reminder service for eligible customers; each reminder is recorded and queued in one transaction; the dispatcher spreads delivery out.
+**Subscription payment (REQ-054, REQ-055).** Owner opens "pay" → sees card number and amount → sends the receipt in the bot → file stored, receipt recorded, forwarded to the administrator and the review group → administrator approves or rejects in the admin panel or by a button in the chat → subscription updated, owner notified, action logged.
 
-**Linking (REQ-013, REQ-014):** the owner asks for a customer's link; the bot returns a deep link and a QR image containing a one-time token; the customer opens it, sees the consent text, and agrees; the link and consent record are saved together.
+**Import (REQ-062).** Owner uploads a spreadsheet → worker validates and builds a preview → owner confirms → worker applies in one transaction per batch.
 
 ## Integrations
 
 | Integration | Direction | Notes |
 |---|---|---|
-| Telegram Bot API, webhook | Inbound | HTTPS with a secret token header; updates are processed at least once and made idempotent by update identifier |
-| Telegram Bot API, methods | Outbound | Sending messages, buttons, QR images, and export files. Limits of about one message per second per chat and 30 per second overall (EVID-032) are far above pilot volume but are respected by the dispatcher from the start. |
-| Backup storage | Outbound | Encrypted files only |
-| Operator alerting | Outbound | Errors and failed backups are sent to the operator's own Telegram chat through the same bot |
-
-No other external service is called. Nothing in the system depends on a provider outside Uzbekistan except Telegram itself.
+| Telegram Bot API | Both | Webhook with secret header; idempotent by update identifier; outbound through the outbox within rate limits (EVID-032) |
+| Telegram Mini App launch data | Inbound | Signed data validated on the server to establish the user; never trusted from the client alone |
+| Telegram Login for the web | Inbound | Signed login data validated on the server; produces a session cookie |
+| SMS provider | Outbound | One adapter interface; provider not chosen; off by platform switch |
+| Click and Payme | Both | Adapters and callback endpoints implemented and verified against the providers' test environments where available; off by platform switch |
+| Backup storage | Outbound | pgBackRest repository on the standby and a copy at a third location in Uzbekistan if one can be had |
+| External uptime monitor | Inbound | Health endpoint; alerts by a channel independent of both servers |
 
 ## Security boundaries
 
 | Boundary | Control |
 |---|---|
-| Internet to server | Only the webhook path is served; requests without the correct secret header are rejected before any processing |
-| Telegram user to data | Authorization is by Telegram identity on every request: an owner reaches only their own shop; a customer reaches only the account their active link points to (REQ-020, REQ-N11, domain invariant INV-8). The check lives in the application layer, not in the interface. |
-| Invitation tokens | Random, at least 128 bits, single use, stored only as a hash, cancelled when replaced |
-| Application to database | A database role without permission to update or delete rows in the entry table, so immutability holds even against application bugs (REQ-N07) |
-| Personal data at rest | Stored only in the database and its backups, both inside Uzbekistan; backups are encrypted with a key kept off the server (REQ-N04) |
-| Personal data in logs | Logs carry internal identifiers, never names, phone numbers, amounts tied to names, or message text |
-| Measurement data | Kept in separate tables with no names, phones, or Telegram identities (REQ-030) |
-| Operator access | SSH key only; the operator is the only person with server access; every administrative data change must go through the same application commands as users |
+| Internet to service | TLS; only the proxy is exposed; request size and rate limits at the proxy |
+| Client to API | Every request carries a server-issued session bound to a Telegram identity. Sessions are short-lived for Mini Apps and cookie-based with CSRF protection for the web. |
+| User to shop data | Role and membership checked in the application for every command (REQ-N11) |
+| Tenant isolation | PostgreSQL row-level security on every tenant table, keyed to a shop set for the database session; the application role cannot bypass it (REQ-N12). A bug in a query therefore returns nothing from another shop. |
+| Customer to data | A customer session can address only accounts reached through its own active links |
+| Administrator | Separate admin entry point; allowed Telegram identities listed in configuration; a second factor required; no access to shop data without a support access record that the owner can see (REQ-059) |
+| Ledger immutability | Database permissions deny update and delete on entries and lines to the application role (REQ-N07) |
+| Files | Type and size checks on upload; stored outside the web root; served only through short-lived signed links after an authorization check |
+| Secrets | Environment files on the servers, readable by the service user only; backup encryption key kept off both servers |
+| Personal data | In the database, file store, and backups, all inside Uzbekistan; logs carry identifiers only |
 
-**A boundary this design cannot control.** Every notification the system sends, including a customer's name as the shop wrote it and the amount owed, passes through and is stored by Telegram on servers outside Uzbekistan (EVID-033). The system's own database satisfies the localization rule (EVID-027); whether sending the same facts through Telegram is compatible with that rule is a legal question this document cannot answer. The same would be true of any Telegram-based competitor (EVID-020). It is listed under Open questions as a matter for a lawyer.
+**Boundaries this design cannot control.** Messages to customers, now including goods and names by founder decision, pass through Telegram's servers abroad (EVID-033). Subscription receipts show the payer's card details and pass through Telegram as well. Whether either is compatible with the localization rule (EVID-027) remains a question for a lawyer.
 
 ## Reliability / scalability
 
 | Concern | Design | Requirement |
 |---|---|---|
-| No lost entries | An entry is acknowledged to the owner only after the transaction commits to disk | REQ-N08 |
-| Duplicate updates | Telegram may redeliver; the update identifier is recorded and repeats are ignored | REQ-011 |
-| Telegram outage or slow delivery | Outbound messages wait in the outbox and are retried with backoff; recording still works because the owner's reply is the only message needed synchronously | REQ-015 |
-| Server failure | Single server; recovery is restore from backup onto a new server. Target: back in service within four hours, losing at most 24 hours of entries. | REQ-N09 |
-| Detecting failure | An external uptime check on the webhook, plus an alert when the dispatcher queue or error count grows | REQ-N09 |
-| Speed | One round trip to Telegram and one small transaction per entry; no Mini App to load | REQ-N02, REQ-N03 |
-| Load | Ten shops at a few dozen entries a day is a few hundred transactions a day. A single small server handles several orders of magnitude more. | - |
+| No lost entries | Reply only after commit; synchronous disk write on the primary; streaming replica; log archive every minute | REQ-N08 |
+| Server loss | Scripted manual failover to the standby within 1 hour; rehearsed | REQ-N09 |
+| Duplicate updates and repeated requests | Idempotency by update identifier and by client-supplied request key on write calls | REQ-011 |
+| Telegram or SMS outage | Outbox with retry and backoff; recording does not depend on delivery | REQ-015 |
+| Load | Stateless API scaled by processes on the primary; design capacity of 50 entries a second is well within one PostgreSQL primary. To be shown by load test, not assumed. | REQ-N13 |
+| Large shops | Indexed search; paged lists; reports computed from indexed entries with period bounds; exports generated by the worker | REQ-026, REQ-046 |
+| Noisy tenant | Per-shop and per-user rate limits; heavy jobs queued in the worker | REQ-N13 |
+| Growth path | Add API nodes behind the proxy; move the file store and worker off the primary; read replica for reports. None changes module boundaries. | REQ-N13 |
 
-The stated recovery targets mean that a server loss could erase up to a day of entries. For a pilot whose shops still keep their notebooks this is tolerable; it would not be for a product shops rely on alone. Shortening it means continuous database archiving, which is named below as deferred.
-
-Growth path, not built now: move the database to its own server, add continuous archiving, then run several bot processes behind the proxy. None of these requires changing the domain or application layers.
+Honest limits: availability depends on one operator being reachable to fail over; two servers in one country and possibly one network are not independent in every failure; none of the capacity figures has been measured.
 
 ## Key trade-offs
 
 | Choice | Gained | Given up |
 |---|---|---|
-| Chat-only interface, no Mini App | Works on poor connections and old phones; much less to build | Rich screens for history and overview; these are rendered as text messages |
-| One server, one process | Operable by one person; cheap | High availability; a server loss means hours of downtime |
-| Daily backups only | Simple, easy to rehearse | Up to a day of entries after a disaster |
-| Modular monolith | One deployment, simple transactions | Independent scaling of parts, which the pilot does not need |
-| PostgreSQL job table instead of a message broker | No extra moving part | Throughput far beyond current need |
-| Local Uzbek hosting | Meets the localization rule (EVID-027) | Managed databases, mature tooling, and the reliability record of large cloud providers |
-| Telegram as the only channel | No install, free reminders (EVID-025) | Independence: platform rules or access can change (EVID-028); customers without Telegram are not reached |
-| Append-only ledger enforced in the database | Trust in the record; simple audit | Convenience of fixing data by hand |
+| One codebase for chat, API, and worker | One deployment and one set of rules for every client | Independent scaling and release of parts |
+| One web application for Mini App, web panel, and admin | Screens written once and adapted by width (REQ-N15) | A desktop experience designed separately |
+| Manual failover | No split-brain risk; simple to reason about | Minutes to an hour of downtime needing a person |
+| Row-level security in the database | Isolation that holds even when application code is wrong | Some query complexity and care with connection handling |
+| Self-hosted file store and database | Data stays in Uzbekistan under the operator's control | Managed services and their reliability record |
+| Adapters for SMS and online payment built but off | Ready when a registered entity exists | Code that cannot be exercised in production yet |
+| Chat fast path kept beside the Mini App | Works in a queue and on a poor connection (REQ-N03) | Two ways to do one thing, both to be maintained |
 
 ## Architecture decisions
 
-Decisions this document proposes, to be written up as individual records in Stage 07:
+Decisions carried, changed, or added, to be written up in Stage 07:
 
-1. Chat-only Telegram bot for the MVP, no Mini App.
-2. Modular monolith in a single process.
-3. Python with aiogram as the implementation stack.
-4. PostgreSQL as the only data store, including the outbox and scheduler state.
-5. Append-only ledger enforced by database permissions; balances derived, not stored as the source of truth.
-6. Webhook delivery with idempotent update handling.
-7. Transactional outbox for all outbound messages.
-8. Single virtual server hosted in Uzbekistan, Docker Compose deployment.
-9. Daily encrypted backups to a second location in Uzbekistan, with a stated recovery target.
-10. Identity-free measurement data kept apart from personal data.
-
-The implementation stack (item 3) is the least constrained by requirements. Python with aiogram is recommended because the Bot API support is mature and the founder's repositories already include Python bots; TypeScript with grammY would serve equally well. The founder chose Python with aiogram on 2026-10-06.
+1. Chat fast path plus Mini App plus web panel from one front-end application (replaces chat-only).
+2. Modular monolith, now in two process types: API and worker.
+3. Python with FastAPI for HTTP and aiogram for Telegram.
+4. TypeScript and React for the front end.
+5. PostgreSQL as the only database, including outbox and jobs.
+6. Append-only ledger enforced by database permissions, with one bounded amendment for goods lines.
+7. Webhook delivery and idempotent handling; request keys for API writes.
+8. Transactional outbox for Telegram and SMS.
+9. Two servers in Uzbekistan, primary and standby, with manual failover.
+10. Continuous archiving and streaming replication with a 5-minute loss bound and 1-hour recovery.
+11. Tenant isolation by row-level security.
+12. Authentication only through Telegram identity; administrator allow-list and second factor.
+13. Platform switches and prices stored in the database and changeable at run time.
+14. Subscription by card transfer with administrator approval; online payment adapters off.
+15. Self-hosted S3-compatible file store.
+16. Identity-free measurement data kept apart.
+17. Two interface languages through message catalogs on server and client.
 
 ## Traceability to requirements
 
-| Requirement | Where it is satisfied |
+| Requirements | Where satisfied |
 |---|---|
-| REQ-001, REQ-002 | Owner conversation; one shop per Telegram identity enforced by a unique constraint |
-| REQ-003, REQ-004, REQ-005 | Customer service; normalized-name index in the database |
-| REQ-006, REQ-007, REQ-008, REQ-010 | Owner conversation parser, ledger service, account model |
-| REQ-009 | Ledger service and account model allocation |
-| REQ-011, REQ-012 | Append-only repository, database role without update or delete, reversal command |
-| REQ-013, REQ-014 | Linking service, hashed single-use tokens, consent record |
-| REQ-015 | Transactional outbox and dispatcher |
-| REQ-016, REQ-017, REQ-018 | Acknowledgement service and account model lifecycle |
-| REQ-019, REQ-020, REQ-021 | Customer conversation, authorization in the application layer |
-| REQ-022, REQ-023, REQ-024, REQ-025 | Reminder service, scheduler, reminder log |
-| REQ-026, REQ-027 | Overview component |
-| REQ-028 | Export component, file sent through Telegram |
-| REQ-029 | Customer service anonymization and the removal-request processor |
-| REQ-030 | Measurement component and separate tables |
-| REQ-N01 | Interface layer message catalog in Uzbek; Cyrillic input normalized in the parser |
-| REQ-N02, REQ-N03 | Chat-only design, single transaction per entry |
-| REQ-N04 | Hosting and backups in Uzbekistan |
-| REQ-N05 | Schema holds only the fields the domain model names; logs exclude personal data |
-| REQ-N06 | Integer amounts; balances computed from entries |
-| REQ-N07 | Database permissions; actor and time on every state change |
-| REQ-N08 | Commit before reply; daily backups; rehearsed restore |
-| REQ-N09 | Uptime check, alerts, releases outside shop hours |
-| REQ-N10 | Limits enforced in the reminder service, not configurable |
-| REQ-N11 | Authorization by Telegram identity; hashed, replaceable invitation tokens |
+| REQ-001, REQ-031 to REQ-036, REQ-064, REQ-065 | Shops and staff module; Identity; active shop in session |
+| REQ-003, REQ-004, REQ-005, REQ-044, REQ-045 | Customers module |
+| REQ-006 to REQ-012, REQ-037, REQ-038 | Ledger module; chat fast path; Mini App itemized entry |
+| REQ-039, REQ-040, REQ-041 | Catalog module |
+| REQ-013, REQ-014, REQ-015, REQ-019, REQ-020, REQ-021 | Customer relations module; Messaging |
+| REQ-016, REQ-017, REQ-060, REQ-061, REQ-066, REQ-067 | Customer relations module |
+| REQ-022 to REQ-025, REQ-042, REQ-043 | Reminders module; worker; SMS adapter |
+| REQ-026, REQ-027, REQ-046, REQ-028 | Reports and export module |
+| REQ-029, REQ-048 | Customers module; Shops module; worker jobs |
+| REQ-030 | Activity and measurement module |
+| REQ-047, REQ-035 | Activity and measurement module; audit |
+| REQ-049, REQ-050, REQ-051 | Web front end; Identity; message catalogs |
+| REQ-052 to REQ-057 | Subscription module; payment adapters; platform settings |
+| REQ-058, REQ-059 | Administration module; admin panel |
+| REQ-062, REQ-063 | Import module; worker |
+| REQ-N01, REQ-N15 | Front end and message catalogs |
+| REQ-N02, REQ-N03 | Chat fast path; single-call itemized entry |
+| REQ-N04, REQ-N05 | Deployment in Uzbekistan; schema and log rules; file retention |
+| REQ-N06, REQ-N07 | Ledger module; database permissions |
+| REQ-N08, REQ-N09 | Replication, archiving, failover |
+| REQ-N10 | Reminders module |
+| REQ-N11, REQ-N12 | Identity; authorization; row-level security |
+| REQ-N13 | Stateless API, indexes, worker queue; load test |
+| REQ-N14 | Platform settings |
 
-Every functional requirement from REQ-001 to REQ-030 and every non-functional requirement from REQ-N01 to REQ-N11 appears above.
+Every requirement in PRD version 2 that is not withdrawn is covered by a row above.
 
 ## Assumptions
 
-- Ten pilot shops; a single small server is sufficient with large margin.
-- Pilot shops keep their paper notebooks during the pilot, which makes the 24-hour data-loss window acceptable.
-- A commercial data center in Uzbekistan offers adequate uptime for shop hours. Not verified by measurement.
-- Telegram's webhook can reach servers hosted in Uzbekistan reliably. Not tested.
-- The founder operates the system alone and is reachable during shop hours.
+- Two providers or facilities in Uzbekistan can be had, with a private link or tunnel between them that is fast enough for streaming replication.
+- Telegram's webhook reaches servers in Uzbekistan reliably. Untested.
+- One PostgreSQL primary meets the design capacity. Plausible, unmeasured.
+- The operator is reachable within the hour during shop hours.
+- Online payment providers offer test environments usable without a registered entity. Not checked.
 
 ## Open questions
 
-1. **Does sending customer names and amounts through Telegram comply with the localization rule?** (EVID-027, EVID-033). For a lawyer, together with the two consent questions from the PRD and Domain Model. A mitigation, if needed, is to make notifications carry no name and let the customer open the detail inside the chat on request; the detail would still transit Telegram.
-2. Which hosting provider, and does it offer a second location for backups? Requires comparing providers directly; EVID-031 lists prices only.
-3. Resolved on 2026-10-06: the founder chose Python with aiogram.
-4. Is a 24-hour data-loss window acceptable to pilot shops when told plainly?
-5. How does an owner recover a shop after losing their Telegram account? Carried from the Domain Model; needs an operator procedure.
+1. Which providers, and is a third location for backup copies available inside Uzbekistan?
+2. Does passing goods lists, names, and card receipts through Telegram comply with the localization rule? (EVID-027, EVID-033)
+3. What second factor for the administrator: a time-based code, or a hardware key?
+4. Should the web panel live on its own domain separate from the Mini App?
+5. Who else, if anyone, can perform a failover?
 
 ## Approvals
 
-Also confirmed by the founder on 2026-10-06: the founder-context assumptions carried since Idea Selection are correct (solo founder working with AI agents, Telegram bot experience, no dedicated budget, no lending license), and "Qarz Daftari" is a working title only, not the final product name.
-
 | Record | Subject | Status |
 |---|---|---|
-| DEC-006 / APR-006 | Core business rules | Approved 2026-10-06 |
-| DEC-007 | Architecture direction: chat-only Telegram bot, modular monolith, PostgreSQL, single server hosted in Uzbekistan with daily backups and the stated recovery targets | Approved 2026-10-06 |
+| DEC-007 / APR-007 | Version 1 architecture | Superseded; Python and hosting in Uzbekistan are kept |
+| DEC-015 | Version 2 architecture: API and worker monolith, React front end for Mini App, web and admin, PostgreSQL primary and standby in Uzbekistan with manual failover, row-level tenant isolation, self-hosted file store, SMS and online payment adapters switched off | Pending end-of-sequence review |

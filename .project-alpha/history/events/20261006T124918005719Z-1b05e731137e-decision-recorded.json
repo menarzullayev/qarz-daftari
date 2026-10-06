@@ -1,0 +1,19 @@
+{
+  "event_id": "1b05e731137e",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T12:49:18+00:00",
+  "path": ".project-alpha\\decisions\\DEC-014.md",
+  "stage": "05-domain-model",
+  "title": "Domain model version 2 rules",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-014",
+  "decision": "Adopt the rules marked decided here in docs/05-domain-model/OUTPUT.md version 2: dispute once per entry within 30 days, closed by reversal, decline or withdrawal; one-time addition of goods lines; promised dates changeable with history; 30-day default promise; payment history calculation; limited-mode behavior; support access of at most 24 hours; 30-day shop deletion period",
+  "context": "Rewritten for PRD version 2 after the change of direction (DEC-012, DEC-013). By founder instruction the agent decided open points without stopping; the founder reviews all six documents at the end.",
+  "chosen_option": "Rules as written in version 2",
+  "rationale": "Keeps the ledger immutable while allowing itemized detail and promised dates (EVID-017); most behavior rests on the founder's expectations (EVID-034); removal and the reliability indicator rest on an unverified reading of the personal data law (EVID-027)",
+  "impact": "High",
+  "reversibility": "Medium",
+  "evidence": "EVID-017, EVID-027, EVID-034",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

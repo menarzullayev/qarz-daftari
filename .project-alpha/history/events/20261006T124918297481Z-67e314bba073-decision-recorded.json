@@ -1,0 +1,19 @@
+{
+  "event_id": "67e314bba073",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T12:49:18+00:00",
+  "path": ".project-alpha\\decisions\\DEC-016.md",
+  "stage": "07-adr",
+  "title": "Decision records version 2",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-016",
+  "decision": "Accept the decision records in docs/07-adr/OUTPUT.md version 2: ADR-002 to ADR-007 and ADR-010 kept or amended, ADR-001, ADR-008 and ADR-009 superseded, and ADR-011 to ADR-021 new",
+  "context": "Rewritten for PRD version 2 after the change of direction (DEC-012, DEC-013). By founder instruction the agent decided open points without stopping; the founder reviews all six documents at the end.",
+  "chosen_option": "All records as written",
+  "rationale": "Formalizes the version 2 architecture; ADR-019 follows the founder decision on card-transfer payments, whose lawfulness is unverified (EVID-035) and which may conflict with Telegram payment rules (EVID-028)",
+  "impact": "High",
+  "reversibility": "Medium",
+  "evidence": "EVID-027, EVID-028, EVID-031, EVID-035",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

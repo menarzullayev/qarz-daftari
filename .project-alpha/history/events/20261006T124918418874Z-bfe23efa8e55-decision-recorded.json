@@ -1,0 +1,19 @@
+{
+  "event_id": "bfe23efa8e55",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T12:49:18+00:00",
+  "path": ".project-alpha\\decisions\\DEC-017.md",
+  "stage": "08-technical-spec",
+  "title": "Technical specification version 2",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-017",
+  "decision": "Adopt the version 2 technical specification: HTTP API and chat contract, the schema in schema.sql with row-level security and an insert-only ledger, authentication only through Telegram identity with an administrator second factor, the role matrix, retention periods, performance targets NFR-001 to NFR-013, and the draft consent text subject to legal review",
+  "context": "Rewritten for PRD version 2 after the change of direction (DEC-012, DEC-013). By founder instruction the agent decided open points without stopping; the founder reviews all six documents at the end.",
+  "chosen_option": "Specification as written",
+  "rationale": "Implements every live PRD requirement and every decision record; the schema was executed in PostgreSQL 16 and ten constraint, trigger, permission and isolation checks passed; performance targets are unmeasured and compliance items are unreviewed (EVID-027, EVID-033)",
+  "impact": "High",
+  "reversibility": "Medium",
+  "evidence": "EVID-027, EVID-032, EVID-033, EVID-035",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

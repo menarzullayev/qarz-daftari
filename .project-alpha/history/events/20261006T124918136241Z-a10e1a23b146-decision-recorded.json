@@ -1,0 +1,19 @@
+{
+  "event_id": "a10e1a23b146",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T12:49:18+00:00",
+  "path": ".project-alpha\\decisions\\DEC-015.md",
+  "stage": "06-architecture",
+  "title": "Architecture version 2",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-015",
+  "decision": "Adopt the version 2 architecture: API and worker as a modular monolith in Python, a React front end serving Mini App, web panel and admin panel, PostgreSQL primary and standby on two servers in Uzbekistan with manual failover, row-level tenant isolation, a self-hosted file store, and SMS and online payment adapters switched off",
+  "context": "Rewritten for PRD version 2 after the change of direction (DEC-012, DEC-013). By founder instruction the agent decided open points without stopping; the founder reviews all six documents at the end.",
+  "chosen_option": "Two-server modular monolith with three clients",
+  "rationale": "Adds only what the version 2 targets for scale and recovery require; keeps data in Uzbekistan (EVID-027) at modest cost (EVID-031); notifications and receipts still pass through Telegram abroad (EVID-033)",
+  "impact": "High",
+  "reversibility": "Medium",
+  "evidence": "EVID-027, EVID-031, EVID-032, EVID-033",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

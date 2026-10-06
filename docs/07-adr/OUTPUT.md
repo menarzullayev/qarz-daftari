@@ -1,279 +1,300 @@
 # Architecture Decision Records
 
-> **Stale since 2026-10-06.** This document was written for PRD version 1 (pilot MVP). The founder changed direction to a full production-grade product (DEC-012 / APR-012) and the PRD is now version 2. This document has not yet been revised and must not be relied on where it conflicts with `docs/04-prd/OUTPUT.md`.
+Version 2. Status: rewritten for the version 2 architecture; awaiting the founder's end-of-sequence review (DEC-016). Prepared 2026-10-06.
+Version 1 (ten records, DEC-008) remains in version history.
 
-Status: all ten records accepted by the founder on 2026-10-06 (DEC-008 / APR-008), including the three first approved by the agent as routine.
-Upstream: `docs/06-architecture/OUTPUT.md` (approved, DEC-007 / APR-007).
+Records keep their numbers. Four version 1 records are superseded, six are kept or amended, and eleven are new. By the founder's instruction the new records were decided by the agent without stopping and are all subject to his review.
 
-Ten records follow, one per decision proposed in the architecture. Seven formalize choices the founder already approved (mostly under DEC-007); three are routine, reversible engineering choices that the stage contract allows the agent to approve; they are marked as such so the founder can overrule them.
-
-| ID | Decision | Approval basis | Reversibility |
+| ID | Decision | State | Reversibility |
 |---|---|---|---|
-| ADR-001 | Chat-only Telegram bot, no Mini App | Founder, DEC-007 | High |
-| ADR-002 | Modular monolith in one process | Founder, DEC-007 | High |
-| ADR-003 | Python with aiogram | Founder, question form 2026-10-06 | Medium |
-| ADR-004 | PostgreSQL as the only data store | Founder, DEC-007 | Medium |
-| ADR-005 | Append-only ledger enforced in the database; balances derived | Founder, DEC-006 and DEC-007 | Low |
-| ADR-006 | Webhook delivery with idempotent update handling | Agent, routine | High |
-| ADR-007 | Transactional outbox for outbound messages | Agent, routine | High |
-| ADR-008 | Single virtual server in Uzbekistan, Docker Compose | Founder, DEC-007 | Medium |
-| ADR-009 | Daily encrypted backups, four-hour recovery, 24-hour loss window | Founder, DEC-007 | High |
-| ADR-010 | Identity-free measurement data kept apart from personal data | Agent, routine | Medium |
+| ADR-001 | Chat-only Telegram bot | Superseded by ADR-011 | - |
+| ADR-002 | Modular monolith | Amended: two process types | High |
+| ADR-003 | Python with aiogram | Kept; extended by ADR-012 | Medium |
+| ADR-004 | PostgreSQL as the only database | Kept | Medium |
+| ADR-005 | Append-only ledger enforced in the database | Amended: one bounded addition of goods lines; promised dates changeable with history | Low |
+| ADR-006 | Webhook with idempotent update handling | Kept; request keys added for API writes | High |
+| ADR-007 | Transactional outbox | Kept; now also carries SMS | High |
+| ADR-008 | Single server in Uzbekistan | Superseded by ADR-014 | - |
+| ADR-009 | Daily backups, 24-hour loss window | Superseded by ADR-015 | - |
+| ADR-010 | Identity-free measurement data kept apart | Kept | Medium |
+| ADR-011 | Three clients from one front-end application, with the chat fast path kept | New | Medium |
+| ADR-012 | FastAPI for the HTTP API | New | Medium |
+| ADR-013 | TypeScript and React for the front end | New | Medium |
+| ADR-014 | Two servers in Uzbekistan, primary and standby, manual failover | New | Medium |
+| ADR-015 | Streaming replication and continuous archiving; 5-minute loss bound, 1-hour recovery | New | High |
+| ADR-016 | Tenant isolation by PostgreSQL row-level security | New | Low |
+| ADR-017 | Authentication only through Telegram identity; administrator allow-list and second factor | New | Medium |
+| ADR-018 | Platform switches and prices stored in the database | New | High |
+| ADR-019 | Subscription by card transfer with administrator approval; online payment adapters built and off | New | High |
+| ADR-020 | Self-hosted S3-compatible file store | New | Medium |
+| ADR-021 | Two languages through message catalogs | New | High |
 
 ---
 
-## ADR-001: Chat-only Telegram bot, no Mini App
+## ADR-002: Modular monolith (amended)
 
-**Status:** Accepted.
+**Status:** Accepted, amended.
 
-**Context / problem.** The PRD requires that core flows work through plain chat messages on poor connections (REQ-N03) and that recording a sale takes one message and one reply (REQ-N02). A Mini App would give richer screens for history and overview.
+**Context / problem.** Release 1 now has an HTTP API, three clients, background work (reminders, imports, exports, expiries), and a scale target (REQ-N13). It is still built and run by one person.
 
-**Options considered.**
-1. Chat only: messages, commands, inline buttons.
-2. Chat for recording, Mini App for history and overview.
-3. Mini App for everything.
+**Options considered.** (1) One codebase, two process types: API and worker. (2) Separate services per area. (3) One process doing everything.
 
 **Selected solution.** Option 1.
 
-**Rationale.** It satisfies REQ-N02 and REQ-N03 directly, halves what must be built and tested, and needs no web front end, hosting of static assets, or Mini App authentication. The existing open-source competitor chose option 2 (EVID-004); the pilot will show whether owners miss the richer screens.
+**Rationale.** Background work must not slow request handling, so the worker is its own process; everything else gains nothing from separation at this scale and would cost distributed transactions. Modules own their tables and talk through application commands, so a module can be split out later.
 
-**Consequences.** History and overdue lists (REQ-026, REQ-027) are rendered as text and paged with buttons; long histories are awkward. Export (REQ-028) covers the case where an owner wants the full picture. Adding a Mini App later does not disturb the application or domain layers.
+**Consequences.** Module boundaries are kept by import rules checked in continuous integration. Scheduled jobs need a single active runner, taken by a database lock.
 
-**Evidence.** EVID-004, EVID-020, EVID-025
-
-**Reversibility.** High.
-
-**Approval.** Founder, under DEC-007 / APR-007.
+**Evidence.** EVID-032 | **Reversibility.** High. **Approval.** Agent; founder review pending.
 
 ---
 
-## ADR-002: Modular monolith in one process
+## ADR-003: Python with aiogram (kept)
+
+**Status:** Accepted on 2026-10-06 by the founder; unchanged. The HTTP side is decided in a separate record (ADR-012).
+
+---
+
+## ADR-004: PostgreSQL as the only database (kept)
+
+**Status:** Accepted; unchanged in substance.
+
+**Note for version 2.** The outbox, job queue, platform settings, and sessions all live in PostgreSQL. No cache or broker is introduced. The design capacity of 50 entries a second (REQ-N13) does not require one; the load test decides whether that holds.
+
+**Evidence.** EVID-032 | **Reversibility.** Medium. **Approval.** Founder, under DEC-007; carried.
+
+---
+
+## ADR-005: Append-only ledger enforced in the database (amended)
+
+**Status:** Accepted, amended.
+
+**Context / problem.** Version 2 lets goods lines be added to an amount-only entry after the sale (REQ-038) and lets promised dates change on request (REQ-067), while the PRD still requires that entries are never edited or deleted (REQ-011, REQ-N07).
+
+**Options considered.** (1) Allow updates to entries for these cases. (2) Keep entries insert-only; store goods lines and promise changes as separate insert-only records tied to the entry, with database constraints limiting when lines may be added.
+
+**Selected solution.** Option 2. The application role has no update or delete permission on entries, goods lines, or promise history. Lines for an entry are inserted in a single batch; a constraint trigger rejects a second batch, a batch whose sum differs from the entry total, and a batch after the allowed time. The current promised date is the latest row of the promise history.
+
+**Rationale.** The financial fact, who owes how much, stays immutable in the strict sense. What changes is descriptive detail and a date, each with its own history.
+
+**Consequences.** Reads must join to the latest promise; an index and a view make this cheap. The rule "only one batch of lines" lives in the database, not only in code.
+
+**Evidence.** EVID-017 | **Reversibility.** Low. **Approval.** Founder for immutability (DEC-006); the amendment is the agent's, review pending.
+
+---
+
+## ADR-006: Webhook with idempotent handling (kept, extended)
 
 **Status:** Accepted.
 
-**Context / problem.** One person builds and operates a system for about ten shops. The domain has one consistency unit, the customer account, and every command touches exactly one.
+**Extension.** Every write call to the HTTP API carries a client-generated request key; the server stores it with the result and returns the stored result for a repeat. This gives the Mini App and web panel the same protection against double submission that update identifiers give the chat (REQ-011).
 
-**Options considered.**
-1. One process with internal layers: interface, application, domain, infrastructure.
-2. Separate services for bot, reminders, and delivery.
-3. Serverless functions per update.
-
-**Selected solution.** Option 1.
-
-**Rationale.** A single process gives ordinary database transactions across everything a command does, one thing to deploy, and one log to read. Options 2 and 3 buy independent scaling that the pilot volume, a few hundred transactions a day, does not need, and option 3 depends on platforms that are not available inside Uzbekistan (ADR-008).
-
-**Consequences.** Scheduler and message dispatcher run inside the same process as update handling; a crash stops all three until restart. Layer boundaries must be kept by discipline and import rules, since nothing physical enforces them.
-
-**Evidence.** EVID-032 (platform limits far above pilot volume).
-
-**Reversibility.** High; layers can be split out later.
-
-**Approval.** Founder, under DEC-007 / APR-007.
+**Evidence.** EVID-032 | **Reversibility.** High. **Approval.** Founder, under DEC-008; extension by the agent.
 
 ---
 
-## ADR-003: Python with aiogram
+## ADR-007: Transactional outbox (kept, extended)
 
 **Status:** Accepted.
 
-**Context / problem.** The requirements do not constrain the language. The realistic candidates are the two ecosystems the founder already works in.
+**Extension.** The outbox carries a channel: Telegram or SMS. The dispatcher applies per-channel rate limits and, for SMS, the shop's monthly quota (REQ-043). Messages to staff, customers, the administrator, and the receipt review group all go through it.
 
-**Options considered.**
-1. Python 3.12 with aiogram 3.
-2. TypeScript with grammY.
+**Evidence.** EVID-032 | **Reversibility.** High. **Approval.** Founder, under DEC-008; extension by the agent.
+
+---
+
+## ADR-010: Identity-free measurement data kept apart (kept)
+
+**Status:** Accepted; unchanged.
+
+---
+
+## ADR-011: Three clients from one front-end application, chat fast path kept
+
+**Status:** Accepted by the agent; founder review pending. Supersedes the chat-only record (ADR-001).
+
+**Context / problem.** The founder chose a Mini App plus a separate web panel (question form, 2026-10-06). Itemized entry, large customer lists, reports, and administration do not fit a chat. Recording in a queue on a poor connection still must work (REQ-N03).
+
+**Options considered.** (1) Separate applications for Mini App, web panel, and admin. (2) One application with three entry points and responsive layouts. (3) Mini App only.
+
+**Selected solution.** Option 2, with the chat message path kept for amount-only sales and payments.
+
+**Rationale.** The Mini App and web panel show the same data to the same roles; writing screens once and adapting by width meets REQ-N15 and halves the front-end work. The admin panel shares components but is a separate entry point with separate authentication. Keeping the chat path preserves the fastest way to record.
+
+**Consequences.** Two ways to record a sale must stay consistent; both call the same application commands. The staff workspace must be designed mobile-first.
+
+**Evidence.** EVID-004, EVID-020, EVID-034 | **Reversibility.** Medium. **Approval.** Agent; founder chose the client set.
+
+---
+
+## ADR-012: FastAPI for the HTTP API
+
+**Status:** Accepted by the agent; founder review pending.
+
+**Context / problem.** The Mini App, web panel, and admin panel need an HTTP API in the Python codebase already chosen (ADR-003).
+
+**Options considered.** (1) FastAPI. (2) Django with Django REST Framework. (3) aiohttp.
 
 **Selected solution.** Option 1.
 
-**Rationale.** Both have mature Bot API support. The founder has existing Python bots and chose Python when asked.
+**Rationale.** It is asynchronous like aiogram, so both share one event loop, database pool, and transaction handling; request and response models are typed and produce the API description the front end is generated from. Django would bring an administration site but a different persistence model from the append-only, permission-restricted ledger design (ADR-005).
 
-**Consequences.** Type safety relies on type hints and a checker run in continuous integration, which is weaker than a compiled type system. Money is handled as integers (REQ-N06), which avoids the usual floating-point risk in either language. Library versions are pinned.
+**Consequences.** The admin panel is built, not inherited. Database access uses SQLAlchemy core with explicit SQL for ledger queries.
 
-**Evidence.** None external; founder preference.
-
-**Reversibility.** Medium. The domain layer is small and pure and could be ported; the interface layer would be rewritten.
-
-**Approval.** Founder, through the question form on 2026-10-06, recorded in APR-007.
+**Evidence.** None external. **Reversibility.** Medium. **Approval.** Agent.
 
 ---
 
-## ADR-004: PostgreSQL as the only data store
+## ADR-013: TypeScript and React for the front end
 
-**Status:** Accepted.
+**Status:** Accepted by the agent; founder review pending.
 
-**Context / problem.** The system needs durable storage for the ledger, a queue for outbound messages, state for scheduled jobs, and name search that tolerates Latin and Cyrillic spelling (REQ-004).
+**Options considered.** (1) React with TypeScript. (2) Vue. (3) Server-rendered pages.
 
-**Options considered.**
-1. PostgreSQL for everything.
-2. PostgreSQL plus Redis for queue and scheduler.
-3. SQLite.
+**Selected solution.** Option 1, built to static files, with an API client generated from the server's API description.
 
-**Selected solution.** Option 1.
+**Rationale.** The Telegram Mini App ecosystem and component libraries are strongest there, and the founder's other repositories already use TypeScript. Server-rendered pages suit the admin panel but not an itemized entry screen used at a counter.
 
-**Rationale.** One store means one thing to back up and restore (REQ-N08) and lets an entry and its notification be saved in one transaction (ADR-007). PostgreSQL's role and permission system is what makes ADR-005 enforceable. SQLite would be simpler still but has no comparable permission model and is awkward to back up while running.
+**Consequences.** A second language and toolchain in the project. Bundle size matters on low-end phones (REQ-N15) and is checked in continuous integration.
 
-**Consequences.** The queue is a table polled by the dispatcher, adequate at pilot volume and well beyond. If throughput ever demands it, a broker can be introduced behind the dispatcher without touching application code.
-
-**Evidence.** EVID-032
-
-**Reversibility.** Medium.
-
-**Approval.** Founder, under DEC-007 / APR-007.
+**Evidence.** None external. **Reversibility.** Medium. **Approval.** Agent.
 
 ---
 
-## ADR-005: Append-only ledger enforced in the database; balances derived
+## ADR-014: Two servers in Uzbekistan, primary and standby, manual failover
 
-**Status:** Accepted.
+**Status:** Accepted by the agent; founder review pending. Supersedes the single-server record (ADR-008).
 
-**Context / problem.** The PRD requires that no entry is ever edited or deleted by any route, including administrative ones (REQ-011, REQ-N07), and that balances are always derivable from history (REQ-N06). The product's promise is a record both sides can trust.
+**Context / problem.** Version 2 requires recovery within 1 hour and availability of 99.5% in shop hours (REQ-N09), with data in Uzbekistan (REQ-N04, EVID-027).
 
-**Options considered.**
-1. Enforce immutability in application code only.
-2. Enforce it in the database: the application's database role cannot update or delete rows in the entry table.
-3. Option 2 plus a hash chain across entries for tamper evidence.
-
-**Selected solution.** Option 2. Balances are computed from entries; any stored balance is a cache that can be rebuilt and is never the source of truth.
-
-**Rationale.** Application-only enforcement fails exactly when there is a bug or a hurried manual fix. Database permissions make the rule hold regardless. A hash chain adds tamper evidence against the operator, which matters once there are disputes with legal weight; it is not needed to run a ten-shop pilot.
-
-**Consequences.** Mistakes can be corrected only by reversal entries, including mistakes made by the operator. Schema changes to the entry table must be additive. Data removal (REQ-029) works because identifying data lives on the customer record, not on entries. This decision is hard to undo: once owners and customers rely on immutability, weakening it would break trust.
-
-**Evidence.** EVID-017 (amount fixed at the time of sale).
-
-**Reversibility.** Low.
-
-**Approval.** Founder, under DEC-006 / APR-006 (immutability and whole-entry reversal) and DEC-007 / APR-007.
-
----
-
-## ADR-006: Webhook delivery with idempotent update handling
-
-**Status:** Accepted by the agent as routine and reversible.
-
-**Context / problem.** Telegram can deliver updates by webhook or by long polling, and may deliver the same update more than once. A repeated "Ali 45000" must not create two debts (REQ-006, REQ-011).
-
-**Options considered.**
-1. Webhook with a secret token header; record each update identifier and ignore repeats.
-2. Long polling with the same deduplication.
-
-**Selected solution.** Option 1.
-
-**Rationale.** A webhook has no idle connection to maintain and gives an obvious external health check. Deduplication by update identifier is needed in either case.
-
-**Consequences.** The server needs a public HTTPS endpoint and a valid certificate, handled by the reverse proxy. If Telegram cannot reliably reach hosts in Uzbekistan, which is untested, switching to long polling is a configuration change.
-
-**Evidence.** EVID-032
-
-**Reversibility.** High.
-
-**Approval.** Agent.
-
----
-
-## ADR-007: Transactional outbox for outbound messages
-
-**Status:** Accepted by the agent as routine and reversible.
-
-**Context / problem.** A customer must be notified of every entry, payment, and reversal (REQ-015), reminders have strict frequency limits (REQ-023, REQ-N10), and Telegram enforces rate limits and can be temporarily unavailable.
-
-**Options considered.**
-1. Send messages directly inside the command handler.
-2. Save the message to an outbox table in the same transaction as the domain change; a dispatcher sends, retries, and records the outcome.
+**Options considered.** (1) One server with fast restore. (2) Primary and standby at two providers or facilities, manual scripted failover. (3) Three nodes with automatic failover.
 
 **Selected solution.** Option 2.
 
-**Rationale.** With option 1 a crash or a Telegram error between saving and sending produces an entry the customer never hears about, or a reminder that is recorded but not sent. The outbox makes "saved" and "will be sent" one fact. The dispatcher is also the single place where rate limits are respected.
+**Rationale.** Restoring a large database onto a new server cannot be relied on within an hour. Automatic failover needs a third vote and adds a failure mode, two primaries, that is worse than an hour's outage for a ledger. A warm standby promoted by a rehearsed script meets the target with the least machinery.
 
-**Consequences.** Notifications are delivered at least once; a message may rarely arrive twice, so confirm and dispute actions must be safe to repeat. Delivery is slightly delayed, well within the one-minute criterion in the PRD. Messages to customers who blocked the bot fail permanently and mark the link unreachable.
+**Consequences.** Failover needs a person. Monthly cost roughly doubles (EVID-031). The standby also hosts staging, which must be isolated from the replica.
 
-**Evidence.** EVID-032
-
-**Reversibility.** High.
-
-**Approval.** Agent.
+**Evidence.** EVID-027, EVID-031 | **Reversibility.** Medium. **Approval.** Agent.
 
 ---
 
-## ADR-008: Single virtual server in Uzbekistan, Docker Compose
+## ADR-015: Streaming replication and continuous archiving
 
-**Status:** Accepted. The provider is not yet chosen.
+**Status:** Accepted by the agent; founder review pending. Supersedes the daily-backup record (ADR-009).
 
-**Context / problem.** Personal data of Uzbek citizens must be stored on servers physically located in Uzbekistan (REQ-N04, EVID-027). The usual managed cloud platforms have no region there.
+**Context / problem.** At most 5 minutes of entries may be lost (REQ-N08).
 
-**Options considered.**
-1. One virtual server at a commercial provider in Uzbekistan, running everything under Docker Compose.
-2. Database in Uzbekistan, application on a foreign cloud platform.
-3. Everything on a foreign cloud platform.
+**Options considered.** (1) Asynchronous streaming replication plus log archiving every minute with pgBackRest, weekly full and daily differential backups. (2) Synchronous replication. (3) Daily dumps.
 
 **Selected solution.** Option 1.
 
-**Rationale.** Option 3 conflicts with the localization rule. Option 2 keeps stored data local but sends every query result abroad for processing, which may not satisfy the rule and adds latency and a second system to operate. Option 1 is unambiguous and cheap, roughly 125,000 to 250,000 UZS a month (EVID-031).
+**Rationale.** Asynchronous replication normally lags by seconds; minute-level archiving bounds the loss even if the standby is also lost. Synchronous replication would make every sale wait on the link between two providers and stop recording when the standby is unreachable.
 
-**Consequences.** No managed database, no automatic failover; the operator handles patching, monitoring, and recovery. Provider reliability is unverified. Messages still pass through Telegram's servers abroad (EVID-033); this decision does not resolve that legal question.
+**Consequences.** A sale acknowledged to a seller can be lost if the primary dies within the replication lag; the bound is minutes, not zero, and that is stated to shops. Point-in-time recovery becomes possible, which also undoes operator mistakes. Backups are encrypted with a key kept off both servers.
 
-**Evidence.** EVID-027, EVID-031, EVID-033
-
-**Reversibility.** Medium. Moving to another provider in Uzbekistan is a restore from backup; moving abroad is not open while the rule stands.
-
-**Approval.** Founder, under DEC-007 / APR-007.
+**Evidence.** EVID-031 | **Reversibility.** High. **Approval.** Agent.
 
 ---
 
-## ADR-009: Daily encrypted backups, four-hour recovery, 24-hour loss window
+## ADR-016: Tenant isolation by row-level security
 
-**Status:** Accepted.
+**Status:** Accepted by the agent; founder review pending.
 
-**Context / problem.** A saved entry must survive server failure (REQ-N08) and the bot must be available during shop hours (REQ-N09). There is one server and one operator.
+**Context / problem.** Thousands of shops share one database. One shop's data must be unreachable from another "below the application code as well as in it" (REQ-N12), and administrators must not read shop data without a logged support access (REQ-059).
 
-**Options considered.**
-1. Daily encrypted dump to a second location in Uzbekistan; restore onto a new server.
-2. Continuous archiving of database changes in addition to daily dumps.
-3. A standby replica with failover.
+**Options considered.** (1) Application-level filtering by shop only. (2) Shared tables with PostgreSQL row-level security keyed to a session setting. (3) A schema or database per shop.
 
-**Selected solution.** Option 1, with stated targets: service restored within four hours, at most 24 hours of entries lost. The founder was offered option 2 and chose option 1.
+**Selected solution.** Option 2. Every tenant table carries the shop identifier; policies allow rows only for the shop set in the session; the application role cannot bypass policies; the tenant is set once per transaction from the authenticated context. Customer sessions and administrator support access use their own narrowly scoped policies.
 
-**Rationale.** Option 1 is simple enough to rehearse and to trust. Pilot shops are expected to keep their paper notebooks, so a day's entries could be re-entered. Options 2 and 3 are the right answer once shops rely on the product alone.
+**Rationale.** A forgotten filter in one query is the classic multi-tenant leak; with policies it returns nothing. A schema per shop does not scale to thousands and complicates migrations.
 
-**Consequences.** A server loss can erase up to a day of entries, and pilot owners must be told this plainly. The backup key is kept off the server; losing it makes the backups useless. A restore is rehearsed before the pilot and the measured time is recorded.
+**Consequences.** Queries across shops, such as an owner's combined totals and platform statistics, must be written as explicit, reviewed functions. Connection pooling must reset the tenant setting between uses. Tests attempt every cross-tenant access.
 
-**Evidence.** EVID-031
-
-**Reversibility.** High; option 2 can be added without changing the application.
-
-**Approval.** Founder, under DEC-007 / APR-007.
+**Evidence.** EVID-027 | **Reversibility.** Low once data and code depend on it. **Approval.** Agent.
 
 ---
 
-## ADR-010: Identity-free measurement data kept apart from personal data
+## ADR-017: Authentication only through Telegram identity
 
-**Status:** Accepted by the agent as routine.
+**Status:** Accepted by the agent; founder review pending.
 
-**Context / problem.** The pilot must measure repayment, confirmation, and entry speed (REQ-030) without building up a second copy of personal data, and removal requests must not destroy the pilot's results (REQ-029).
+**Context / problem.** Users arrive through chat, Mini App, and a web browser (REQ-050). The PRD says there are no separate passwords.
 
-**Options considered.**
-1. Compute metrics by querying the live ledger when needed.
-2. Write separate measurement records that carry opaque shop and entry identifiers and no names, phones, or Telegram identities.
-3. Send events to an external analytics service.
+**Options considered.** (1) Telegram identity everywhere: bot updates, signed Mini App launch data, and Telegram Login on the web. (2) Phone number with one-time codes. (3) Email and password for the web.
 
-**Selected solution.** Option 2.
+**Selected solution.** Option 1. The server validates Telegram's signature in each case and issues its own session. Administrators are additionally restricted to an allow-list of Telegram identities and must pass a time-based second factor.
 
-**Rationale.** Option 1 loses information when a customer is anonymized and tempts analysis to join against personal data. Option 3 would send data to a provider abroad, in conflict with the hosting decision (ADR-008). Separate identity-free records survive anonymization and can be exported for analysis safely.
+**Rationale.** One identity per person across all clients, no credentials to store or leak, and no SMS cost. Option 2 needs the SMS provider that is switched off.
 
-**Consequences.** A little more is written per command. Whether an opaque identifier that can still be joined to a customer record inside the same database counts as personal data is a legal nuance; the records must not be exported together with the mapping.
+**Consequences.** Losing a Telegram account means losing access; recovery is an administrator procedure. Telegram becomes the identity provider as well as the channel, deepening the dependency already accepted. The second factor's secret must be stored and backed up safely.
 
-**Evidence.** EVID-027
-
-**Reversibility.** Medium.
-
-**Approval.** Agent.
+**Evidence.** EVID-025 | **Reversibility.** Medium. **Approval.** Agent.
 
 ---
+
+## ADR-018: Platform switches and prices stored in the database
+
+**Status:** Accepted by the agent; founder review pending.
+
+**Selected solution.** Trial on or off, trial length, subscription price, SMS on or off and quotas, online payment on or off, the receiving card number, and the review group are rows in a settings table, changed in the admin panel, cached briefly by the application, and logged on every change (REQ-N14, REQ-058). Alternatives were environment variables, which need a restart and leave no audit trail, and a third-party flag service, which would sit outside Uzbekistan.
+
+**Consequences.** A wrong setting takes effect at once; changes to price and card number ask for the second factor again.
+
+**Evidence.** None external. **Reversibility.** High. **Approval.** Agent.
+
+---
+
+## ADR-019: Subscription by card transfer with administrator approval
+
+**Status:** Accepted on the founder's decision of 2026-10-06; details by the agent.
+
+**Context / problem.** No registered business entity exists, so no contract with an online payment provider is possible yet. The founder decided that owners pay by transfer to a personal card and send the receipt through the bot; receipts go to the administrator and a review group; an administrator approves (REQ-054, REQ-055). He states this is lawful (EVID-035); that is unverified.
+
+**Options considered.** (1) Manual receipts only. (2) Manual receipts now, with Click and Payme adapters built behind a switch. (3) Telegram Stars.
+
+**Selected solution.** Option 2, as the founder specified.
+
+**Rationale.** Manual approval needs no contract. Building the adapters now means switching to online payment later is a setting, not a project.
+
+**Consequences.** Approval is manual work that grows with the number of shops, and a forged or reused receipt can be approved by mistake; each receipt's file hash and stated amount are stored and duplicates are flagged. Selling a subscription through a bot outside Telegram's payment mechanism may conflict with Telegram's rules (EVID-028), with consequences for the bot that this design cannot prevent. Receipts contain card details and are personal data. Adapters that cannot run in production cannot be fully proven before they are switched on.
+
+**Evidence.** EVID-028, EVID-035 | **Reversibility.** High. **Approval.** Founder.
+
+---
+
+## ADR-020: Self-hosted S3-compatible file store
+
+**Status:** Accepted by the agent; founder review pending.
+
+**Selected solution.** Receipt images and import files are kept in an S3-compatible object store run on the service's own servers and replicated to the standby. Alternatives were database large objects, which bloat backups and replication, and a foreign object storage service, which conflicts with data localization (EVID-027).
+
+**Consequences.** One more component to operate and back up. Files are served only through short-lived signed links after authorization. Retention follows the data minimization requirement (REQ-N05).
+
+**Evidence.** EVID-027 | **Reversibility.** Medium. **Approval.** Agent.
+
+---
+
+## ADR-021: Two languages through message catalogs
+
+**Status:** Accepted by the agent; founder review pending.
+
+**Selected solution.** Every user-facing string is a key resolved from an Uzbek and a Russian catalog, on the server for chat messages and notifications and in the front end for screens (REQ-051, REQ-N01). The build fails when a key is missing in either language. A user's language is stored on the user; a notification uses the recipient's language. The alternative, text written in code, was rejected because two languages cannot be kept in step that way.
+
+**Consequences.** All copy needs two reviewed versions. Reminder templates exist per language.
+
+**Evidence.** None external. **Reversibility.** High. **Approval.** Agent.
+
+---
+
+## Superseded records
+
+- **ADR-001** (chat only), **ADR-008** (single server), **ADR-009** (daily backups, 24-hour loss): accepted under DEC-008 for the pilot MVP, superseded on 2026-10-06 by ADR-011, ADR-014 and ADR-015 after the change of direction (DEC-012). Their text is in version history.
 
 ## Decisions not taken here
 
-Named so they are not mistaken for settled:
-
-- Which hosting provider (ADR-008 leaves it open).
-- Whether notifications should omit the customer's name to reduce what passes through Telegram (depends on legal advice; see the architecture's open question 1).
-- A hash chain over entries (ADR-005, option 3).
-- How an owner recovers a shop after losing their Telegram account.
+- Hosting providers and a third backup location.
+- SMS provider.
+- Whether notifications should carry less detail to reduce what passes through Telegram.
+- A hash chain over ledger entries for tamper evidence against the operator.
+- Owner recovery after losing a Telegram account.

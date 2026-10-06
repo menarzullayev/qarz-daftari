@@ -1,211 +1,223 @@
 # Quality & Operations
 
-> **Stale since 2026-10-06.** This document was written for PRD version 1 (pilot MVP). The founder changed direction to a full production-grade product (DEC-012 / APR-012) and the PRD is now version 2. This document has not yet been revised and must not be relied on where it conflicts with `docs/04-prd/OUTPUT.md`.
+Version 2. Status: rewritten for release 1 as a production service; awaiting the founder's end-of-sequence review (DEC-019). The stage stays in REVIEW by the founder's earlier decision until the launch criteria are met. Prepared 2026-10-06.
+Version 1 (ten-shop pilot, DEC-011) is superseded and remains in version history.
 
-Status: operations definition approved by the founder on 2026-10-06 (DEC-011 / APR-011). By the founder's decision the stage stays in REVIEW and is not passed until the launch criteria below are met. This document defines how the MVP is tested, released, watched, and recovered. It does **not** claim the product is ready to launch: nothing has been built, and most launch criteria below are unmet by design. Prepared 2026-10-06.
-Upstream: Development Plan (DEC-010), Technical Specification (DEC-009), decision records ADR-001 to ADR-010 (DEC-008).
+This document defines how release 1 is tested, released, watched, and recovered. It does not claim readiness: nothing has been built and no launch criterion is met.
 
-Scale assumed throughout: one operator (the founder), one server, about ten pilot shops.
+Scale assumed: one operator, two servers in Uzbekistan, design capacity of 5,000 shops (REQ-N13).
 
 ## Test strategy
 
-| Level | What is tested | How | Gate |
+| Level | What | How | Gate |
 |---|---|---|---|
-| Domain unit tests | Balance, allocation, overdue calculation, default due date, lifecycle transitions | Fast tests with no database; property-based tests for the invariants: balance never negative, a reversal restores the previous balance, shop total equals the sum of balances | CI, every change |
-| Parser tests | Entry grammar | Table of cases: every example in the specification, amount formats, Cyrillic input, malformed and hostile input | CI |
-| Application tests | Each command with its preconditions and error codes | Against a real PostgreSQL instance started for the test run | CI |
-| Database tests | Constraints and role permissions | Negative tests: a second reversal, a zero amount, a credit without a due date, a second shop per owner must fail; role `qd_app` must be refused update and delete on entries (REQ-011, REQ-N07) | CI |
-| Authorization tests | Isolation between shops and between customers | For every command and callback, attempt it as another owner, another customer, and a stranger; all must get the generic refusal (REQ-020, REQ-N11) | CI |
-| Conversation tests | Owner and customer flows end to end | Simulated Telegram updates through the webhook handler, with Telegram calls faked; covers every acceptance criterion in the PRD | CI |
-| Idempotency tests | Duplicate updates and repeated button presses | Replay the same update; exactly one effect (ADR-006) | CI |
-| Outbox tests | Delivery, retry, rate limiting, blocked-bot handling | Faked Telegram returning 429, 403, and timeouts (ADR-007) | CI |
-| Reminder tests | Eligibility and limits | Time-controlled tests: due today, overdue, zero balance, opted out, fully disputed, weekly limit, daily manual limit (REQ-023, REQ-025, REQ-N10) | CI |
-| Privacy tests | No identifying data outside the allowed tables; anonymization leaves none | Schema inspection test and an anonymization test (NFR-008, REQ-029) | CI |
-| Language test | Every message key has an Uzbek string (NFR-007) | Build fails otherwise | CI |
-| Manual smoke test | Real Telegram, real server | Checklist run by the operator after every deployment: create shop, record, pay, reverse, link, confirm, dispute, remind, export | Each release |
-| Usability test | Recording speed with real owners (REQ-N02) | Timed sessions with two or three owners | Before pilot |
-| Restore rehearsal | Recovery targets (NFR-004) | Full restore onto a fresh server, timed | Before pilot, then monthly |
-| Load check | NFR-001, NFR-005, NFR-006 | Scripted updates against a staging copy with 500 customers and 20,000 entries | Before pilot |
+| Domain unit tests | Balance, allocation, overdue, payment history indicator, line rounding, promise rules, lifecycles, subscription transitions | Pure tests; property-based tests for invariants: balance never negative, reversal restores the previous balance, lines sum to totals, shop total equals sum of balances | CI |
+| Parser tests | Chat grammar in Uzbek and Russian, Latin and Cyrillic, amount formats, hostile input | Case tables | CI |
+| Application tests | Every command with preconditions, role, subscription mode, and error codes | Real PostgreSQL per run | CI |
+| Database tests | Constraints, triggers, insert-only tables, row-level security | The checks in `docs/08-technical-spec/tests/schema_checks.sql` ported to the suite, plus a clock-controlled test of the goods-line time limit | CI |
+| Authorization and tenant suite | Every API operation and chat action attempted as each role, as a member of another shop, as an unrelated customer, and as an administrator without support access (NFR-013) | Generated from the API description so a new operation cannot be left out | CI; blocking |
+| API contract tests | Responses match the published description; idempotency keys; pagination; error shape | Automated | CI |
+| Front-end tests | Component tests; end-to-end flows in a browser for staff, customer, and admin in both languages and at phone and desktop widths | Headless browser against a test backend | CI |
+| Conversation tests | Chat flows end to end with simulated updates | Faked Telegram | CI |
+| Outbox and reminder tests | Delivery, retry, limits, channel choice, SMS quota, dispute exclusion | Faked Telegram and SMS; controlled clock | CI |
+| Subscription tests | Trial, warnings, limited and suspended modes, receipt approval and rejection, duplicate receipt detection, switches | Controlled clock | CI |
+| Adapter tests | Click and Payme request and signature handling against recorded examples and sandboxes where available | Cannot be proven against production while switched off; stated as a gap | CI |
+| Privacy tests | No identifying data outside allowed tables (NFR-008); anonymization and shop erasure leave none | Schema inspection and data tests | CI |
+| Language test | Every key in both languages (NFR-007) | Build fails otherwise | CI |
+| Load test | NFR-001, NFR-005, NFR-006, NFR-009, NFR-011 with generated data: 5,000 shops, 500,000 customers | Staging, before launch and after any schema change to hot tables | Before launch |
+| Security review | Session handling, signature validation, file upload, admin second factor, headers, dependency audit; a manual attempt to break tenant isolation | Checklist and manual testing; an outside reviewer if one can be afforded | Before launch |
+| Failover and restore rehearsals | NFR-004: promote the standby; point-in-time restore to a chosen minute | Timed, on staging data at production scale | Before launch, then quarterly |
+| Usability sessions | Recording speed for amount-only and itemized entry (REQ-N02) on low-end phones | Timed sessions with real sellers | Before launch |
+| Smoke test | Core flows on production after each release | Scripted where possible, checklist otherwise | Each release |
 
-What is not tested, stated so it is not assumed: behavior under Telegram outages longer than a day; concurrent use by more than a handful of shops; security against a compromised operator account.
+Stated gaps: payment and SMS adapters cannot be exercised in production while their switches are off; no test covers a compromised administrator; real-world behavior of Telegram delivery to servers in Uzbekistan is unknown until tried.
 
-Already verified during specification: the schema was executed in PostgreSQL 16 and six of the database negative tests above behaved as intended (see the Technical Specification).
+Verified so far: the release 1 schema was executed in PostgreSQL 16 and ten constraint, trigger, permission, and isolation checks behaved as intended (Technical Specification).
 
 ## CI/CD
 
 | Step | Detail |
 |---|---|
 | Trigger | Every push and pull request |
-| Checks | Formatter, linter, type checker, all automated tests with a PostgreSQL service, dependency vulnerability scan, migration applied to an empty database and to a copy of the previous schema |
-| Merge rule | Main branch accepts only changes with green checks |
-| Build | Container image tagged with the commit and, for releases, a version tag |
-| Deployment | Manual, by the operator, with one script: take a pre-release backup, pull the tagged image, run migrations, restart, run the smoke checklist. Outside shop hours (REQ-N09). |
-| Secrets | Never in the repository or in CI logs; the server's environment file is the only copy besides the operator's password manager |
-
-Deployment stays manual on purpose: with one operator and real money records, a person should be present for every release.
+| Backend checks | Format, lint, types, import rules between modules, unit and integration tests with PostgreSQL, tenant suite, migration applied to empty and to previous schema, dependency scan |
+| Front-end checks | Lint, types, tests, build, bundle-size budget (NFR-010), generated API client is current |
+| Merge rule | Main accepts only green changes |
+| Artifacts | Backend image and front-end static bundle, tagged by commit and by version |
+| Staging | Every merge to main deploys to staging automatically |
+| Production | A tagged release is deployed by the operator with one script, outside shop hours: confirm replication is healthy, mark a restore point, run migrations, replace images on the primary, run the smoke test, then update the standby's images |
+| Migrations | Forward-only and compatible with the previous release, so rollback is a redeploy; destructive changes are split across two releases |
+| Secrets | Never in the repository or CI logs |
 
 ## Monitoring
 
-| Signal | Source | Threshold |
-|---|---|---|
-| Bot reachable | External check on `/healthz` every minute | Down for 3 minutes |
-| Webhook backlog | Telegram's pending update count, polled every 5 minutes | Above 20 |
-| Outbox delay | Oldest pending message | Older than 10 minutes |
-| Outbox failures | Messages marked failed | Any |
-| Errors | Unhandled exceptions | Any |
-| Handling time | 95th percentile per hour (NFR-001) | Above 500 ms for two consecutive hours |
-| Backup | Completion time and size | Not completed by 04:00, or size shrinks by more than 20% |
-| Disk and memory | Host | Disk above 80%; memory above 90% for 10 minutes |
-| Certificate | Days to expiry | Fewer than 14 |
+| Signal | Threshold |
+|---|---|
+| External check of `/healthz` every minute | Down 3 minutes |
+| Error rate per route | Above 2% for 5 minutes |
+| Latency 95th percentile on recording routes | Above the NFR targets for 15 minutes |
+| Webhook backlog reported by Telegram | Above 50 |
+| Outbox age, per channel | Older than 10 minutes |
+| Replication lag | Above 2 minutes |
+| Log archive age | Older than 5 minutes |
+| Backup | Failed or missing |
+| Disk, memory, connections on both servers | Disk above 80%; memory above 90% for 10 minutes; connections above 80% of the limit |
+| Certificate | Under 14 days |
+| Security events | Any cross-tenant attempt by an authenticated session; repeated invalid signatures; repeated failed administrator second factor |
+| Receipts awaiting decision | Older than 24 hours |
+| Scheduler | No reminder run recorded in an hour during sending hours |
 
-A daily digest at 21:00 gives the operator the counts for the day, so that silence is distinguishable from health.
-
-Pilot metrics (METRIC-001 to METRIC-004) are product measurements, not operational monitoring; they are exported weekly as described in the Technical Specification.
+A daily digest reports counts, so that silence can be told from health. Dashboards are kept to one page per area: traffic, ledger, messaging, database, subscription.
 
 ## Logging
 
-- Structured JSON lines, one per handled update, job run, and outbound message.
-- Fields: time, level, event name, update identifier, internal identifiers, duration, outcome, error code.
-- Never logged: message text, names, phone numbers, Telegram identities, tokens, amounts together with a customer identifier (REQ-N05).
-- Kept 30 days on the server, rotated daily, not shipped anywhere else.
-- Security events (authorization refusals, invalid webhook secrets, invalid tokens) carry their own event names so they can be counted.
+- Structured JSON from proxy, API, and worker with a shared request identifier.
+- Never logged: message text, names, phone numbers, card numbers, goods bought by a named customer, tokens, session identifiers.
+- Kept 30 days on the servers; not shipped outside Uzbekistan.
+- Shop activity and administrator audit are data, not logs: insert-only tables kept with the shop and the platform respectively.
 
 ## Alerting
 
 | Alert | Channel | Expected response |
 |---|---|---|
-| Bot unreachable | External service to the operator's phone, independent of the server | Within 30 minutes during shop hours |
-| Unhandled exception, outbox failure or delay, backlog | Operator's Telegram chat through the bot | Same day |
-| Backup missing or shrunk | Operator's Telegram chat | Before the next night |
-| Disk, memory, certificate | Operator's Telegram chat | Within two days |
+| Service down, replication broken, archive stale | External service to the operator's phone, independent of both servers | Within 30 minutes during shop hours |
+| Errors, latency, outbox, scheduler, security events | Operator's Telegram chat | Same day; security events on sight |
+| Backup, disk, certificate, pending receipts | Operator's Telegram chat | Before the next day |
 
-Each alert is triggered deliberately once before the pilot to prove it arrives. There is no on-call rotation; one person receives everything. Outside shop hours nothing is expected to be answered.
+Every alert is triggered deliberately once before launch. There is one operator and no rotation; outside shop hours no response is promised. A second person able to act must be named before launch (Development Plan, open question 2).
 
 ## Backup
 
-Implements the backup decision record (ADR-009).
+Implements the archiving decision (ADR-015) and the file store decision (ADR-020).
 
 | Item | Specification |
 |---|---|
-| What | Full database dump in PostgreSQL custom format |
-| When | Daily at 02:00 Tashkent time; additionally before every release |
-| Protection | Encrypted on the server with a public key; the private key is held only by the operator, off the server, in two places |
-| Where | A second provider or facility inside Uzbekistan (REQ-N04); not yet chosen |
-| Retention | 14 daily and 8 weekly copies |
-| Verification | Size and completion checked daily; a full restore rehearsed monthly |
-| Not backed up | Logs; container images (rebuilt from the repository); the environment file (kept in the operator's password manager) |
+| Database | Streaming replica on the standby; write-ahead log archived every minute; weekly full and daily differential backups with pgBackRest |
+| Files | Object store replicated to the standby continuously; included in weekly backup |
+| Encryption | Backups encrypted; the key is held off both servers in two places |
+| Location | Standby server, plus a third location in Uzbekistan if one can be found (REQ-N04) |
+| Retention | Point-in-time recovery for 14 days; weekly backups for 8 weeks; monthly for 12 months |
+| Verification | Automated restore test of the latest backup into staging weekly; full timed rehearsal quarterly |
+| Not backed up | Logs; images (rebuilt); environment files (operator's password manager) |
 
 ## Disaster recovery
 
-Targets (NFR-004): service restored within 4 hours; at most 24 hours of entries lost.
+Targets (NFR-004): service restored within 1 hour; at most 5 minutes of entries lost.
 
 | Scenario | Recovery |
 |---|---|
-| Application crash | Container restarts automatically; pending updates are redelivered by Telegram; outbox resumes |
-| Bad release | Redeploy the previous image; if a migration must be undone, restore the pre-release backup |
-| Database corruption or accidental damage | Restore the latest good backup; tell every pilot owner which period must be re-entered from their notebook |
-| Server lost | New server at the same or another provider in Uzbekistan; install from the repository; restore backup; point the webhook at the new address |
-| Provider outage | Wait if short; otherwise as "server lost" at another provider |
-| Backup key lost | Backups are unrecoverable. Prevention only: two copies of the key, checked at each monthly rehearsal. |
-| Bot token leaked | Revoke through BotFather, set the new token and webhook; no data is exposed by the token alone, but an attacker could have impersonated the bot |
-| Operator unavailable | No one else can act. Pilot owners are told in advance to continue in their notebook if the bot stops. |
-
-The last row is the weakest point of the whole design and is accepted for the pilot.
+| Process crash | Automatic restart; Telegram redelivers; outbox resumes |
+| Bad release | Redeploy previous images; no data change needed because migrations are backward compatible |
+| Operator or software damages data | Point-in-time restore to just before the damage, into a new database; affected shops told which minutes to re-enter |
+| Primary server lost | Promote the standby, start API and worker there, repoint DNS and webhook; then build a new standby |
+| Standby lost | Service unaffected; rebuild the standby; until then there is no failover and backups go to the third location if it exists |
+| Both servers lost | Restore from the third location if it exists; otherwise the data is gone. This is why a third location matters. |
+| Link between servers lost | Primary continues; replication and archive alerts fire; no failover while the primary is healthy |
+| Backup key lost | Backups unusable; prevention only |
+| Bot token or session secret leaked | Rotate; invalidate sessions; review audit for misuse |
+| Administrator account compromised | Disable in the allow-list from the server; rotate second-factor secret; review admin audit; re-verify recent receipt approvals and setting changes |
+| Operator unavailable | Named second person follows the failover runbook and posts notices; cannot change code |
 
 ## Runbooks
 
-To be written as short checklists in the code repository during milestone M5; each must be executed once before the pilot.
+Written during M8, each executed once before launch:
 
-1. Deploy a release.
-2. Roll back a release.
-3. Restore from backup onto a fresh server.
-4. Rotate the bot token and webhook secret.
-5. Respond to "bot is not answering".
-6. Respond to "an entry is wrong" (always a reversal through the application; never a manual database change).
-7. Owner lost their Telegram account: verify identity in person or by phone known from onboarding, then reassign the shop by a reviewed, logged operator command.
-8. Customer removal request received outside the bot.
-9. Suspected data exposure.
-10. Onboard a pilot shop; offboard a pilot shop with a final export.
+1. Deploy and roll back a release.
+2. Fail over to the standby; rebuild a standby.
+3. Point-in-time restore.
+4. Rotate bot token, webhook secret, session secret, database passwords, backup key.
+5. "The bot or panel is not answering."
+6. "An entry is wrong": always a reversal through the product; never a database change.
+7. Owner lost their Telegram account: identity check, then a logged administrator action reassigning ownership.
+8. Review and decide subscription receipts; handling a suspected forged or reused receipt.
+9. Open and close support access.
+10. Customer removal request received outside the product; shop deletion request.
+11. Suspected data exposure.
+12. Switch on SMS or online payment for one shop, then for all.
+13. Onboard a shop, including importing its paper ledger.
 
 ## Incident readiness
 
-- **Severity.** High: owners cannot record, or data may be lost or exposed. Medium: notifications or reminders delayed or failing. Low: cosmetic or single-user issues.
-- **Communication.** A Telegram group with pilot owners, separate from the bot, for outage notices; high-severity incidents are announced there within an hour of detection during shop hours.
-- **Record.** Every high or medium incident gets a short written note: what happened, impact, cause, fix, what changes.
-- **Data exposure.** Treated as high severity; affected owners and customers are told what was exposed. Whether a regulator must be notified, and by when, is a question for the legal review.
+- **Severity.** High: recording unavailable, data loss or exposure, wrong balances. Medium: notifications, reminders, panel, or subscription handling degraded. Low: cosmetic or single-user.
+- **Communication.** A public status channel in Telegram, separate from the bot; high-severity incidents announced within an hour during shop hours.
+- **Record.** Every high or medium incident gets a written note: what happened, impact, cause, fix, change.
+- **Data exposure.** Treated as high; affected shops and customers told what was exposed. Duties to notify a regulator are not established and belong to the legal review.
+- **Support.** Shops reach the operator through the bot and the status channel; response times are stated at onboarding and must be ones a single person can keep.
 
 ## Security / compliance readiness
 
 | Item | State |
 |---|---|
-| Controls specified (transport, webhook secret, tokens, roles, logs, backups, host) | Specified in the Technical Specification; not yet implemented |
-| Database immutability | Specified and verified against PostgreSQL 16 at schema level |
-| Data stored in Uzbekistan (REQ-N04, EVID-027) | Designed (ADR-008); provider not chosen |
-| Registration of the personal data base | Requirement known (EVID-027); whether and how it applies to this pilot is not established |
-| Consent text | Agent draft; not legally reviewed |
-| Recording a customer before consent | Open legal question |
-| Delaying removal while a balance is owed | Open legal question |
-| Notifications, including the customer's name by founder choice, passing through Telegram abroad (EVID-033) | Open legal question |
+| Security controls | Specified; not implemented |
+| Tenant isolation and ledger immutability | Specified; verified at schema level in PostgreSQL 16 |
+| Data in Uzbekistan (EVID-027) | Designed; providers not chosen |
+| Registration of the personal data base | Requirement known; applicability not established |
+| Consent text in two languages | Uzbek draft by the agent; Russian not written; neither reviewed |
+| Recording before consent; deferred removal; in-shop reliability indicator | Open legal questions |
+| Notifications with names and goods, and card receipts, passing through Telegram abroad (EVID-033) | Open legal question |
+| Subscription payments to a personal card without a registered entity | Founder states it is lawful (EVID-035); not verified |
+| Selling a subscription through a bot outside Telegram's payment mechanism (EVID-028) | Risk accepted by decision; consequence unknown |
+| Receipt and file retention periods | Chosen by the agent; no legal basis researched |
 | Breach notification duties | Not researched |
-| Dependency and host patching | Process defined above; not yet running |
 
-Compliance readiness today: **not ready**. Five of the items above depend on a legal review that has not happened.
+Compliance readiness today: **not ready**. Most items depend on a legal review that has not happened.
 
 ## Release / rollback plan
 
-Stages are those in the Development Plan: development, internal alpha, friendly test, pilot.
+Stages are those in the Development Plan: development, staging, internal acceptance, launch. There is no pilot stage by founder decision; at launch, shops are onboarded one at a time for two weeks.
 
-Each release: tagged commit with green CI → pre-release backup → deploy outside shop hours → smoke checklist → watch alerts for one hour. If the smoke checklist fails, roll back immediately.
-
-Rollback: redeploy the previous image. Migrations are forward-only and written to be compatible with the previous image wherever possible; when they are not, the release note says so and rollback includes restoring the pre-release backup, which loses entries made since the release. For that reason incompatible migrations are released only at the start of a quiet period and never during the pilot's shop hours.
+Each production release: tagged commit with green CI and a staging soak → restore point → deploy outside shop hours → smoke test → watch for one hour. Rollback is a redeploy of the previous images. If data was damaged, point-in-time restore applies. Platform switches (ADR-018) allow a faulty feature to be turned off without a release where the feature has one.
 
 ## Production launch criteria
 
-"Launch" here means giving the bot to pilot shops with real customer data. All must be true.
+"Launch" means the first real shop with real customer data. All must be true.
 
 | No. | Criterion | State on 2026-10-06 |
 |---|---|---|
-| 1 | Interviews and the pDaftar test are done and no stop condition from Market Research is met | Not done |
-| 2 | Legal review has answered the four questions and approved or corrected the consent text | Not done |
-| 3 | Any registration the law requires before processing is complete | Not established |
-| 4 | Milestones M1 to M5 are complete and every PRD acceptance criterion passes in CI | Not started |
-| 5 | A full restore has been rehearsed and met the recovery targets, with the time recorded | Not started |
-| 6 | Every alert has been triggered once and received | Not started |
-| 7 | Runbooks 1 to 7 have each been executed once | Not started |
-| 8 | Usability test shows recording is not slower than the notebook for the owners tested | Not started |
-| 9 | Hosting and backup providers in Uzbekistan are chosen and in use | Not chosen |
-| 10 | Pilot owners have been told in plain words: this is a test, keep your notebook, up to a day of entries could be lost, and who to contact | Not started |
-| 11 | The founder records an explicit launch approval after reviewing items 1 to 10 | Not given |
+| 1 | Interviews and the pDaftar test are done and no stop condition is met | Not done |
+| 2 | Legal review has answered the open questions and approved the consent text in both languages | Not done |
+| 3 | Any registration required before processing personal data is complete | Not established |
+| 4 | Milestones M1 to M8 complete; every acceptance criterion passes in CI | Not started |
+| 5 | The authorization and tenant suite covers every operation and passes | Not started |
+| 6 | Load test meets the performance targets at design capacity, or the capacity claim is lowered to what was measured | Not started |
+| 7 | Security review done and its findings fixed or accepted in writing | Not started |
+| 8 | Failover and point-in-time restore rehearsed within the targets, times recorded | Not started |
+| 9 | Every alert triggered once and received | Not started |
+| 10 | Runbooks 1 to 11 each executed once | Not started |
+| 11 | Usability sessions show recording is not slower than the notebook for the sellers tested | Not started |
+| 12 | Two servers at two providers or facilities in Uzbekistan in use; backup key stored off both | Not chosen |
+| 13 | A second person able to fail over and post notices is named and has done it once | Not named |
+| 14 | Both languages reviewed by native speakers | Not started |
+| 15 | Before the first payment is accepted: the card-transfer process, review group, and receipt handling have been run end to end with a test shop | Not started |
+| 16 | The founder records an explicit launch approval after reviewing items 1 to 15 | Not given |
 
-None of the eleven is met. That is the expected state for a documentation pipeline that ends before the build begins.
+None of the sixteen is met.
 
 ## Evidence
 
-- Schema and immutability checks executed in PostgreSQL 16 on 2026-10-06 (recorded in the Technical Specification).
-- Hosting availability and price range in Uzbekistan (EVID-031).
-- Telegram rate limits that the dispatcher and alert thresholds respect (EVID-032).
-- Legal basis for the hosting and consent requirements (EVID-027) and Telegram message storage (EVID-033).
+- Release 1 schema executed in PostgreSQL 16 on 2026-10-06 with ten checks passing (Technical Specification; `docs/08-technical-spec/tests/schema_checks.sql`).
+- Hosting availability and price range in Uzbekistan (EVID-031); Telegram rate limits (EVID-032); localization requirement (EVID-027); Telegram message storage (EVID-033); Telegram payment rule (EVID-028); the founder's statement on card payments (EVID-035).
 
-No operational evidence exists yet: no test run, no deployment, no restore, no alert has been exercised, because there is no system.
+No operational evidence exists: no test run, deployment, failover, restore, or alert has been exercised, because there is no system.
 
 ## Assumptions
 
-- One operator is acceptable for an eight-week pilot in which shops keep their notebooks.
-- A free or low-cost external uptime service can reach a server in Uzbekistan and notify the operator's phone.
-- Monthly restore rehearsals are frequent enough at pilot scale.
-- Pilot owners will join a Telegram group for notices.
+- One operator plus a named backup person can meet a 99.5% target in shop hours. Unproven; the target may have to be lowered after the first months.
+- Two independent facilities in Uzbekistan are available to an individual.
+- An external monitoring service can reach servers in Uzbekistan and notify by phone.
+- Quarterly rehearsals are frequent enough.
 
 ## Open questions
 
-1. Who can act when the operator cannot? Even a trusted person able to post an outage notice would help.
-2. Which providers for hosting, backup storage, and the external uptime check?
-3. What are the breach notification duties under the personal data law?
-4. Should the monthly restore rehearsal be automated once the pilot starts?
+1. Who is the second person?
+2. Which providers, and is there a third location for backups?
+3. Is an outside security review affordable before launch?
+4. What response times will be promised to paying shops, given one operator?
+5. Breach notification duties under the personal data law.
 
 ## Approvals
 
 | Record | Subject | Status |
 |---|---|---|
-| DEC-010 / APR-010 | Development plan and gates | Approved 2026-10-06 |
-| DEC-011 | Operations definition in this document: test strategy, manual gated releases, monitoring and alerting, daily encrypted backups with recovery targets of 4 hours and 24 hours, single-operator incident handling, and the eleven launch criteria | Approved 2026-10-06 |
-| Production launch approval | Launch criterion 11 | Not requested; cannot be given until criteria 1 to 10 are met |
+| DEC-011 / APR-011 | Version 1 operations definition | Superseded |
+| DEC-019 | Version 2 operations definition: test strategy with a blocking tenant suite, staged releases with backward-compatible migrations, monitoring and alerting, replication with point-in-time recovery, recovery targets of 1 hour and 5 minutes, runbooks, and sixteen launch criteria | Pending end-of-sequence review |
+| Production launch approval | Launch criterion 16 | Not requested; cannot be given until criteria 1 to 15 are met |

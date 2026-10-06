@@ -29,19 +29,19 @@ blocked_reason:
 - Production Ready requires explicit human approval of the global audit.
 
 ## Pending approvals
-- DEC-013: release 1 scope in PRD version 2.
-- Production launch approval: not requested; cannot be given until launch criteria are met.
+- DEC-014 to DEC-019: version 2 of the domain model, architecture, decision records, technical specification, development plan, and operations definition. Written without stopping by founder instruction; awaiting his single end-of-sequence review.
+- Production launch approval: not requested; cannot be given until the sixteen launch criteria in docs/10-operations/OUTPUT.md are met.
 
 ## Blockers
-- Change of direction (DEC-012 / APR-012, 2026-10-06): PRD is at version 2; stages 05 to 10 are marked PASSED or REVIEW in this file but their documents are stale and carry a banner saying so. They must be revised in order after DEC-013 is decided. The framework CLI has no transition to reopen a passed stage, so the stage statuses above overstate the real state.
+- Stages 05 to 09 show PASSED in this file because the framework CLI cannot reopen a passed stage. Their documents are now version 2 and are NOT yet approved (DEC-014 to DEC-018 pending). Treat them as in review.
 - 10-operations is held in REVIEW by founder decision until production launch criteria are met.
-- Global audit cannot pass with framework 1.0.0 as released (early-stage EVID and DEC references; APR-001 lacks a Decision field). A framework fix has been proposed but not made.
+- Global audit cannot pass with framework 1.0.0 as released (early-stage EVID and DEC references are reported as forward references; APR-001 lacks a Decision field the documented CLI command never asked for). A framework fix has been proposed but not made.
 
 ## Open questions
 - Field validation outstanding: shopkeeper interviews and a hands-on pDaftar test. The founder's own answers are recorded as EVID-034 (assumption) and do not satisfy this gate.
-- Legal review outstanding, now including: accepting subscription payments on a personal card without a registered entity, Telegram payment rules, receipt retention, and SMS without consent.
+- Legal review outstanding: recording before consent, deferred removal, in-shop reliability indicator, notifications and receipts through Telegram abroad, receipt retention, SMS without consent, consent text in two languages, and subscription payments to a personal card (the founder states this is lawful, EVID-035; unverified).
 - No registered business entity; online payments and SMS ship switched off.
-- Hosting and backup providers in Uzbekistan not chosen.
+- Two hosting providers in Uzbekistan and a second operator are not chosen.
 - Final product name not chosen; "Qarz Daftari" is a working title.
 
 ## Last validation

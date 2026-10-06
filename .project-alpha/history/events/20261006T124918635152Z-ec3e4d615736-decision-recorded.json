@@ -1,0 +1,19 @@
+{
+  "event_id": "ec3e4d615736",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T12:49:18+00:00",
+  "path": ".project-alpha\\decisions\\DEC-019.md",
+  "stage": "10-operations",
+  "title": "Operations definition version 2",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-019",
+  "decision": "Adopt the version 2 operations definition: test strategy with a blocking authorization and tenant suite, staged releases with backward-compatible migrations, monitoring and alerting, replication with point-in-time recovery, recovery targets of 1 hour and 5 minutes, runbooks, and sixteen production launch criteria. This is not a production launch approval.",
+  "context": "Rewritten for PRD version 2 after the change of direction (DEC-012, DEC-013). By founder instruction the agent decided open points without stopping; the founder reviews all six documents at the end.",
+  "chosen_option": "Operations definition as written; launch approval withheld",
+  "rationale": "Defines every operational area at a scale one operator can attempt and states plainly that no launch criterion is met and that compliance readiness depends on a legal review that has not happened (EVID-027)",
+  "impact": "High",
+  "reversibility": "High",
+  "evidence": "EVID-027, EVID-028, EVID-031, EVID-032, EVID-033, EVID-035",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}
