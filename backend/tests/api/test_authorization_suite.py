@@ -133,6 +133,33 @@ CALLS: dict[str, Call] = {
     ),
     "overview.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview"),
     "overview.debtors": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview/debtors"),
+    "catalog.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/catalog"),
+    "catalog.create": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/catalog",
+        {"name": "Shakar", "unit": "kg", "price": 14000},
+        True,
+        201,
+    ),
+    "catalog.update": Call(
+        "PATCH", lambda w, shop: f"/api/v1/shops/{shop}/catalog/{w.catalog_item_a}", {"price": 4500}, True
+    ),
+    "catalog.hide": Call("POST", lambda w, shop: f"/api/v1/shops/{shop}/catalog/{w.catalog_item_a}/hide", None, True),
+    "catalog.unhide": Call(
+        "POST", lambda w, shop: f"/api/v1/shops/{shop}/catalog/{w.catalog_item_a}/unhide", None, True
+    ),
+    "catalog.learned.accept": Call(
+        "POST", lambda w, shop: f"/api/v1/shops/{shop}/catalog/{w.learned_item_a}/accept", None, True
+    ),
+    "catalog.learned.dismiss": Call(
+        "POST", lambda w, shop: f"/api/v1/shops/{shop}/catalog/{w.learned_item_a}/dismiss", None, True
+    ),
+    "catalog.learned.merge": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/catalog/{w.learned_item_a}/merge",
+        None,  # the body names an item of shop A; filled in by _body
+        True,
+    ),
 }
 
 # Written by hand from REQ-033 and the specification's authorization table; deliberately not derived
@@ -162,6 +189,15 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "ledger.entry.reverse": {Role.MANAGER, Role.OWNER},
     "overview.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "overview.debtors": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    # Specification, resources table: "Manager, owner; sellers read".
+    "catalog.list": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "catalog.create": {Role.MANAGER, Role.OWNER},
+    "catalog.update": {Role.MANAGER, Role.OWNER},
+    "catalog.hide": {Role.MANAGER, Role.OWNER},
+    "catalog.unhide": {Role.MANAGER, Role.OWNER},
+    "catalog.learned.accept": {Role.MANAGER, Role.OWNER},
+    "catalog.learned.dismiss": {Role.MANAGER, Role.OWNER},
+    "catalog.learned.merge": {Role.MANAGER, Role.OWNER},
 }
 
 SELF_CALLS: dict[str, PlainCall] = {
@@ -204,6 +240,8 @@ def _key() -> dict[str, str]:
 def _body(world: World, op_name: str, call: Call) -> dict[str, Any] | None:
     if op_name == "ownership.transfer.start":
         return {"membership_id": str(world.manager_a_membership)}
+    if op_name == "catalog.learned.merge":
+        return {"into": str(world.catalog_item_a)}
     return call.json
 
 
@@ -245,6 +283,11 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
             (shop,),
         ).fetchall(),
         owner.execute("SELECT count(*) FROM promise WHERE shop_id = %s", (shop,)).fetchone(),
+        owner.execute(
+            "SELECT id, name, name_norm, unit, price, learned, status, merged_into FROM catalog_item "
+            "WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
         # Measurement rows carry no shop identifier; tests run one at a time, so a total is enough.
         owner.execute("SELECT count(*) FROM measure.event").fetchone(),
     )
@@ -354,6 +397,8 @@ def test_a_member_of_one_shop_cannot_reach_another(
         world.settled_customer_a,
         world.archived_customer_a,
         world.entry_a,
+        world.catalog_item_a,
+        world.learned_item_a,
     )
     uses_foreign_resource = any(str(resource) in call.path(world, world.shop_b) for resource in foreign)
     if uses_foreign_resource:

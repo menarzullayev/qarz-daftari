@@ -70,6 +70,8 @@ class World:
     settled_customer_a: uuid.UUID  # owes nothing
     archived_customer_a: uuid.UUID
     entry_a: uuid.UUID  # a credit sale of 50 000 UZS to customer_a, promised a week from today
+    catalog_item_a: uuid.UUID  # "Non", 4 000 UZS a piece: shown and reviewed
+    learned_item_a: uuid.UUID  # "Qatiq", 9 000 UZS: learned from a typed line, not yet reviewed
 
 
 def _user(conn: psycopg.Connection, lang: str = "uz") -> uuid.UUID:
@@ -133,6 +135,12 @@ def world(owner: psycopg.Connection) -> World:
         "(%s, 'trial', current_date + 30), (%s, 'trial', current_date + 30)",
         (shop_a, shop_b),
     )
+    catalog_item, learned_item = uuid.uuid4(), uuid.uuid4()
+    owner.execute(
+        "INSERT INTO catalog_item (id, shop_id, name, name_norm, unit, price, learned) VALUES "
+        "(%s, %s, 'Non', 'non', 'dona', 4000, false), (%s, %s, 'Qatiq', 'qatiq', 'dona', 9000, true)",
+        (catalog_item, shop_a, learned_item, shop_a),
+    )
     # A platform administrator with no support access to any shop.
     owner.execute("INSERT INTO admin_account (user_id, totp_secret) VALUES (%s, %s)", (users["admin"], b"test-only"))
     token = f"world-invitation-{uuid.uuid4().hex}"
@@ -154,6 +162,8 @@ def world(owner: psycopg.Connection) -> World:
         settled_customer_a=settled_customer,
         archived_customer_a=archived_customer,
         entry_a=entry_id,
+        catalog_item_a=catalog_item,
+        learned_item_a=learned_item,
         **users,
     )
 
