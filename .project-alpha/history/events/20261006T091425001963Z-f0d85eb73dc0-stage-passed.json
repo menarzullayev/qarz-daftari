@@ -1,0 +1,9 @@
+{
+  "event_id": "f0d85eb73dc0",
+  "event_type": "stage.passed",
+  "timestamp": "2026-10-06T09:14:25+00:00",
+  "stage": "05-domain-model",
+  "from_status": "REVIEW",
+  "to_status": "PASSED",
+  "reason": "Founder approved DEC-006 in chat on 2026-10-06"
+}

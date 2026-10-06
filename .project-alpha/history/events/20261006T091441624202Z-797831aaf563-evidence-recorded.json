@@ -1,0 +1,14 @@
+{
+  "event_id": "797831aaf563",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T09:14:41+00:00",
+  "path": "docs\\evidence\\EVID-032.md",
+  "stage": "06-architecture",
+  "claim": "The Telegram Bot API limits a bot to roughly one message per second in a single chat and about 30 messages per second overall for bulk notifications; exceeding this returns error 429 with a retry delay, and Telegram advises spreading bulk notifications over long intervals.",
+  "source": "https://core.telegram.org/bots/faq ; https://grammy.dev/advanced/flood",
+  "date": "2026-10-06",
+  "confidence": "high",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-032"
+}

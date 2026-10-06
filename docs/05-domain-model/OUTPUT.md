@@ -1,6 +1,6 @@
 # Domain Model
 
-Status: draft for review; awaiting human approval of core business rules (DEC-006). Prepared 2026-10-06.
+Status: core business rules approved by the founder on 2026-10-06 (DEC-006 / APR-006).
 Upstream: `docs/04-prd/OUTPUT.md` (MVP scope approved, DEC-005 / APR-005).
 
 This model covers the MVP only. It names the concepts and rules the PRD implies and settles the ambiguities the PRD left open. Where a rule goes beyond what the PRD states, it is marked **decided here** and listed for approval (DEC-006) at the end of this document.
@@ -197,4 +197,4 @@ Every functional requirement from REQ-001 to REQ-030 appears above.
 | Record | Subject | Status |
 |---|---|---|
 | DEC-005 / APR-005 | MVP scope | Approved 2026-10-06 |
-| DEC-006 | Core business rules decided in this stage: running-balance model with calculated oldest-first allocation (BR-2, BR-3); acknowledgement only for debt-increasing entries (BR-6); no dispute after confirmation (BR-9); disputed amounts excluded from reminders (BR-12); whole-entry reversal only (INV-5, INV-6); removal deferred until zero balance (BR-17) | Approval pending |
+| DEC-006 | Core business rules decided in this stage: running-balance model with calculated oldest-first allocation (BR-2, BR-3); acknowledgement only for debt-increasing entries (BR-6); no dispute after confirmation (BR-9); disputed amounts excluded from reminders (BR-12); whole-entry reversal only (INV-5, INV-6); removal deferred until zero balance (BR-17) | Approved 2026-10-06 |

@@ -1,0 +1,12 @@
+{
+  "event_id": "18a8ca0ca0db",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T09:14:24+00:00",
+  "path": ".project-alpha\\approvals\\APR-006.md",
+  "stage": "05-domain-model",
+  "decision_id": "DEC-006",
+  "decision": "Core business rules as written in docs/05-domain-model/OUTPUT.md",
+  "approval_id": "APR-006",
+  "approver": "Saidakbar Narzullayev",
+  "status": "approved"
+}

@@ -1,0 +1,9 @@
+{
+  "event_id": "888ccc2c134a",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T09:14:25+00:00",
+  "stage": "05-domain-model",
+  "decision": "PASS",
+  "approver": "Saidakbar Narzullayev",
+  "reason": "Founder approved DEC-006 in chat on 2026-10-06"
+}
