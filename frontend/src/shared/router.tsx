@@ -20,6 +20,11 @@ export function hrefFor(path: string): string {
   return `#${path}`;
 }
 
+/** Opens a route from code, for example after a form is saved. */
+export function navigate(path: string): void {
+  window.location.hash = hrefFor(path);
+}
+
 function subscribe(onChange: () => void): () => void {
   window.addEventListener("hashchange", onChange);
   return () => window.removeEventListener("hashchange", onChange);

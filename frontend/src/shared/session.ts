@@ -1,9 +1,8 @@
 import { isRole, type Role } from "./navigation";
 
 /**
- * What the shell needs to know about the signed-in staff member. It will come from the authentication
- * call (POST /api/v1/auth/telegram-webapp or /telegram-login) in a later story. Until then a production
- * build has no session and shows the "sign-in required" screen.
+ * What the shell needs to know about the signed-in staff member. StaffRoot builds it from the sign-in
+ * and the user's shops (GET /api/v1/me/shops); without a session the "sign-in required" screen is shown.
  */
 export type StaffSession = {
   /** Name of the active shop; every screen shows it (REQ-064). */

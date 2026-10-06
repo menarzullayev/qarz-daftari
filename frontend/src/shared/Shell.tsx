@@ -24,6 +24,11 @@ type ShellProps = {
   primaryCount: number;
   moreItem?: ShellNavItem;
   currentPath: string;
+  /**
+   * Path of the navigation item to mark as current, when the screen sits inside a section (one customer
+   * inside "Customers"). Defaults to `currentPath`.
+   */
+  navPath?: string;
   /** Title of the current screen; becomes the page heading and the document title. */
   title: string;
   children?: ReactNode;
@@ -61,6 +66,7 @@ export function Shell({
   primaryCount,
   moreItem,
   currentPath,
+  navPath = currentPath,
   title,
   children,
 }: ShellProps) {
@@ -113,14 +119,14 @@ export function Shell({
                 key={item.id}
                 className={index < primaryCount ? "nav__item" : "nav__item nav__item--secondary"}
               >
-                <Link to={item.path} current={item.path === currentPath} className="nav__link">
+                <Link to={item.path} current={item.path === navPath} className="nav__link">
                   {t(item.labelKey)}
                 </Link>
               </li>
             ))}
             {showMore ? (
               <li className="nav__item nav__item--more">
-                <Link to={moreItem.path} current={moreItem.path === currentPath} className="nav__link">
+                <Link to={moreItem.path} current={moreItem.path === navPath} className="nav__link">
                   {t(moreItem.labelKey)}
                 </Link>
               </li>

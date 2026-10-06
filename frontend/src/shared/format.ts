@@ -16,7 +16,7 @@ function assertValid(date: Date): void {
   }
 }
 
-type CalendarDay = { year: number; month: number; day: number };
+export type CalendarDay = { year: number; month: number; day: number };
 
 /** Calendar date in Tashkent for an instant. */
 export function tashkentDay(date: Date): CalendarDay {
@@ -45,6 +45,18 @@ export function formatDayMonth(date: Date, lang: Language): string {
 export function formatFullDate(date: Date, lang: Language): string {
   const { year, month, day } = tashkentDay(date);
   return translate(lang, "date.dayMonthYear", { year, day, month: monthName(lang, month) });
+}
+
+/** A calendar date, such as a promised date, in the same form as `formatFullDate`. */
+export function formatCalendarDay(day: CalendarDay, lang: Language): string {
+  return translate(lang, "date.dayMonthYear", { year: day.year, day: day.day, month: monthName(lang, day.month) });
+}
+
+/** Date and time of an instant in Tashkent: "2026-yil 6-oktabr, 14:05". */
+export function formatDateTime(date: Date, lang: Language): string {
+  const shifted = new Date(date.getTime() + TASHKENT_OFFSET_MS);
+  const time = `${String(shifted.getUTCHours()).padStart(2, "0")}:${String(shifted.getUTCMinutes()).padStart(2, "0")}`;
+  return translate(lang, "date.dateTime", { date: formatFullDate(date, lang), time });
 }
 
 /**
