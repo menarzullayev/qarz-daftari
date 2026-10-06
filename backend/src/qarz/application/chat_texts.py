@@ -127,6 +127,17 @@ UZ = {
         "So'rovingiz qabul qilindi. «{shop}» do'konidagi qarzingiz ({balance}) to'liq to'langach, "
         "ma'lumotlaringiz o'chiriladi."
     ),
+    "dispute_button": "⚠️ E'tiroz bildirish",
+    "ask_dispute_reason": "E'tirozingiz sababini qisqacha yozing (3 tadan 300 tagacha belgi).",
+    "reason_invalid": "Sabab 3 tadan 300 tagacha belgi bo'lishi kerak. Tugmani qayta bosib, yana yozing.",
+    "dispute_sent": "E'tirozingiz «{shop}» do'koniga yuborildi. Yozuv ko'rib chiqilguncha qarzingizda turadi.",
+    "DISPUTE_NOT_ALLOWED": "Bu yozuv bo'yicha e'tiroz bildirib bo'lmaydi yoki u allaqachon ko'rib chiqilgan.",
+    "s_dispute": "⚠️ {shop}\n{name} {amount} yozuviga e'tiroz bildirdi:\n«{reason}»",
+    "decline_button": "Rad etish",
+    "ask_decline_reason": "Rad etish sababini yozing. U mijozga yuboriladi.",
+    "dispute_declined_staff": "E'tiroz rad etildi. Mijozga sababi bilan xabar yuborildi.",
+    "n_dispute_declined": "{shop}\n{amount} yozuvi bo'yicha e'tirozingiz rad etildi.\nSabab: {reason}",
+    "s_dispute_withdrawn": "{shop}\n{name} {amount} yozuvi bo'yicha e'tirozini qaytarib oldi.",
     "currency": "so'm",
 }
 
@@ -248,6 +259,17 @@ RU = {
     "removal_waiting": (
         "Запрос принят. После полной оплаты долга в магазине «{shop}» ({balance}) ваши данные будут удалены."
     ),
+    "dispute_button": "⚠️ Возразить",
+    "ask_dispute_reason": "Коротко напишите причину возражения (от 3 до 300 символов).",
+    "reason_invalid": "Причина должна быть от 3 до 300 символов. Нажмите кнопку ещё раз и напишите снова.",
+    "dispute_sent": "Ваше возражение отправлено в магазин «{shop}». Пока его рассматривают, запись остаётся в долге.",
+    "DISPUTE_NOT_ALLOWED": "По этой записи нельзя подать возражение, или оно уже рассмотрено.",
+    "s_dispute": "⚠️ {shop}\n{name} возражает против записи {amount}:\n«{reason}»",
+    "decline_button": "Отклонить",
+    "ask_decline_reason": "Напишите причину отказа. Она будет отправлена клиенту.",
+    "dispute_declined_staff": "Возражение отклонено. Клиенту отправлено сообщение с причиной.",
+    "n_dispute_declined": "{shop}\nВаше возражение по записи {amount} отклонено.\nПричина: {reason}",
+    "s_dispute_withdrawn": "{shop}\n{name} отозвал возражение по записи {amount}.",
     "currency": "сум",
 }
 
