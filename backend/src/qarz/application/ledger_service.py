@@ -13,7 +13,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from qarz.application import idempotency, notify
+from qarz.application import idempotency, notify, removal
 from qarz.application.customers import (
     MAX_PAGE,
     CustomerArchived,
@@ -198,6 +198,7 @@ async def append_entry_in(
         "customer": customer_body(customer, balance),
     }
     await notify.entry_recorded(session, customer_id, body)
+    await removal.complete_if_due(session, customer_id, balance, now)
     return body
 
 
@@ -256,6 +257,7 @@ async def reverse_entry_in(
         "customer": customer_body(customer, balance),
     }
     await notify.entry_reversed(session, customer_id, body, original.kind.value)
+    await removal.complete_if_due(session, customer_id, balance, now)
     return body
 
 

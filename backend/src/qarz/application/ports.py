@@ -119,6 +119,7 @@ class WaitingLink:
 class CustomerAccount:
     """One shop a person is linked to as a customer, and what they owe there."""
 
+    link_id: UUID
     shop_id: UUID
     shop_name: str
     customer_id: UUID
@@ -346,6 +347,20 @@ class TenantSession(Protocol):
         """Queue a Telegram message in this shop's transaction. False when the key was already queued."""
         ...
 
+    async def record_customer_activity(self, *, action: str, subject_id: UUID) -> None:
+        """Something the customer did about their own record. No staff member is the actor."""
+        ...
+
+    async def removal_waiting(self, customer_id: UUID) -> bool: ...
+
+    async def open_removal_request(self, customer_id: UUID, now: datetime) -> None: ...
+
+    async def close_removal_request(self, customer_id: UUID, now: datetime) -> None: ...
+
+    async def anonymize_customer(self, customer_id: UUID, *, label: str, name_norm: str, now: datetime) -> None:
+        """Replace the name, erase phone and links, and forget the person if nothing else refers to them."""
+        ...
+
     async def lock_request_key(self, key: str) -> None:
         """Serialize concurrent requests that carry the same idempotency key, until the transaction ends."""
         ...
@@ -431,6 +446,10 @@ class PlatformSession(Protocol):
         ...
 
     async def my_accounts(self, user_id: UUID) -> list[CustomerAccount]: ...
+
+    async def my_link(self, user_id: UUID, link_id: UUID) -> tuple[UUID, UUID] | None:
+        """Shop and customer behind a live link of this user; None when it is not theirs."""
+        ...
 
     async def end_my_link(self, user_id: UUID, shop_id: UUID) -> bool: ...
 

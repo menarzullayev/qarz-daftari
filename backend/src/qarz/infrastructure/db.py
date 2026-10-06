@@ -872,6 +872,78 @@ class PgTenantSession:
         ).first()
         return row is not None
 
+    async def record_customer_activity(self, *, action: str, subject_id: UUID) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO activity (id, shop_id, actor_kind, actor_id, action, subject_type, subject_id) "
+                "VALUES (:id, :shop_id, 'customer', NULL, :action, 'customer', :subject_id)"
+            ),
+            {"id": uuid4(), "shop_id": self._shop_id, "action": action, "subject_id": subject_id},
+        )
+
+    async def removal_waiting(self, customer_id: UUID) -> bool:
+        row = (
+            await self._conn.execute(
+                text("SELECT 1 FROM removal_request WHERE customer_id = :customer_id AND status = 'waiting'"),
+                {"customer_id": customer_id},
+            )
+        ).first()
+        return row is not None
+
+    async def open_removal_request(self, customer_id: UUID, now: datetime) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO removal_request (id, shop_id, customer_id, status, created_at) "
+                "VALUES (:id, :shop_id, :customer_id, 'waiting', :now) "
+                "ON CONFLICT (customer_id) WHERE status = 'waiting' DO NOTHING"
+            ),
+            {"id": uuid4(), "shop_id": self._shop_id, "customer_id": customer_id, "now": now},
+        )
+
+    async def close_removal_request(self, customer_id: UUID, now: datetime) -> None:
+        result = await self._conn.execute(
+            text(
+                "UPDATE removal_request SET status = 'completed', completed_at = :now "
+                "WHERE customer_id = :customer_id AND status = 'waiting'"
+            ),
+            {"customer_id": customer_id, "now": now},
+        )
+        if int(result.rowcount) == 0:
+            await self._conn.execute(
+                text(
+                    "INSERT INTO removal_request (id, shop_id, customer_id, status, created_at, completed_at) "
+                    "VALUES (:id, :shop_id, :customer_id, 'completed', :now, :now)"
+                ),
+                {"id": uuid4(), "shop_id": self._shop_id, "customer_id": customer_id, "now": now},
+            )
+
+    async def anonymize_customer(self, customer_id: UUID, *, label: str, name_norm: str, now: datetime) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE customer SET display_name = :label, name_norm = :norm, phone = NULL, lang = NULL, "
+                "status = 'anonymized', reminders_off = true WHERE id = :id"
+            ),
+            {"id": customer_id, "label": label, "norm": name_norm},
+        )
+        users = (
+            await self._conn.execute(
+                text(
+                    "UPDATE customer_link l SET user_id = NULL, waiting_name = NULL, "
+                    "status = 'ended', ended_at = coalesce(l.ended_at, :now) "
+                    "FROM customer_link before WHERE before.id = l.id AND l.customer_id = :id "
+                    "RETURNING before.user_id"
+                ),
+                {"id": customer_id, "now": now},
+            )
+        ).all()
+        await self._conn.execute(
+            text("UPDATE invitation SET status = 'cancelled' WHERE customer_id = :id AND status = 'issued'"),
+            {"id": customer_id},
+        )
+        # The person's Telegram identity is forgotten too when nothing else refers to them.
+        for user_id in {row.user_id for row in users if row.user_id is not None}:
+            await self._conn.execute(text("SELECT forget_user_if_unused(:user_id)"), {"user_id": user_id})
+
     async def lock_request_key(self, key: str) -> None:
         # Transaction-scoped advisory lock: a second request with the same key in the same shop waits here
         # until the first commits, then finds the stored response.
@@ -1108,14 +1180,27 @@ class PgPlatformSession:
     async def my_accounts(self, user_id: UUID) -> list[CustomerAccount]:
         rows = (
             await self._conn.execute(
-                text("SELECT shop_id, shop_name, customer_id, display_name, balance FROM my_accounts(:user_id)"),
+                text(
+                    "SELECT link_id, shop_id, shop_name, customer_id, display_name, balance FROM my_accounts(:user_id)"
+                ),
                 {"user_id": user_id},
             )
         ).all()
         return [
-            CustomerAccount(row.shop_id, str(row.shop_name), row.customer_id, str(row.display_name), int(row.balance))
+            CustomerAccount(
+                row.link_id, row.shop_id, str(row.shop_name), row.customer_id, str(row.display_name), int(row.balance)
+            )
             for row in rows
         ]
+
+    async def my_link(self, user_id: UUID, link_id: UUID) -> tuple[UUID, UUID] | None:
+        row = (
+            await self._conn.execute(
+                text("SELECT shop_id, customer_id FROM my_link(:user_id, :link_id)"),
+                {"user_id": user_id, "link_id": link_id},
+            )
+        ).first()
+        return None if row is None else (row.shop_id, row.customer_id)
 
     async def end_my_link(self, user_id: UUID, shop_id: UUID) -> bool:
         row = (
