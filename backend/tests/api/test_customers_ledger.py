@@ -654,14 +654,22 @@ def test_a_shop_without_a_subscription_is_limited(client: TestClient, world: Wor
 
 
 @pytest.mark.parametrize(
-    "state_sql",
-    ["state = 'trial', trial_ends = current_date", "state = 'active', paid_through = current_date, trial_ends = NULL"],
+    ("state_sql", "day_offset", "status"),
+    [
+        ("state = 'trial', trial_ends = %s", 0, 201),
+        ("state = 'active', paid_through = %s, trial_ends = NULL", 0, 201),
+        ("state = 'trial', trial_ends = %s", -1, 402),
+        ("state = 'active', paid_through = %s, trial_ends = NULL", -1, 402),
+    ],
 )
-def test_the_last_day_of_a_period_still_counts(
-    client: TestClient, world: World, owner: psycopg.Connection, state_sql: str
+def test_a_period_ends_with_its_last_day_in_tashkent(
+    client: TestClient, world: World, owner: psycopg.Connection, state_sql: str, day_offset: int, status: int
 ) -> None:
-    _subscription(owner, world, state_sql)
-    assert record(client, world, world.customer_a, "credit", 45000).status_code == 201
+    """The last day is the Tashkent calendar day, whatever day it is for the database server."""
+    owner.execute(
+        f"UPDATE subscription SET {state_sql} WHERE shop_id = %s", (today() + timedelta(days=day_offset), world.shop_a)
+    )
+    assert record(client, world, world.customer_a, "credit", 45000).status_code == status
 
 
 def test_a_suspended_shop_accepts_no_writes_and_only_the_owner_may_look(

@@ -14,6 +14,7 @@ from qarz.application.account import AccountService, ActivityService
 from qarz.application.auth import AuthService
 from qarz.application.catalog import CatalogService
 from qarz.application.chat import ChatService
+from qarz.application.customer_account import CustomerAccountService
 from qarz.application.customers import CustomerService
 from qarz.application.errors import AppError, Unauthenticated
 from qarz.application.ledger_service import LedgerService
@@ -29,6 +30,7 @@ from qarz.interface.catalog_api import add_catalog_routes
 from qarz.interface.customers_api import add_customer_routes
 from qarz.interface.errors import app_error_handler, error_response
 from qarz.interface.links_api import add_link_routes
+from qarz.interface.me_api import add_me_routes
 from qarz.interface.shops_api import add_shop_routes
 from qarz.interface.staff_api import add_staff_routes
 from qarz.interface.telegram_webhook import add_webhook_route
@@ -102,6 +104,7 @@ def create_app(
         add_shop_routes(app, ShopService(storage), current_user)
         add_staff_routes(app, StaffService(storage), current_user)
         add_link_routes(app, LinkService(storage, now), current_user)
+        add_me_routes(app, CustomerAccountService(storage, now), current_user)
         add_customer_routes(app, CustomerService(storage, now), LedgerService(storage, now), current_user)
         add_catalog_routes(app, CatalogService(storage, now), current_user)
         add_account_routes(
