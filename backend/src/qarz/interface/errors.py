@@ -25,6 +25,9 @@ _STATUS = {
     "CANNOT_REVERSE_REVERSAL": 409,
     "WOULD_GO_NEGATIVE": 409,
     "PROMISE_ALREADY_SET": 409,
+    "CATALOG_NAME_TAKEN": 409,
+    "CATALOG_ITEM_NOT_LEARNED": 409,
+    "CATALOG_MERGE_TARGET_INVALID": 409,
 }
 
 _MESSAGES = {
@@ -48,6 +51,9 @@ _MESSAGES = {
         "CANNOT_REVERSE_REVERSAL": "Bekor qilish yozuvini bekor qilib bo'lmaydi.",
         "WOULD_GO_NEGATIVE": "Bekor qilinsa qarz manfiy bo'lib qoladi. Avval keyingi to'lovni bekor qiling.",
         "PROMISE_ALREADY_SET": "Muddat allaqachon belgilangan. Endi uni menejer yoki do'kon egasi o'zgartiradi.",
+        "CATALOG_NAME_TAKEN": "Katalogda shu nomli mahsulot bor (yashirilgan bo'lishi ham mumkin).",
+        "CATALOG_ITEM_NOT_LEARNED": "Bu mahsulot allaqachon ko'rib chiqilgan.",
+        "CATALOG_MERGE_TARGET_INVALID": "Faqat katalogda ko'rinadigan, ko'rib chiqilgan mahsulotga birlashtiriladi.",
         "ERROR": "Xatolik yuz berdi.",
     },
     "ru": {
@@ -70,6 +76,9 @@ _MESSAGES = {
         "CANNOT_REVERSE_REVERSAL": "Запись об отмене отменить нельзя.",
         "WOULD_GO_NEGATIVE": "После такой отмены долг стал бы отрицательным. Сначала отмените более позднюю оплату.",
         "PROMISE_ALREADY_SET": "Срок уже задан. Теперь его меняет менеджер или владелец магазина.",
+        "CATALOG_NAME_TAKEN": "В каталоге уже есть товар с таким названием (возможно, он скрыт).",
+        "CATALOG_ITEM_NOT_LEARNED": "Этот товар уже проверен.",
+        "CATALOG_MERGE_TARGET_INVALID": "Объединить можно только с проверенным товаром, который виден в каталоге.",
         "ERROR": "Произошла ошибка.",
     },
 }

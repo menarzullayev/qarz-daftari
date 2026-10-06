@@ -66,6 +66,19 @@ class CustomerRecord:
 
 
 @dataclass(frozen=True)
+class CatalogItemRecord:
+    item_id: UUID
+    name: str
+    name_norm: str
+    unit: str
+    price: int
+    learned: bool
+    status: str
+    # Set on a hidden alias: the item a manager merged this spelling into.
+    merged_into: UUID | None
+
+
+@dataclass(frozen=True)
 class EntryRow:
     """A ledger entry as the domain reads it, with the fields only the API shows."""
 
@@ -253,6 +266,38 @@ class TenantSession(Protocol):
         self, *, today: date, only_overdue: bool, before: tuple[int, UUID] | None, limit: int
     ) -> list[tuple[CustomerRecord, DebtFigures]]:
         """Customers who owe something, largest balance first."""
+        ...
+
+    async def insert_catalog_item(
+        self, *, item_id: UUID, name: str, name_norm: str, unit: str, price: int, learned: bool
+    ) -> CatalogItemRecord | None:
+        """None when the shop already has an item with this normalized name; nothing is stored then."""
+        ...
+
+    async def get_catalog_item(self, item_id: UUID, *, for_update: bool) -> CatalogItemRecord | None: ...
+
+    async def catalog_item_by_norm(self, name_norm: str) -> CatalogItemRecord | None: ...
+
+    async def update_catalog_item(
+        self, item_id: UUID, *, name: str | None, name_norm: str | None, unit: str | None, price: int | None
+    ) -> CatalogItemRecord | None:
+        """Change the given parts. None when the new name belongs to another item; nothing is changed then."""
+        ...
+
+    async def set_catalog_item_state(
+        self, item_id: UUID, *, status: str, learned: bool, merged_into: UUID | None
+    ) -> CatalogItemRecord: ...
+
+    async def search_catalog(
+        self,
+        *,
+        name_part: str | None,
+        status: str,
+        learned: bool | None,
+        after: tuple[str, UUID] | None,
+        limit: int,
+    ) -> list[CatalogItemRecord]:
+        """Items in name order; `after` is the normalized name and identifier of the last item already seen."""
         ...
 
     async def lock_request_key(self, key: str) -> None:
