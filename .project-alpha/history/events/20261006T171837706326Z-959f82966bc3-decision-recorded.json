@@ -1,0 +1,19 @@
+{
+  "event_id": "959f82966bc3",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T17:18:37+00:00",
+  "path": ".project-alpha\\decisions\\DEC-022.md",
+  "stage": "08-technical-spec",
+  "title": "Sessions and sign-in details",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-022",
+  "decision": "A user_session table was added (hashes only). Signed Telegram data is accepted for at most one hour in both formats. A failed CSRF check answers 401 like a missing session. PATCH /api/v1/me needs no idempotency key. Bearer tokens are accepted only for Mini App sessions and cookies only for web sessions.",
+  "context": "Decided by the orchestrating agent during the autonomous build under DEC-020; implemented and awaiting the founder's review. The approved schema mentions sessions but defines no table; the specification gives one hour for Mini App data and no figure for Login Widget data.",
+  "chosen_option": "Server-side hashed sessions; one-hour signature age; kinds not interchangeable",
+  "rationale": "Follows ADR-017 and the security section of the specification; refusing a web session token as a bearer token closes a way around the CSRF check.",
+  "impact": "Medium",
+  "reversibility": "High",
+  "evidence": "EVID-039",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}
