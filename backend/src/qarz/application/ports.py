@@ -7,6 +7,7 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from qarz.domain.access import Role
+from qarz.domain.ledger import Entry
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,43 @@ class MyShop:
     name: str
     role: Role
     membership_id: UUID
+
+
+@dataclass(frozen=True)
+class CustomerRecord:
+    customer_id: UUID
+    display_name: str
+    phone: str | None
+    status: str
+    reminders_off: bool
+
+
+@dataclass(frozen=True)
+class EntryRow:
+    """A ledger entry as the domain reads it, with the fields only the API shows."""
+
+    entry: Entry
+    note: str | None
+    author_id: UUID
+
+
+@dataclass(frozen=True)
+class DebtFigures:
+    """What one customer owes, worked out by the database with the oldest-first allocation (BR-3, BR-4)."""
+
+    balance: int
+    overdue_amount: int
+    overdue_since: date | None
+    due_today_amount: int
+
+
+@dataclass(frozen=True)
+class ShopTotals:
+    outstanding: int
+    debtors: int
+    overdue_amount: int
+    overdue_customers: int
+    due_today_amount: int
 
 
 @dataclass(frozen=True)
@@ -135,6 +173,77 @@ class TenantSession(Protocol):
         before: tuple[datetime, UUID] | None,
         limit: int,
     ) -> list[ActivityRow]: ...
+
+    async def subscription(self) -> tuple[str, date | None, date | None] | None:
+        """The stored state, the trial end and the paid-through date; None when the shop has no subscription."""
+        ...
+
+    async def create_customer(
+        self, *, customer_id: UUID, display_name: str, name_norm: str, phone: str | None
+    ) -> CustomerRecord: ...
+
+    async def get_customer(self, customer_id: UUID, *, for_update: bool) -> CustomerRecord | None:
+        """With `for_update` the row stays locked until the transaction ends: one writer per account."""
+        ...
+
+    async def update_customer(
+        self,
+        customer_id: UUID,
+        *,
+        display_name: str | None,
+        name_norm: str | None,
+        set_phone: bool,
+        phone: str | None,
+        reminders_off: bool | None,
+    ) -> CustomerRecord: ...
+
+    async def set_customer_status(self, customer_id: UUID, status: str) -> CustomerRecord: ...
+
+    async def search_customers(
+        self,
+        *,
+        name_part: str | None,
+        phone_digits: str | None,
+        status: str,
+        after: tuple[str, UUID] | None,
+        limit: int,
+    ) -> list[tuple[CustomerRecord, int, str]]:
+        """Customers in name order with their balance and normalized name (the paging position)."""
+        ...
+
+    async def balances(self, customer_ids: list[UUID]) -> dict[UUID, int]: ...
+
+    async def entries_of(self, customer_id: UUID) -> list[EntryRow]: ...
+
+    async def customer_of_entry(self, entry_id: UUID) -> UUID | None: ...
+
+    async def append_entry(
+        self,
+        *,
+        entry_id: UUID,
+        customer_id: UUID,
+        seq: int,
+        kind: str,
+        amount: int,
+        note: str | None,
+        reverses_id: UUID | None,
+        author_id: UUID,
+        created_at: datetime,
+    ) -> None: ...
+
+    async def add_promise(self, *, entry_id: UUID, promised_date: date, actor: str, created_at: datetime) -> None: ...
+
+    async def record_measure(self, *, kind: str, entry_ref: UUID, amount: int, promised: date | None) -> None:
+        """One row for product measurement. Carries no name, phone, or Telegram identity."""
+        ...
+
+    async def shop_totals(self, today: date) -> ShopTotals: ...
+
+    async def debtors_page(
+        self, *, today: date, only_overdue: bool, before: tuple[int, UUID] | None, limit: int
+    ) -> list[tuple[CustomerRecord, DebtFigures]]:
+        """Customers who owe something, largest balance first."""
+        ...
 
     async def lock_request_key(self, key: str) -> None:
         """Serialize concurrent requests that carry the same idempotency key, until the transaction ends."""

@@ -107,6 +107,32 @@ CALLS: dict[str, Call] = {
         prepare=_pending_transfer,
         refused=(("owner_a", 409, "NOT_TRANSFER_TARGET"),),
     ),
+    "customers.create": Call(
+        "POST", lambda w, shop: f"/api/v1/shops/{shop}/customers", {"display_name": "Yangi mijoz"}, True, 201
+    ),
+    "customers.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/customers"),
+    "customers.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/customers/{w.customer_a}"),
+    "customers.update": Call(
+        "PATCH", lambda w, shop: f"/api/v1/shops/{shop}/customers/{w.customer_a}", {"display_name": "Ali aka"}, True
+    ),
+    "customers.archive": Call(
+        "POST", lambda w, shop: f"/api/v1/shops/{shop}/customers/{w.settled_customer_a}/archive", None, True
+    ),
+    "customers.unarchive": Call(
+        "POST", lambda w, shop: f"/api/v1/shops/{shop}/customers/{w.archived_customer_a}/unarchive", None, True
+    ),
+    "ledger.entry.create": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/customers/{w.customer_a}/entries",
+        {"kind": "credit", "amount": 45000},
+        True,
+        201,
+    ),
+    "ledger.entry.reverse": Call(
+        "POST", lambda w, shop: f"/api/v1/shops/{shop}/entries/{w.entry_a}/reversal", None, True, 201
+    ),
+    "overview.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview"),
+    "overview.debtors": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview/debtors"),
 }
 
 # Written by hand from REQ-033 and the specification's authorization table; deliberately not derived
@@ -126,6 +152,16 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "ownership.transfer.cancel": {Role.OWNER},
     "ownership.transfer.accept": {Role.MANAGER, Role.OWNER},
     "ownership.transfer.decline": {Role.MANAGER, Role.OWNER},
+    "customers.create": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "customers.list": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "customers.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "customers.update": {Role.MANAGER, Role.OWNER},
+    "customers.archive": {Role.MANAGER, Role.OWNER},
+    "customers.unarchive": {Role.MANAGER, Role.OWNER},
+    "ledger.entry.create": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "ledger.entry.reverse": {Role.MANAGER, Role.OWNER},
+    "overview.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "overview.debtors": {Role.SELLER, Role.MANAGER, Role.OWNER},
 }
 
 SELF_CALLS: dict[str, PlainCall] = {
@@ -199,6 +235,18 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
             "SELECT id, status, from_membership, to_membership FROM ownership_transfer WHERE shop_id = %s ORDER BY id",
             (shop,),
         ).fetchall(),
+        owner.execute(
+            "SELECT id, display_name, name_norm, phone, status, reminders_off FROM customer "
+            "WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
+        owner.execute(
+            "SELECT id, customer_id, seq, kind, amount, reverses_id FROM ledger_entry WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
+        owner.execute("SELECT count(*) FROM promise WHERE shop_id = %s", (shop,)).fetchone(),
+        # Measurement rows carry no shop identifier; tests run one at a time, so a total is enough.
+        owner.execute("SELECT count(*) FROM measure.event").fetchone(),
     )
 
 
@@ -295,13 +343,19 @@ def test_a_member_of_one_shop_cannot_reach_another(
     into_a = _invoke(client, world, call, world.shop_a, as_user(world.owner_b))
     assert into_a.status_code == 404, into_a.text
 
-    # Through their own shop, naming a member or invitation that belongs to shop A.
+    # Through their own shop, naming a member, invitation, customer or entry that belongs to shop A.
     through_b = _invoke(client, world, call, world.shop_b, as_user(world.owner_b))
     if call.path(world, world.shop_b) != call.path(world, world.shop_a).replace(str(world.shop_a), str(world.shop_b)):
         raise AssertionError("the path must differ only by the shop identifier")
-    uses_foreign_resource = str(world.seller_a_membership) in call.path(world, world.shop_b) or (
-        world.invitation_a in call.path(world, world.shop_b)
+    foreign = (
+        world.seller_a_membership,
+        world.invitation_a,
+        world.customer_a,
+        world.settled_customer_a,
+        world.archived_customer_a,
+        world.entry_a,
     )
+    uses_foreign_resource = any(str(resource) in call.path(world, world.shop_b) for resource in foreign)
     if uses_foreign_resource:
         assert through_b.status_code == 404, through_b.text
         assert _snapshot(owner, world.shop_b)[:3] == before_b[:3], "shop B's own data must be untouched"

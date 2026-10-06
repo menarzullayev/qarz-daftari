@@ -50,6 +50,9 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S608"]  # fixed test identifiers and SQL built from constants
+# SQL here is composed only from module-level constants, with every value bound as a parameter.
+# tests/test_sql_composition.py fails if anything else is interpolated.
+"src/qarz/infrastructure/db.py" = ["S608"]
 
 [tool.mypy]
 python_version = "3.12"

@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -18,16 +18,76 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from qarz.application.errors import AlreadyMember
 from qarz.application.ports import (
     ActivityRow,
+    CustomerRecord,
+    DebtFigures,
+    EntryRow,
     MemberRecord,
     Membership,
     MyShop,
     OutboxMessage,
     SessionInfo,
     ShopSettings,
+    ShopTotals,
     StaffInvitation,
     TransferRecord,
 )
 from qarz.domain.access import Role
+from qarz.domain.ledger import Entry, EntryKind
+
+# Measurement rows refer to a shop or an entry by a value derived from its identifier, never by the
+# identifier itself (ADR-010).
+_MEASURE_NAMESPACE = UUID("6f1d1c0e-8f0b-5d55-9d0a-51a7c0de0a10")
+
+_CUSTOMER_COLUMNS = "c.id, c.display_name, c.phone, c.status, c.reminders_off"
+_CUSTOMER_BY_ID = f"SELECT {_CUSTOMER_COLUMNS} FROM customer c WHERE c.id = :id"
+_CUSTOMER_LOCKED = f"{_CUSTOMER_BY_ID} FOR UPDATE"
+
+# The current promised date of an entry is its newest promise row.
+_PROMISED = (
+    "(SELECT p.promised_date FROM promise p WHERE p.entry_id = {entry}.id "
+    "ORDER BY p.created_at DESC, p.id DESC LIMIT 1)"
+)
+
+# Entries that still count: not a reversal and not reversed (INV-2).
+_LIVE = (
+    "SELECT e.id, e.customer_id, e.seq, e.kind, e.amount FROM ledger_entry e "
+    "WHERE e.kind <> 'reversal' AND NOT EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id)"
+)
+
+_BALANCES = (
+    "SELECT l.customer_id, "
+    "sum(CASE WHEN l.kind IN ('credit', 'opening') THEN l.amount ELSE -l.amount END)::bigint AS balance "
+    f"FROM ({_LIVE}) l GROUP BY l.customer_id"
+)
+
+# Oldest-first allocation (BR-3) in one pass: the uncovered part of a debt is what its running total
+# exceeds the customer's total payments by, capped at its own amount. This must agree with
+# `qarz.domain.ledger`; tests/api/test_ledger_api.py compares the two on generated accounts.
+_FIGURES = (
+    f"WITH live AS ({_LIVE}), "
+    "paid AS (SELECT customer_id, sum(amount) AS paid FROM live WHERE kind = 'payment' GROUP BY customer_id), "
+    "debt AS ("
+    "  SELECT l.customer_id, l.amount, "
+    "         sum(l.amount) OVER (PARTITION BY l.customer_id ORDER BY l.seq) AS running, "
+    f"         {_PROMISED.format(entry='l')} AS promised "
+    "    FROM live l WHERE l.kind IN ('credit', 'opening')), "
+    "owed AS ("
+    "  SELECT d.customer_id, d.promised, "
+    "         least(d.amount, greatest(0, d.running - coalesce(p.paid, 0))) AS remaining "
+    "    FROM debt d LEFT JOIN paid p ON p.customer_id = d.customer_id), "
+    "figures AS ("
+    "  SELECT customer_id, "
+    "         sum(remaining)::bigint AS balance, "
+    "         coalesce(sum(remaining) FILTER (WHERE promised < :today), 0)::bigint AS overdue, "
+    "         min(promised) FILTER (WHERE promised < :today AND remaining > 0) AS since, "
+    "         coalesce(sum(remaining) FILTER (WHERE promised = :today), 0)::bigint AS due_today "
+    "    FROM owed GROUP BY customer_id) "
+)
+
+
+def _like_pattern(part: str) -> str:
+    escaped = part.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
 
 
 def _async_url(url: str) -> str:
@@ -278,6 +338,267 @@ class PgTenantSession:
         ).all()
         return [
             ActivityRow(row.id, row.at, row.actor_kind, row.actor_id, row.action, row.subject_type, row.subject_id)
+            for row in rows
+        ]
+
+    async def subscription(self) -> tuple[str, date | None, date | None] | None:
+        row = (await self._conn.execute(text("SELECT state, trial_ends, paid_through FROM subscription"))).first()
+        return None if row is None else (str(row.state), row.trial_ends, row.paid_through)
+
+    @staticmethod
+    def _customer(row: Any) -> CustomerRecord:
+        return CustomerRecord(row.id, row.display_name, row.phone, row.status, row.reminders_off)
+
+    async def create_customer(
+        self, *, customer_id: UUID, display_name: str, name_norm: str, phone: str | None
+    ) -> CustomerRecord:
+        row = (
+            await self._conn.execute(
+                text(
+                    "INSERT INTO customer AS c (id, shop_id, display_name, name_norm, phone) "
+                    f"VALUES (:id, :shop_id, :name, :norm, :phone) RETURNING {_CUSTOMER_COLUMNS}"
+                ),
+                {"id": customer_id, "shop_id": self._shop_id, "name": display_name, "norm": name_norm, "phone": phone},
+            )
+        ).one()
+        return self._customer(row)
+
+    async def get_customer(self, customer_id: UUID, *, for_update: bool) -> CustomerRecord | None:
+        row = (
+            await self._conn.execute(text(_CUSTOMER_LOCKED if for_update else _CUSTOMER_BY_ID), {"id": customer_id})
+        ).first()
+        return None if row is None else self._customer(row)
+
+    async def update_customer(
+        self,
+        customer_id: UUID,
+        *,
+        display_name: str | None,
+        name_norm: str | None,
+        set_phone: bool,
+        phone: str | None,
+        reminders_off: bool | None,
+    ) -> CustomerRecord:
+        row = (
+            await self._conn.execute(
+                text(
+                    "UPDATE customer AS c SET display_name = coalesce(:name, c.display_name), "
+                    "name_norm = coalesce(:norm, c.name_norm), "
+                    "phone = CASE WHEN :set_phone THEN CAST(:phone AS text) ELSE c.phone END, "
+                    "reminders_off = coalesce(:reminders_off, c.reminders_off) "
+                    f"WHERE c.id = :id RETURNING {_CUSTOMER_COLUMNS}"
+                ),
+                {
+                    "id": customer_id,
+                    "name": display_name,
+                    "norm": name_norm,
+                    "set_phone": set_phone,
+                    "phone": phone,
+                    "reminders_off": reminders_off,
+                },
+            )
+        ).one()
+        return self._customer(row)
+
+    async def set_customer_status(self, customer_id: UUID, status: str) -> CustomerRecord:
+        row = (
+            await self._conn.execute(
+                text(f"UPDATE customer AS c SET status = :status WHERE c.id = :id RETURNING {_CUSTOMER_COLUMNS}"),
+                {"id": customer_id, "status": status},
+            )
+        ).one()
+        return self._customer(row)
+
+    async def search_customers(
+        self,
+        *,
+        name_part: str | None,
+        phone_digits: str | None,
+        status: str,
+        after: tuple[str, UUID] | None,
+        limit: int,
+    ) -> list[tuple[CustomerRecord, int, str]]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    f"SELECT {_CUSTOMER_COLUMNS}, c.name_norm, coalesce(b.balance, 0) AS balance "
+                    f"FROM customer c LEFT JOIN ({_BALANCES}) b ON b.customer_id = c.id "
+                    "WHERE c.status = :status "
+                    "  AND ((CAST(:name AS text) IS NULL AND CAST(:digits AS text) IS NULL) "
+                    "       OR c.name_norm LIKE CAST(:name AS text) "
+                    "       OR regexp_replace(coalesce(c.phone, ''), '[^0-9]', '', 'g') LIKE CAST(:digits AS text)) "
+                    "  AND (CAST(:after_name AS text) IS NULL "
+                    "       OR (c.name_norm, c.id) > (CAST(:after_name AS text), CAST(:after_id AS uuid))) "
+                    "ORDER BY c.name_norm, c.id LIMIT :limit"
+                ),
+                {
+                    "status": status,
+                    "name": _like_pattern(name_part) if name_part else None,
+                    "digits": f"%{phone_digits}%" if phone_digits else None,
+                    "after_name": after[0] if after else None,
+                    "after_id": after[1] if after else None,
+                    "limit": limit,
+                },
+            )
+        ).all()
+        return [(self._customer(row), int(row.balance), str(row.name_norm)) for row in rows]
+
+    async def balances(self, customer_ids: list[UUID]) -> dict[UUID, int]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    f"SELECT b.customer_id, b.balance FROM ({_BALANCES}) b "
+                    "WHERE b.customer_id = ANY(CAST(:ids AS uuid[]))"
+                ),
+                {"ids": customer_ids},
+            )
+        ).all()
+        return {row.customer_id: int(row.balance) for row in rows}
+
+    async def entries_of(self, customer_id: UUID) -> list[EntryRow]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT e.id, e.seq, e.kind, e.amount, e.note, e.reverses_id, e.author_id, e.created_at, "
+                    f"       {_PROMISED.format(entry='e')} AS promised_date, "
+                    "       (e.kind IN ('credit', 'opening') AND EXISTS ("
+                    "          SELECT 1 FROM dispute d WHERE d.entry_id = e.id AND d.status = 'open')) AS disputed "
+                    "FROM ledger_entry e WHERE e.customer_id = :customer_id ORDER BY e.seq"
+                ),
+                {"customer_id": customer_id},
+            )
+        ).all()
+        return [
+            EntryRow(
+                Entry(
+                    id=row.id,
+                    seq=row.seq,
+                    kind=EntryKind(row.kind),
+                    amount=int(row.amount),
+                    created_at=row.created_at,
+                    reverses_id=row.reverses_id,
+                    promised_date=row.promised_date,
+                    disputed=bool(row.disputed),
+                ),
+                row.note,
+                row.author_id,
+            )
+            for row in rows
+        ]
+
+    async def customer_of_entry(self, entry_id: UUID) -> UUID | None:
+        row = (
+            await self._conn.execute(text("SELECT customer_id FROM ledger_entry WHERE id = :id"), {"id": entry_id})
+        ).first()
+        return None if row is None else row.customer_id
+
+    async def append_entry(
+        self,
+        *,
+        entry_id: UUID,
+        customer_id: UUID,
+        seq: int,
+        kind: str,
+        amount: int,
+        note: str | None,
+        reverses_id: UUID | None,
+        author_id: UUID,
+        created_at: datetime,
+    ) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO ledger_entry "
+                "(id, shop_id, customer_id, seq, kind, amount, note, reverses_id, author_id, created_at) "
+                "VALUES (:id, :shop_id, :customer_id, :seq, :kind, :amount, :note, :reverses_id, :author_id, :at)"
+            ),
+            {
+                "id": entry_id,
+                "shop_id": self._shop_id,
+                "customer_id": customer_id,
+                "seq": seq,
+                "kind": kind,
+                "amount": amount,
+                "note": note,
+                "reverses_id": reverses_id,
+                "author_id": author_id,
+                "at": created_at,
+            },
+        )
+
+    async def add_promise(self, *, entry_id: UUID, promised_date: date, actor: str, created_at: datetime) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO promise (id, shop_id, entry_id, promised_date, actor, created_at) "
+                "VALUES (:id, :shop_id, :entry_id, :promised_date, :actor, :at)"
+            ),
+            {
+                "id": uuid4(),
+                "shop_id": self._shop_id,
+                "entry_id": entry_id,
+                "promised_date": promised_date,
+                "actor": actor,
+                "at": created_at,
+            },
+        )
+
+    async def record_measure(self, *, kind: str, entry_ref: UUID, amount: int, promised: date | None) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO measure.event (id, shop_ref, entry_ref, kind, amount, promised) "
+                "VALUES (:id, :shop_ref, :entry_ref, :kind, :amount, :promised)"
+            ),
+            {
+                "id": uuid4(),
+                "shop_ref": uuid5(_MEASURE_NAMESPACE, str(self._shop_id)),
+                "entry_ref": uuid5(_MEASURE_NAMESPACE, str(entry_ref)),
+                "kind": kind,
+                "amount": amount,
+                "promised": promised,
+            },
+        )
+
+    async def shop_totals(self, today: date) -> ShopTotals:
+        row = (
+            await self._conn.execute(
+                text(
+                    _FIGURES + "SELECT coalesce(sum(balance), 0) AS outstanding, "
+                    "count(*) FILTER (WHERE balance > 0) AS debtors, "
+                    "coalesce(sum(overdue), 0) AS overdue, "
+                    "count(*) FILTER (WHERE overdue > 0) AS overdue_customers, "
+                    "coalesce(sum(due_today), 0) AS due_today FROM figures"
+                ),
+                {"today": today},
+            )
+        ).one()
+        return ShopTotals(
+            int(row.outstanding), int(row.debtors), int(row.overdue), int(row.overdue_customers), int(row.due_today)
+        )
+
+    async def debtors_page(
+        self, *, today: date, only_overdue: bool, before: tuple[int, UUID] | None, limit: int
+    ) -> list[tuple[CustomerRecord, DebtFigures]]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    _FIGURES + f"SELECT {_CUSTOMER_COLUMNS}, f.balance, f.overdue, f.since, f.due_today "
+                    "FROM figures f JOIN customer c ON c.id = f.customer_id "
+                    "WHERE f.balance > 0 AND c.status <> 'anonymized' "
+                    "  AND (NOT :only_overdue OR f.overdue > 0) "
+                    "  AND (CAST(:before_balance AS bigint) IS NULL "
+                    "       OR (f.balance, c.id) < (CAST(:before_balance AS bigint), CAST(:before_id AS uuid))) "
+                    "ORDER BY f.balance DESC, c.id DESC LIMIT :limit"
+                ),
+                {
+                    "today": today,
+                    "only_overdue": only_overdue,
+                    "before_balance": before[0] if before else None,
+                    "before_id": before[1] if before else None,
+                    "limit": limit,
+                },
+            )
+        ).all()
+        return [
+            (self._customer(row), DebtFigures(int(row.balance), int(row.overdue), row.since, int(row.due_today)))
             for row in rows
         ]
 
