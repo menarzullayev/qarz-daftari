@@ -232,6 +232,28 @@ describe("a person who works in one shop and owes in another", () => {
     expect(heading()).toBe("Sahifa topilmadi");
   });
 
+  it("offers staff of two shops who are nobody's customer the shop switch and no debts", async () => {
+    const two = {
+      items: [...STAFF.items, { shop_id: "5a0c6d3e-0000-4000-8000-00000000bbbb", name: "Ikkinchi do'kon", role: "owner", membership_id: "m-9" }],
+      active_shop: SHOP_ID,
+    };
+    start(backend(two, () => ok({ items: [] })));
+    await screen.findByText("Do'kon mijozi");
+    expect(screen.getByRole("button", { name: "Boshqa do'konga o'tish" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Mening qarzlarim" })).toBeNull();
+  });
+
+  it("offers staff of two shops who are also a customer both the shop switch and their debts", async () => {
+    const two = {
+      items: [...STAFF.items, { shop_id: "5a0c6d3e-0000-4000-8000-00000000bbbb", name: "Ikkinchi do'kon", role: "owner", membership_id: "m-9" }],
+      active_shop: SHOP_ID,
+    };
+    start(backend(two, () => ok({ items: [BARAKA] })));
+    await screen.findByText("Do'kon mijozi");
+    expect(screen.getByRole("button", { name: "Boshqa do'konga o'tish" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Mening qarzlarim" })).toBeTruthy();
+  });
+
   it("lets staff work when their accounts cannot be read: the debts are just not offered", async () => {
     const server = backend(STAFF, () => refusal(500, "ERROR", "Xatolik yuz berdi."));
     start(server);
