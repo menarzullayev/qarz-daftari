@@ -1,6 +1,6 @@
 # Product Requirements Document
 
-Status: draft for review; awaiting human approval of MVP scope (DEC-005). Prepared 2026-10-06.
+Status: MVP scope approved by the founder on 2026-10-06 (DEC-005 / APR-005).
 Upstream: Vision (DEC-002), Problem Discovery (DEC-003, provisional), Market Research (DEC-004).
 
 **Standing caveat.** No shopkeeper has been interviewed and no competitor has been tested hands-on. Every requirement below traces to a problem hypothesis, not to a validated need. The stop conditions in Market Research still apply.
@@ -247,4 +247,4 @@ Assumptions built into the requirements:
 | Record | Subject | Status |
 |---|---|---|
 | DEC-004 / APR-004 | Positioning and pricing direction | Approved 2026-10-06 |
-| DEC-005 | MVP scope as defined in this document: features FEAT-001 to FEAT-012, free, Telegram-only, Uzbek-only, pilot of about ten shops | Approval pending |
+| DEC-005 | MVP scope as defined in this document: features FEAT-001 to FEAT-012, free, Telegram-only, Uzbek-only, pilot of about ten shops | Approved 2026-10-06 |

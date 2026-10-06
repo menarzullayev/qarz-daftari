@@ -50,3 +50,9 @@
 - Approver: Saidakbar Narzullayev
 - Timestamp: 2026-10-06T08:59:15+00:00
 - Reason: Founder approved DEC-004 and chose to continue to the PRD in chat on 2026-10-06
+
+## Approval — 04-prd
+- Decision: PASS
+- Approver: Saidakbar Narzullayev
+- Timestamp: 2026-10-06T09:10:37+00:00
+- Reason: Founder replied 'go' to the request to approve DEC-005 in chat on 2026-10-06

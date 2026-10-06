@@ -1,0 +1,19 @@
+{
+  "event_id": "fb2859a5c2d2",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T09:12:12+00:00",
+  "path": ".project-alpha\\decisions\\DEC-006.md",
+  "stage": "05-domain-model",
+  "title": "Approve core business rules",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-006",
+  "decision": "Adopt the rules marked 'decided here' in docs/05-domain-model/OUTPUT.md: running-balance accounts with calculated oldest-first allocation, acknowledgement only for debt-increasing entries, no dispute after confirmation, disputed amounts excluded from reminders, whole-entry reversal only, and removal of customer data deferred until the balance is zero",
+  "context": "The PRD left several rules open (its open questions 3, 5 and 6) that must be fixed before architecture; these rules shape what owners and customers experience and how data is stored",
+  "chosen_option": "Rules as written in the domain model",
+  "rationale": "Keeps the ledger immutable and simple (EVID-017), keeps disputes from inflating reminders, and avoids stored allocations that would complicate reversals; the removal rule rests on an untested reading of the personal data law (EVID-027)",
+  "impact": "High",
+  "reversibility": "Medium",
+  "evidence": "EVID-017, EVID-027, EVID-019",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

@@ -1,6 +1,6 @@
 {
   "framework_version": "1.0.0",
-  "current_stage": "04-prd",
+  "current_stage": "05-domain-model",
   "lifecycle": "REVIEW",
   "global_audit_status": "BLOCKED",
   "stages": {
@@ -8,13 +8,13 @@
     "01-vision": "PASSED",
     "02-problem-discovery": "PASSED",
     "03-market-research": "PASSED",
-    "04-prd": "REVIEW",
-    "05-domain-model": "NOT_STARTED",
+    "04-prd": "PASSED",
+    "05-domain-model": "REVIEW",
     "06-architecture": "NOT_STARTED",
     "07-adr": "NOT_STARTED",
     "08-technical-spec": "NOT_STARTED",
     "09-development-plan": "NOT_STARTED",
     "10-operations": "NOT_STARTED"
   },
-  "updated_at": "2026-10-06T09:00:53+00:00"
+  "updated_at": "2026-10-06T09:12:12+00:00"
 }

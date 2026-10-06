@@ -1,0 +1,12 @@
+{
+  "event_id": "95f0f981b091",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T09:10:36+00:00",
+  "path": ".project-alpha\\approvals\\APR-005.md",
+  "stage": "04-prd",
+  "decision_id": "DEC-005",
+  "decision": "MVP scope: features FEAT-001 to FEAT-012, free, Telegram-only, Uzbek-only, pilot of about ten shops",
+  "approval_id": "APR-005",
+  "approver": "Saidakbar Narzullayev",
+  "status": "approved"
+}
