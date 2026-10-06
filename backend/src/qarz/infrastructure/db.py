@@ -22,6 +22,7 @@ from qarz.application.ports import (
     CreditSettings,
     CustomerAccount,
     CustomerRecord,
+    DateRequestRecord,
     DayFigures,
     DebtFigures,
     DisputeRecord,
@@ -32,6 +33,7 @@ from qarz.application.ports import (
     MyShop,
     OutboxMessage,
     PeriodTotals,
+    PromiseRecord,
     ReminderCandidate,
     ReminderSettings,
     SessionInfo,
@@ -207,6 +209,15 @@ _DISPUTE_BY_ID = f"{_DISPUTE_SELECT} WHERE d.id = :id"
 _DISPUTE_BY_ENTRY = f"{_DISPUTE_SELECT} WHERE d.entry_id = :id"
 _DISPUTES_OF_CUSTOMER = f"{_DISPUTE_SELECT} WHERE e.customer_id = :id"
 _OPEN_DISPUTES = f"{_DISPUTE_SELECT} WHERE d.status = 'open' ORDER BY d.created_at, d.id"
+
+_DATE_REQUEST_SELECT = (
+    "SELECT r.id, r.entry_id, e.customer_id, e.amount, r.requested_date, r.reason, r.status, r.decline_reason, "
+    f"r.created_at, r.closed_at, c.display_name, {_PROMISED.format(entry='e')} AS promised_date "
+    "FROM date_change_request r JOIN ledger_entry e ON e.id = r.entry_id JOIN customer c ON c.id = e.customer_id "
+)
+_DATE_REQUEST_BY_ID = f"{_DATE_REQUEST_SELECT} WHERE r.id = :id"
+_DATE_REQUESTS_OF_CUSTOMER = f"{_DATE_REQUEST_SELECT} WHERE e.customer_id = :id ORDER BY r.created_at, r.id"
+_OPEN_DATE_REQUESTS = f"{_DATE_REQUEST_SELECT} WHERE r.status = 'open' ORDER BY r.created_at, r.id"
 
 
 _REMINDER_SETTINGS = (
@@ -718,21 +729,43 @@ class PgTenantSession:
             },
         )
 
-    async def add_promise(self, *, entry_id: UUID, promised_date: date, actor: str, created_at: datetime) -> None:
+    async def add_promise(
+        self, *, entry_id: UUID, promised_date: date, actor: str, created_at: datetime, reason: str | None = None
+    ) -> None:
         await self._conn.execute(
             text(
-                "INSERT INTO promise (id, shop_id, entry_id, promised_date, actor, created_at) "
-                "VALUES (:id, :shop_id, :entry_id, :promised_date, :actor, :at)"
+                "INSERT INTO promise (id, shop_id, entry_id, promised_date, reason, actor, created_at) "
+                "VALUES (:id, :shop_id, :entry_id, :promised_date, :reason, :actor, :at)"
             ),
             {
                 "id": uuid4(),
                 "shop_id": self._shop_id,
                 "entry_id": entry_id,
                 "promised_date": promised_date,
+                "reason": reason,
                 "actor": actor,
                 "at": created_at,
             },
         )
+
+    async def promises_of(self, entry_ids: list[UUID]) -> dict[UUID, list[PromiseRecord]]:
+        if not entry_ids:
+            return {}
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT entry_id, promised_date, actor, reason, created_at FROM promise "
+                    "WHERE entry_id = ANY(CAST(:ids AS uuid[])) ORDER BY created_at, id"
+                ),
+                {"ids": entry_ids},
+            )
+        ).all()
+        history: dict[UUID, list[PromiseRecord]] = {}
+        for row in rows:
+            history.setdefault(row.entry_id, []).append(
+                PromiseRecord(row.promised_date, str(row.actor), row.reason, row.created_at)
+            )
+        return history
 
     async def record_measure(
         self, *, kind: str, entry_ref: UUID, amount: int, promised: date | None, handle_ms: int | None = None
@@ -1270,6 +1303,74 @@ class PgTenantSession:
     async def open_disputes(self) -> list[tuple[DisputeRecord, str]]:
         rows = (await self._conn.execute(text(_OPEN_DISPUTES))).all()
         return [(self._dispute(row), str(row.display_name)) for row in rows]
+
+    @staticmethod
+    def _date_request(row: Any) -> DateRequestRecord:
+        return DateRequestRecord(
+            row.id,
+            row.entry_id,
+            row.customer_id,
+            str(row.display_name),
+            int(row.amount),
+            row.promised_date,
+            row.requested_date,
+            row.reason,
+            str(row.status),
+            row.decline_reason,
+            row.created_at,
+            row.closed_at,
+        )
+
+    async def get_date_request(self, request_id: UUID) -> DateRequestRecord | None:
+        row = (await self._conn.execute(text(_DATE_REQUEST_BY_ID), {"id": request_id})).first()
+        return None if row is None else self._date_request(row)
+
+    async def date_requests_of_customer(self, customer_id: UUID) -> list[DateRequestRecord]:
+        rows = (await self._conn.execute(text(_DATE_REQUESTS_OF_CUSTOMER), {"id": customer_id})).all()
+        return [self._date_request(row) for row in rows]
+
+    async def open_date_request(
+        self, *, request_id: UUID, entry_id: UUID, requested_date: date, reason: str | None, now: datetime
+    ) -> DateRequestRecord:
+        await self._conn.execute(
+            text(
+                "INSERT INTO date_change_request (id, shop_id, entry_id, requested_date, reason, status, created_at) "
+                "VALUES (:id, :shop_id, :entry_id, :requested_date, :reason, 'open', :now)"
+            ),
+            {
+                "id": request_id,
+                "shop_id": self._shop_id,
+                "entry_id": entry_id,
+                "requested_date": requested_date,
+                "reason": reason,
+                "now": now,
+            },
+        )
+        row = (await self._conn.execute(text(_DATE_REQUEST_BY_ID), {"id": request_id})).one()
+        return self._date_request(row)
+
+    async def close_date_request(
+        self, request_id: UUID, *, status: str, decline_reason: str | None, decided_by: UUID | None, now: datetime
+    ) -> DateRequestRecord:
+        await self._conn.execute(
+            text(
+                "UPDATE date_change_request SET status = :status, decline_reason = :decline_reason, "
+                "decided_by = :decided_by, closed_at = :now WHERE id = :id AND status = 'open'"
+            ),
+            {
+                "id": request_id,
+                "status": status,
+                "decline_reason": decline_reason,
+                "decided_by": decided_by,
+                "now": now,
+            },
+        )
+        row = (await self._conn.execute(text(_DATE_REQUEST_BY_ID), {"id": request_id})).one()
+        return self._date_request(row)
+
+    async def open_date_requests(self) -> list[DateRequestRecord]:
+        rows = (await self._conn.execute(text(_OPEN_DATE_REQUESTS))).all()
+        return [self._date_request(row) for row in rows]
 
     async def staff_recipients(self, roles: list[str]) -> list[tuple[int, str]]:
         rows = (

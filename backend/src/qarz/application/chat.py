@@ -18,6 +18,15 @@ from qarz.application import idempotency
 from qarz.application.chat_texts import CONSENT_VERSION, LANGUAGE_NAMES, day, money, say
 from qarz.application.customer_account import CustomerAccountService
 from qarz.application.customers import CREATE_CUSTOMER, create_customer_in, require_writable
+from qarz.application.date_requests import (
+    ACCEPT_ACTION,
+    ACCEPT_DATE_REQUEST,
+    DECLINE_ACTION,
+    DECLINE_DATE_REQUEST,
+    DateRequestService,
+)
+from qarz.application.date_requests import accept_in as accept_date_request_in
+from qarz.application.date_requests import decline_in as decline_date_request_in
 from qarz.application.disputes import DECLINE_DISPUTE, DisputeService, decline_in
 from qarz.application.errors import AlreadyMember, AppError, ForbiddenRole, NotFound, ValidationFailed
 from qarz.application.ledger_service import (
@@ -61,6 +70,15 @@ _PARSE_TEXTS = {
     ParseErrorCode.AMOUNT_TOO_LARGE: "amount_range",
 }
 _LATER_COMMANDS = frozenset({"/ilova", "/toladim"})
+MOVE_DATE_ACTION = "dmv"
+# Why a customer's request to move a date was refused, in words of its own where there are any.
+_DATE_REQUEST_TEXTS = {
+    "not_later": "date_not_later",
+    "fully_paid": "date_fully_paid",
+    "reversed": "date_fully_paid",
+    "declined_recently": "date_declined_recently",
+    "not_open": "date_request_closed",
+}
 
 Keyboard = list[list[tuple[str, str]]]
 
@@ -162,6 +180,7 @@ class ChatService:
         self._accounts_service = CustomerAccountService(storage, now)
         self._disputes = DisputeService(storage, now)
         self._subscriptions = SubscriptionService(storage, now)
+        self._date_requests = DateRequestService(storage, now)
         self._now = now or (lambda: datetime.now(UTC))
 
     def _today(self) -> date:
@@ -188,6 +207,10 @@ class ChatService:
         asked = await session.current_pending(incoming.user_id, "decline", self._now())
         if asked is not None:
             await self._decline_reason(session, incoming, replies, asked[1], text)
+            return
+        asked = await session.current_pending(incoming.user_id, "date_request", self._now())
+        if asked is not None:
+            await self._requested_date(session, incoming, replies, asked[1], text)
             return
 
         shops = await session.my_memberships(incoming.user_id)
@@ -352,6 +375,27 @@ class ChatService:
                 expires_at=self._now() + PENDING_LIFETIME,
             )
             await replies.send(say(lang, question))
+        elif action == MOVE_DATE_ACTION and arguments:
+            entry_id = _uuid(arguments[0])
+            if entry_id is None:
+                await replies.buttons(None)
+                return
+            # The newest question is the one answered, so pressing another entry's button replaces this one.
+            await session.put_pending(
+                pending_id=self._pending_id(incoming),
+                user_id=incoming.user_id,
+                kind="date_request",
+                payload={"entry": entry_id.hex},
+                now=self._now(),
+                expires_at=self._now() + PENDING_LIFETIME,
+            )
+            await replies.send(say(lang, "ask_move_date"))
+        elif action in (ACCEPT_ACTION, DECLINE_ACTION) and arguments:
+            request_id = _uuid(arguments[0])
+            if request_id is None:
+                await replies.buttons(None)
+                return
+            await self._decide_date_request(session, incoming, replies, request_id, accept=action == ACCEPT_ACTION)
         elif action in ("del", "delok", "delno") and arguments:
             await self._removal_answer(session, incoming, replies, action, arguments[0])
         elif action == "unl" and arguments:
@@ -587,6 +631,91 @@ class ChatService:
                 await replies.send(self._error_text(lang, error))
                 return
             await replies.send(say(lang, "dispute_declined_staff"))
+            return
+        await replies.send(say(lang, "not_found"))
+
+    # --- date change requests ------------------------------------------------------------------------
+
+    def _date_request_error(self, lang: str, error: AppError) -> str:
+        if isinstance(error, ValidationFailed):
+            return say(lang, error.fields.get("requested_date", "error"))
+        key = _DATE_REQUEST_TEXTS.get(error.fields.get("reason", ""))
+        return say(lang, key) if key is not None else self._error_text(lang, error)
+
+    async def _requested_date(
+        self, session: PlatformSession, incoming: Incoming, replies: Replies, payload: dict[str, Any], text: str
+    ) -> None:
+        """The customer's next message after pressing "move the date" is the date they ask for (REQ-066).
+
+        No reason is asked for in the chat: it is optional, and the customer page has a field for it.
+        """
+        lang = incoming.lang
+        requested = parse_day_month(text, self._today())
+        if requested is None:
+            # The question stays open, so a mistyped date can simply be written again.
+            await replies.send(say(lang, "move_date_invalid"))
+            return
+        entry_id = _uuid(str(payload.get("entry", "")))
+        await session.drop_pending(incoming.user_id, "date_request")
+        if entry_id is None:
+            await replies.send(say(lang, "expired"))
+            return
+        for account in await session.my_accounts(incoming.user_id):
+            try:
+                await self._date_requests.open(incoming.user_id, account.link_id, entry_id, requested, None)
+            except NotFound:
+                continue  # the entry is not on this account; perhaps on another
+            except AppError as error:
+                await replies.send(self._date_request_error(lang, error))
+                return
+            await replies.send(say(lang, "date_request_sent", shop=account.shop_name, date=day(requested)))
+            return
+        await replies.send(say(lang, "not_found"))
+
+    async def _decide_date_request(
+        self, session: PlatformSession, incoming: Incoming, replies: Replies, request_id: UUID, *, accept: bool
+    ) -> None:
+        """A manager or owner presses accept or decline under the notice of a request (REQ-067).
+
+        One press decides. Declining from the chat carries no reason; the Mini App can give one.
+        """
+        lang = incoming.lang
+        for shop in await session.my_memberships(incoming.user_id):
+            try:
+                async with self._storage.tenant(shop.shop_id) as tenant:
+                    if await tenant.get_date_request(request_id) is None:
+                        continue
+                    operation = ACCEPT_DATE_REQUEST if accept else DECLINE_DATE_REQUEST
+                    actor = await require_member(tenant, incoming.user_id, operation)
+                    await require_writable(tenant, self._today(), new_credit=False)
+
+                    async def apply(tenant: TenantSession = tenant, actor: Membership = actor) -> dict[str, Any]:
+                        if accept:
+                            return await accept_date_request_in(tenant, actor, request_id, self._now())
+                        return await decline_date_request_in(tenant, actor, request_id, None, self._now())
+
+                    body = await idempotency.run_once(
+                        tenant,
+                        key=incoming.key,
+                        operation=f"chat.{operation.name}",
+                        user_id=incoming.user_id,
+                        request={"request": str(request_id)},
+                        action=apply,
+                    )
+            except AppError as error:
+                await replies.send(self._date_request_error(lang, error))
+                if error.fields.get("reason") == "not_open":
+                    await replies.buttons(None)
+                return
+            await replies.show(
+                say(
+                    lang,
+                    "date_accepted_staff" if accept else "date_declined_staff",
+                    name=body["customer_name"],
+                    amount=money(lang, body["amount"]),
+                    date=day(date.fromisoformat(body["requested_date"])),
+                )
+            )
             return
         await replies.send(say(lang, "not_found"))
 
