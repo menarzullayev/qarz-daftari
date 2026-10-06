@@ -93,6 +93,7 @@ export function entryBody(overrides: Record<string, unknown> = {}) {
     reversed: false,
     disputed: false,
     author_id: "33333333-3333-4333-8333-333333333333",
+    lines: [],
     ...overrides,
   };
 }
@@ -107,4 +108,48 @@ export function detailBody(overrides: Record<string, unknown> = {}) {
     entries_total: 1,
     ...overrides,
   };
+}
+
+export const ITEM_ID = "44444444-4444-4444-8444-444444444441";
+
+/** One catalog item as the catalog API writes it. */
+export function itemBody(overrides: Record<string, unknown> = {}) {
+  return {
+    id: ITEM_ID,
+    name: "Non",
+    unit: "dona",
+    price: 4000,
+    learned: false,
+    status: "active",
+    merged_into: null,
+    ...overrides,
+  };
+}
+
+/** Five goods of a small shop, in the order the catalog lists them. */
+export const FIVE_ITEMS = [
+  itemBody({ id: "44444444-4444-4444-8444-444444444441", name: "Non", unit: "dona", price: 4000 }),
+  itemBody({ id: "44444444-4444-4444-8444-444444444442", name: "Sut", unit: "l", price: 12000 }),
+  itemBody({ id: "44444444-4444-4444-8444-444444444443", name: "Shakar", unit: "kg", price: 14000 }),
+  itemBody({ id: "44444444-4444-4444-8444-444444444444", name: "Guruch", unit: "kg", price: 25000 }),
+  itemBody({ id: "44444444-4444-4444-8444-444444444445", name: "Tuxum", unit: "dona", price: 1500 }),
+];
+
+/** One saved goods line as the ledger API writes it; the quantity is a decimal string. */
+export function lineBody(overrides: Record<string, unknown> = {}) {
+  return {
+    line_no: 1,
+    catalog_item_id: ITEM_ID,
+    name: "Non",
+    qty: "2",
+    unit: "dona",
+    unit_price: 4000,
+    line_total: 8000,
+    ...overrides,
+  };
+}
+
+/** GET /shops/{id}: the shop's own settings. */
+export function settingsBody(overrides: Record<string, unknown> = {}) {
+  return { id: SHOP_ID, name: "Baraka savdo", lang: "uz", default_promise_days: 30, ...overrides };
 }

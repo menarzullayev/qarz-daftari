@@ -1,0 +1,227 @@
+import { useState, type FormEvent } from "react";
+
+import { useI18n, type Translate } from "../../i18n/I18nProvider";
+import { LANGUAGES } from "../../i18n/types";
+import type { ApiError, ShopSettings, ShopSettingsPatch } from "../api";
+import { useLoad, useSubmit } from "../hooks";
+import type { Role } from "../navigation";
+import { NotFoundScreen } from "../screens";
+import { useWorkspace } from "./context";
+import { errorText, Failure, FieldError, Loading } from "./parts";
+
+/** Bounds the server checks (backend/src/qarz/application/shops.py, `ShopUpdate.validate`). */
+export const MAX_SHOP_NAME = 80;
+export const MIN_PROMISE_DAYS = 1;
+export const MAX_PROMISE_DAYS_SETTING = 365;
+
+/** A manager reads the settings; only the owner changes them. A seller has no such section. */
+export function settingsAccess(role: Role): "edit" | "read" | "none" {
+  if (role === "owner") {
+    return "edit";
+  }
+  return role === "manager" ? "read" : "none";
+}
+
+/** A whole number of days within the bounds, or null. "30.5", "1e2" and "30 kun" are not days. */
+export function parsePromiseDays(input: string): number | null {
+  const text = input.trim();
+  if (!/^\d{1,3}$/.test(text)) {
+    return null;
+  }
+  const days = Number(text);
+  return days >= MIN_PROMISE_DAYS && days <= MAX_PROMISE_DAYS_SETTING ? days : null;
+}
+
+type FieldErrors = { name: string | null; days: string | null };
+const NO_ERRORS: FieldErrors = { name: null, days: null };
+
+function nameMessage(t: Translate): string {
+  return t("settings.name.invalid", { max: MAX_SHOP_NAME });
+}
+
+function daysMessage(t: Translate): string {
+  return t("settings.promiseDays.invalid", { min: MIN_PROMISE_DAYS, max: MAX_PROMISE_DAYS_SETTING });
+}
+
+function refusedFields(error: ApiError | null, t: Translate): FieldErrors {
+  if (error?.code !== "VALIDATION") {
+    return NO_ERRORS;
+  }
+  return {
+    name: "name" in error.fields ? nameMessage(t) : null,
+    days: "default_promise_days" in error.fields ? daysMessage(t) : null,
+  };
+}
+
+function ReadOnly({ settings }: { settings: ShopSettings }) {
+  const { t } = useI18n();
+  const language = LANGUAGES.find((code) => code === settings.lang);
+  return (
+    <>
+      <p className="notice">{t("settings.readOnly")}</p>
+      <dl className="facts">
+        <dt>{t("settings.name")}</dt>
+        <dd>{settings.name}</dd>
+        <dt>{t("settings.lang")}</dt>
+        <dd>{language ? t(`lang.${language}`) : settings.lang}</dd>
+        <dt>{t("settings.promiseDays")}</dt>
+        <dd>{t("settings.promiseDays.value", { count: settings.defaultPromiseDays })}</dd>
+      </dl>
+    </>
+  );
+}
+
+function SettingsForm({ settings }: { settings: ShopSettings }) {
+  const { api } = useWorkspace();
+  const { t } = useI18n();
+  // What the server holds now: the loaded settings, then whatever the last save answered.
+  const [saved, setSaved] = useState(settings);
+  const [name, setName] = useState(settings.name);
+  const [lang, setLang] = useState(settings.lang);
+  const [days, setDays] = useState(String(settings.defaultPromiseDays));
+  const [errors, setErrors] = useState<FieldErrors>(NO_ERRORS);
+  const { state, submit, reset } = useSubmit((patch: ShopSettingsPatch, key) =>
+    api.updateSettings(patch, key).then((updated) => {
+      setSaved(updated);
+      setName(updated.name);
+      setLang(updated.lang);
+      setDays(String(updated.defaultPromiseDays));
+    }),
+  );
+
+  const onSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    const cleanName = name.trim();
+    const parsedDays = parsePromiseDays(days);
+    const found: FieldErrors = {
+      name: cleanName === "" || [...cleanName].length > MAX_SHOP_NAME ? nameMessage(t) : null,
+      days: parsedDays === null ? daysMessage(t) : null,
+    };
+    setErrors(found);
+    if (found.name !== null || parsedDays === null) {
+      return;
+    }
+    // Send only what changed; the server refuses an empty change.
+    const patch: ShopSettingsPatch = {};
+    if (cleanName !== saved.name) {
+      patch.name = cleanName;
+    }
+    if (lang !== saved.lang) {
+      patch.lang = lang;
+    }
+    if (parsedDays !== saved.defaultPromiseDays) {
+      patch.defaultPromiseDays = parsedDays;
+    }
+    if (Object.keys(patch).length > 0) {
+      submit(patch);
+    }
+  };
+
+  const failure = state.status === "error" ? state.error : null;
+  const refused = refusedFields(failure, t);
+  const shown: FieldErrors = { name: errors.name ?? refused.name, days: errors.days ?? refused.days };
+  const pending = state.status === "pending";
+  // Typing after a save takes the "saved" notice away: it would no longer describe what is on the screen.
+  const touched = (field: keyof FieldErrors | null) => {
+    if (field !== null) {
+      setErrors((current) => ({ ...current, [field]: null }));
+    }
+    if (state.status === "done") {
+      reset();
+    }
+  };
+
+  return (
+    <form className="form" onSubmit={onSubmit} noValidate>
+      {failure ? (
+        <p className="notice notice--error" role="alert">
+          {errorText(failure, t)}
+        </p>
+      ) : null}
+      {state.status === "done" ? (
+        <p className="notice notice--done" role="status">
+          {t("settings.saved")}
+        </p>
+      ) : null}
+      <div className="field">
+        <label htmlFor="settings-name">{t("settings.name")}</label>
+        <input
+          id="settings-name"
+          className="input"
+          value={name}
+          autoComplete="off"
+          aria-invalid={shown.name !== null}
+          aria-describedby="settings-name-error"
+          onChange={(event) => {
+            setName(event.target.value);
+            touched("name");
+          }}
+        />
+        <FieldError id="settings-name-error" message={shown.name} />
+      </div>
+      <div className="field">
+        <label htmlFor="settings-lang">{t("settings.lang")}</label>
+        <select
+          id="settings-lang"
+          className="input"
+          value={lang}
+          onChange={(event) => {
+            setLang(event.target.value);
+            touched(null);
+          }}
+        >
+          {LANGUAGES.map((code) => (
+            <option key={code} value={code} lang={code}>
+              {t(`lang.${code}`)}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor="settings-days">{t("settings.promiseDays")}</label>
+        <input
+          id="settings-days"
+          className="input"
+          inputMode="numeric"
+          value={days}
+          autoComplete="off"
+          aria-invalid={shown.days !== null}
+          aria-describedby="settings-days-error"
+          onChange={(event) => {
+            setDays(event.target.value);
+            touched("days");
+          }}
+        />
+        <FieldError id="settings-days-error" message={shown.days} />
+      </div>
+      <p className="actions">
+        <button type="submit" className="button button--primary" disabled={pending}>
+          {pending ? t("state.saving") : t("action.save")}
+        </button>
+      </p>
+    </form>
+  );
+}
+
+function Settings({ editable }: { editable: boolean }) {
+  const { api } = useWorkspace();
+  const { state, reload } = useLoad((signal) => api.readSettings(signal), [api]);
+  if (state.status === "loading") {
+    return <Loading />;
+  }
+  if (state.status === "error") {
+    return <Failure error={state.error} onRetry={reload} />;
+  }
+  return editable ? <SettingsForm settings={state.data} /> : <ReadOnly settings={state.data} />;
+}
+
+/**
+ * The shop's own settings by role (REQ-049): its name, its language, and the usual number of days a
+ * customer has to pay. The owner changes them, a manager reads them, and a
+ * seller is shown nothing and asks the server nothing.
+ */
+export function ShopSettingsScreen() {
+  const { role } = useWorkspace();
+  const access = settingsAccess(role);
+  return access === "none" ? <NotFoundScreen /> : <Settings editable={access === "edit"} />;
+}

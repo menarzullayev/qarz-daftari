@@ -67,6 +67,14 @@ const fail = (problem: AmountProblem): AmountResult => ({ ok: false, problem });
  * "45000 so'm". Decimals are refused, never rounded, and so is anything that could be read two ways.
  */
 export function parseAmount(input: string): AmountResult {
+  return parseWholeUzs(input, MIN_AMOUNT, MAX_AMOUNT);
+}
+
+/**
+ * The same reading with other bounds: a unit price may be as small as 1 UZS, an entry amount may not.
+ * `min` and `max` are whole UZS, inclusive.
+ */
+export function parseWholeUzs(input: string, min: number, max: number): AmountResult {
   if (input.length > MAX_INPUT_LENGTH) {
     return fail("invalid");
   }
@@ -139,10 +147,10 @@ export function parseAmount(input: string): AmountResult {
     return fail("too_large");
   }
   const amount = Number(digits === "" ? "0" : digits) * multiplier;
-  if (amount < MIN_AMOUNT) {
+  if (amount < min) {
     return fail("too_small");
   }
-  if (amount > MAX_AMOUNT) {
+  if (amount > max) {
     return fail("too_large");
   }
   return { ok: true, amount };

@@ -1,3 +1,4 @@
+import { lineTotal, MAX_LINES, qtyToApi, readServerQty } from "./goods";
 import { isRole, type Role } from "./navigation";
 
 /**
@@ -64,6 +65,26 @@ export type PaymentHistory = {
   longestDelayDays: number;
 };
 
+/** One good on a credit sale. The name, unit and price are the line's own and never change (INV-17). */
+export type GoodsLine = {
+  lineNo: number;
+  catalogItemId: string | null;
+  name: string;
+  /** Quantity in thousandths: 1.5 kg is 1500. */
+  qty: number;
+  unit: string;
+  unitPrice: number;
+  lineTotal: number;
+};
+
+/**
+ * A line to save: a catalog item (its name and unit come from the catalog, the price is this line's), or
+ * a good typed by name. `qty` is in thousandths.
+ */
+export type NewLine =
+  | { catalogItemId: string; qty: number; unitPrice: number }
+  | { name: string; unit: string | null; qty: number; unitPrice: number };
+
 export type Entry = {
   id: string;
   seq: number;
@@ -75,6 +96,10 @@ export type Entry = {
   reversesId: string | null;
   reversed: boolean;
   disputed: boolean;
+  /** Membership of the staff member who recorded it; null when the server does not say. */
+  authorId: string | null;
+  /** Empty for an amount-only entry. */
+  lines: GoodsLine[];
 };
 
 export type CustomerDetail = Customer & {
@@ -95,14 +120,39 @@ export type Overview = {
 export type Page<T> = { items: T[]; nextCursor: string | null };
 
 export type EntryKind = "credit" | "payment";
-export type NewEntry = { kind: EntryKind; amount: number; note: string | null; promisedDate: string | null };
+/** With `lines` the amount is not sent: the server uses the sum of the lines (REQ-037). */
+export type NewEntry = { kind: EntryKind; note: string | null; promisedDate: string | null } & (
+  | { amount: number; lines?: never }
+  | { lines: readonly NewLine[]; amount?: never }
+);
 export type RecordedEntry = {
-  entry: { id: string; kind: string; amount: number; promisedDate: string | null };
+  entry: { id: string; kind: string; amount: number; promisedDate: string | null; lines: GoodsLine[] };
   /** The customer after the entry; `balance` is the new balance. */
   customer: Customer;
 };
 
 export type CustomerPatch = { displayName?: string; phone?: string | null; remindersOff?: boolean };
+
+export type AddedLines = { id: string; amount: number; lines: GoodsLine[] };
+export type ChosenPromise = { id: string; amount: number; promisedDate: string };
+
+export type CatalogItem = {
+  id: string;
+  name: string;
+  unit: string;
+  /** Current price in whole UZS; a saved goods line keeps the price it was sold at. */
+  price: number;
+  /** Added by a seller typing a good on a sale and not yet reviewed by a manager. */
+  learned: boolean;
+  status: "active" | "hidden";
+  mergedInto: string | null;
+};
+export type NewCatalogItem = { name: string; unit: string | null; price: number };
+export type CatalogItemPatch = { name?: string; unit?: string; price?: number };
+export type CatalogAction = "hide" | "unhide" | "accept" | "dismiss";
+
+export type ShopSettings = { id: string; name: string; lang: string; defaultPromiseDays: number };
+export type ShopSettingsPatch = { name?: string; lang?: string; defaultPromiseDays?: number };
 
 export type ShopMembership = { shopId: string; name: string; role: Role };
 export type MyShops = { items: ShopMembership[]; activeShop: string | null };
@@ -179,6 +229,28 @@ function debtor(value: unknown): Debtor {
   return { ...customer(value), overdue: overdue(record(value)["overdue"]) };
 }
 
+function goodsLine(value: unknown): GoodsLine {
+  const body = record(value);
+  const qty = readServerQty(text(body["qty"]));
+  if (qty === null) {
+    throw new Malformed();
+  }
+  return {
+    lineNo: whole(body["line_no"]),
+    catalogItemId: textOrNull(body["catalog_item_id"]),
+    name: text(body["name"]),
+    qty,
+    unit: text(body["unit"]),
+    unitPrice: whole(body["unit_price"]),
+    lineTotal: whole(body["line_total"]),
+  };
+}
+
+/** A server that does not send goods lines yet answers without the field: that is an entry with none. */
+function goodsLines(value: unknown): GoodsLine[] {
+  return value === undefined || value === null ? [] : list(value, goodsLine);
+}
+
 function entry(value: unknown): Entry {
   const body = record(value);
   return {
@@ -192,6 +264,8 @@ function entry(value: unknown): Entry {
     reversesId: textOrNull(body["reverses_id"]),
     reversed: flag(body["reversed"]),
     disputed: flag(body["disputed"]),
+    authorId: textOrNull(body["author_id"]),
+    lines: goodsLines(body["lines"]),
   };
 }
 
@@ -247,9 +321,69 @@ function recordedEntry(value: unknown): RecordedEntry {
       kind: text(made["kind"]),
       amount: whole(made["amount"]),
       promisedDate: textOrNull(made["promised_date"]),
+      lines: goodsLines(made["lines"]),
     },
     customer: customer(body["customer"]),
   };
+}
+
+function addedLines(value: unknown): AddedLines {
+  const made = record(record(value)["entry"]);
+  return { id: text(made["id"]), amount: whole(made["amount"]), lines: list(made["lines"], goodsLine) };
+}
+
+function chosenPromise(value: unknown): ChosenPromise {
+  const made = record(record(value)["entry"]);
+  return { id: text(made["id"]), amount: whole(made["amount"]), promisedDate: text(made["promised_date"]) };
+}
+
+function catalogItem(value: unknown): CatalogItem {
+  const body = record(value);
+  const status = body["status"];
+  if (status !== "active" && status !== "hidden") {
+    throw new Malformed();
+  }
+  return {
+    id: text(body["id"]),
+    name: text(body["name"]),
+    unit: text(body["unit"]),
+    price: whole(body["price"]),
+    learned: flag(body["learned"]),
+    status,
+    mergedInto: textOrNull(body["merged_into"]),
+  };
+}
+
+function shopSettings(value: unknown): ShopSettings {
+  const body = record(value);
+  return {
+    id: text(body["id"]),
+    name: text(body["name"]),
+    lang: text(body["lang"]),
+    defaultPromiseDays: whole(body["default_promise_days"]),
+  };
+}
+
+/** The request form of goods lines. Refuses, before anything is sent, a line the server would refuse. */
+function linesBody(lines: readonly NewLine[]): Json[] {
+  if (lines.length < 1 || lines.length > MAX_LINES) {
+    throw new RangeError(`an entry takes 1 to ${MAX_LINES} goods lines`);
+  }
+  return lines.map((line) => {
+    if (lineTotal(line.qty, line.unitPrice) === null) {
+      throw new RangeError("a goods line needs a quantity in thousandths and a whole price in UZS");
+    }
+    const body: Json = { qty: qtyToApi(line.qty), unit_price: line.unitPrice };
+    if ("catalogItemId" in line) {
+      body["catalog_item_id"] = line.catalogItemId;
+    } else {
+      body["name"] = line.name;
+      if (line.unit !== null) {
+        body["unit"] = line.unit;
+      }
+    }
+    return body;
+  });
 }
 
 function myShops(value: unknown): MyShops {
@@ -434,10 +568,17 @@ function shopApi(transport: Transport, shopId: string) {
     },
 
     recordEntry(customerId: string, input: NewEntry, idempotencyKey: string): Promise<RecordedEntry> {
-      if (!Number.isSafeInteger(input.amount)) {
+      const body: Json = { kind: input.kind };
+      if (input.lines !== undefined) {
+        if (input.kind !== "credit") {
+          throw new RangeError("only a credit sale has goods lines");
+        }
+        body["lines"] = linesBody(input.lines);
+      } else if (Number.isSafeInteger(input.amount)) {
+        body["amount"] = input.amount;
+      } else {
         throw new RangeError("amount must be a whole number of UZS");
       }
-      const body: Json = { kind: input.kind, amount: input.amount };
       if (input.note !== null) {
         body["note"] = input.note;
       }
@@ -460,6 +601,123 @@ function shopApi(transport: Transport, shopId: string) {
         idempotencyKey,
         read: (value) => customer(record(value)["customer"]),
       });
+    },
+
+    /** Adds goods to an amount-only credit sale, once (REQ-038). */
+    addLines(entryId: string, lines: readonly NewLine[], idempotencyKey: string): Promise<AddedLines> {
+      return call(transport, {
+        method: "POST",
+        path: `${base}/entries/${segment(entryId)}/lines`,
+        body: { lines: linesBody(lines) },
+        idempotencyKey,
+        read: addedLines,
+      });
+    },
+
+    /** The one-tap promised date right after a sale that was saved with the shop's usual term (REQ-008). */
+    choosePromise(entryId: string, promisedDate: string, idempotencyKey: string): Promise<ChosenPromise> {
+      return call(transport, {
+        method: "POST",
+        path: `${base}/entries/${segment(entryId)}/promise-choice`,
+        body: { promised_date: promisedDate },
+        idempotencyKey,
+        read: chosenPromise,
+      });
+    },
+
+    listCatalog(
+      params: { q?: string; status?: "active" | "hidden"; learned?: boolean; cursor?: string | null; limit?: number },
+      signal?: AbortSignal,
+    ): Promise<Page<CatalogItem>> {
+      return call(transport, {
+        method: "GET",
+        path: `${base}/catalog`,
+        query: {
+          q: params.q,
+          status: params.status,
+          learned: params.learned === undefined ? undefined : String(params.learned),
+          cursor: params.cursor,
+          limit: params.limit?.toString(),
+        },
+        signal,
+        read: page(catalogItem),
+      });
+    },
+
+    createCatalogItem(input: NewCatalogItem, idempotencyKey: string): Promise<CatalogItem> {
+      if (!Number.isSafeInteger(input.price)) {
+        throw new RangeError("price must be a whole number of UZS");
+      }
+      const body: Json = { name: input.name, price: input.price };
+      if (input.unit !== null) {
+        body["unit"] = input.unit;
+      }
+      return call(transport, { method: "POST", path: `${base}/catalog`, body, idempotencyKey, read: catalogItem });
+    },
+
+    updateCatalogItem(itemId: string, patch: CatalogItemPatch, idempotencyKey: string): Promise<CatalogItem> {
+      if (patch.price !== undefined && !Number.isSafeInteger(patch.price)) {
+        throw new RangeError("price must be a whole number of UZS");
+      }
+      const body: Json = {};
+      if (patch.name !== undefined) {
+        body["name"] = patch.name;
+      }
+      if (patch.unit !== undefined) {
+        body["unit"] = patch.unit; // an empty unit becomes the default one, a piece
+      }
+      if (patch.price !== undefined) {
+        body["price"] = patch.price;
+      }
+      return call(transport, {
+        method: "PATCH",
+        path: `${base}/catalog/${segment(itemId)}`,
+        body,
+        idempotencyKey,
+        read: catalogItem,
+      });
+    },
+
+    /** Hide or show an item, or settle a learned one: accept it as it is, or dismiss it from the catalog. */
+    changeCatalogItem(itemId: string, action: CatalogAction, idempotencyKey: string): Promise<CatalogItem> {
+      return call(transport, {
+        method: "POST",
+        path: `${base}/catalog/${segment(itemId)}/${action}`,
+        idempotencyKey,
+        read: catalogItem,
+      });
+    },
+
+    /** A learned item is another spelling of `intoId`: it becomes a hidden alias of that item. */
+    mergeCatalogItem(itemId: string, intoId: string, idempotencyKey: string): Promise<CatalogItem> {
+      return call(transport, {
+        method: "POST",
+        path: `${base}/catalog/${segment(itemId)}/merge`,
+        body: { into: intoId },
+        idempotencyKey,
+        read: catalogItem,
+      });
+    },
+
+    readSettings(signal?: AbortSignal): Promise<ShopSettings> {
+      return call(transport, { method: "GET", path: base, signal, read: shopSettings });
+    },
+
+    updateSettings(patch: ShopSettingsPatch, idempotencyKey: string): Promise<ShopSettings> {
+      const body: Json = {};
+      if (patch.name !== undefined) {
+        body["name"] = patch.name;
+      }
+      if (patch.lang !== undefined) {
+        body["lang"] = patch.lang;
+      }
+      if (patch.defaultPromiseDays !== undefined) {
+        if (!Number.isSafeInteger(patch.defaultPromiseDays)) {
+          throw new RangeError("default promise days must be a whole number");
+        }
+        body["default_promise_days"] = patch.defaultPromiseDays;
+      }
+      return call(transport, { method: "PATCH", path: base, body, idempotencyKey, read: shopSettings });
     },
 
     overview(signal?: AbortSignal): Promise<Overview> {

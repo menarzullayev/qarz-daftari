@@ -342,3 +342,180 @@ a.row__link .row__name {
 .more {
   margin: 0.75rem 0;
 }
+
+/* Goods: the lines of a sale being typed, the catalog picker, and saved goods under an entry. */
+
+.goods-editor {
+  margin: 0 0 1rem;
+}
+
+.lines,
+.picks,
+.goods {
+  margin: 0.5rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.line {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--qd-border);
+}
+
+.line p {
+  margin: 0;
+}
+
+.line__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.line__fields {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, 1fr) auto minmax(6rem, 1.5fr);
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.line__unit {
+  color: var(--qd-muted);
+  overflow-wrap: anywhere;
+}
+
+.line__total {
+  padding-top: 0.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.goods-editor__sum {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 1.25rem;
+}
+
+.picker {
+  margin: 0.75rem 0;
+}
+
+.picks {
+  max-height: 16rem;
+  overflow-y: auto;
+  border: 1px solid var(--qd-border);
+  border-radius: 0.5rem;
+}
+
+.picks li + li {
+  border-top: 1px solid var(--qd-border);
+}
+
+.pick {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  background: none;
+  color: var(--qd-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pick:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.pick .row__meta {
+  flex: none;
+  white-space: nowrap;
+}
+
+.typed .input {
+  margin-bottom: 0.5rem;
+}
+
+.typed__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.goods__line {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 0.75rem;
+  padding: 0.25rem 0;
+  font-size: 0.875rem;
+}
+
+.goods__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.goods__total {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.goods__detail {
+  grid-column: 1 / -1;
+  color: var(--qd-muted);
+}
+
+.difference {
+  margin: 0.75rem 0;
+  font-weight: 700;
+}
+
+.button--stacked {
+  flex-direction: column;
+  flex: 1 1 8rem;
+}
+
+.offer > p {
+  margin: 0 0 0.5rem;
+}
+
+.facts {
+  margin: 0.75rem 0;
+}
+
+.facts dt {
+  color: var(--qd-muted);
+  font-size: 0.875rem;
+}
+
+.facts dd {
+  margin: 0 0 0.75rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+select.input {
+  appearance: auto;
+}
+
+.button--stacked {
+  padding: 0.5rem;
+}
+
+.button--stacked .choice__date {
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.toggle {
+  flex-wrap: wrap;
+}

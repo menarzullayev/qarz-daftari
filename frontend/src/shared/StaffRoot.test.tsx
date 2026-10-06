@@ -7,12 +7,14 @@ import {
   customerBody,
   detailBody,
   fakeServer,
+  itemBody,
   NO_OVERDUE,
   NOON,
   ok,
   refusal,
   type Reply,
   type Sent,
+  settingsBody,
   SHOP_BASE,
   SHOP_ID,
 } from "../testing/fakeServer";
@@ -56,6 +58,12 @@ function backend(shops: unknown, extra: (sent: Sent) => Reply | null = () => nul
     }
     if (sent.path.endsWith(`/customers/${CUSTOMER_ID}`)) {
       return ok(detailBody());
+    }
+    if (sent.path === `${SHOP_BASE}/catalog`) {
+      return ok({ items: [itemBody()], next_cursor: null });
+    }
+    if (sent.path === SHOP_BASE) {
+      return sent.method === "GET" ? ok(settingsBody()) : ok(settingsBody(sent.body as Record<string, unknown>));
     }
     return ok({ items: [customerBody()], next_cursor: null });
   });
@@ -230,5 +238,82 @@ describe("routes of the workspace", () => {
     expect(heading()).toBe("Sahifa topilmadi");
     go("#/staff");
     expect(heading()).toBe("Sahifa topilmadi");
+  });
+});
+
+describe("catalog, goods and settings in the workspace", () => {
+  const navLinks = () => within(screen.getByRole("navigation")).getAllByRole("link").map((link) => link.textContent);
+
+  it("lets a seller read the catalog from the tab bar, with nothing to change it", async () => {
+    const server = backend({ items: [membership("seller")], active_shop: SHOP_ID });
+    start(server);
+    await screen.findByText("Ali Valiyev");
+    expect(navLinks()).toEqual(["Umumiy ko'rinish", "Mijozlar", "Yangi yozuv", "Katalog"]);
+    go("#/catalog");
+    expect(heading()).toBe("Katalog");
+    expect(await screen.findByText("Non")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Yangi mahsulot" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Tahrirlash" })).toBeNull();
+    expect(server.writes()).toHaveLength(0);
+  });
+
+  it("gives a manager the catalog controls", async () => {
+    const server = backend({ items: [membership("manager")], active_shop: SHOP_ID });
+    start(server);
+    await screen.findByText("Ali Valiyev");
+    go("#/catalog");
+    await screen.findByText("Non");
+    expect(screen.getByRole("button", { name: "Yangi mahsulot" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Tahrirlash" })).toBeTruthy();
+  });
+
+  it("keeps a seller out of the shop settings without asking the server for them", async () => {
+    const server = backend({ items: [membership("seller")], active_shop: SHOP_ID });
+    start(server);
+    await screen.findByText("Ali Valiyev");
+    go("#/shop-settings");
+    expect(heading()).toBe("Sahifa topilmadi");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(server.sent.some((sent) => sent.path === SHOP_BASE)).toBe(false);
+    expect(navLinks()).not.toContain("Do'kon sozlamalari");
+  });
+
+  it("shows a manager the shop settings to read", async () => {
+    const manager = backend({ items: [membership("manager")], active_shop: SHOP_ID });
+    start(manager);
+    await screen.findByText("Ali Valiyev");
+    go("#/shop-settings");
+    expect(heading()).toBe("Do'kon sozlamalari");
+    expect(await screen.findByText("Sozlamalarni faqat do'kon egasi o'zgartira oladi.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Saqlash" })).toBeNull();
+    expect(manager.writes()).toHaveLength(0);
+  });
+
+  it("gives the owner a form that changes the shop settings", async () => {
+    const owner = backend({ items: [membership("owner")], active_shop: SHOP_ID });
+    start(owner);
+    await screen.findByText("Ali Valiyev");
+    go("#/shop-settings");
+    fireEvent.change(await screen.findByLabelText("Odatdagi to'lash muddati, kun"), { target: { value: "14" } });
+    fireEvent.click(screen.getByRole("button", { name: "Saqlash" }));
+    expect(await screen.findByText("Sozlamalar saqlandi.")).toBeTruthy();
+    expect(owner.writes()[0]).toMatchObject({ method: "PATCH", path: SHOP_BASE, body: { default_promise_days: 14 } });
+  });
+
+  it("opens the add-goods screen from the customer page, inside the customers section", async () => {
+    const server = backend({ items: [membership("seller")], active_shop: SHOP_ID });
+    start(server);
+    await screen.findByText("Ali Valiyev");
+    go(`#/customers/${CUSTOMER_ID}`);
+    const link = await screen.findByRole("link", { name: "Tovarlarni qo'shish" });
+    const entryId = "22222222-2222-4222-8222-222222222222";
+    expect(link.getAttribute("href")).toBe(`#/customers/${CUSTOMER_ID}/entries/${entryId}/goods`);
+    go(`#/customers/${CUSTOMER_ID}/entries/${entryId}/goods`);
+    expect(heading()).toBe("Yozuvga tovar qo'shish");
+    expect(await screen.findByRole("button", { name: "Tovarlarni saqlash" })).toBeTruthy();
+    const current = within(screen.getByRole("navigation"))
+      .getAllByRole("link")
+      .filter((candidate) => candidate.getAttribute("aria-current") === "page");
+    expect(current.map((candidate) => candidate.textContent)).toEqual(["Mijozlar"]);
   });
 });

@@ -36,7 +36,8 @@ const STAFF_SECTIONS: readonly StaffSection[] = [
   { id: "overview", path: "/", labelKey: "nav.overview", minRole: "seller" },
   { id: "customers", path: "/customers", labelKey: "nav.customers", minRole: "seller" },
   { id: "newEntry", path: "/new", labelKey: "nav.newEntry", minRole: "seller" },
-  { id: "catalog", path: "/catalog", labelKey: "nav.catalog", minRole: "manager" },
+  // A seller reads the catalog to pick goods; only a manager or an owner changes it (REQ-039).
+  { id: "catalog", path: "/catalog", labelKey: "nav.catalog", minRole: "seller" },
   { id: "reminders", path: "/reminders", labelKey: "nav.reminders", minRole: "manager" },
   { id: "reports", path: "/reports", labelKey: "nav.reports", minRole: "manager" },
   { id: "disputes", path: "/disputes", labelKey: "nav.disputes", minRole: "manager" },
@@ -44,7 +45,8 @@ const STAFF_SECTIONS: readonly StaffSection[] = [
   { id: "staff", path: "/staff", labelKey: "nav.staff", minRole: "owner" },
   { id: "activityLog", path: "/activity", labelKey: "nav.activityLog", minRole: "owner" },
   { id: "subscription", path: "/subscription", labelKey: "nav.subscription", minRole: "owner" },
-  { id: "shopSettings", path: "/shop-settings", labelKey: "nav.shopSettings", minRole: "owner" },
+  // A manager reads the settings; only the owner changes them (the server: READ_SHOP, ADMINISTER_SHOP).
+  { id: "shopSettings", path: "/shop-settings", labelKey: "nav.shopSettings", minRole: "manager" },
 ];
 
 export const STAFF_SECTION_IDS: readonly string[] = STAFF_SECTIONS.map((section) => section.id);
@@ -58,6 +60,14 @@ export function staffSections(role: Role): NavItem[] {
 
 /** How many sections fit in the bottom tab bar of a phone; the rest sit behind "More". */
 export const PRIMARY_TAB_COUNT = 3;
+
+/**
+ * How many of a role's sections the phone tab bar shows. A "More" tab that would hold a single section
+ * is replaced by that section: the bar has four tabs either way, and a seller reaches the catalog in one tap.
+ */
+export function primaryTabCount(sections: readonly NavItem[]): number {
+  return sections.length <= PRIMARY_TAB_COUNT + 1 ? sections.length : PRIMARY_TAB_COUNT;
+}
 
 /** Screen that lists the sections which do not fit in the bottom tab bar. */
 export const MORE_ITEM: NavItem = { id: "more", path: "/more", labelKey: "nav.more" };

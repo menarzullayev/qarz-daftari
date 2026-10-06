@@ -3,11 +3,13 @@ import { useMemo, type ReactNode } from "react";
 import { I18nProvider, useI18n } from "../i18n/I18nProvider";
 import type { Language, MessageKey } from "../i18n/types";
 import type { ShopApi } from "./api";
-import { MORE_ITEM, PRIMARY_TAB_COUNT, staffSections } from "./navigation";
+import { MORE_ITEM, primaryTabCount, staffSections } from "./navigation";
 import { useHashPath } from "./router";
 import { MoreScreen, NotFoundScreen, PlaceholderScreen, SignInRequiredScreen } from "./screens";
 import type { StaffSession } from "./session";
 import { Shell } from "./Shell";
+import { AddGoodsScreen } from "./workspace/AddGoodsScreen";
+import { CatalogScreen } from "./workspace/CatalogScreen";
 import { WorkspaceProvider } from "./workspace/context";
 import { CustomerScreen } from "./workspace/CustomerScreen";
 import { CustomersScreen } from "./workspace/CustomersScreen";
@@ -15,6 +17,7 @@ import { EntryScreen } from "./workspace/EntryScreen";
 import { NewCustomerScreen } from "./workspace/NewCustomerScreen";
 import { OverviewScreen } from "./workspace/OverviewScreen";
 import { matchWorkspaceRoute, type WorkspaceRoute } from "./workspace/routes";
+import { ShopSettingsScreen } from "./workspace/ShopSettingsScreen";
 import "./workspace/workspace.css";
 
 export type StaffRoutesProps = {
@@ -50,6 +53,12 @@ function workspaceScreen(route: WorkspaceRoute, overviewFooter: ReactNode): Reac
       return <CustomerScreen key={route.customerId} customerId={route.customerId} />;
     case "entry":
       return <EntryScreen key={`${route.customerId}/${route.kind}`} customerId={route.customerId} kind={route.kind} />;
+    case "addGoods":
+      return <AddGoodsScreen key={route.entryId} customerId={route.customerId} entryId={route.entryId} />;
+    case "catalog":
+      return <CatalogScreen />;
+    case "shopSettings":
+      return <ShopSettingsScreen />;
   }
 }
 
@@ -76,7 +85,8 @@ export function StaffRoutes({ entryKey, session, api, now = systemClock, overvie
   }
 
   const sections = staffSections(session.role);
-  const overflow = sections.slice(PRIMARY_TAB_COUNT);
+  const primaryCount = primaryTabCount(sections);
+  const overflow = sections.slice(primaryCount);
   const match = matchWorkspaceRoute(path);
   // A screen inside a section, such as one customer, belongs to that section and obeys its role rule.
   const sectionPath = match?.sectionPath ?? path;
@@ -103,7 +113,7 @@ export function StaffRoutes({ entryKey, session, api, now = systemClock, overvie
       entryKey={entryKey}
       context={{ label: t("shell.activeShop"), value: session.shopName }}
       items={sections}
-      primaryCount={PRIMARY_TAB_COUNT}
+      primaryCount={primaryCount}
       moreItem={MORE_ITEM}
       currentPath={path}
       navPath={sectionPath}

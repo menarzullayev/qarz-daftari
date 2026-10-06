@@ -7,7 +7,10 @@ export type WorkspaceRoute =
   | { screen: "pickCustomer" }
   | { screen: "newCustomer" }
   | { screen: "customer"; customerId: string }
-  | { screen: "entry"; customerId: string; kind: EntryKind };
+  | { screen: "entry"; customerId: string; kind: EntryKind }
+  | { screen: "addGoods"; customerId: string; entryId: string }
+  | { screen: "catalog" }
+  | { screen: "shopSettings" };
 
 export type WorkspaceMatch = {
   route: WorkspaceRoute;
@@ -20,6 +23,7 @@ export type WorkspaceMatch = {
 const ID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const CUSTOMER = new RegExp(`^/customers/(${ID})$`, "i");
 const ENTRY = new RegExp(`^/customers/(${ID})/(credit|payment)$`, "i");
+const ADD_GOODS = new RegExp(`^/customers/(${ID})/entries/(${ID})/goods$`, "i");
 
 /** The data screen for a route path, or null when the path is not one of them. */
 export function matchWorkspaceRoute(path: string): WorkspaceMatch | null {
@@ -32,6 +36,10 @@ export function matchWorkspaceRoute(path: string): WorkspaceMatch | null {
       return { route: { screen: "newCustomer" }, sectionPath: "/customers", titleKey: "customers.add" };
     case "/new":
       return { route: { screen: "pickCustomer" }, sectionPath: "/new", titleKey: "nav.newEntry" };
+    case "/catalog":
+      return { route: { screen: "catalog" }, sectionPath: "/catalog", titleKey: "nav.catalog" };
+    case "/shop-settings":
+      return { route: { screen: "shopSettings" }, sectionPath: "/shop-settings", titleKey: "nav.shopSettings" };
   }
   const customer = CUSTOMER.exec(path);
   if (customer?.[1]) {
@@ -48,6 +56,14 @@ export function matchWorkspaceRoute(path: string): WorkspaceMatch | null {
       route: { screen: "entry", customerId: entry[1], kind },
       sectionPath: "/customers",
       titleKey: kind === "payment" ? "entry.payment.title" : "entry.credit.title",
+    };
+  }
+  const goods = ADD_GOODS.exec(path);
+  if (goods?.[1] && goods[2]) {
+    return {
+      route: { screen: "addGoods", customerId: goods[1], entryId: goods[2] },
+      sectionPath: "/customers",
+      titleKey: "goods.later.title",
     };
   }
   return null;
