@@ -1,0 +1,15 @@
+{
+  "event_id": "abb8473b7ca6",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T17:56:23+00:00",
+  "path": "docs\\evidence\\EVID-045.md",
+  "stage": "09-development-plan",
+  "title": "Stories S4.1, S4.3, S4.4 and S4.5 verified in CI",
+  "claim": "Stories S4.1, S4.3, S4.4 and S4.5 are implemented in the API and verified in CI on main: customers with search, credit sales with promised dates, payments, reversals, the overview with debtors and overdue amounts, customer detail with the payment history indicator, and the limited and suspended subscription modes. 1352 back-end tests passed; 29 hand mutations of the new rules were each caught by a test; two concurrent payments of a whole balance end with exactly one accepted. Notifications to linked customers (REQ-012) and the chat reply are not part of this work",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/15 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37506978987",
+  "date": "2026-10-06",
+  "confidence": "high",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-045"
+}

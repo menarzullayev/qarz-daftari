@@ -1,0 +1,15 @@
+{
+  "event_id": "8c5c0f1c0b38",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T17:56:23+00:00",
+  "path": "docs\\evidence\\EVID-042.md",
+  "stage": "09-development-plan",
+  "title": "Chat parser, name normalization and ledger calculations verified in CI",
+  "claim": "Story S4.2 and the domain part of S4.3, S7.1 and S12.2 are implemented and verified in CI on main: the chat fast-entry parser in Uzbek and Russian, display-name normalization across Latin and Cyrillic, and pure ledger calculations (balance, oldest-first allocation, overdue status, payment history indicator, promise dates). Both were written by helper agents and reviewed by the orchestrator, who re-ran the tests before merging",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/11 ; https://github.com/menarzullayev/qarz-daftari/pull/12 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37503843662",
+  "date": "2026-10-06",
+  "confidence": "high",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-042"
+}

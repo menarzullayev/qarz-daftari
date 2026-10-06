@@ -1,0 +1,15 @@
+{
+  "event_id": "6bbea31f1e84",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T17:56:23+00:00",
+  "path": "docs\\evidence\\EVID-044.md",
+  "stage": "09-development-plan",
+  "title": "Local rehearsal of replication, failover and restore",
+  "claim": "The local part of story S1.5 is done: a container rehearsal of streaming replication, WAL archiving, point-in-time restore, failover with fencing of the old primary, and the file store. The orchestrator re-ran the whole cycle on 2026-10-06 and every check passed: failover from kill to first write took 20.5 seconds, no acknowledged row was lost after failover, and the archive alone bounded the loss to 20 seconds. This ran on one developer machine with containers; nothing ran on real servers or across two facilities",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/13 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37504497489 ; docs/10-operations/rehearsals/2026-10-06-local.md",
+  "date": "2026-10-06",
+  "confidence": "high",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-044"
+}
