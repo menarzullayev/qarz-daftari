@@ -40,6 +40,10 @@ class Call:
     json: dict[str, Any] | None = None
     changes_data: bool = False
     ok_status: int = 200
+    # Puts shop A into the state the call needs (for example a pending transfer). Runs as the owner role.
+    prepare: Callable[[psycopg.Connection, World], None] | None = None
+    # Callers whose role is allowed but who are refused for another stated reason: caller -> (status, code).
+    refused: tuple[tuple[str, int, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -52,7 +56,13 @@ class PlainCall:
     returns_own_id: bool = True
 
 
-STAFF_BASE = "/api/v1/shops/{shop}/staff"
+def _pending_transfer(owner: psycopg.Connection, world: World) -> None:
+    owner.execute(
+        "INSERT INTO ownership_transfer (id, shop_id, from_membership, to_membership, expires_at) "
+        "VALUES (gen_random_uuid(), %s, %s, %s, now() + interval '1 day')",
+        (world.shop_a, world.owner_a_membership, world.manager_a_membership),
+    )
+
 
 CALLS: dict[str, Call] = {
     "shop.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}"),
@@ -69,6 +79,34 @@ CALLS: dict[str, Call] = {
         "PATCH", lambda w, shop: f"/api/v1/shops/{shop}/staff/{w.seller_a_membership}", {"role": "manager"}, True
     ),
     "staff.remove": Call("DELETE", lambda w, shop: f"/api/v1/shops/{shop}/staff/{w.seller_a_membership}", None, True),
+    "activity.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/activity"),
+    "ownership.transfer.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/ownership-transfer"),
+    "ownership.transfer.start": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/ownership-transfer",
+        None,  # the body names a member of shop A; filled in by _invoke
+        True,
+        ok_status=201,
+    ),
+    "ownership.transfer.cancel": Call(
+        "DELETE", lambda w, shop: f"/api/v1/shops/{shop}/ownership-transfer", None, True, prepare=_pending_transfer
+    ),
+    "ownership.transfer.accept": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/ownership-transfer/accept",
+        None,
+        True,
+        prepare=_pending_transfer,
+        refused=(("owner_a", 409, "NOT_TRANSFER_TARGET"),),
+    ),
+    "ownership.transfer.decline": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/ownership-transfer/decline",
+        None,
+        True,
+        prepare=_pending_transfer,
+        refused=(("owner_a", 409, "NOT_TRANSFER_TARGET"),),
+    ),
 }
 
 # Written by hand from REQ-033 and the specification's authorization table; deliberately not derived
@@ -82,6 +120,12 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "staff.invitations.cancel": {Role.OWNER},
     "staff.update": {Role.OWNER},
     "staff.remove": {Role.OWNER},
+    "activity.list": {Role.OWNER},
+    "ownership.transfer.read": {Role.MANAGER, Role.OWNER},
+    "ownership.transfer.start": {Role.OWNER},
+    "ownership.transfer.cancel": {Role.OWNER},
+    "ownership.transfer.accept": {Role.MANAGER, Role.OWNER},
+    "ownership.transfer.decline": {Role.MANAGER, Role.OWNER},
 }
 
 SELF_CALLS: dict[str, PlainCall] = {
@@ -94,6 +138,11 @@ SELF_CALLS: dict[str, PlainCall] = {
     # An unknown token: for any signed-in user the invitation simply does not exist.
     "staff.invitations.accept": PlainCall(
         "POST", "/api/v1/staff-invitations/accept", {"token": "unknown-token-0123456789abcdef"}, 404
+    ),
+    "me.shops.list": PlainCall("GET", "/api/v1/me/shops", returns_own_id=False),
+    # A shop nobody is a member of: for any signed-in user it does not exist.
+    "me.active_shop.set": PlainCall(
+        "PUT", "/api/v1/me/active-shop", {"shop_id": "00000000-0000-4000-8000-000000000000"}, 404
     ),
 }
 
@@ -116,10 +165,22 @@ def _key() -> dict[str, str]:
     return {"Idempotency-Key": f"suite-{uuid.uuid4().hex}"}
 
 
+def _body(world: World, op_name: str, call: Call) -> dict[str, Any] | None:
+    if op_name == "ownership.transfer.start":
+        return {"membership_id": str(world.manager_a_membership)}
+    return call.json
+
+
 def _invoke(client: TestClient, world: World, call: Call, shop: uuid.UUID, headers: dict[str, str]) -> Any:
     if call.changes_data:
         headers = {**headers, **_key()}
-    return client.request(call.method, call.path(world, shop), json=call.json, headers=headers)
+    op_name = next(name for name, candidate in CALLS.items() if candidate is call)
+    return client.request(call.method, call.path(world, shop), json=_body(world, op_name, call), headers=headers)
+
+
+def _prepare(owner: psycopg.Connection, world: World, call: Call) -> None:
+    if call.prepare is not None:
+        call.prepare(owner, world)
 
 
 def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
@@ -134,6 +195,10 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
         ).fetchall(),
         owner.execute("SELECT count(*) FROM activity WHERE shop_id = %s", (shop,)).fetchone(),
         owner.execute("SELECT count(*) FROM request_key WHERE shop_id = %s", (shop,)).fetchone(),
+        owner.execute(
+            "SELECT id, status, from_membership, to_membership FROM ownership_transfer WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
     )
 
 
@@ -182,10 +247,15 @@ def test_staff_are_allowed_or_refused_by_role(
     client: TestClient, world: World, owner: psycopg.Connection, op_name: str, caller: str, role: Role
 ) -> None:
     call = CALLS[op_name]
+    _prepare(owner, world, call)
     before = _snapshot(owner, world.shop_a)
     response = _invoke(client, world, call, world.shop_a, as_user(getattr(world, caller)))
 
-    if role in ALLOWED_ROLES[op_name]:
+    stated = {who: (status, code) for who, status, code in call.refused}
+    if caller in stated:
+        assert (response.status_code, response.json()["error"]["code"]) == stated[caller], response.text
+        assert _snapshot(owner, world.shop_a) == before, "a refused call must change nothing"
+    elif role in ALLOWED_ROLES[op_name]:
         assert response.status_code == call.ok_status, response.text
     else:
         assert response.status_code == 403, response.text
@@ -204,6 +274,7 @@ def test_outsiders_get_not_found_and_change_nothing(
     client: TestClient, world: World, owner: psycopg.Connection, op_name: str, caller: str
 ) -> None:
     call = CALLS[op_name]
+    _prepare(owner, world, call)
     before = _snapshot(owner, world.shop_a)
     response = _invoke(client, world, call, world.shop_a, as_user(getattr(world, caller)))
     assert response.status_code == 404, response.text
@@ -218,6 +289,7 @@ def test_a_member_of_one_shop_cannot_reach_another(
 ) -> None:
     """owner_b, the most privileged caller in shop B, addresses shop A; then shop B using A's resources."""
     call = CALLS[op_name]
+    _prepare(owner, world, call)
     before_a, before_b = _snapshot(owner, world.shop_a), _snapshot(owner, world.shop_b)
 
     into_a = _invoke(client, world, call, world.shop_a, as_user(world.owner_b))
@@ -257,6 +329,7 @@ def test_unauthenticated_shop_calls_are_refused(
     client: TestClient, world: World, owner: psycopg.Connection, op_name: str, headers: dict[str, str]
 ) -> None:
     call = CALLS[op_name]
+    _prepare(owner, world, call)
     before = _snapshot(owner, world.shop_a)
     response = _invoke(client, world, call, world.shop_a, headers)
     assert response.status_code == 401, response.text
@@ -269,12 +342,14 @@ def test_writes_need_an_idempotency_key_but_outsiders_still_see_not_found(
     client: TestClient, world: World, owner: psycopg.Connection, op_name: str
 ) -> None:
     call = CALLS[op_name]
+    _prepare(owner, world, call)
     before = _snapshot(owner, world.shop_a)
     path = call.path(world, world.shop_a)
-    member = client.request(call.method, path, json=call.json, headers=as_user(world.owner_a))
+    body = _body(world, op_name, call)
+    member = client.request(call.method, path, json=body, headers=as_user(world.owner_a))
     assert member.status_code == 422, member.text
     assert "Idempotency-Key" in member.json()["error"]["fields"]
-    outsider = client.request(call.method, path, json=call.json, headers=as_user(world.owner_b))
+    outsider = client.request(call.method, path, json=body, headers=as_user(world.owner_b))
     assert outsider.status_code == 404
     assert _snapshot(owner, world.shop_a) == before
 

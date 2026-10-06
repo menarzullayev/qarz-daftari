@@ -138,7 +138,7 @@ TENANT_TABLES = [
     "membership", "invitation", "catalog_item", "customer", "import_batch", "ledger_entry", "goods_line",
     "promise", "customer_link", "dispute", "payment_notice", "date_change_request", "reminder",
     "removal_request", "stored_file", "subscription", "subscription_receipt", "support_access", "activity",
-    "request_key",
+    "request_key", "ownership_transfer",
 ]  # fmt: skip
 
 

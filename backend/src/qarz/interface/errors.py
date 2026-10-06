@@ -13,6 +13,9 @@ _STATUS = {
     "IDEMPOTENCY_KEY_REUSED": 409,
     "ALREADY_MEMBER": 409,
     "OWNER_MEMBERSHIP_FIXED": 409,
+    "TRANSFER_PENDING": 409,
+    "TRANSFER_TARGET_INVALID": 409,
+    "NOT_TRANSFER_TARGET": 409,
 }
 
 _MESSAGES = {
@@ -24,6 +27,9 @@ _MESSAGES = {
         "IDEMPOTENCY_KEY_REUSED": "Bu so'rov kaliti boshqa amal uchun ishlatilgan.",
         "ALREADY_MEMBER": "Siz allaqachon shu do'kon xodimisiz.",
         "OWNER_MEMBERSHIP_FIXED": "Do'kon egasining a'zoligi faqat egalikni o'tkazish orqali o'zgaradi.",
+        "TRANSFER_PENDING": "Egalikni o'tkazish taklifi allaqachon javob kutmoqda.",
+        "TRANSFER_TARGET_INVALID": "Egalikni faqat shu do'konning faol menejeriga o'tkazish mumkin.",
+        "NOT_TRANSFER_TARGET": "Bu taklifga faqat taklif qilingan menejer javob bera oladi.",
         "ERROR": "Xatolik yuz berdi.",
     },
     "ru": {
@@ -34,6 +40,9 @@ _MESSAGES = {
         "IDEMPOTENCY_KEY_REUSED": "Этот ключ запроса уже использован для другого действия.",
         "ALREADY_MEMBER": "Вы уже сотрудник этого магазина.",
         "OWNER_MEMBERSHIP_FIXED": "Участие владельца меняется только через передачу магазина.",
+        "TRANSFER_PENDING": "Предложение о передаче магазина уже ожидает ответа.",
+        "TRANSFER_TARGET_INVALID": "Магазин можно передать только активному менеджеру этого магазина.",
+        "NOT_TRANSFER_TARGET": "Ответить на предложение может только менеджер, которому оно адресовано.",
         "ERROR": "Произошла ошибка.",
     },
 }
