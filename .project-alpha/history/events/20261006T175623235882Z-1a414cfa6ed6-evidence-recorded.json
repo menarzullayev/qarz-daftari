@@ -1,0 +1,15 @@
+{
+  "event_id": "1a414cfa6ed6",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T17:56:23+00:00",
+  "path": "docs\\evidence\\EVID-041.md",
+  "stage": "09-development-plan",
+  "title": "Stories S3.1 and S3.2 verified in CI",
+  "claim": "Stories S3.1 and S3.2 are implemented and verified in CI on main: creating a shop with a trial subscription, shop settings, staff invitations, joining, role change, suspension and removal. Every operation is covered by the blocking authorization suite, and writes are idempotent",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/9 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37502586959",
+  "date": "2026-10-06",
+  "confidence": "high",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-041"
+}
