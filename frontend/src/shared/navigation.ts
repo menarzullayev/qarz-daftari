@@ -17,6 +17,14 @@ export function isRole(value: unknown): value is Role {
 
 const RANK: Readonly<Record<Role, number>> = { seller: 0, manager: 1, owner: 2 };
 
+/**
+ * Whether the role may correct the book: reverse an entry, rename or archive a customer. The interface
+ * uses it to decide what to offer; the server refuses the call from a seller whatever the interface shows.
+ */
+export function canManage(role: Role): boolean {
+  return RANK[role] >= RANK.manager;
+}
+
 type StaffSection = NavItem & { minRole: Role };
 
 /**

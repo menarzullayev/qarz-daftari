@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCustomerCount, formatDayMonth, formatDueStatus, formatFullDate, formatMoney, tashkentDay } from "./format";
+import {
+  formatCalendarDay,
+  formatCustomerCount,
+  formatDateTime,
+  formatDayMonth,
+  formatDueStatus,
+  formatFullDate,
+  formatMoney,
+  tashkentDay,
+} from "./format";
 
 describe("formatDayMonth", () => {
   const noon = new Date("2026-10-06T07:00:00Z");
@@ -106,5 +115,33 @@ describe("formatCustomerCount", () => {
   it("uses the plural form of the language", () => {
     expect(formatCustomerCount(22, "uz")).toBe("22 ta mijoz");
     expect(formatCustomerCount(22, "ru")).toBe("22 клиента");
+  });
+});
+
+describe("formatCalendarDay", () => {
+  it("formats a calendar date, such as a promised date, without shifting it", () => {
+    expect(formatCalendarDay({ year: 2026, month: 11, day: 5 }, "uz")).toBe("2026-yil 5-noyabr");
+    expect(formatCalendarDay({ year: 2027, month: 1, day: 1 }, "ru")).toBe("1 января 2027 г.");
+  });
+});
+
+describe("formatDateTime", () => {
+  it("shows the Tashkent date and time of an instant", () => {
+    expect(formatDateTime(new Date("2026-10-06T06:05:00Z"), "uz")).toBe("2026-yil 6-oktabr, 11:05");
+    expect(formatDateTime(new Date("2026-10-06T06:05:00Z"), "ru")).toBe("6 октября 2026 г., 11:05");
+  });
+
+  it("moves to the next day at Tashkent midnight, not at UTC midnight", () => {
+    expect(formatDateTime(new Date("2026-10-05T18:59:00Z"), "uz")).toBe("2026-yil 5-oktabr, 23:59");
+    expect(formatDateTime(new Date("2026-10-05T19:00:00Z"), "uz")).toBe("2026-yil 6-oktabr, 00:00");
+  });
+
+  it("gives the same answer whatever offset the timestamp was written with", () => {
+    expect(formatDateTime(new Date("2026-10-06T11:05:00+05:00"), "uz")).toBe("2026-yil 6-oktabr, 11:05");
+    expect(formatDateTime(new Date("2026-10-05T22:05:00-08:00"), "uz")).toBe("2026-yil 6-oktabr, 11:05");
+  });
+
+  it("rejects an invalid date", () => {
+    expect(() => formatDateTime(new Date("nonsense"), "uz")).toThrow(RangeError);
   });
 });
