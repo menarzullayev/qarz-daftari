@@ -66,6 +66,10 @@ class World:
     owner_a_membership: uuid.UUID
     invitation_a: str  # identifier (hex of the token hash) of an issued staff invitation in shop A
     invitation_a_token: str
+    customer_a: uuid.UUID  # owes 50 000 UZS through entry_a; linked to the user customer_of_a
+    settled_customer_a: uuid.UUID  # owes nothing
+    archived_customer_a: uuid.UUID
+    entry_a: uuid.UUID  # a credit sale of 50 000 UZS to customer_a, promised a week from today
 
 
 def _user(conn: psycopg.Connection, lang: str = "uz") -> uuid.UUID:
@@ -108,6 +112,27 @@ def world(owner: psycopg.Connection) -> World:
         "VALUES (%s, %s, %s, %s, 'active', 2, now())",
         (uuid.uuid4(), shop_a, customer_id, users["customer_of_a"]),
     )
+    settled_customer, archived_customer, entry_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    owner.execute(
+        "INSERT INTO customer (id, shop_id, display_name, name_norm, status) VALUES "
+        "(%s, %s, 'Vali', 'vali', 'active'), (%s, %s, 'Sobir', 'sobir', 'archived')",
+        (settled_customer, shop_a, archived_customer, shop_a),
+    )
+    owner.execute(
+        "INSERT INTO ledger_entry (id, shop_id, customer_id, seq, kind, amount, author_id) "
+        "VALUES (%s, %s, %s, 1, 'credit', 50000, %s)",
+        (entry_id, shop_a, customer_id, seller_membership),
+    )
+    owner.execute(
+        "INSERT INTO promise (id, shop_id, entry_id, promised_date, actor) "
+        "VALUES (%s, %s, %s, current_date + 7, 'staff')",
+        (uuid.uuid4(), shop_a, entry_id),
+    )
+    owner.execute(
+        "INSERT INTO subscription (shop_id, state, trial_ends) VALUES "
+        "(%s, 'trial', current_date + 30), (%s, 'trial', current_date + 30)",
+        (shop_a, shop_b),
+    )
     # A platform administrator with no support access to any shop.
     owner.execute("INSERT INTO admin_account (user_id, totp_secret) VALUES (%s, %s)", (users["admin"], b"test-only"))
     token = f"world-invitation-{uuid.uuid4().hex}"
@@ -125,6 +150,10 @@ def world(owner: psycopg.Connection) -> World:
         owner_a_membership=owner_membership,
         invitation_a=digest.hex(),
         invitation_a_token=token,
+        customer_a=customer_id,
+        settled_customer_a=settled_customer,
+        archived_customer_a=archived_customer,
+        entry_a=entry_id,
         **users,
     )
 

@@ -1,6 +1,7 @@
 """HTTP application factory (technical specification, API contract)."""
 
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -11,7 +12,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from qarz.application.account import AccountService, ActivityService
 from qarz.application.auth import AuthService
+from qarz.application.customers import CustomerService
 from qarz.application.errors import AppError, Unauthenticated
+from qarz.application.ledger_service import LedgerService
 from qarz.application.ownership import OwnershipService
 from qarz.application.ports import Storage
 from qarz.application.shops import ShopService
@@ -19,6 +22,7 @@ from qarz.application.staff import StaffService
 from qarz.application.telegram_updates import UpdateProcessor
 from qarz.interface.account_api import add_account_routes
 from qarz.interface.auth_api import SessionAuthenticator, add_auth_routes
+from qarz.interface.customers_api import add_customer_routes
 from qarz.interface.errors import app_error_handler, error_response
 from qarz.interface.shops_api import add_shop_routes
 from qarz.interface.staff_api import add_staff_routes
@@ -40,11 +44,13 @@ def create_app(
     auth: AuthService | None = None,
     authenticator: Authenticator | None = None,
     webhook_secret: str | None = None,
+    now: Callable[[], datetime] | None = None,
 ) -> FastAPI:
     """Build the application.
 
     With only a health check it serves `/healthz`. With storage and an auth service it serves the API,
-    authenticating through Telegram-backed sessions; `authenticator` replaces that only in tests.
+    authenticating through Telegram-backed sessions; `authenticator` replaces that only in tests, and `now`
+    replaces the clock of the ledger only in tests.
     """
     app = FastAPI(title="Qarz Daftari", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -90,6 +96,7 @@ def create_app(
         add_auth_routes(app, auth, current_user)
         add_shop_routes(app, ShopService(storage), current_user)
         add_staff_routes(app, StaffService(storage), current_user)
+        add_customer_routes(app, CustomerService(storage, now), LedgerService(storage, now), current_user)
         add_account_routes(
             app, AccountService(storage), ActivityService(storage), OwnershipService(storage), current_user
         )
