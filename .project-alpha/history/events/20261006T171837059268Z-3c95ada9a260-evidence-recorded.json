@@ -1,0 +1,14 @@
+{
+  "event_id": "3c95ada9a260",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T17:18:37+00:00",
+  "path": "docs\\evidence\\EVID-038.md",
+  "stage": "09-development-plan",
+  "claim": "Story S1.4 is implemented and verified in CI: Telegram webhook with constant-time secret check and at-most-once processing, idempotent API writes, transactional outbox, and a dispatcher with lease-based claiming, retry-after handling, backoff and rate limits. 178 tests passed. Five mutation checks each made tests fail. A test caught a real defect: the webhook accepted a boolean as an update identifier.",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/6 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37500207188",
+  "date": "2026-10-06",
+  "confidence": "high",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-038"
+}

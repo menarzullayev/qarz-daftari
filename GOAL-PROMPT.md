@@ -4,6 +4,8 @@ Version 2 (2026-10-06). Replaces the first prompt after DEC-020: the build no lo
 
 Paste the block below after `/goal` in a session opened in this repository (`D:\Linux\qarz-daftari`).
 
+Note: `/goal` accepts at most 4,000 characters and this block is longer (about 4,300), so it was refused when tried on 2026-10-06. The build was started with the short goal "implement all" in a session that already held this brief. To reuse the brief as a goal, give it as an ordinary message and set a short goal such as "implement all".
+
 ```text
 Build release 1 of Qarz Daftari through milestone M8 without waiting for a human, exactly as specified by the approved documents in this repository, and stop at the launch gate.
 

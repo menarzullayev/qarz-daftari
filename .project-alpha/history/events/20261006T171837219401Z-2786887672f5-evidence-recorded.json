@@ -1,0 +1,14 @@
+{
+  "event_id": "2786887672f5",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T17:18:37+00:00",
+  "path": "docs\\evidence\\EVID-039.md",
+  "stage": "09-development-plan",
+  "claim": "Story S2.1 is implemented and verified in CI: verification of Telegram Mini App and Login Widget signatures, server-side sessions stored as hashes, bearer sessions for the Mini App and cookie sessions with CSRF for the web, and one user identity across chat, Mini App and web. 257 tests passed. Seven mutation checks each made tests fail.",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/7 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37501209127",
+  "date": "2026-10-06",
+  "confidence": "high",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-039"
+}
