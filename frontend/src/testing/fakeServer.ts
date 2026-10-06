@@ -80,6 +80,9 @@ export const NO_OVERDUE = { amount: 0, since: null, days: 0, due_today: 0 };
 
 export const CUSTOMER_ID = "11111111-1111-4111-8111-111111111111";
 
+/** The membership that recorded `entryBody()`. */
+export const MEMBERSHIP_ID = "33333333-3333-4333-8333-333333333333";
+
 export function entryBody(overrides: Record<string, unknown> = {}) {
   return {
     id: "22222222-2222-4222-8222-222222222222",
@@ -92,7 +95,7 @@ export function entryBody(overrides: Record<string, unknown> = {}) {
     reverses_id: null,
     reversed: false,
     disputed: false,
-    author_id: "33333333-3333-4333-8333-333333333333",
+    author_id: MEMBERSHIP_ID,
     lines: [],
     ...overrides,
   };
@@ -152,4 +155,67 @@ export function lineBody(overrides: Record<string, unknown> = {}) {
 /** GET /shops/{id}: the shop's own settings. */
 export function settingsBody(overrides: Record<string, unknown> = {}) {
   return { id: SHOP_ID, name: "Baraka savdo", lang: "uz", default_promise_days: 30, ...overrides };
+}
+
+/** GET /customers/{id}/link for a customer nobody has connected yet. */
+export function linkBody(overrides: Record<string, unknown> = {}) {
+  return { linked: false, status: null, since: null, ...overrides };
+}
+
+/** A start code as the server issues one: a prefix and 43 URL-safe characters. Not a real credential. */
+export const START = "c_Zm9yLXRlc3RzLW9ubHktbm90LWEtcmVhbC10b2tlbi0wMDAw";
+export const COUNTER_START = "k_Zm9yLXRlc3RzLW9ubHktbm90LWEtcmVhbC10b2tlbi0xMTEx";
+
+export const LINK_ID = "77777777-7777-4777-8777-777777777777";
+export const ME_BASE = `/api/v1/me/accounts/${LINK_ID}`;
+export const DISPUTE_ID = "88888888-8888-4888-8888-888888888888";
+
+/** A dispute as it appears on the customer's own entry. */
+export function disputeBody(overrides: Record<string, unknown> = {}) {
+  return { id: DISPUTE_ID, status: "open", reason: "Men bu tovarni olmaganman", decline_reason: null, ...overrides };
+}
+
+/** An entry of the customer's own account: no note, no author and no sequence number. */
+export function accountEntryBody(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "22222222-2222-4222-8222-222222222222",
+    kind: "credit",
+    amount: 45000,
+    created_at: "2026-10-05T19:30:00+00:00",
+    promised_date: "2026-11-05",
+    reverses_id: null,
+    reversed: false,
+    disputed: false,
+    dispute: null,
+    lines: [],
+    ...overrides,
+  };
+}
+
+/** GET /me/accounts/{link_id}. */
+export function accountBody(overrides: Record<string, unknown> = {}) {
+  return {
+    link_id: LINK_ID,
+    shop_name: "Baraka savdo",
+    display_name: "Ali Valiyev",
+    balance: 120000,
+    overdue: { amount: 0, due_today: 0 },
+    removal_requested: false,
+    entries: [accountEntryBody()],
+    entries_total: 1,
+    ...overrides,
+  };
+}
+
+/** One row of GET /shops/{id}/disputes. */
+export function openDisputeBody(overrides: Record<string, unknown> = {}) {
+  return {
+    ...disputeBody(),
+    entry_id: "22222222-2222-4222-8222-222222222222",
+    created_at: "2026-10-06T05:10:00+00:00",
+    customer_id: CUSTOMER_ID,
+    customer_name: "Ali Valiyev",
+    amount: 45000,
+    ...overrides,
+  };
 }

@@ -8,6 +8,8 @@ export type StaffSession = {
   /** Name of the active shop; every screen shows it (REQ-064). */
   shopName: string;
   role: Role;
+  /** The person's membership in the active shop, when the server says which it is. */
+  membershipId?: string | null;
 };
 
 /**

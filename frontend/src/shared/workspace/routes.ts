@@ -9,6 +9,9 @@ export type WorkspaceRoute =
   | { screen: "customer"; customerId: string }
   | { screen: "entry"; customerId: string; kind: EntryKind }
   | { screen: "addGoods"; customerId: string; entryId: string }
+  | { screen: "waiting" }
+  | { screen: "counterCode" }
+  | { screen: "disputes" }
   | { screen: "catalog" }
   | { screen: "shopSettings" };
 
@@ -34,6 +37,13 @@ export function matchWorkspaceRoute(path: string): WorkspaceMatch | null {
       return { route: { screen: "customers" }, sectionPath: "/customers", titleKey: "nav.customers" };
     case "/customers/new":
       return { route: { screen: "newCustomer" }, sectionPath: "/customers", titleKey: "customers.add" };
+    // Connecting customers is part of the customer book, so the phone's tab bar stays as it is.
+    case "/customers/waiting":
+      return { route: { screen: "waiting" }, sectionPath: "/customers", titleKey: "waiting.title" };
+    case "/customers/counter-code":
+      return { route: { screen: "counterCode" }, sectionPath: "/customers", titleKey: "counter.title" };
+    case "/disputes":
+      return { route: { screen: "disputes" }, sectionPath: "/disputes", titleKey: "disputes.title" };
     case "/new":
       return { route: { screen: "pickCustomer" }, sectionPath: "/new", titleKey: "nav.newEntry" };
     case "/catalog":

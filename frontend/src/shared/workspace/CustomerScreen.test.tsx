@@ -10,6 +10,7 @@ import {
   entryBody,
   fakeServer,
   lineBody,
+  linkBody,
   ok,
   refusal,
   type Reply,
@@ -40,7 +41,12 @@ const CREDIT = entryBody({ id: CREDIT_ID, seq: 1, amount: 140000, note: "un va y
 /** A customer who bought for 140 000 and paid 20 000; `onWrite` answers anything that is not a read. */
 function shop(onWrite: (sent: Sent, attempt: number) => Reply = () => ok({}), detail: () => Reply = () => ok(detailBody({ entries: [PAYMENT, CREDIT], entries_total: 2 }))) {
   let attempt = 0;
-  return fakeServer((sent) => (sent.method === "GET" ? detail() : onWrite(sent, attempt++)));
+  return fakeServer((sent) => {
+    if (sent.method !== "GET") {
+      return onWrite(sent, attempt++);
+    }
+    return sent.path.endsWith("/link") ? ok(linkBody()) : detail();
+  });
 }
 
 async function open(server: ReturnType<typeof fakeServer>, role: Role = "manager") {
@@ -410,5 +416,67 @@ describe("goods on the customer page (REQ-027, REQ-038)", () => {
     await open(withEntries(old));
     expect(screen.queryByRole("list", { name: "Tovarlar" })).toBeNull();
     expect(entryRows()).toHaveLength(1);
+  });
+});
+
+describe("who is offered goods on the customer page", () => {
+  const OTHER = "33333333-3333-4333-8333-333333333334";
+  const goodsLinks = () => screen.queryAllByRole("link", { name: "Tovarlarni qo'shish" });
+  const show = async (role: Role, membershipId: string | null) => {
+    const server = shop(undefined, () => ok(detailBody({ entries: [entryBody({ id: CREDIT_ID })], entries_total: 1 })));
+    renderScreen(<CustomerScreen customerId={CUSTOMER_ID} />, { fetch: server.fetch, role, membershipId });
+    await screen.findByRole("heading", { level: 2, name: "Ali Valiyev" });
+  };
+
+  it("not a seller who did not record the sale", async () => {
+    await show("seller", OTHER);
+    expect(goodsLinks()).toHaveLength(0);
+  });
+
+  it.each(["manager", "owner"] as const)("a %s who did not record the sale", async (role) => {
+    await show(role, OTHER);
+    expect(goodsLinks()).toHaveLength(1);
+  });
+
+  it("a seller when the server does not say which membership is theirs", async () => {
+    await show("seller", null);
+    expect(goodsLinks()).toHaveLength(1);
+  });
+});
+
+describe("disputes and the Telegram link on the customer page", () => {
+  const disputed = () => ok(detailBody({ entries: [PAYMENT, { ...CREDIT, disputed: true }], entries_total: 2 }));
+
+  it.each(["seller", "manager", "owner"] as const)("shows a %s the disputed mark on the entry", async (role) => {
+    await open(shop(undefined, disputed), role);
+    const [payment, credit] = entryRows();
+    expect(credit?.textContent).toContain("Mijoz e'tiroz bildirgan");
+    expect(payment?.textContent).not.toContain("e'tiroz");
+  });
+
+  it("leads a manager and an owner to the list of disputes, and a seller nowhere", async () => {
+    for (const role of ["manager", "owner"] as const) {
+      await open(shop(undefined, disputed), role);
+      expect(screen.getByRole("link", { name: "E'tirozlar ro'yxati" }).getAttribute("href")).toBe("#/disputes");
+      cleanup();
+    }
+    await open(shop(undefined, disputed), "seller");
+    expect(screen.queryByRole("link", { name: "E'tirozlar ro'yxati" })).toBeNull();
+  });
+
+  it.each(["seller", "manager", "owner"] as const)("shows a %s the link state and offers a personal link", async (role) => {
+    const server = shop();
+    await open(server, role);
+    const section = screen.getByRole("region", { name: "Telegramga ulash" });
+    expect(await within(section).findByText("Mijoz hali Telegramga ulanmagan.")).toBeTruthy();
+    expect(within(section).getByRole("button", { name: "Shaxsiy havola yaratish" })).toBeTruthy();
+    expect(server.sent.some((sent) => sent.path === `${SHOP_BASE}/customers/${CUSTOMER_ID}/link`)).toBe(true);
+  });
+
+  it("offers no personal link for an archived customer", async () => {
+    await open(shop(undefined, () => ok(detailBody({ status: "archived", balance: 0 }))));
+    const section = screen.getByRole("region", { name: "Telegramga ulash" });
+    await within(section).findByText("Mijoz hali Telegramga ulanmagan.");
+    expect(within(section).queryByRole("button")).toBeNull();
   });
 });

@@ -262,9 +262,13 @@ describe("responses", () => {
     const shops = fakeServer(() => ok({ items: [{ shop_id: SHOP_ID, name: "Baraka", role: "manager" }], active_shop: SHOP_ID }));
     const auth = { kind: "bearer", token: "t" } as const;
     expect(await createApi({ fetch: shops.fetch, auth }).myShops()).toEqual({
-      items: [{ shopId: SHOP_ID, name: "Baraka", role: "manager" }],
+      items: [{ shopId: SHOP_ID, name: "Baraka", role: "manager", membershipId: null }],
       activeShop: SHOP_ID,
     });
+    const named = fakeServer(() =>
+      ok({ items: [{ shop_id: SHOP_ID, name: "Baraka", role: "seller", membership_id: "m-1" }], active_shop: null }),
+    );
+    expect((await createApi({ fetch: named.fetch, auth }).myShops()).items[0]?.membershipId).toBe("m-1");
     const odd = fakeServer(() => ok({ items: [{ shop_id: SHOP_ID, name: "Baraka", role: "admin" }], active_shop: null }));
     expect((await failure(createApi({ fetch: odd.fetch, auth }).myShops())).code).toBe(BAD_RESPONSE);
   });

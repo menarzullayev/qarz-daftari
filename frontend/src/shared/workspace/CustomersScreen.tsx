@@ -149,6 +149,16 @@ export function CustomersScreen({ pick = false }: CustomersScreenProps) {
         </Link>
       </div>
       {body}
+      {pick ? null : (
+        <nav className="actions" aria-label={t("link.nav")}>
+          <Link to="/customers/waiting" className="button">
+            {t("waiting.title")}
+          </Link>
+          <Link to="/customers/counter-code" className="button">
+            {t("counter.title")}
+          </Link>
+        </nav>
+      )}
     </>
   );
 }
