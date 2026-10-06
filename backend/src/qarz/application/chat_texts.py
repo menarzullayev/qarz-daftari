@@ -170,6 +170,12 @@ UZ = {
         "«{shop}»: obuna muddati tugadi. Endi yangi nasiya yozilmaydi; to'lov qabul qilish, ko'rish va "
         "mijozlarga xabarlar ishlayveradi. To'lash: /obuna"
     ),
+    "shop_deletion_requested": (
+        "«{shop}» do'konini o'chirish so'raldi. Ma'lumotlar {date} kuni butunlay o'chiriladi. Shu kungacha "
+        "eksport qilishingiz yoki bekor qilishingiz mumkin."
+    ),
+    "shop_deletion_cancelled": "«{shop}» do'konini o'chirish bekor qilindi. Do'kon avvalgidek ishlaydi.",
+    "shop_erased": "«{shop}» do'koni va uning barcha ma'lumotlari o'chirildi.",
     "currency": "so'm",
 }
 
@@ -334,6 +340,12 @@ RU = {
         "«{shop}»: срок подписки истёк. Новые продажи в долг не записываются; приём оплат, просмотр и "
         "сообщения клиентам работают. Оплатить: /obuna"
     ),
+    "shop_deletion_requested": (
+        "Запрошено удаление магазина «{shop}». Данные будут полностью удалены {date}. До этого дня можно "
+        "выгрузить данные или отменить удаление."
+    ),
+    "shop_deletion_cancelled": "Удаление магазина «{shop}» отменено. Магазин работает как раньше.",
+    "shop_erased": "Магазин «{shop}» и все его данные удалены.",
     "currency": "сум",
 }
 
