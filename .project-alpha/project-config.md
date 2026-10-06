@@ -13,10 +13,10 @@
 - Product status: Idea selection, no product built
 
 ## Constraints
-- Budget:
-- Team: Solo founder with AI agents (agent assumption, unconfirmed)
+- Budget: No dedicated budget (confirmed by founder 2026-10-06)
+- Team: Solo founder with AI agents, Telegram bot experience (confirmed by founder 2026-10-06)
 - Timeline:
-- Technical constraints:
+- Technical constraints: Personal data hosted in Uzbekistan (EVID-027); Python with aiogram; Telegram-only client
 - Regulatory constraints: No lending license; lending is out of scope (EVID-009)
 
 ## Workflow
@@ -28,4 +28,4 @@
 - Key links: docs/idea-selection/OUTPUT.md
 - Known competitors: pDaftar, Nasiya (open source), QARZDAFTAR, Daftar Qarz, daftar.uz, qarz-app, REGOS (EVID-003, EVID-004, EVID-005)
 - Existing assets:
-- Notes:
+- Notes: "Qarz Daftari" is a working title only (founder, 2026-10-06)

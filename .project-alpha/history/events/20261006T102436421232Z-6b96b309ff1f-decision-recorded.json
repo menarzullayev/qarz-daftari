@@ -1,0 +1,19 @@
+{
+  "event_id": "6b96b309ff1f",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T10:24:36+00:00",
+  "path": ".project-alpha\\decisions\\DEC-008.md",
+  "stage": "07-adr",
+  "title": "Accept architecture decision records",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-008",
+  "decision": "Accept ADR-001 to ADR-010 as written in docs/07-adr/OUTPUT.md, including the three the agent approved as routine (ADR-006 webhook with idempotent handling, ADR-007 transactional outbox, ADR-010 identity-free measurement data)",
+  "context": "The architecture approved in DEC-007 proposed ten decisions; this stage records each with options, rationale and consequences",
+  "chosen_option": "All ten records as written",
+  "rationale": "Seven records formalize choices the founder already approved; three are reversible engineering choices that protect notification delivery and data separation",
+  "impact": "Medium",
+  "reversibility": "High",
+  "evidence": "EVID-027, EVID-031, EVID-032, EVID-033",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

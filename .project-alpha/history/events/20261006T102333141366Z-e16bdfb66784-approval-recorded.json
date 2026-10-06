@@ -1,0 +1,12 @@
+{
+  "event_id": "e16bdfb66784",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T10:23:33+00:00",
+  "path": ".project-alpha\\approvals\\APR-007.md",
+  "stage": "06-architecture",
+  "decision_id": "DEC-007",
+  "decision": "Architecture direction as in docs/06-architecture/OUTPUT.md with daily backups and stated recovery targets; implementation stack Python with aiogram",
+  "approval_id": "APR-007",
+  "approver": "Saidakbar Narzullayev",
+  "status": "approved"
+}

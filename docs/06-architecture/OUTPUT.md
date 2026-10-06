@@ -1,6 +1,6 @@
 # System Architecture
 
-Status: draft for review; awaiting human approval of the architecture direction (DEC-007). Prepared 2026-10-06.
+Status: architecture direction approved by the founder on 2026-10-06 (DEC-007 / APR-007).
 Upstream: PRD (DEC-005), Domain Model (DEC-006).
 
 **Design stance.** This is a system for about ten pilot shops, built and run by one person. The architecture is deliberately the smallest thing that satisfies the PRD: one server in Uzbekistan, one application process, one database. Anything that would only pay off at a scale the product has not earned is left out and named under Key trade-offs.
@@ -168,7 +168,7 @@ Decisions this document proposes, to be written up as individual records in Stag
 9. Daily encrypted backups to a second location in Uzbekistan, with a stated recovery target.
 10. Identity-free measurement data kept apart from personal data.
 
-The implementation stack (item 3) is the least constrained by requirements. Python with aiogram is recommended because the Bot API support is mature and the founder's repositories already include Python bots; TypeScript with grammY would serve equally well. This is the founder's preference to state.
+The implementation stack (item 3) is the least constrained by requirements. Python with aiogram is recommended because the Bot API support is mature and the founder's repositories already include Python bots; TypeScript with grammY would serve equally well. The founder chose Python with aiogram on 2026-10-06.
 
 ## Traceability to requirements
 
@@ -213,13 +213,15 @@ Every functional requirement from REQ-001 to REQ-030 and every non-functional re
 
 1. **Does sending customer names and amounts through Telegram comply with the localization rule?** (EVID-027, EVID-033). For a lawyer, together with the two consent questions from the PRD and Domain Model. A mitigation, if needed, is to make notifications carry no name and let the customer open the detail inside the chat on request; the detail would still transit Telegram.
 2. Which hosting provider, and does it offer a second location for backups? Requires comparing providers directly; EVID-031 lists prices only.
-3. Python with aiogram or TypeScript with grammY? Founder's preference.
+3. Resolved on 2026-10-06: the founder chose Python with aiogram.
 4. Is a 24-hour data-loss window acceptable to pilot shops when told plainly?
 5. How does an owner recover a shop after losing their Telegram account? Carried from the Domain Model; needs an operator procedure.
 
 ## Approvals
 
+Also confirmed by the founder on 2026-10-06: the founder-context assumptions carried since Idea Selection are correct (solo founder working with AI agents, Telegram bot experience, no dedicated budget, no lending license), and "Qarz Daftari" is a working title only, not the final product name.
+
 | Record | Subject | Status |
 |---|---|---|
 | DEC-006 / APR-006 | Core business rules | Approved 2026-10-06 |
-| DEC-007 | Architecture direction: chat-only Telegram bot, modular monolith, PostgreSQL, single server hosted in Uzbekistan with daily backups and the stated recovery targets | Approval pending |
+| DEC-007 | Architecture direction: chat-only Telegram bot, modular monolith, PostgreSQL, single server hosted in Uzbekistan with daily backups and the stated recovery targets | Approved 2026-10-06 |

@@ -62,3 +62,9 @@
 - Approver: Saidakbar Narzullayev
 - Timestamp: 2026-10-06T09:14:25+00:00
 - Reason: Founder approved DEC-006 in chat on 2026-10-06
+
+## Approval — 06-architecture
+- Decision: PASS
+- Approver: Saidakbar Narzullayev
+- Timestamp: 2026-10-06T10:23:33+00:00
+- Reason: Founder approved DEC-007 and chose Python with aiogram through the question form on 2026-10-06

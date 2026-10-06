@@ -1,0 +1,9 @@
+{
+  "event_id": "0cb785955e5a",
+  "event_type": "handoff.recorded",
+  "timestamp": "2026-10-06T10:23:33+00:00",
+  "from_stage": "06-architecture",
+  "to_stage": "07-adr",
+  "path": ".project-alpha\\handoffs\\06-architecture__to__07-adr.md",
+  "status": "READY"
+}
