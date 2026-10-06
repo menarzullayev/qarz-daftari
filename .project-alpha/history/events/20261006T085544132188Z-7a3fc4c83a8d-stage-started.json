@@ -1,0 +1,9 @@
+{
+  "event_id": "7a3fc4c83a8d",
+  "event_type": "stage.started",
+  "timestamp": "2026-10-06T08:55:44+00:00",
+  "stage": "03-market-research",
+  "from_status": "NOT_STARTED",
+  "to_status": "IN_PROGRESS",
+  "reason": null
+}

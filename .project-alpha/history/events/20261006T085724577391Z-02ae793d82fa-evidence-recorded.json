@@ -1,0 +1,14 @@
+{
+  "event_id": "02ae793d82fa",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:57:24+00:00",
+  "path": "docs\\evidence\\EVID-020.md",
+  "stage": "03-market-research",
+  "claim": "pDaftar (PDAFTAR MCHJ, Termiz) is broader than recorded in EVID-003: it runs on iOS, Android, web and a Telegram bot, names corner shops as a target, and lists automatic SMS and Telegram reminders, customer debt visibility via link, a shop page with QR code, multi-seller access with action logging, cash book and installment sales. Its site claims 50,000+ Google Play downloads, 5,000+ businesses using it daily and a 4.8 rating. Figures are self-reported. Per-entry customer confirmation and any claim of improved repayment were not found on the page.",
+  "source": "https://pdaftar.uz/en",
+  "date": "2026-10-06",
+  "confidence": "medium",
+  "type": "FACT",
+  "risk": "MEDIUM",
+  "evidence_id": "EVID-020"
+}

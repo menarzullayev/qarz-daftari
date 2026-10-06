@@ -1,0 +1,14 @@
+{
+  "event_id": "50f84179c3ba",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:57:27+00:00",
+  "path": "docs\\evidence\\EVID-030.md",
+  "stage": "03-market-research",
+  "claim": "Indonesia's free ledger apps BukuWarung and BukuKas reached millions of merchants and turned to payments, credit and other financial services for revenue; trade press described this as a monetisation conundrum for digital bookkeepers.",
+  "source": "https://the-ken.com/sea/story/bukuwarung-bukukas-and-the-monetisation-conundrum-for-indonesias-digital-bookkeepers/ ; https://techcrunch.com/2020/07/02/meet-bukuwarung-the-bookkeeping-app-built-for-indonesias-60-million-micro-merchants",
+  "date": "2026-10-06",
+  "confidence": "low",
+  "type": "INFERENCE",
+  "risk": "LOW",
+  "evidence_id": "EVID-030"
+}

@@ -1,0 +1,14 @@
+{
+  "event_id": "9d105ecf3b03",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:57:26+00:00",
+  "path": "docs\\evidence\\EVID-025.md",
+  "stage": "03-market-research",
+  "claim": "Telegram is reported as the dominant messenger in Uzbekistan with about 25 million users, 76% of the internet audience (2025).",
+  "source": "https://www.uzdaily.uz/en/telegram-76-reach-youtube-no-1-e-commerce-on-the-rise-inside-uzbekistans-digital-landscape/",
+  "date": "2026-10-06",
+  "confidence": "medium",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-025"
+}

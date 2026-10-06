@@ -1,0 +1,9 @@
+{
+  "event_id": "5c45d934d024",
+  "event_type": "stage.passed",
+  "timestamp": "2026-10-06T08:55:43+00:00",
+  "stage": "02-problem-discovery",
+  "from_status": "REVIEW",
+  "to_status": "PASSED",
+  "reason": "Founder approved DEC-003 and chose Option 2 (provisional pass, interviews outstanding) in chat on 2026-10-06"
+}

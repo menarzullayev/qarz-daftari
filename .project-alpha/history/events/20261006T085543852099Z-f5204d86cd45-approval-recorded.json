@@ -1,0 +1,12 @@
+{
+  "event_id": "f5204d86cd45",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T08:55:43+00:00",
+  "path": ".project-alpha\\approvals\\APR-003.md",
+  "stage": "02-problem-discovery",
+  "decision_id": "DEC-003",
+  "decision": "Shop owner as primary user and PROB-001 as primary problem, provisional; pass on desk research and continue (Option 2)",
+  "approval_id": "APR-003",
+  "approver": "Saidakbar Narzullayev",
+  "status": "approved"
+}

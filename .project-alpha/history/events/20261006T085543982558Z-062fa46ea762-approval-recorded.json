@@ -1,0 +1,9 @@
+{
+  "event_id": "062fa46ea762",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T08:55:43+00:00",
+  "stage": "02-problem-discovery",
+  "decision": "PASS",
+  "approver": "Saidakbar Narzullayev",
+  "reason": "Founder approved DEC-003 and chose Option 2 (provisional pass, interviews outstanding) in chat on 2026-10-06"
+}

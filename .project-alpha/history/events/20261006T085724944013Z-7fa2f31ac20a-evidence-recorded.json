@@ -1,0 +1,14 @@
+{
+  "event_id": "7fa2f31ac20a",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:57:24+00:00",
+  "path": "docs\\evidence\\EVID-021.md",
+  "stage": "03-market-research",
+  "claim": "pDaftar pricing: a free tier with no time limit (1 business, Telegram messaging, SMS at 360 UZS each), then about 23,500 UZS (1.99 USD), 118,000 UZS (9.99 USD) and 590,000 UZS (49.99 USD) per month, with SMS falling to 270, 210 and 170 UZS.",
+  "source": "https://pdaftar.uz/en",
+  "date": "2026-10-06",
+  "confidence": "high",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-021"
+}

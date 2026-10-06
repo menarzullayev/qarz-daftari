@@ -1,0 +1,14 @@
+{
+  "event_id": "85bf108e8ec1",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:57:25+00:00",
+  "path": "docs\\evidence\\EVID-024.md",
+  "stage": "03-market-research",
+  "claim": "Uzbekistan had 281,861 registered individual entrepreneurs across all sectors on 1 October 2025; the share that are grocery shops is not stated (figure taken from a search-result summary of a stat.uz release).",
+  "source": "https://stat.uz/uz/matbuot-markazi/qo-mita-yangiliklar/64996-zbekistonda-281-mingdan-zijod-yattlar-faoliyat-yuritmo-da-2",
+  "date": "2025-10-01",
+  "confidence": "low",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-024"
+}

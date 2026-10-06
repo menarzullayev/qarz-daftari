@@ -1,6 +1,6 @@
 # Problem Discovery
 
-Status: desk research complete; field validation not yet done; awaiting human decision (DEC-003). Prepared 2026-10-06.
+Status: passed provisionally on desk research by founder decision on 2026-10-06 (DEC-003 / APR-003). Field validation is still outstanding.
 Upstream: `docs/01-vision/OUTPUT.md` (approved, DEC-002 / APR-002).
 
 **What this document is and is not.** Everything below comes from published sources and reasoning. Nobody has yet spoken to a shopkeeper for this project. The stage contract asks for validated problem statements; these are evidence-ranked hypotheses plus the plan to validate them (`interview-guide.md`).
@@ -129,9 +129,8 @@ Limits of this evidence:
 | Record | Subject | Status |
 |---|---|---|
 | DEC-002 / APR-002 | Strategic direction | Approved 2026-10-06 |
-| DEC-003 | Primary user is the shop owner; primary problem is PROB-001; both provisional until interviews are done | Approval pending |
+| DEC-003 / APR-003 | Primary user is the shop owner; primary problem is PROB-001; both provisional until interviews are done | Approved 2026-10-06 |
 
-The founder is asked to choose how this stage closes:
+The founder chose **Option 2** on 2026-10-06: pass this stage on desk research and continue to Market Research while interviews remain outstanding. Option 1 (hold the stage until interviews are done) was the agent's recommendation and was not taken.
 
-- **Option 1 (recommended): hold the stage until interviews are done.** Run the interviews in `interview-guide.md`, record the results as evidence, then pass the stage. This follows the product principle "evidence before build".
-- **Option 2: approve provisionally and continue.** Pass the stage now on desk research, start Market Research in parallel, and accept that later stages may need rework if interviews contradict the primary problem (PROB-001).
+Consequence accepted with this choice: the problem statements above are unvalidated hypotheses. If the interviews in `interview-guide.md` contradict the primary problem (PROB-001), this stage and every later stage that depends on it must be revisited.

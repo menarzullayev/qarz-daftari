@@ -1,0 +1,14 @@
+{
+  "event_id": "96b675551abd",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T08:57:26+00:00",
+  "path": "docs\\evidence\\EVID-026.md",
+  "stage": "03-market-research",
+  "claim": "At the start of 2025 Uzbekistan had 32.7 million internet users (89.0% penetration) and 33.9 million mobile connections, 94% of them broadband.",
+  "source": "https://datareportal.com/reports/digital-2025-uzbekistan",
+  "date": "2026-10-06",
+  "confidence": "high",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-026"
+}
