@@ -12,6 +12,7 @@ from uuid import UUID
 
 from qarz.application import removal
 from qarz.application.errors import NotFound
+from qarz.application.goods_lines import line_body
 from qarz.application.ledger_service import HISTORY_PAGE
 from qarz.application.operations import self_operation
 from qarz.application.ports import DisputeRecord, Storage
@@ -87,6 +88,8 @@ class CustomerAccountService:
             disputes = await session.disputes_of_customer(customer_id)
             reversed_ids = {row.entry.reverses_id for row in account if row.entry.reverses_id is not None}
             newest_first = sorted(account, key=lambda row: row.entry.seq, reverse=True)
+            shown = newest_first[:HISTORY_PAGE]
+            lines = await session.goods_lines_of([row.entry.id for row in shown])
             # No note, no author and no payment indicator: those are the shop's own (REQ-045).
             return {
                 "link_id": str(link_id),
@@ -108,8 +111,9 @@ class CustomerAccountService:
                         "reversed": row.entry.id in reversed_ids,
                         "disputed": row.entry.disputed,
                         "dispute": _dispute(disputes.get(row.entry.id)),
+                        "lines": [line_body(line) for line in lines.get(row.entry.id, [])],
                     }
-                    for row in newest_first[:HISTORY_PAGE]
+                    for row in shown
                 ],
                 "entries_total": len(account),
             }
