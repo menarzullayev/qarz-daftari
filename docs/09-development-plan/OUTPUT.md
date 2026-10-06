@@ -1,9 +1,9 @@
 # Development Plan
 
-Status: draft for review; awaiting human approval of scope sequencing, estimates and the pilot gate (DEC-010). Prepared 2026-10-06.
+Status: approved by the founder on 2026-10-06 (DEC-010 / APR-010), with both gates kept.
 Upstream: Technical Specification (DEC-009), decision records ADR-001 to ADR-010, PRD (DEC-005).
 
-**How to read the estimates.** They are in focused working days for one founder working with AI agents. They are agent estimates with no historical data behind them, so each is a range, and the plan commits to no calendar dates: the founder's weekly availability is unknown. Treat the totals as an order of magnitude.
+**How to read the estimates.** They are in focused working days for one founder working with AI agents. They are agent estimates with no historical data behind them, so each is a range. On 2026-10-06 the founder stated full-time availability (five or more days a week), which turns the build total of 18 to 31 days into roughly four to six weeks of elapsed time, followed by the eight-week pilot. These remain estimates, not commitments; the validation track competes for the same days.
 
 ## Milestones
 
@@ -212,7 +212,7 @@ Every requirement in the PRD is covered by at least one story.
 
 ## Assumptions
 
-- The founder builds with AI agents and can give the work focused days; how many per week is unknown.
+- The founder builds with AI agents, full time (stated by the founder on 2026-10-06).
 - Ten shops can be recruited through the founder's own contacts and the interviews.
 - A lawyer familiar with the personal data law can be consulted at a cost the founder accepts.
 - Pilot owners will keep their paper notebooks for the eight weeks.
@@ -220,7 +220,7 @@ Every requirement in the PRD is covered by at least one story.
 
 ## Open questions
 
-1. How many days a week can the founder give this? It converts the estimates into dates.
+1. Resolved on 2026-10-06: the founder is available full time.
 2. Will the validation track really run before M3, given that it was deferred at two earlier stages?
 3. Which city or district supplies the pilot shops?
 4. Who answers when a pilot shop has a problem and the founder is unavailable?
@@ -230,4 +230,4 @@ Every requirement in the PRD is covered by at least one story.
 | Record | Subject | Status |
 |---|---|---|
 | DEC-009 / APR-009 | Technical specification | Approved 2026-10-06 |
-| DEC-010 | Development plan: milestone order M1 to M6, build estimate of 18 to 31 focused days without calendar commitment, a hard gate before M3 (interviews and pDaftar test) and a hard gate before any real customer data (legal review) | Approval pending |
+| DEC-010 | Development plan: milestone order M1 to M6, build estimate of 18 to 31 focused days without calendar commitment, a hard gate before M3 (interviews and pDaftar test) and a hard gate before any real customer data (legal review) | Approved 2026-10-06 |

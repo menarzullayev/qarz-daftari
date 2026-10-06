@@ -1,7 +1,7 @@
 # Project State
 
 framework_version: 1.0.0
-current_stage: 09-development-plan
+current_stage: 10-operations
 lifecycle: REVIEW
 global_audit_status: BLOCKED
 blocked_stage:
@@ -17,8 +17,8 @@ blocked_reason:
 - 06-architecture: PASSED
 - 07-adr: PASSED
 - 08-technical-spec: PASSED
-- 09-development-plan: REVIEW
-- 10-operations: NOT_STARTED
+- 09-development-plan: PASSED
+- 10-operations: REVIEW
 
 ## Workflow invariants
 - Stages execute sequentially.

@@ -1,0 +1,9 @@
+{
+  "event_id": "1df07a9bc613",
+  "event_type": "stage.reviewed",
+  "timestamp": "2026-10-06T10:40:28+00:00",
+  "stage": "10-operations",
+  "from_status": "IN_PROGRESS",
+  "to_status": "REVIEW",
+  "reason": null
+}

@@ -1,0 +1,9 @@
+{
+  "event_id": "66dc9703eef2",
+  "event_type": "stage.passed",
+  "timestamp": "2026-10-06T10:39:21+00:00",
+  "stage": "09-development-plan",
+  "from_status": "REVIEW",
+  "to_status": "PASSED",
+  "reason": "Founder approved DEC-010 with both gates through the question form on 2026-10-06"
+}

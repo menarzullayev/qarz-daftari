@@ -1,0 +1,19 @@
+{
+  "event_id": "d7d37ed2dc09",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T10:40:28+00:00",
+  "path": ".project-alpha\\decisions\\DEC-011.md",
+  "stage": "10-operations",
+  "title": "Approve operations definition",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-011",
+  "decision": "Adopt the operations definition in docs/10-operations/OUTPUT.md: test strategy, manual gated releases, monitoring and alerting, daily encrypted backups with recovery targets of 4 hours and 24 hours, single-operator incident handling, and eleven production launch criteria. This is not a production launch approval.",
+  "context": "The pipeline ends before the build begins; none of the launch criteria is met and compliance readiness depends on a legal review that has not happened",
+  "chosen_option": "Operations definition as written; launch approval withheld until criteria are met",
+  "rationale": "Defines every operational area the stage contract lists at a scale one operator can run, and makes the unmet launch criteria explicit instead of implying readiness",
+  "impact": "High",
+  "reversibility": "High",
+  "evidence": "EVID-027, EVID-031, EVID-032, EVID-033",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

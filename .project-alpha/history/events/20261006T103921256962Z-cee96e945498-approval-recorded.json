@@ -1,0 +1,12 @@
+{
+  "event_id": "cee96e945498",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T10:39:21+00:00",
+  "path": ".project-alpha\\approvals\\APR-010.md",
+  "stage": "09-development-plan",
+  "decision_id": "DEC-010",
+  "decision": "Development plan M1 to M6 with both hard gates kept; founder available full time",
+  "approval_id": "APR-010",
+  "approver": "Saidakbar Narzullayev",
+  "status": "approved"
+}
