@@ -13,6 +13,7 @@ from qarz.application.operations import operation
 from qarz.application.ports import CustomerRecord, Membership, Storage, TenantSession
 from qarz.application.shops import require_member
 from qarz.domain.access import Capability, Role
+from qarz.domain.credit import MAX_LIMIT, MIN_LIMIT, valid_limit
 from qarz.domain.names import normalize_name
 from qarz.domain.phones import normalize_phone
 from qarz.domain.promise import tashkent_date
@@ -99,6 +100,7 @@ def customer_body(customer: CustomerRecord, balance: int) -> dict[str, Any]:
         "phone": customer.phone,
         "status": customer.status,
         "reminders_off": customer.reminders_off,
+        "credit_limit": customer.credit_limit,
         "balance": balance,
     }
 
@@ -209,12 +211,17 @@ class CustomerService:
         phone: Any,
         reminders_off: bool | None,
         request_key: str | None,
+        credit_limit: Any = _UNSET,
     ) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, UPDATE_CUSTOMER)
             key = idempotency.validate_key(request_key)
-            if display_name is None and phone is _UNSET and reminders_off is None:
+            if display_name is None and phone is _UNSET and reminders_off is None and credit_limit is _UNSET:
                 raise ValidationFailed({"_": "nothing to change"})
+            if credit_limit is not _UNSET and credit_limit is not None and not valid_limit(credit_limit):
+                raise ValidationFailed(
+                    {"credit_limit": f"a whole amount between {MIN_LIMIT} and {MAX_LIMIT} UZS, or null"}
+                )
             name = clean_name(display_name) if display_name is not None else None
             number = _UNSET if phone is _UNSET else clean_phone(phone)
             await require_writable(session, self._today(), new_credit=False)
@@ -230,6 +237,8 @@ class CustomerService:
                     set_phone=number is not _UNSET,
                     phone=None if number is _UNSET else number,
                     reminders_off=reminders_off,
+                    set_limit=credit_limit is not _UNSET,
+                    credit_limit=None if credit_limit is _UNSET else credit_limit,
                 )
                 await session.record_activity(
                     membership_id=actor.membership_id,
@@ -251,6 +260,8 @@ class CustomerService:
                     "phone": None if number is _UNSET else number,
                     "phone_set": number is not _UNSET,
                     "reminders_off": reminders_off,
+                    "limit_set": credit_limit is not _UNSET,
+                    "credit_limit": None if credit_limit is _UNSET else credit_limit,
                 },
                 action=apply,
             )

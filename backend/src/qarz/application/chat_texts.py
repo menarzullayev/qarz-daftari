@@ -152,6 +152,8 @@ UZ = {
     ),
     "sms_due_today": "{shop}: {name}, bugun {amount} to'lash kuni. Rahmat.",
     "sms_overdue": "{shop}: {name}, {amount} qarz muddati o'tgan. Iltimos, to'lab qo'ying.",
+    "LIMIT_REACHED": "Bu savdo mijozning nasiya limitidan oshadi. Uni menejer yoki do'kon egasi yoza oladi.",
+    "limit_warning": "⚠️ Qarz limitdan oshdi: limit {limit}, qarz {balance}.",
     "currency": "so'm",
 }
 
@@ -298,6 +300,8 @@ RU = {
     ),
     "sms_due_today": "{shop}: {name}, сегодня срок оплаты {amount}. Спасибо.",
     "sms_overdue": "{shop}: {name}, срок оплаты долга {amount} прошёл. Пожалуйста, оплатите.",
+    "LIMIT_REACHED": "Эта продажа превысит лимит клиента. Записать её может менеджер или владелец.",
+    "limit_warning": "⚠️ Долг превысил лимит: лимит {limit}, долг {balance}.",
     "currency": "сум",
 }
 
