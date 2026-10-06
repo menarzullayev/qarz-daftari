@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 
 from qarz.application.operations import all_operations
 from qarz.domain.access import Role, lowest_role_with
+from qarz.domain.promise import tashkent_date
 
 from .conftest import World, as_user
 
@@ -104,6 +105,12 @@ def _deletion_pending(owner: psycopg.Connection, world: World) -> None:
         "UPDATE shop SET status = 'deletion_pending', deletion_due = now() + interval '30 days' WHERE id = %s",
         (world.shop_a,),
     )
+
+
+def _last_week(shop: uuid.UUID) -> str:
+    """A valid period for the report: the seven Tashkent days that end today."""
+    last = tashkent_date(datetime.now(UTC))
+    return f"/api/v1/shops/{shop}/reports/period?from={last - timedelta(days=6)}&to={last}"
 
 
 CALLS: dict[str, Call] = {
@@ -254,6 +261,8 @@ CALLS: dict[str, Call] = {
     ),
     "overview.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview"),
     "overview.debtors": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview/debtors"),
+    "reports.period": Call("GET", lambda w, shop: _last_week(shop)),
+    "reports.overdue": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/reports/overdue"),
     "catalog.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/catalog"),
     "catalog.create": Call(
         "POST",
@@ -346,6 +355,9 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "shop.deletion.cancel": {Role.OWNER},
     "overview.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "overview.debtors": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    # Specification, resources table: "reports and exports: manager, owner" (REQ-046).
+    "reports.period": {Role.MANAGER, Role.OWNER},
+    "reports.overdue": {Role.MANAGER, Role.OWNER},
     # Specification, resources table: "Manager, owner; sellers read".
     "catalog.list": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "catalog.create": {Role.MANAGER, Role.OWNER},

@@ -23,6 +23,7 @@ from qarz.application.ports import (
     CustomerAccount,
     CustomerRecord,
     DateRequestRecord,
+    DayFigures,
     DebtFigures,
     DisputeRecord,
     EntryRow,
@@ -31,6 +32,7 @@ from qarz.application.ports import (
     Membership,
     MyShop,
     OutboxMessage,
+    PeriodTotals,
     PromiseRecord,
     ReminderCandidate,
     ReminderSettings,
@@ -38,9 +40,11 @@ from qarz.application.ports import (
     ShopSettings,
     ShopToErase,
     ShopTotals,
+    StaffFigures,
     StaffInvitation,
     SubscriptionToReview,
     TransferRecord,
+    UncoveredDebt,
     WaitingLink,
 )
 from qarz.domain.access import Role
@@ -79,7 +83,7 @@ _BALANCES = (
 # Oldest-first allocation (BR-3) in one pass: the uncovered part of a debt is what its running total
 # exceeds the customer's total payments by, capped at its own amount. This must agree with
 # `qarz.domain.ledger`; tests/api/test_ledger_api.py compares the two on generated accounts.
-_FIGURES = (
+_OWED = (
     f"WITH live AS ({_LIVE}), "
     "paid AS (SELECT customer_id, sum(amount) AS paid FROM live WHERE kind = 'payment' GROUP BY customer_id), "
     "debt AS ("
@@ -90,7 +94,11 @@ _FIGURES = (
     "owed AS ("
     "  SELECT d.customer_id, d.promised, "
     "         least(d.amount, greatest(0, d.running - coalesce(p.paid, 0))) AS remaining "
-    "    FROM debt d LEFT JOIN paid p ON p.customer_id = d.customer_id), "
+    "    FROM debt d LEFT JOIN paid p ON p.customer_id = d.customer_id)"
+)
+
+_FIGURES = (
+    f"{_OWED}, "
     "figures AS ("
     "  SELECT customer_id, "
     "         sum(remaining)::bigint AS balance, "
@@ -98,6 +106,98 @@ _FIGURES = (
     "         min(promised) FILTER (WHERE promised < :today AND remaining > 0) AS since, "
     "         coalesce(sum(remaining) FILTER (WHERE promised = :today), 0)::bigint AS due_today "
     "    FROM owed GROUP BY customer_id) "
+)
+
+
+# --- reports (REQ-046) ---------------------------------------------------------------------------------
+# Entries that still count, as `_LIVE`, with when and by whom they were recorded.
+_LIVE_RECORDED = (
+    "SELECT e.id, e.customer_id, e.seq, e.kind, e.amount, e.author_id, e.created_at FROM ledger_entry e "
+    "WHERE e.kind <> 'reversal' AND NOT EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id)"
+)
+_TASHKENT_DAY = "(l.created_at AT TIME ZONE 'Asia/Tashkent')::date"
+_SIGNED = "CASE WHEN l.kind IN ('credit', 'opening') THEN l.amount ELSE -l.amount END"
+# A period is the instants from :start up to but not including :end.
+_RECORDED_IN = "{row}.created_at >= :start AND {row}.created_at < :end"
+
+# One statement, so the balances and the movements between them come from one snapshot and reconcile:
+# start + credit + opening - payments = end. `inside` separates the period from what came before it.
+_PERIOD_TOTALS = (
+    "SELECT t.*, r.reversal_count, r.reversal_amount, c.new_customers, d.disputes_opened FROM (SELECT "
+    f"  coalesce(sum({_SIGNED}) FILTER (WHERE NOT l.inside), 0) AS outstanding_start, "
+    f"  coalesce(sum({_SIGNED}), 0) AS outstanding_end, "
+    "  coalesce(sum(l.amount) FILTER (WHERE l.inside AND l.kind = 'credit'), 0) AS credit_amount, "
+    "  count(*) FILTER (WHERE l.inside AND l.kind = 'credit') AS credit_count, "
+    "  count(DISTINCT l.customer_id) FILTER (WHERE l.inside AND l.kind = 'credit') AS credit_customers, "
+    "  coalesce(sum(l.amount) FILTER (WHERE l.inside AND l.kind = 'payment'), 0) AS payment_amount, "
+    "  count(*) FILTER (WHERE l.inside AND l.kind = 'payment') AS payment_count, "
+    "  count(DISTINCT l.customer_id) FILTER (WHERE l.inside AND l.kind = 'payment') AS payment_customers, "
+    "  coalesce(sum(l.amount) FILTER (WHERE l.inside AND l.kind = 'opening'), 0) AS opening_amount, "
+    "  count(*) FILTER (WHERE l.inside AND l.kind = 'opening') AS opening_count "
+    f"  FROM (SELECT e.*, e.created_at >= :start AS inside FROM ({_LIVE_RECORDED}) e WHERE e.created_at < :end) l) t, "
+    "  (SELECT count(*) AS reversal_count, coalesce(sum(r.amount), 0) AS reversal_amount FROM ledger_entry r "
+    f"    WHERE r.kind = 'reversal' AND {_RECORDED_IN.format(row='r')}) r, "
+    f"  (SELECT count(*) AS new_customers FROM customer c WHERE {_RECORDED_IN.format(row='c')}) c, "
+    f"  (SELECT count(*) AS disputes_opened FROM dispute d WHERE {_RECORDED_IN.format(row='d')}) d"
+)
+
+_PERIOD_DAYS = (
+    f"SELECT {_TASHKENT_DAY} AS day, "
+    "  coalesce(sum(l.amount) FILTER (WHERE l.kind = 'credit'), 0) AS credit, "
+    "  coalesce(sum(l.amount) FILTER (WHERE l.kind = 'payment'), 0) AS payments "
+    f"FROM ({_LIVE_RECORDED}) l WHERE {_RECORDED_IN.format(row='l')} GROUP BY day"
+)
+
+_PERIOD_STAFF = (
+    "SELECT l.author_id, m.role, "
+    "  coalesce(sum(l.amount) FILTER (WHERE l.kind = 'credit'), 0) AS credit_amount, "
+    "  count(*) FILTER (WHERE l.kind = 'credit') AS credit_count, "
+    "  coalesce(sum(l.amount) FILTER (WHERE l.kind = 'payment'), 0) AS payment_amount, "
+    "  count(*) FILTER (WHERE l.kind = 'payment') AS payment_count "
+    f"FROM ({_LIVE_RECORDED}) l JOIN membership m ON m.id = l.author_id "
+    f"WHERE {_RECORDED_IN.format(row='l')} AND l.kind IN ('credit', 'payment') "
+    "GROUP BY l.author_id, m.role "
+    "ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 ELSE 2 END, l.author_id"
+)
+
+_DEBTORS_AS_OF = (
+    "SELECT c.id, c.display_name, b.balance "
+    f"FROM (SELECT l.customer_id, sum({_SIGNED})::bigint AS balance FROM ({_LIVE_RECORDED}) l "
+    "       WHERE l.created_at < :end GROUP BY l.customer_id) b "
+    "JOIN customer c ON c.id = b.customer_id "
+    "WHERE b.balance > 0 AND c.status <> 'anonymized' "
+    "ORDER BY b.balance DESC, c.id DESC LIMIT :limit"
+)
+
+# BR-9 for the debt promised from :first up to but not including :before. Debts and payments are laid end
+# to end in `seq` order, each taking the stretch that ends at its running total; the oldest-first
+# allocation (BR-3) gives a payment to a debt exactly where their stretches overlap. This must agree with
+# `qarz.domain.ledger.payment_history`; tests/api/test_reports.py compares the two on generated accounts.
+_FELL_DUE = (
+    f"WITH live AS ({_LIVE_RECORDED}), "
+    "debt AS ("
+    "  SELECT l.customer_id, l.amount, "
+    "         sum(l.amount) OVER (PARTITION BY l.customer_id ORDER BY l.seq) AS upto, "
+    f"         {_PROMISED.format(entry='l')} AS promised "
+    "    FROM live l WHERE l.kind IN ('credit', 'opening')), "
+    "paid AS ("
+    "  SELECT l.customer_id, l.amount, "
+    "         sum(l.amount) OVER (PARTITION BY l.customer_id ORDER BY l.seq) AS upto, "
+    f"         {_TASHKENT_DAY} AS paid_on "
+    "    FROM live l WHERE l.kind = 'payment'), "
+    "due AS (SELECT * FROM debt WHERE promised >= :first AND promised < :before) "
+    "SELECT (SELECT coalesce(sum(amount), 0) FROM due) AS due_amount, "
+    "  (SELECT coalesce(sum(least(d.upto, p.upto) - greatest(d.upto - d.amount, p.upto - p.amount)), 0) "
+    "     FROM due d JOIN paid p ON p.customer_id = d.customer_id AND p.paid_on <= d.promised "
+    "      AND p.upto > d.upto - d.amount AND p.upto - p.amount < d.upto) AS on_time_amount"
+)
+
+# What the oldest-first allocation leaves uncovered, per customer and promised date. Whether that is
+# overdue, and for how long, is decided by `qarz.domain.reports.age_band`.
+_UNCOVERED = (
+    f"{_OWED} "
+    "SELECT customer_id, promised, sum(remaining)::bigint AS remaining FROM owed "
+    "WHERE remaining > 0 AND promised IS NOT NULL GROUP BY customer_id, promised"
 )
 
 
@@ -784,6 +884,55 @@ class PgTenantSession:
             (self._customer(row), DebtFigures(int(row.balance), int(row.overdue), row.since, int(row.due_today)))
             for row in rows
         ]
+
+    async def period_totals(self, start: datetime, end: datetime) -> PeriodTotals:
+        row = (await self._conn.execute(text(_PERIOD_TOTALS), {"start": start, "end": end})).one()
+        return PeriodTotals(
+            outstanding_start=int(row.outstanding_start),
+            outstanding_end=int(row.outstanding_end),
+            credit_amount=int(row.credit_amount),
+            credit_count=int(row.credit_count),
+            credit_customers=int(row.credit_customers),
+            payment_amount=int(row.payment_amount),
+            payment_count=int(row.payment_count),
+            payment_customers=int(row.payment_customers),
+            opening_amount=int(row.opening_amount),
+            opening_count=int(row.opening_count),
+            reversal_amount=int(row.reversal_amount),
+            reversal_count=int(row.reversal_count),
+            new_customers=int(row.new_customers),
+            disputes_opened=int(row.disputes_opened),
+        )
+
+    async def period_days(self, start: datetime, end: datetime) -> list[DayFigures]:
+        rows = (await self._conn.execute(text(_PERIOD_DAYS), {"start": start, "end": end})).all()
+        return [DayFigures(row.day, int(row.credit), int(row.payments)) for row in rows]
+
+    async def period_staff(self, start: datetime, end: datetime) -> list[StaffFigures]:
+        rows = (await self._conn.execute(text(_PERIOD_STAFF), {"start": start, "end": end})).all()
+        return [
+            StaffFigures(
+                row.author_id,
+                Role(row.role),
+                int(row.credit_amount),
+                int(row.credit_count),
+                int(row.payment_amount),
+                int(row.payment_count),
+            )
+            for row in rows
+        ]
+
+    async def debtors_as_of(self, end: datetime, limit: int) -> list[tuple[UUID, str, int]]:
+        rows = (await self._conn.execute(text(_DEBTORS_AS_OF), {"end": end, "limit": limit})).all()
+        return [(row.id, str(row.display_name), int(row.balance)) for row in rows]
+
+    async def fell_due(self, first: date, before: date) -> tuple[int, int]:
+        row = (await self._conn.execute(text(_FELL_DUE), {"first": first, "before": before})).one()
+        return int(row.on_time_amount), int(row.due_amount)
+
+    async def uncovered_debts(self) -> list[UncoveredDebt]:
+        rows = (await self._conn.execute(text(_UNCOVERED))).all()
+        return [UncoveredDebt(row.customer_id, row.promised, int(row.remaining)) for row in rows]
 
     @staticmethod
     def _catalog_item(row: Any) -> CatalogItemRecord:

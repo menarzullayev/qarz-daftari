@@ -122,6 +122,58 @@ class ShopTotals:
 
 
 @dataclass(frozen=True)
+class PeriodTotals:
+    """A shop's figures for one period (REQ-046).
+
+    Reversed entries and their reversals are left out of everything except the count and sum of the
+    reversals recorded.
+    """
+
+    outstanding_start: int
+    outstanding_end: int
+    credit_amount: int
+    credit_count: int
+    credit_customers: int
+    payment_amount: int
+    payment_count: int
+    payment_customers: int
+    opening_amount: int
+    opening_count: int
+    reversal_amount: int
+    reversal_count: int
+    new_customers: int
+    disputes_opened: int
+
+
+@dataclass(frozen=True)
+class DayFigures:
+    day: date  # a Tashkent calendar day
+    credit: int
+    payments: int
+
+
+@dataclass(frozen=True)
+class StaffFigures:
+    """What one staff member recorded in a period."""
+
+    membership_id: UUID
+    role: Role
+    credit_amount: int
+    credit_count: int
+    payment_amount: int
+    payment_count: int
+
+
+@dataclass(frozen=True)
+class UncoveredDebt:
+    """What one customer still owes on debt promised for one day, after the oldest-first allocation (BR-3)."""
+
+    customer_id: UUID
+    promised_date: date
+    remaining: int
+
+
+@dataclass(frozen=True)
 class DisputeRecord:
     dispute_id: UUID
     entry_id: UUID
@@ -406,6 +458,29 @@ class TenantSession(Protocol):
         self, *, today: date, only_overdue: bool, before: tuple[int, UUID] | None, limit: int
     ) -> list[tuple[CustomerRecord, DebtFigures]]:
         """Customers who owe something, largest balance first."""
+        ...
+
+    async def period_totals(self, start: datetime, end: datetime) -> PeriodTotals:
+        """Figures of what was recorded from `start` up to but not including `end`, and the balances at both."""
+        ...
+
+    async def period_days(self, start: datetime, end: datetime) -> list[DayFigures]:
+        """Credit given and payments received per Tashkent day; a day with neither is absent."""
+        ...
+
+    async def period_staff(self, start: datetime, end: datetime) -> list[StaffFigures]: ...
+
+    async def debtors_as_of(self, end: datetime, limit: int) -> list[tuple[UUID, str, int]]:
+        """Customer, name and balance of those who owed the most just before `end`, largest first."""
+        ...
+
+    async def fell_due(self, first: date, before: date) -> tuple[int, int]:
+        """Of the debt whose current promised date is from `first` up to but not including `before`:
+        the part covered by payments made on or before the promised date, and the whole (BR-9)."""
+        ...
+
+    async def uncovered_debts(self) -> list[UncoveredDebt]:
+        """Per customer and promised date, what payments have not covered. Fully covered debt is absent."""
         ...
 
     async def insert_catalog_item(
