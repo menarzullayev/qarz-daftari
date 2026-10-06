@@ -39,6 +39,34 @@ class StaffInvitation:
 
 
 @dataclass(frozen=True)
+class TransferRecord:
+    transfer_id: UUID
+    from_membership: UUID
+    to_membership: UUID
+    status: str
+    expires_at: datetime
+
+
+@dataclass(frozen=True)
+class MyShop:
+    shop_id: UUID
+    name: str
+    role: Role
+    membership_id: UUID
+
+
+@dataclass(frozen=True)
+class ActivityRow:
+    activity_id: UUID
+    at: datetime
+    actor_kind: str
+    actor_id: UUID | None
+    action: str
+    subject_type: str
+    subject_id: UUID | None
+
+
+@dataclass(frozen=True)
 class SessionInfo:
     user_id: UUID
     kind: str
@@ -88,6 +116,26 @@ class TenantSession(Protocol):
 
     async def cancel_staff_invitation(self, token_hash: bytes) -> bool: ...
 
+    async def expire_transfers(self, now: datetime) -> None: ...
+
+    async def pending_transfer(self) -> TransferRecord | None: ...
+
+    async def create_transfer(
+        self, *, transfer_id: UUID, from_membership: UUID, to_membership: UUID, now: datetime, expires_at: datetime
+    ) -> TransferRecord: ...
+
+    async def close_transfer(self, transfer_id: UUID, *, status: str, now: datetime) -> TransferRecord: ...
+
+    async def list_activity(
+        self,
+        *,
+        actor: UUID | None,
+        action_prefix: str | None,
+        subject: UUID | None,
+        before: tuple[datetime, UUID] | None,
+        limit: int,
+    ) -> list[ActivityRow]: ...
+
     async def lock_request_key(self, key: str) -> None:
         """Serialize concurrent requests that carry the same idempotency key, until the transaction ends."""
         ...
@@ -134,6 +182,10 @@ class PlatformSession(Protocol):
     async def platform_setting(self, key: str) -> Any | None: ...
 
     async def set_active_shop(self, user_id: UUID, shop_id: UUID) -> None: ...
+
+    async def active_shop(self, user_id: UUID) -> UUID | None: ...
+
+    async def my_memberships(self, user_id: UUID) -> list[MyShop]: ...
 
     async def accept_staff_invitation(self, token_hash: bytes, user_id: UUID) -> UUID | None:
         """Join the shop the invitation belongs to. None when the invitation cannot be used."""

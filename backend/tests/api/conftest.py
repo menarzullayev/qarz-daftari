@@ -62,6 +62,8 @@ class World:
     admin: uuid.UUID
     stranger: uuid.UUID
     seller_a_membership: uuid.UUID
+    manager_a_membership: uuid.UUID
+    owner_a_membership: uuid.UUID
     invitation_a: str  # identifier (hex of the token hash) of an issued staff invitation in shop A
     invitation_a_token: str
 
@@ -89,8 +91,8 @@ def world(owner: psycopg.Connection) -> World:
     owner.execute("INSERT INTO shop (id, name) VALUES (%s, 'Shop A'), (%s, 'Shop B')", (shop_a, shop_b))
     users = {name: _user(owner) for name in ("owner_a", "manager_a", "seller_a", "suspended_a", "owner_b")}
     users |= {name: _user(owner) for name in ("customer_of_a", "admin", "stranger")}
-    _member(owner, shop_a, users["owner_a"], "owner")
-    _member(owner, shop_a, users["manager_a"], "manager")
+    owner_membership = _member(owner, shop_a, users["owner_a"], "owner")
+    manager_membership = _member(owner, shop_a, users["manager_a"], "manager")
     seller_membership = _member(owner, shop_a, users["seller_a"], "seller")
     _member(owner, shop_a, users["suspended_a"], "manager", status="suspended")
     _member(owner, shop_b, users["owner_b"], "owner")
@@ -119,6 +121,8 @@ def world(owner: psycopg.Connection) -> World:
         shop_a=shop_a,
         shop_b=shop_b,
         seller_a_membership=seller_membership,
+        manager_a_membership=manager_membership,
+        owner_a_membership=owner_membership,
         invitation_a=digest.hex(),
         invitation_a_token=token,
         **users,

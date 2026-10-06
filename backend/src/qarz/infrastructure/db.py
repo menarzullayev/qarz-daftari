@@ -17,12 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 
 from qarz.application.errors import AlreadyMember
 from qarz.application.ports import (
+    ActivityRow,
     MemberRecord,
     Membership,
+    MyShop,
     OutboxMessage,
     SessionInfo,
     ShopSettings,
     StaffInvitation,
+    TransferRecord,
 )
 from qarz.domain.access import Role
 
@@ -182,6 +185,102 @@ class PgTenantSession:
         )
         return int(result.rowcount) == 1
 
+    @staticmethod
+    def _transfer(row: Any) -> TransferRecord:
+        return TransferRecord(row.id, row.from_membership, row.to_membership, row.status, row.expires_at)
+
+    async def expire_transfers(self, now: datetime) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE ownership_transfer SET status = 'expired', decided_at = :now "
+                "WHERE status = 'pending' AND expires_at <= :now"
+            ),
+            {"now": now},
+        )
+
+    async def pending_transfer(self) -> TransferRecord | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT id, from_membership, to_membership, status, expires_at FROM ownership_transfer "
+                    "WHERE status = 'pending' FOR UPDATE"
+                )
+            )
+        ).first()
+        return None if row is None else self._transfer(row)
+
+    async def create_transfer(
+        self, *, transfer_id: UUID, from_membership: UUID, to_membership: UUID, now: datetime, expires_at: datetime
+    ) -> TransferRecord:
+        row = (
+            await self._conn.execute(
+                text(
+                    "INSERT INTO ownership_transfer "
+                    "(id, shop_id, from_membership, to_membership, created_at, expires_at) "
+                    "VALUES (:id, :shop_id, :from_m, :to_m, :now, :expires_at) "
+                    "RETURNING id, from_membership, to_membership, status, expires_at"
+                ),
+                {
+                    "id": transfer_id,
+                    "shop_id": self._shop_id,
+                    "from_m": from_membership,
+                    "to_m": to_membership,
+                    "now": now,
+                    "expires_at": expires_at,
+                },
+            )
+        ).one()
+        return self._transfer(row)
+
+    async def close_transfer(self, transfer_id: UUID, *, status: str, now: datetime) -> TransferRecord:
+        row = (
+            await self._conn.execute(
+                text(
+                    "UPDATE ownership_transfer SET status = :status, decided_at = :now "
+                    "WHERE id = :id AND status = 'pending' "
+                    "RETURNING id, from_membership, to_membership, status, expires_at"
+                ),
+                {"id": transfer_id, "status": status, "now": now},
+            )
+        ).one()
+        return self._transfer(row)
+
+    async def list_activity(
+        self,
+        *,
+        actor: UUID | None,
+        action_prefix: str | None,
+        subject: UUID | None,
+        before: tuple[datetime, UUID] | None,
+        limit: int,
+    ) -> list[ActivityRow]:
+        # Optional filters are written so that each parameter has one type, whatever combination is used.
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT id, at, actor_kind, actor_id, action, subject_type, subject_id FROM activity "
+                    "WHERE (CAST(:actor AS uuid) IS NULL OR actor_id = CAST(:actor AS uuid)) "
+                    "  AND (CAST(:subject AS uuid) IS NULL OR subject_id = CAST(:subject AS uuid)) "
+                    "  AND (CAST(:prefix AS text) IS NULL OR action LIKE CAST(:prefix AS text) || '%') "
+                    "  AND (CAST(:before_at AS timestamptz) IS NULL "
+                    "       OR (at, id) < (CAST(:before_at AS timestamptz), CAST(:before_id AS uuid))) "
+                    "ORDER BY at DESC, id DESC LIMIT :limit"
+                ),
+                {
+                    "actor": actor,
+                    "subject": subject,
+                    "prefix": action_prefix,
+                    "before_at": before[0] if before else None,
+                    "before_id": before[1] if before else None,
+                    "limit": limit,
+                },
+            )
+        ).all()
+        return [
+            ActivityRow(row.id, row.at, row.actor_kind, row.actor_id, row.action, row.subject_type, row.subject_id)
+            for row in rows
+        ]
+
     async def lock_request_key(self, key: str) -> None:
         # Transaction-scoped advisory lock: a second request with the same key in the same shop waits here
         # until the first commits, then finds the stored response.
@@ -306,6 +405,21 @@ class PgPlatformSession:
         await self._conn.execute(
             text("UPDATE app_user SET active_shop = :shop_id WHERE id = :id"), {"id": user_id, "shop_id": shop_id}
         )
+
+    async def active_shop(self, user_id: UUID) -> UUID | None:
+        row = (
+            await self._conn.execute(text("SELECT active_shop FROM app_user WHERE id = :id"), {"id": user_id})
+        ).first()
+        return None if row is None or row.active_shop is None else UUID(str(row.active_shop))
+
+    async def my_memberships(self, user_id: UUID) -> list[MyShop]:
+        rows = (
+            await self._conn.execute(
+                text("SELECT shop_id, shop_name, role, membership_id FROM my_memberships(:user_id)"),
+                {"user_id": user_id},
+            )
+        ).all()
+        return [MyShop(row.shop_id, row.shop_name, Role(row.role), row.membership_id) for row in rows]
 
     async def accept_staff_invitation(self, token_hash: bytes, user_id: UUID) -> UUID | None:
         try:
