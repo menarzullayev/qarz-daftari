@@ -45,6 +45,9 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
         "NOT_TRANSFER_TARGET",
         "CUSTOMER_HAS_BALANCE",  # archiving is not a chat action
         "PROMISE_ALREADY_SET",  # said as "promise_closed"
+        "CATALOG_NAME_TAKEN",  # the catalog is managed in the Mini App, not in the chat
+        "CATALOG_ITEM_NOT_LEARNED",
+        "CATALOG_MERGE_TARGET_INVALID",
     }
     assert set(_STATUS) - spoken_elsewhere <= set(UZ)
 

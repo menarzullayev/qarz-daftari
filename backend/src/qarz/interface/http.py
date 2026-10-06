@@ -12,6 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from qarz.application.account import AccountService, ActivityService
 from qarz.application.auth import AuthService
+from qarz.application.catalog import CatalogService
 from qarz.application.chat import ChatService
 from qarz.application.customers import CustomerService
 from qarz.application.errors import AppError, Unauthenticated
@@ -23,6 +24,7 @@ from qarz.application.staff import StaffService
 from qarz.application.telegram_updates import UpdateProcessor
 from qarz.interface.account_api import add_account_routes
 from qarz.interface.auth_api import SessionAuthenticator, add_auth_routes
+from qarz.interface.catalog_api import add_catalog_routes
 from qarz.interface.customers_api import add_customer_routes
 from qarz.interface.errors import app_error_handler, error_response
 from qarz.interface.shops_api import add_shop_routes
@@ -98,6 +100,7 @@ def create_app(
         add_shop_routes(app, ShopService(storage), current_user)
         add_staff_routes(app, StaffService(storage), current_user)
         add_customer_routes(app, CustomerService(storage, now), LedgerService(storage, now), current_user)
+        add_catalog_routes(app, CatalogService(storage, now), current_user)
         add_account_routes(
             app, AccountService(storage), ActivityService(storage), OwnershipService(storage), current_user
         )

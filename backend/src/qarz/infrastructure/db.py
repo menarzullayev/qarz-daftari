@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from qarz.application.errors import AlreadyMember
 from qarz.application.ports import (
     ActivityRow,
+    CatalogItemRecord,
     CustomerRecord,
     DebtFigures,
     EntryRow,
@@ -41,6 +42,10 @@ _MEASURE_NAMESPACE = UUID("6f1d1c0e-8f0b-5d55-9d0a-51a7c0de0a10")
 _CUSTOMER_COLUMNS = "c.id, c.display_name, c.phone, c.status, c.reminders_off"
 _CUSTOMER_BY_ID = f"SELECT {_CUSTOMER_COLUMNS} FROM customer c WHERE c.id = :id"
 _CUSTOMER_LOCKED = f"{_CUSTOMER_BY_ID} FOR UPDATE"
+
+_CATALOG_COLUMNS = "i.id, i.name, i.name_norm, i.unit, i.price, i.learned, i.status, i.merged_into"
+_CATALOG_BY_ID = f"SELECT {_CATALOG_COLUMNS} FROM catalog_item i WHERE i.id = :id"
+_CATALOG_LOCKED = f"{_CATALOG_BY_ID} FOR UPDATE"
 
 # The current promised date of an entry is its newest promise row.
 _PROMISED = (
@@ -628,6 +633,119 @@ class PgTenantSession:
             (self._customer(row), DebtFigures(int(row.balance), int(row.overdue), row.since, int(row.due_today)))
             for row in rows
         ]
+
+    @staticmethod
+    def _catalog_item(row: Any) -> CatalogItemRecord:
+        return CatalogItemRecord(
+            row.id, row.name, row.name_norm, row.unit, int(row.price), row.learned, row.status, row.merged_into
+        )
+
+    async def insert_catalog_item(
+        self, *, item_id: UUID, name: str, name_norm: str, unit: str, price: int, learned: bool
+    ) -> CatalogItemRecord | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "INSERT INTO catalog_item AS i (id, shop_id, name, name_norm, unit, price, learned) "
+                    "VALUES (:id, :shop_id, :name, :norm, :unit, :price, :learned) "
+                    f"ON CONFLICT (shop_id, name_norm) DO NOTHING RETURNING {_CATALOG_COLUMNS}"
+                ),
+                {
+                    "id": item_id,
+                    "shop_id": self._shop_id,
+                    "name": name,
+                    "norm": name_norm,
+                    "unit": unit,
+                    "price": price,
+                    "learned": learned,
+                },
+            )
+        ).first()
+        return None if row is None else self._catalog_item(row)
+
+    async def get_catalog_item(self, item_id: UUID, *, for_update: bool) -> CatalogItemRecord | None:
+        row = (
+            await self._conn.execute(text(_CATALOG_LOCKED if for_update else _CATALOG_BY_ID), {"id": item_id})
+        ).first()
+        return None if row is None else self._catalog_item(row)
+
+    async def catalog_item_by_norm(self, name_norm: str) -> CatalogItemRecord | None:
+        row = (
+            await self._conn.execute(
+                text(f"SELECT {_CATALOG_COLUMNS} FROM catalog_item i WHERE i.name_norm = :norm"), {"norm": name_norm}
+            )
+        ).first()
+        return None if row is None else self._catalog_item(row)
+
+    async def update_catalog_item(
+        self, item_id: UUID, *, name: str | None, name_norm: str | None, unit: str | None, price: int | None
+    ) -> CatalogItemRecord | None:
+        try:
+            # A savepoint, so that a name already taken leaves the transaction usable.
+            async with self._conn.begin_nested():
+                row = (
+                    await self._conn.execute(
+                        text(
+                            "UPDATE catalog_item AS i SET name = coalesce(:name, i.name), "
+                            "name_norm = coalesce(:norm, i.name_norm), unit = coalesce(:unit, i.unit), "
+                            "price = coalesce(:price, i.price) "
+                            f"WHERE i.id = :id RETURNING {_CATALOG_COLUMNS}"
+                        ),
+                        {"id": item_id, "name": name, "norm": name_norm, "unit": unit, "price": price},
+                    )
+                ).one()
+        except IntegrityError as error:
+            if "catalog_item_shop_id_name_norm_key" in str(error.orig):
+                return None
+            raise
+        return self._catalog_item(row)
+
+    async def set_catalog_item_state(
+        self, item_id: UUID, *, status: str, learned: bool, merged_into: UUID | None
+    ) -> CatalogItemRecord:
+        row = (
+            await self._conn.execute(
+                text(
+                    "UPDATE catalog_item AS i SET status = :status, learned = :learned, "
+                    "merged_into = CAST(:merged_into AS uuid) "
+                    f"WHERE i.id = :id RETURNING {_CATALOG_COLUMNS}"
+                ),
+                {"id": item_id, "status": status, "learned": learned, "merged_into": merged_into},
+            )
+        ).one()
+        return self._catalog_item(row)
+
+    async def search_catalog(
+        self,
+        *,
+        name_part: str | None,
+        status: str,
+        learned: bool | None,
+        after: tuple[str, UUID] | None,
+        limit: int,
+    ) -> list[CatalogItemRecord]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    f"SELECT {_CATALOG_COLUMNS} FROM catalog_item i "
+                    "WHERE i.status = :status "
+                    "  AND (CAST(:learned AS boolean) IS NULL OR i.learned = CAST(:learned AS boolean)) "
+                    "  AND (CAST(:name AS text) IS NULL OR i.name_norm LIKE CAST(:name AS text)) "
+                    "  AND (CAST(:after_name AS text) IS NULL "
+                    "       OR (i.name_norm, i.id) > (CAST(:after_name AS text), CAST(:after_id AS uuid))) "
+                    "ORDER BY i.name_norm, i.id LIMIT :limit"
+                ),
+                {
+                    "status": status,
+                    "learned": learned,
+                    "name": _like_pattern(name_part) if name_part else None,
+                    "after_name": after[0] if after else None,
+                    "after_id": after[1] if after else None,
+                    "limit": limit,
+                },
+            )
+        ).all()
+        return [self._catalog_item(row) for row in rows]
 
     async def lock_request_key(self, key: str) -> None:
         # Transaction-scoped advisory lock: a second request with the same key in the same shop waits here
