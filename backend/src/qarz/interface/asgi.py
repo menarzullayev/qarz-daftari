@@ -9,6 +9,7 @@ from qarz.application.auth import AuthService
 from qarz.infrastructure.db import Database
 from qarz.infrastructure.settings import Settings
 from qarz.interface.http import create_app
+from qarz.interface.rate_limit import Limit, RateLimits
 
 
 def build(settings: Settings | None = None) -> FastAPI:
@@ -21,4 +22,8 @@ def build(settings: Settings | None = None) -> FastAPI:
         database,
         auth=auth,
         webhook_secret=settings.webhook_secret or None,
+        rate_limits=RateLimits(
+            user=Limit(settings.rate_user_per_minute, settings.rate_user_burst),
+            shop=Limit(settings.rate_shop_per_minute, settings.rate_shop_burst),
+        ),
     )
