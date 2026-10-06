@@ -24,6 +24,13 @@ class ShopSettings:
 
 
 @dataclass(frozen=True)
+class SessionInfo:
+    user_id: UUID
+    kind: str
+    csrf_hash: bytes | None
+
+
+@dataclass(frozen=True)
 class OutboxMessage:
     message_id: UUID
     channel: str
@@ -65,6 +72,31 @@ class PlatformSession(Protocol):
         ...
 
     async def language_of_telegram_user(self, tg_id: int) -> str | None: ...
+
+    async def ensure_user(self, tg_id: int, lang: str) -> UUID:
+        """Return the user for this Telegram account, creating it with the given language if it is new."""
+        ...
+
+    async def user_language(self, user_id: UUID) -> str | None: ...
+
+    async def set_user_language(self, user_id: UUID, lang: str) -> None: ...
+
+    async def create_session(
+        self,
+        *,
+        token_hash: bytes,
+        user_id: UUID,
+        kind: str,
+        csrf_hash: bytes | None,
+        now: datetime,
+        expires_at: datetime,
+    ) -> None: ...
+
+    async def find_session(self, token_hash: bytes, now: datetime) -> "SessionInfo | None":
+        """The session for this token hash if it exists, is not revoked, and has not expired."""
+        ...
+
+    async def revoke_session(self, token_hash: bytes, now: datetime) -> None: ...
 
     async def enqueue(
         self, *, channel: str, recipient: str, payload: dict[str, Any], dedupe_key: str, shop_id: UUID | None = None

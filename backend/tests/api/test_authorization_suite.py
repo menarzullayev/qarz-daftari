@@ -1,9 +1,14 @@
 """The authorization and tenant suite (NFR-013, launch criterion 5). Blocking.
 
-Every registered staff operation is attempted as each role, as a suspended member, as the owner of another
-shop, as a customer, as a platform administrator without support access, as a stranger, and without
-signing in. An operation that is registered but not described here fails the suite, so nothing can be
-added without being checked.
+Every registered operation is exercised according to its scope:
+
+- shop operations: as each role, as a suspended member, as the owner of another shop, as a customer, as a
+  platform administrator without support access, as a stranger, and without signing in;
+- self operations: without signing in, and as any signed-in user;
+- public operations: without signing in, with data that is not validly signed.
+
+An operation that is registered but not described here fails the suite, and so does an API route that is
+not bound to a registered operation, so nothing can be added without being checked.
 """
 
 import uuid
@@ -23,6 +28,8 @@ from .conftest import World, as_user
 
 pytestmark = pytest.mark.db
 
+ROLE_ORDER = [Role.SELLER, Role.MANAGER, Role.OWNER]
+
 
 @dataclass(frozen=True)
 class Call:
@@ -32,7 +39,15 @@ class Call:
     changes_data: bool = False
 
 
-# How to invoke each operation with a valid request.
+@dataclass(frozen=True)
+class PlainCall:
+    method: str
+    path: str
+    json: dict[str, Any] | None = None
+    ok_status: int = 200
+
+
+# How to invoke each shop operation with a valid request.
 CALLS: dict[str, Call] = {
     "shop.read": Call("GET", lambda shop: f"/api/v1/shops/{shop}"),
     "shop.update": Call("PATCH", lambda shop: f"/api/v1/shops/{shop}", {"name": "Renamed"}, changes_data=True),
@@ -45,9 +60,25 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "shop.update": {Role.OWNER},
 }
 
-OPERATION_NAMES = sorted(op.name for op in all_operations())
+SELF_CALLS: dict[str, PlainCall] = {
+    "me.read": PlainCall("GET", "/api/v1/me"),
+    "me.update": PlainCall("PATCH", "/api/v1/me", {"lang": "ru"}),
+    "auth.sign_out": PlainCall("POST", "/api/v1/auth/sign-out", ok_status=204),
+}
+
+# Requests that are well formed but not signed by Telegram.
+PUBLIC_CALLS: dict[str, PlainCall] = {
+    "auth.telegram_webapp": PlainCall("POST", "/api/v1/auth/telegram-webapp", {"init_data": "user=%7B%7D&hash=00"}),
+    "auth.telegram_login": PlainCall("POST", "/api/v1/auth/telegram-login", {"id": 1, "auth_date": 1, "hash": "00"}),
+}
+
+BY_SCOPE = {
+    scope: sorted(op.name for op in all_operations() if op.scope == scope) for scope in ("shop", "self", "public")
+}
+SHOP_OPS, SELF_OPS, PUBLIC_OPS = BY_SCOPE["shop"], BY_SCOPE["self"], BY_SCOPE["public"]
 STAFF = [("owner_a", Role.OWNER), ("manager_a", Role.MANAGER), ("seller_a", Role.SELLER)]
 OUTSIDERS = ["suspended_a", "owner_b", "customer_of_a", "admin", "stranger"]
+NO_CREDENTIALS = [{}, {"X-Test-User": "not-a-uuid"}]
 
 
 def _invoke(client: TestClient, call: Call, shop: uuid.UUID, headers: dict[str, str]) -> Any:
@@ -66,26 +97,34 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
 
 
 def test_every_operation_is_described_in_the_suite() -> None:
-    assert set(CALLS) == set(OPERATION_NAMES), "add the new operation to CALLS"
-    assert set(ALLOWED_ROLES) == set(OPERATION_NAMES), "add the new operation to ALLOWED_ROLES"
+    assert set(CALLS) == set(SHOP_OPS), "add the new shop operation to CALLS"
+    assert set(ALLOWED_ROLES) == set(SHOP_OPS), "add the new shop operation to ALLOWED_ROLES"
+    assert set(SELF_CALLS) == set(SELF_OPS), "add the new self operation to SELF_CALLS"
+    assert set(PUBLIC_CALLS) == set(PUBLIC_OPS), "add the new public operation to PUBLIC_CALLS"
+    assert SHOP_OPS and SELF_OPS and PUBLIC_OPS
 
 
 def test_every_api_route_is_a_registered_operation(client: TestClient) -> None:
     api_routes = [r for r in client.app.routes if isinstance(r, APIRoute) and r.path.startswith("/api/")]  # type: ignore[attr-defined]
-    names = [route.name for route in api_routes]
-    assert sorted(names) == OPERATION_NAMES, "every /api/ route must be bound to exactly one registered operation"
+    names = sorted(route.name for route in api_routes)
+    assert names == sorted(op.name for op in all_operations()), (
+        "every /api/ route must be bound to exactly one registered operation"
+    )
 
 
 def test_the_code_agrees_with_the_hand_written_table() -> None:
     for op in all_operations():
-        allowed = ALLOWED_ROLES[op.name]
-        assert lowest_role_with(op.capability) == min(allowed, key=[Role.SELLER, Role.MANAGER, Role.OWNER].index)
+        if op.scope != "shop":
+            assert op.capability is None
+            continue
+        assert op.capability is not None
+        assert lowest_role_with(op.capability) == min(ALLOWED_ROLES[op.name], key=ROLE_ORDER.index)
 
 
-# --- staff of the shop: allowed or refused by role --------------------------------------------------
+# --- shop operations: staff are allowed or refused by role ------------------------------------------
 
 
-@pytest.mark.parametrize("op_name", OPERATION_NAMES)
+@pytest.mark.parametrize("op_name", SHOP_OPS)
 @pytest.mark.parametrize(("caller", "role"), STAFF)
 def test_staff_are_allowed_or_refused_by_role(
     client: TestClient, world: World, owner: psycopg.Connection, op_name: str, caller: str, role: Role
@@ -100,15 +139,14 @@ def test_staff_are_allowed_or_refused_by_role(
         assert response.status_code == 403, response.text
         error = response.json()["error"]
         assert error["code"] == "FORBIDDEN_ROLE"
-        needed = min(ALLOWED_ROLES[op_name], key=[Role.SELLER, Role.MANAGER, Role.OWNER].index)
-        assert error["fields"] == {"needed_role": needed.value}
+        assert error["fields"] == {"needed_role": min(ALLOWED_ROLES[op_name], key=ROLE_ORDER.index).value}
         assert _snapshot(owner, world.shop_a) == before, "a refused call must change nothing"
 
 
-# --- everyone else: the shop does not exist for them ------------------------------------------------
+# --- shop operations: for everyone else the shop does not exist ---------------------------------------
 
 
-@pytest.mark.parametrize("op_name", OPERATION_NAMES)
+@pytest.mark.parametrize("op_name", SHOP_OPS)
 @pytest.mark.parametrize("caller", OUTSIDERS)
 def test_outsiders_get_not_found_and_change_nothing(
     client: TestClient, world: World, owner: psycopg.Connection, op_name: str, caller: str
@@ -122,7 +160,7 @@ def test_outsiders_get_not_found_and_change_nothing(
     assert _snapshot(owner, world.shop_a) == before
 
 
-@pytest.mark.parametrize("op_name", OPERATION_NAMES)
+@pytest.mark.parametrize("op_name", SHOP_OPS)
 def test_a_member_of_one_shop_cannot_reach_another(
     client: TestClient, world: World, owner: psycopg.Connection, op_name: str
 ) -> None:
@@ -134,7 +172,7 @@ def test_a_member_of_one_shop_cannot_reach_another(
     assert _snapshot(owner, world.shop_b) == before
 
 
-@pytest.mark.parametrize("op_name", OPERATION_NAMES)
+@pytest.mark.parametrize("op_name", SHOP_OPS)
 def test_refusals_are_indistinguishable_from_a_missing_shop(client: TestClient, world: World, op_name: str) -> None:
     call = CALLS[op_name]
     outsider = _invoke(client, call, world.shop_a, as_user(world.owner_b))
@@ -149,12 +187,9 @@ def test_refusals_are_indistinguishable_from_a_missing_shop(client: TestClient, 
     assert outsider.json() == missing.json() == malformed.json()
 
 
-# --- not signed in -----------------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("op_name", OPERATION_NAMES)
-@pytest.mark.parametrize("headers", [{}, {"X-Test-User": "not-a-uuid"}], ids=["no credentials", "bad credentials"])
-def test_unauthenticated_calls_are_refused(
+@pytest.mark.parametrize("op_name", SHOP_OPS)
+@pytest.mark.parametrize("headers", NO_CREDENTIALS, ids=["no credentials", "bad credentials"])
+def test_unauthenticated_shop_calls_are_refused(
     client: TestClient, world: World, owner: psycopg.Connection, op_name: str, headers: dict[str, str]
 ) -> None:
     call = CALLS[op_name]
@@ -163,3 +198,49 @@ def test_unauthenticated_calls_are_refused(
     assert response.status_code == 401, response.text
     assert response.json()["error"]["code"] == "UNAUTHENTICATED"
     assert _snapshot(owner, world.shop_a) == before
+
+
+# --- self operations: need a signed-in user, and act only on that user --------------------------------
+
+
+@pytest.mark.parametrize("op_name", SELF_OPS)
+@pytest.mark.parametrize("headers", NO_CREDENTIALS, ids=["no credentials", "bad credentials"])
+def test_unauthenticated_self_calls_are_refused(
+    client: TestClient, world: World, owner: psycopg.Connection, op_name: str, headers: dict[str, str]
+) -> None:
+    call = SELF_CALLS[op_name]
+    languages = owner.execute("SELECT id, lang FROM app_user ORDER BY id").fetchall()
+    response = client.request(call.method, call.path, json=call.json, headers=headers)
+    assert response.status_code == 401, response.text
+    assert owner.execute("SELECT id, lang FROM app_user ORDER BY id").fetchall() == languages
+
+
+@pytest.mark.parametrize("op_name", SELF_OPS)
+@pytest.mark.parametrize("caller", ["owner_a", "seller_a", "customer_of_a", "stranger"])
+def test_any_signed_in_user_may_act_on_their_own_account_only(
+    client: TestClient, world: World, owner: psycopg.Connection, op_name: str, caller: str
+) -> None:
+    call = SELF_CALLS[op_name]
+    me = getattr(world, caller)
+    others = owner.execute("SELECT id, lang FROM app_user WHERE id <> %s ORDER BY id", (me,)).fetchall()
+    response = client.request(call.method, call.path, json=call.json, headers=as_user(me))
+    assert response.status_code == call.ok_status, response.text
+    if response.content:
+        assert response.json()["id"] == str(me)
+    assert owner.execute("SELECT id, lang FROM app_user WHERE id <> %s ORDER BY id", (me,)).fetchall() == others
+
+
+# --- public operations: callable without a session, but only Telegram's signature signs anyone in -----
+
+
+@pytest.mark.parametrize("op_name", PUBLIC_OPS)
+def test_unsigned_data_signs_nobody_in(client: TestClient, owner: psycopg.Connection, op_name: str) -> None:
+    call = PUBLIC_CALLS[op_name]
+    sessions = owner.execute("SELECT count(*) FROM user_session").fetchone()
+    users = owner.execute("SELECT count(*) FROM app_user").fetchone()
+    response = client.request(call.method, call.path, json=call.json)
+    assert response.status_code == 401, response.text
+    assert response.json()["error"] == {"code": "UNAUTHENTICATED", "message": "Avval tizimga kiring.", "fields": {}}
+    assert "set-cookie" not in response.headers
+    assert owner.execute("SELECT count(*) FROM user_session").fetchone() == sessions
+    assert owner.execute("SELECT count(*) FROM app_user").fetchone() == users

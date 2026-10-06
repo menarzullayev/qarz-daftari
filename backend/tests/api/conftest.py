@@ -7,17 +7,20 @@ the caller's user identifier from a header. It exists only in the test suite.
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 import psycopg
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 
+from qarz.application.auth import AuthService
 from qarz.infrastructure.db import Database
 from qarz.interface.http import create_app
 
 TEST_USER_HEADER = "X-Test-User"
 WEBHOOK_SECRET = "test-webhook-secret-0123456789"
+TEST_BOT_TOKEN = "1234567890:TEST-ONLY-token-not-a-real-bot"
 
 
 class HeaderAuthenticator:
@@ -34,7 +37,10 @@ class HeaderAuthenticator:
 @pytest.fixture
 def client(app_database_url: str) -> Iterator[TestClient]:
     database = Database(app_database_url)
-    app = create_app(database.reachable, HeaderAuthenticator(), database, webhook_secret=WEBHOOK_SECRET)
+    auth = AuthService(database, TEST_BOT_TOKEN)
+    app = create_app(
+        database.reachable, database, auth=auth, authenticator=HeaderAuthenticator(), webhook_secret=WEBHOOK_SECRET
+    )
     with TestClient(app) as test_client:
         yield test_client
         test_client.portal.call(database.dispose)  # type: ignore[union-attr]
@@ -101,3 +107,29 @@ def world(owner: psycopg.Connection) -> World:
 
 def as_user(user_id: uuid.UUID) -> dict[str, str]:
     return {TEST_USER_HEADER: str(user_id)}
+
+
+class MovableClock:
+    def __init__(self) -> None:
+        self.offset = timedelta(0)
+
+    def now(self) -> datetime:
+        return datetime.now(UTC) + self.offset
+
+
+@dataclass
+class SessionClient:
+    http: TestClient
+    clock: MovableClock
+
+
+@pytest.fixture
+def session_client(app_database_url: str) -> Iterator[SessionClient]:
+    """The application exactly as deployed: Telegram-backed sessions, no test authenticator."""
+    database = Database(app_database_url)
+    clock = MovableClock()
+    auth = AuthService(database, TEST_BOT_TOKEN, clock.now)
+    app = create_app(database.reachable, database, auth=auth, webhook_secret=WEBHOOK_SECRET)
+    with TestClient(app) as test_client:
+        yield SessionClient(test_client, clock)
+        test_client.portal.call(database.dispose)  # type: ignore[union-attr]

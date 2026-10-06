@@ -9,10 +9,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from qarz.application.auth import AuthService
 from qarz.application.errors import AppError, Unauthenticated
 from qarz.application.ports import Storage
 from qarz.application.shops import ShopService
 from qarz.application.telegram_updates import UpdateProcessor
+from qarz.interface.auth_api import SessionAuthenticator, add_auth_routes
 from qarz.interface.errors import app_error_handler, error_response
 from qarz.interface.shops_api import add_shop_routes
 from qarz.interface.telegram_webhook import add_webhook_route
@@ -21,17 +23,24 @@ HealthCheck = Callable[[], Awaitable[bool]]
 
 
 class Authenticator(Protocol):
-    """Resolves a request to the signed-in user. Telegram-based implementations arrive with story S2.1."""
+    """Resolves a request to the signed-in user."""
 
     async def user_id(self, request: Request) -> UUID | None: ...
 
 
 def create_app(
     database_reachable: HealthCheck,
-    authenticator: Authenticator | None = None,
     storage: Storage | None = None,
+    *,
+    auth: AuthService | None = None,
+    authenticator: Authenticator | None = None,
     webhook_secret: str | None = None,
 ) -> FastAPI:
+    """Build the application.
+
+    With only a health check it serves `/healthz`. With storage and an auth service it serves the API,
+    authenticating through Telegram-backed sessions; `authenticator` replaces that only in tests.
+    """
     app = FastAPI(title="Qarz Daftari", docs_url=None, redoc_url=None, openapi_url=None)
 
     @app.get("/healthz")
@@ -63,15 +72,17 @@ def create_app(
         response.status_code = 404 if code == "NOT_FOUND" else exc.status_code
         return response
 
-    if authenticator is not None and storage is not None:
+    if storage is not None and auth is not None:
+        resolver: Authenticator = authenticator or SessionAuthenticator(auth)
 
         async def current_user(request: Request) -> UUID:
-            user_id = await authenticator.user_id(request)
+            user_id = await resolver.user_id(request)
             if user_id is None:
                 raise Unauthenticated()
             request.state.lang = await storage.user_language(user_id) or "uz"
             return user_id
 
+        add_auth_routes(app, auth, current_user)
         add_shop_routes(app, ShopService(storage), current_user)
 
     if webhook_secret is not None and storage is not None:

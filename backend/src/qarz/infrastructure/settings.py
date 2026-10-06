@@ -8,3 +8,7 @@ class Settings(BaseSettings):
 
     # Connection string of the application role (qd_app), which cannot bypass row-level security.
     database_url: str = "postgresql://qd_app@localhost:5432/qarz"
+    # Token of this environment's bot: verifies Telegram signatures and sends messages.
+    bot_token: str = ""
+    # Secret Telegram sends with every webhook call.
+    webhook_secret: str = ""

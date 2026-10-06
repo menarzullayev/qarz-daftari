@@ -50,7 +50,13 @@ class UpdateProcessor:
             if chat.get("type") != "private" or not isinstance(chat.get("id"), int):
                 return True
 
-            stored = await session.language_of_telegram_user(int(sender.get("id", 0))) if sender.get("id") else None
+            # Writing to the bot is how a person first becomes a user of the service (sign-in through chat).
+            sender_id = sender.get("id")
+            if isinstance(sender_id, int) and not isinstance(sender_id, bool) and sender_id > 0:
+                user_id = await session.ensure_user(sender_id, _language(None, sender.get("language_code")))
+                stored = await session.user_language(user_id)
+            else:
+                stored = None
             lang = _language(stored, sender.get("language_code"))
             await session.enqueue(
                 channel="telegram",

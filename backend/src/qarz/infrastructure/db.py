@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from qarz.application.ports import Membership, OutboxMessage, ShopSettings
+from qarz.application.ports import Membership, OutboxMessage, SessionInfo, ShopSettings
 from qarz.domain.access import Role
 
 
@@ -122,6 +122,72 @@ class PgPlatformSession:
             await self._conn.execute(text("SELECT lang FROM app_user WHERE tg_id = :tg_id"), {"tg_id": tg_id})
         ).first()
         return None if row is None else str(row.lang)
+
+    async def ensure_user(self, tg_id: int, lang: str) -> UUID:
+        # The no-op update makes RETURNING yield the existing row without changing its language.
+        row = (
+            await self._conn.execute(
+                text(
+                    "INSERT INTO app_user (id, tg_id, lang) VALUES (:id, :tg_id, :lang) "
+                    "ON CONFLICT (tg_id) DO UPDATE SET tg_id = EXCLUDED.tg_id RETURNING id"
+                ),
+                {"id": uuid4(), "tg_id": tg_id, "lang": lang},
+            )
+        ).one()
+        return UUID(str(row.id))
+
+    async def user_language(self, user_id: UUID) -> str | None:
+        row = (await self._conn.execute(text("SELECT lang FROM app_user WHERE id = :id"), {"id": user_id})).first()
+        return None if row is None else str(row.lang)
+
+    async def set_user_language(self, user_id: UUID, lang: str) -> None:
+        await self._conn.execute(text("UPDATE app_user SET lang = :lang WHERE id = :id"), {"id": user_id, "lang": lang})
+
+    async def create_session(
+        self,
+        *,
+        token_hash: bytes,
+        user_id: UUID,
+        kind: str,
+        csrf_hash: bytes | None,
+        now: datetime,
+        expires_at: datetime,
+    ) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO user_session (id, token_hash, user_id, kind, csrf_hash, created_at, expires_at) "
+                "VALUES (:id, :token_hash, :user_id, :kind, :csrf_hash, :now, :expires_at)"
+            ),
+            {
+                "id": uuid4(),
+                "token_hash": token_hash,
+                "user_id": user_id,
+                "kind": kind,
+                "csrf_hash": csrf_hash,
+                "now": now,
+                "expires_at": expires_at,
+            },
+        )
+
+    async def find_session(self, token_hash: bytes, now: datetime) -> SessionInfo | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT user_id, kind, csrf_hash FROM user_session "
+                    "WHERE token_hash = :token_hash AND revoked_at IS NULL AND expires_at > :now"
+                ),
+                {"token_hash": token_hash, "now": now},
+            )
+        ).first()
+        if row is None:
+            return None
+        return SessionInfo(row.user_id, row.kind, None if row.csrf_hash is None else bytes(row.csrf_hash))
+
+    async def revoke_session(self, token_hash: bytes, now: datetime) -> None:
+        await self._conn.execute(
+            text("UPDATE user_session SET revoked_at = :now WHERE token_hash = :token_hash AND revoked_at IS NULL"),
+            {"token_hash": token_hash, "now": now},
+        )
 
     async def enqueue(
         self, *, channel: str, recipient: str, payload: dict[str, Any], dedupe_key: str, shop_id: UUID | None = None
