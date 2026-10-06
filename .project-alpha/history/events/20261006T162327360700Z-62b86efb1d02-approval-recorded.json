@@ -1,0 +1,12 @@
+{
+  "event_id": "62b86efb1d02",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T16:23:27+00:00",
+  "path": ".project-alpha\\approvals\\APR-020.md",
+  "stage": "09-development-plan",
+  "decision_id": "DEC-020",
+  "decision": "Interviews and pDaftar test gate launch only; orchestrating agent with parallel helpers; agent decides open points and records them for later review",
+  "approval_id": "APR-020",
+  "approver": "Saidakbar Narzullayev",
+  "status": "approved"
+}
