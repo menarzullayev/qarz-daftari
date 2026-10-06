@@ -103,6 +103,20 @@ def customer_body(customer: CustomerRecord, balance: int) -> dict[str, Any]:
     }
 
 
+async def create_customer_in(session: TenantSession, actor: Membership, name: str, phone: str | None) -> CustomerRecord:
+    """Add a customer inside a tenant transaction the caller has opened and authorized."""
+    customer = await session.create_customer(
+        customer_id=uuid4(), display_name=name, name_norm=normalize_name(name), phone=phone
+    )
+    await session.record_activity(
+        membership_id=actor.membership_id,
+        action="customer.created",
+        subject_type="customer",
+        subject_id=customer.customer_id,
+    )
+    return customer
+
+
 def encode_cursor(*parts: Any) -> str:
     return base64.urlsafe_b64encode(json.dumps([str(p) for p in parts]).encode()).decode().rstrip("=")
 
@@ -135,16 +149,7 @@ class CustomerService:
             await require_writable(session, self._today(), new_credit=False)
 
             async def apply() -> dict[str, Any]:
-                customer = await session.create_customer(
-                    customer_id=uuid4(), display_name=name, name_norm=normalize_name(name), phone=number
-                )
-                await session.record_activity(
-                    membership_id=actor.membership_id,
-                    action="customer.created",
-                    subject_type="customer",
-                    subject_id=customer.customer_id,
-                )
-                return customer_body(customer, 0)
+                return customer_body(await create_customer_in(session, actor, clean_name(name), number), 0)
 
             return await idempotency.run_once(
                 session,

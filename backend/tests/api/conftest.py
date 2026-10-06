@@ -125,7 +125,7 @@ def world(owner: psycopg.Connection) -> World:
     )
     owner.execute(
         "INSERT INTO promise (id, shop_id, entry_id, promised_date, actor) "
-        "VALUES (%s, %s, %s, current_date + 7, 'staff')",
+        "VALUES (%s, %s, %s, current_date + 7, 'default')",
         (uuid.uuid4(), shop_a, entry_id),
     )
     owner.execute(

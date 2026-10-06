@@ -7,6 +7,10 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
+from qarz.application.chat import ChatService
+from qarz.application.chat_texts import say
+from qarz.application.shops import ShopService
+from qarz.application.staff import StaffService
 from qarz.application.telegram_updates import UpdateProcessor
 
 from .conftest import WEBHOOK_SECRET
@@ -29,6 +33,10 @@ def _update(chat_id: int = 4242, chat_type: str = "private", language: str = "uz
     }
 
 
+def _processor(database: Any) -> UpdateProcessor:
+    return UpdateProcessor(database, ChatService(database, ShopService(database), StaffService(database)))
+
+
 def _queued(owner: psycopg.Connection, update_id: int) -> list[tuple[str, str, str]]:
     return owner.execute(
         "SELECT channel, recipient, payload->>'text' FROM outbox_message WHERE dedupe_key = %s",
@@ -44,7 +52,7 @@ def test_a_valid_update_is_recorded_and_its_reply_queued(client: TestClient, own
     queued = _queued(owner, update["update_id"])
     assert len(queued) == 1
     assert queued[0][:2] == ("telegram", "1001")
-    assert queued[0][2].startswith("Qarz Daftari: do'kondagi")
+    assert queued[0][2] == say("uz", "welcome_new")
     assert owner.execute(
         "SELECT count(*) FROM processed_update WHERE update_id = %s", (update["update_id"],)
     ).fetchone() == (1,)
@@ -93,13 +101,13 @@ def test_messages_from_groups_are_ignored(client: TestClient, owner: psycopg.Con
 def test_reply_language_follows_the_stored_choice_then_telegram(client: TestClient, owner: psycopg.Connection) -> None:
     russian_by_telegram = _update(chat_id=2001, language="ru-RU")
     client.post("/tg/webhook", json=russian_by_telegram, headers=SECRET)
-    assert _queued(owner, russian_by_telegram["update_id"])[0][2].startswith("Qarz Daftari: учёт")
+    assert _queued(owner, russian_by_telegram["update_id"])[0][2] == say("ru", "welcome_new")
 
     # a stored choice of Uzbek wins over Telegram's Russian interface language
     owner.execute("INSERT INTO app_user (id, tg_id, lang) VALUES (gen_random_uuid(), 2002, 'uz')")
     stored_uzbek = _update(chat_id=2002, language="ru")
     client.post("/tg/webhook", json=stored_uzbek, headers=SECRET)
-    assert _queued(owner, stored_uzbek["update_id"])[0][2].startswith("Qarz Daftari: do'kondagi")
+    assert _queued(owner, stored_uzbek["update_id"])[0][2] == say("uz", "welcome_new")
 
 
 @pytest.mark.parametrize(
@@ -115,10 +123,10 @@ def test_a_failing_handler_returns_500_and_leaves_the_update_unrecorded(
 ) -> None:
     """So that Telegram redelivers and the next attempt is processed, not skipped as a duplicate."""
     update = _update()
-    real = UpdateProcessor.process
+    real = UpdateProcessor.handle
     calls = {"n": 0}
 
-    async def flaky(self: UpdateProcessor, incoming: dict[str, Any]) -> bool:
+    async def flaky(self: UpdateProcessor, incoming: dict[str, Any]) -> Any:
         calls["n"] += 1
         if calls["n"] == 1:
             async with self._storage.platform() as session:
@@ -126,7 +134,7 @@ def test_a_failing_handler_returns_500_and_leaves_the_update_unrecorded(
                 raise RuntimeError("database went away mid-update")
         return await real(self, incoming)
 
-    monkeypatch.setattr(UpdateProcessor, "process", flaky)
+    monkeypatch.setattr(UpdateProcessor, "handle", flaky)
 
     assert client.post("/tg/webhook", json=update, headers=SECRET).status_code == 500
     assert owner.execute(
@@ -155,7 +163,7 @@ def test_the_processor_itself_reports_a_duplicate(app_database_url: str) -> None
     async def scenario() -> tuple[bool, bool, bool]:
         database = Database(app_database_url)
         try:
-            processor = UpdateProcessor(database)
+            processor = _processor(database)
             return (await processor.process(update), await processor.process(update), await processor.process(update))
         finally:
             await database.dispose()
@@ -171,7 +179,7 @@ def test_an_update_without_an_integer_id_is_refused_by_the_processor(app_databas
     async def scenario(update: dict[str, Any]) -> None:
         database = Database(app_database_url)
         try:
-            await UpdateProcessor(database).process(update)
+            await _processor(database).process(update)
         finally:
             await database.dispose()
 

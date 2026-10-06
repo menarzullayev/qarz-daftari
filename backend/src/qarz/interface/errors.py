@@ -24,6 +24,7 @@ _STATUS = {
     "ALREADY_REVERSED": 409,
     "CANNOT_REVERSE_REVERSAL": 409,
     "WOULD_GO_NEGATIVE": 409,
+    "PROMISE_ALREADY_SET": 409,
 }
 
 _MESSAGES = {
@@ -46,6 +47,7 @@ _MESSAGES = {
         "ALREADY_REVERSED": "Bu yozuv allaqachon bekor qilingan.",
         "CANNOT_REVERSE_REVERSAL": "Bekor qilish yozuvini bekor qilib bo'lmaydi.",
         "WOULD_GO_NEGATIVE": "Bekor qilinsa qarz manfiy bo'lib qoladi. Avval keyingi to'lovni bekor qiling.",
+        "PROMISE_ALREADY_SET": "Muddat allaqachon belgilangan. Endi uni menejer yoki do'kon egasi o'zgartiradi.",
         "ERROR": "Xatolik yuz berdi.",
     },
     "ru": {
@@ -67,6 +69,7 @@ _MESSAGES = {
         "ALREADY_REVERSED": "Эта запись уже отменена.",
         "CANNOT_REVERSE_REVERSAL": "Запись об отмене отменить нельзя.",
         "WOULD_GO_NEGATIVE": "После такой отмены долг стал бы отрицательным. Сначала отмените более позднюю оплату.",
+        "PROMISE_ALREADY_SET": "Срок уже задан. Теперь его меняет менеджер или владелец магазина.",
         "ERROR": "Произошла ошибка.",
     },
 }

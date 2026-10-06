@@ -18,6 +18,7 @@ from qarz.application.customers import (
     CustomerService,
 )
 from qarz.application.ledger_service import (
+    CHOOSE_PROMISE,
     LIST_DEBTORS,
     READ_CUSTOMER,
     READ_OVERVIEW,
@@ -54,6 +55,12 @@ class NewEntry(BaseModel):
     amount: int = Field(strict=True)
     note: str | None = Field(default=None, max_length=400)
     promised_date: date | None = None
+
+
+class PromiseChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    promised_date: date
 
 
 def add_customer_routes(
@@ -129,6 +136,12 @@ def add_customer_routes(
         shop_id: UUID, entry_id: UUID, user_id: user, idempotency_key: IdempotencyKey = None
     ) -> dict[str, Any]:
         return await ledger.reverse(user_id, shop_id, entry_id, idempotency_key)
+
+    @app.post("/api/v1/shops/{shop_id}/entries/{entry_id}/promise-choice", name=CHOOSE_PROMISE.name)
+    async def choose_promise(
+        shop_id: UUID, entry_id: UUID, body: PromiseChoice, user_id: user, idempotency_key: IdempotencyKey = None
+    ) -> dict[str, Any]:
+        return await ledger.choose_promise(user_id, shop_id, entry_id, body.promised_date, idempotency_key)
 
     @app.get("/api/v1/shops/{shop_id}/overview", name=READ_OVERVIEW.name)
     async def overview(shop_id: UUID, user_id: user) -> dict[str, Any]:

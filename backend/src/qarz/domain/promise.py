@@ -5,6 +5,7 @@ calendar date of the sale; nothing reads the clock.
 """
 
 import calendar
+import re
 from datetime import date, datetime, timedelta, timezone, tzinfo
 from enum import StrEnum
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -92,6 +93,27 @@ def quick_choice_date(choice: QuickChoice, sale_date: date) -> date:
             return in_two_weeks(sale_date)
         case QuickChoice.IN_A_MONTH:
             return in_a_month(sale_date)
+
+
+_DAY_MONTH = re.compile(r"(\d{1,2})[./-](\d{1,2})(?:[./-](\d{4}))?")
+
+
+def parse_day_month(text: str, today: date) -> date | None:
+    """Read "25.10" or "25.10.2026" as a date. None when it is not a date.
+
+    Without a year it is the next such day, today included: in December, "15.01" is next January.
+    """
+    match = _DAY_MONTH.fullmatch(text.strip())
+    if match is None or not text.strip().isascii():
+        return None
+    day_number, month_number = int(match.group(1)), int(match.group(2))
+    try:
+        if match.group(3) is not None:
+            return date(int(match.group(3)), month_number, day_number)
+        candidate = date(today.year, month_number, day_number)
+        return candidate if candidate >= today else date(today.year + 1, month_number, day_number)
+    except ValueError:
+        return None
 
 
 class PromiseDateError(StrEnum):
