@@ -22,6 +22,7 @@ from qarz.application.ledger_service import LedgerService
 from qarz.application.links import LinkService
 from qarz.application.ownership import OwnershipService
 from qarz.application.ports import Storage
+from qarz.application.reminders import ReminderService
 from qarz.application.shops import ShopService
 from qarz.application.staff import StaffService
 from qarz.application.telegram_updates import UpdateProcessor
@@ -33,6 +34,7 @@ from qarz.interface.disputes_api import add_dispute_routes
 from qarz.interface.errors import app_error_handler, error_response
 from qarz.interface.links_api import add_link_routes
 from qarz.interface.me_api import add_me_routes
+from qarz.interface.reminders_api import add_reminder_routes
 from qarz.interface.shops_api import add_shop_routes
 from qarz.interface.staff_api import add_staff_routes
 from qarz.interface.telegram_webhook import add_webhook_route
@@ -107,6 +109,7 @@ def create_app(
         add_staff_routes(app, StaffService(storage), current_user)
         add_link_routes(app, LinkService(storage, now), current_user)
         add_me_routes(app, CustomerAccountService(storage, now), current_user)
+        add_reminder_routes(app, ReminderService(storage, now), current_user)
         add_dispute_routes(app, DisputeService(storage, now), current_user)
         add_customer_routes(app, CustomerService(storage, now), LedgerService(storage, now), current_user)
         add_catalog_routes(app, CatalogService(storage, now), current_user)

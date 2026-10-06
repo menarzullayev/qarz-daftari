@@ -76,6 +76,16 @@ def _open_dispute(owner: psycopg.Connection, world: World) -> None:
     )
 
 
+def _reminders_due(owner: psycopg.Connection, world: World) -> None:
+    """Reminders on, and customer_a (linked) overdue: the promised date of entry_a moves into the past."""
+    owner.execute("UPDATE shop SET reminders_on = true WHERE id = %s", (world.shop_a,))
+    owner.execute(
+        "INSERT INTO promise (id, shop_id, entry_id, promised_date, actor) "
+        "VALUES (gen_random_uuid(), %s, %s, current_date - 3, 'staff')",
+        (world.shop_a, world.entry_a),
+    )
+
+
 CALLS: dict[str, Call] = {
     "shop.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}"),
     "shop.update": Call("PATCH", lambda w, shop: f"/api/v1/shops/{shop}", {"name": "Renamed"}, changes_data=True),
@@ -178,6 +188,17 @@ CALLS: dict[str, Call] = {
         True,
         201,
     ),
+    "reminders.settings.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/reminders"),
+    "reminders.settings.update": Call("PATCH", lambda w, shop: f"/api/v1/shops/{shop}/reminders", {"hour": 12}, True),
+    "reminders.send": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/reminders/manual",
+        None,  # the body names a customer of shop A; filled in by _body
+        True,
+        201,
+        prepare=_reminders_due,
+    ),
+    "reminders.unreachable": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/reminders/unreachable"),
     "overview.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview"),
     "overview.debtors": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview/debtors"),
     "catalog.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/catalog"),
@@ -250,6 +271,11 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     # Specification, resources table: "Author, manager, owner". Any staff member by role; within the
     # operation only the entry's author or a manager (REQ-038).
     "ledger.entry.lines.add": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    # Specification, resources table: reminders are for managers and owners.
+    "reminders.settings.read": {Role.MANAGER, Role.OWNER},
+    "reminders.settings.update": {Role.MANAGER, Role.OWNER},
+    "reminders.send": {Role.MANAGER, Role.OWNER},
+    "reminders.unreachable": {Role.MANAGER, Role.OWNER},
     "overview.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "overview.debtors": {Role.SELLER, Role.MANAGER, Role.OWNER},
     # Specification, resources table: "Manager, owner; sellers read".
@@ -324,6 +350,8 @@ def _key() -> dict[str, str]:
 def _body(world: World, op_name: str, call: Call) -> dict[str, Any] | None:
     if op_name == "ownership.transfer.start":
         return {"membership_id": str(world.manager_a_membership)}
+    if op_name == "reminders.send":
+        return {"customer_id": str(world.customer_a)}
     if op_name == "waiting.attach":
         return {"customer_id": str(world.settled_customer_a)}
     if op_name == "ledger.entry.promise.choose":
@@ -349,6 +377,10 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
     """Everything a refused call could have changed in a shop."""
     return (
         owner.execute("SELECT name, lang, default_promise_days, status FROM shop WHERE id = %s", (shop,)).fetchone(),
+        owner.execute(
+            "SELECT reminders_on, reminder_hour, reminder_tpl, sms_on FROM shop WHERE id = %s", (shop,)
+        ).fetchone(),
+        owner.execute("SELECT count(*) FROM reminder WHERE shop_id = %s", (shop,)).fetchone(),
         owner.execute(
             "SELECT id, user_id, role, status FROM membership WHERE shop_id = %s ORDER BY id", (shop,)
         ).fetchall(),

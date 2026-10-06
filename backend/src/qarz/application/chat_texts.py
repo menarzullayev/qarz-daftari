@@ -138,6 +138,20 @@ UZ = {
     "dispute_declined_staff": "E'tiroz rad etildi. Mijozga sababi bilan xabar yuborildi.",
     "n_dispute_declined": "{shop}\n{amount} yozuvi bo'yicha e'tirozingiz rad etildi.\nSabab: {reason}",
     "s_dispute_withdrawn": "{shop}\n{name} {amount} yozuvi bo'yicha e'tirozini qaytarib oldi.",
+    "r1_due_today": "Assalomu alaykum, {name}! «{shop}» do'konidan eslatma: bugun {amount} to'lash kuni. Rahmat!",
+    "r1_overdue": (
+        "Assalomu alaykum, {name}! «{shop}» do'konidagi {amount} qarzingizning to'lash muddati o'tgan. "
+        "Imkon topib to'lab qo'ysangiz, minnatdor bo'lamiz."
+    ),
+    "r2_due_today": "«{shop}»: {name}, bugun {amount} to'lash kuni.",
+    "r2_overdue": "«{shop}»: {name}, {amount} qarzning to'lash muddati o'tgan. Iltimos, to'lab qo'ying.",
+    "r3_due_today": "Hurmatli {name}, «{shop}» do'koni sizni qadrlaydi. Bugun {amount} to'lash kuni ekanini eslatamiz.",
+    "r3_overdue": (
+        "Hurmatli {name}, «{shop}» do'konidagi {amount} qarzingizning muddati o'tganini eslatamiz. Qulay "
+        "vaqtda to'lab qo'ysangiz, xursand bo'lamiz."
+    ),
+    "sms_due_today": "{shop}: {name}, bugun {amount} to'lash kuni. Rahmat.",
+    "sms_overdue": "{shop}: {name}, {amount} qarz muddati o'tgan. Iltimos, to'lab qo'ying.",
     "currency": "so'm",
 }
 
@@ -270,6 +284,20 @@ RU = {
     "dispute_declined_staff": "Возражение отклонено. Клиенту отправлено сообщение с причиной.",
     "n_dispute_declined": "{shop}\nВаше возражение по записи {amount} отклонено.\nПричина: {reason}",
     "s_dispute_withdrawn": "{shop}\n{name} отозвал возражение по записи {amount}.",
+    "r1_due_today": "Здравствуйте, {name}! Напоминание от магазина «{shop}»: сегодня срок оплаты {amount}. Спасибо!",
+    "r1_overdue": (
+        "Здравствуйте, {name}! Срок оплаты вашего долга {amount} в магазине «{shop}» прошёл. Будем "
+        "благодарны, если вы оплатите его при возможности."
+    ),
+    "r2_due_today": "«{shop}»: {name}, сегодня срок оплаты {amount}.",
+    "r2_overdue": "«{shop}»: {name}, срок оплаты долга {amount} прошёл. Пожалуйста, оплатите.",
+    "r3_due_today": "Уважаемый(ая) {name}, магазин «{shop}» ценит вас. Напоминаем, что сегодня срок оплаты {amount}.",
+    "r3_overdue": (
+        "Уважаемый(ая) {name}, напоминаем, что срок оплаты вашего долга {amount} в магазине «{shop}» "
+        "прошёл. Будем рады, если вы оплатите его в удобное время."
+    ),
+    "sms_due_today": "{shop}: {name}, сегодня срок оплаты {amount}. Спасибо.",
+    "sms_overdue": "{shop}: {name}, срок оплаты долга {amount} прошёл. Пожалуйста, оплатите.",
     "currency": "сум",
 }
 
