@@ -120,7 +120,7 @@ Payment collection is itself an open issue: subscriptions sold inside a Telegram
 
 ## Evidence register
 
-Added in this stage: EVID-020 to EVID-030. Reused: EVID-002, EVID-004, EVID-005, EVID-007, EVID-009, EVID-010, EVID-013, EVID-014, EVID-015, EVID-018 and EVID-019 (see `docs/evidence/`).
+Added in this stage: EVID-020 to EVID-030 inclusive. Reused: EVID-002, EVID-004, EVID-005, EVID-007, EVID-009, EVID-010, EVID-013, EVID-014, EVID-015, EVID-018 and EVID-019 (see `docs/evidence/`).
 
 Correction to earlier work: EVID-003 described pDaftar as an iOS app from its App Store listing only. EVID-020 supersedes that picture. Idea Selection scored candidate B's differentiation at 2 out of 5 on the earlier, incomplete view; on current evidence it would be lower.
 
