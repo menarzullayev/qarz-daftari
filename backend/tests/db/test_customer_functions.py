@@ -206,3 +206,57 @@ def test_the_database_refuses_a_waiting_entry_without_consent_and_a_name_outside
             "VALUES (gen_random_uuid(), %s, %s, %s, 'active', 2, now(), 'Karim')",
             (shop_a.shop_id, shop_a.customer_id, user),
         )
+
+
+@pytest.mark.parametrize("function", ["my_link(uuid, uuid)", "forget_user_if_unused(uuid)"])
+def test_the_customer_page_functions_are_for_the_application_role_only(
+    owner: psycopg.Connection, function: str
+) -> None:
+    row = owner.execute(
+        "SELECT has_function_privilege('qd_app', %s, 'EXECUTE'), has_function_privilege('public', %s, 'EXECUTE')",
+        (function, function),
+    ).fetchone()
+    assert row == (True, False)
+
+
+def test_a_link_resolves_only_for_its_own_user_and_only_while_live(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+) -> None:
+    me, other = _user(owner), _user(owner)
+    link_id = _link(owner, shop_a, me)
+    with as_app(None) as app:
+        assert app.execute("SELECT shop_id, customer_id FROM my_link(%s, %s)", (me, link_id)).fetchall() == [
+            (shop_a.shop_id, shop_a.customer_id)
+        ]
+        assert app.execute("SELECT count(*) FROM my_link(%s, %s)", (other, link_id)).fetchone() == (0,)
+        assert app.execute("SELECT count(*) FROM my_link(%s, %s)", (me, uuid.uuid4())).fetchone() == (0,)
+    owner.execute("UPDATE customer_link SET status = 'ended', ended_at = now() WHERE id = %s", (link_id,))
+    with as_app(None) as app:
+        assert app.execute("SELECT count(*) FROM my_link(%s, %s)", (me, link_id)).fetchone() == (0,)
+
+
+def test_only_a_person_nothing_refers_to_is_forgotten(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+) -> None:
+    unused, linked, admin = _user(owner), _user(owner), _user(owner)
+    _link(owner, shop_b, linked, "ended")  # even an ended link still names the person
+    owner.execute("INSERT INTO admin_account (user_id, totp_secret) VALUES (%s, %s)", (admin, b"test-only"))
+    owner.execute(
+        "INSERT INTO user_session (id, token_hash, user_id, kind, expires_at) "
+        "VALUES (gen_random_uuid(), %s, %s, 'webapp', now() + interval '1 hour')",
+        (uuid.uuid4().bytes, unused),
+    )
+    with as_app(None) as app:
+        results = [
+            app.execute("SELECT forget_user_if_unused(%s)", (user,)).fetchone()
+            for user in (shop_a.user_id, linked, admin, unused, unused, uuid.uuid4())
+        ]
+    assert results == [(False,), (False,), (False,), (True,), (False,), (False,)]
+    kept = owner.execute(
+        "SELECT count(*) FROM app_user WHERE id IN (%s, %s, %s) AND tg_id IS NOT NULL", (shop_a.user_id, linked, admin)
+    ).fetchone()
+    assert kept == (3,)
+    assert owner.execute("SELECT tg_id FROM app_user WHERE id = %s", (unused,)).fetchone() == (None,)
+    assert owner.execute(
+        "SELECT revoked_at IS NOT NULL FROM user_session WHERE user_id = %s", (unused,)
+    ).fetchall() == [(True,)]

@@ -243,6 +243,16 @@ SELF_CALLS: dict[str, PlainCall] = {
         "POST", "/api/v1/staff-invitations/accept", {"token": "unknown-token-0123456789abcdef"}, 404
     ),
     "me.shops.list": PlainCall("GET", "/api/v1/me/shops", returns_own_id=False),
+    "me.accounts.list": PlainCall("GET", "/api/v1/me/accounts", returns_own_id=False),
+    # A link nobody holds: for any signed-in user it does not exist.
+    "me.accounts.read": PlainCall("GET", "/api/v1/me/accounts/00000000-0000-4000-8000-000000000000", ok_status=404),
+    "me.accounts.disconnect": PlainCall(
+        "POST", "/api/v1/me/accounts/00000000-0000-4000-8000-000000000000/disconnect", ok_status=404
+    ),
+    "me.accounts.removal": PlainCall(
+        "POST", "/api/v1/me/accounts/00000000-0000-4000-8000-000000000000/removal", ok_status=404
+    ),
+    "me.owner_totals": PlainCall("GET", "/api/v1/me/owner-totals", returns_own_id=False),
     # A shop nobody is a member of: for any signed-in user it does not exist.
     "me.active_shop.set": PlainCall(
         "PUT", "/api/v1/me/active-shop", {"shop_id": "00000000-0000-4000-8000-000000000000"}, 404
@@ -324,6 +334,7 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
             (shop,),
         ).fetchall(),
         owner.execute("SELECT count(*) FROM outbox_message WHERE shop_id = %s", (shop,)).fetchone(),
+        owner.execute("SELECT id, status FROM removal_request WHERE shop_id = %s ORDER BY id", (shop,)).fetchall(),
         owner.execute(
             "SELECT id, name, name_norm, unit, price, learned, status, merged_into FROM catalog_item "
             "WHERE shop_id = %s ORDER BY id",

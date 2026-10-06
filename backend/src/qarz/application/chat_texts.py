@@ -114,6 +114,19 @@ UZ = {
     "n_promise": "{shop}\n{name}, {amount} nasiyaning to'lash muddati: {date}\nJami qarzingiz: {balance}",
     "n_line": "• {name} — {qty} {unit}: {total}",
     "n_more_lines": "… va yana {count} ta mahsulot",
+    "removal_choose": "Qaysi do'kondagi ma'lumotlaringiz o'chirilsin?",
+    "removal_button": "O'chirish: {shop}",
+    "removal_confirm": (
+        "«{shop}» do'konidagi ismingiz, telefon raqamingiz va Telegram hisobingiz bilan bog'lanish "
+        "o'chiriladi. Qarz va to'lov summalari do'kon daftarida ismsiz qoladi. Qarzingiz bo'lsa, u to'liq "
+        "to'langanda o'chiriladi. Buni ortga qaytarib bo'lmaydi. Davom etilsinmi?"
+    ),
+    "removal_yes": "Ha, o'chirilsin",
+    "removal_done": "«{shop}» do'konidagi ma'lumotlaringiz o'chirildi.",
+    "removal_waiting": (
+        "So'rovingiz qabul qilindi. «{shop}» do'konidagi qarzingiz ({balance}) to'liq to'langach, "
+        "ma'lumotlaringiz o'chiriladi."
+    ),
     "currency": "so'm",
 }
 
@@ -223,6 +236,18 @@ RU = {
     "n_promise": "{shop}\n{name}, срок оплаты долга {amount}: {date}\nВсего долг: {balance}",
     "n_line": "• {name} — {qty} {unit}: {total}",
     "n_more_lines": "… и ещё товаров: {count}",
+    "removal_choose": "В каком магазине удалить ваши данные?",
+    "removal_button": "Удалить: {shop}",
+    "removal_confirm": (
+        "В магазине «{shop}» будут удалены ваше имя, номер телефона и связь с вашим аккаунтом Telegram. "
+        "Суммы долгов и оплат останутся в книге магазина без имени. Если у вас есть долг, данные будут "
+        "удалены после его полной оплаты. Это нельзя отменить. Продолжить?"
+    ),
+    "removal_yes": "Да, удалить",
+    "removal_done": "Ваши данные в магазине «{shop}» удалены.",
+    "removal_waiting": (
+        "Запрос принят. После полной оплаты долга в магазине «{shop}» ({balance}) ваши данные будут удалены."
+    ),
     "currency": "сум",
 }
 

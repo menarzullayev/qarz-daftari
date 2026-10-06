@@ -16,6 +16,7 @@ from uuid import UUID, uuid5
 
 from qarz.application import idempotency
 from qarz.application.chat_texts import CONSENT_VERSION, LANGUAGE_NAMES, day, money, say
+from qarz.application.customer_account import CustomerAccountService
 from qarz.application.customers import CREATE_CUSTOMER, create_customer_in, require_writable
 from qarz.application.errors import AlreadyMember, AppError, ForbiddenRole, NotFound, ValidationFailed
 from qarz.application.ledger_service import (
@@ -56,7 +57,7 @@ _PARSE_TEXTS = {
     ParseErrorCode.AMOUNT_TOO_SMALL: "amount_range",
     ParseErrorCode.AMOUNT_TOO_LARGE: "amount_range",
 }
-_LATER_COMMANDS = frozenset({"/ilova", "/toladim", "/obuna", "/ochirish"})
+_LATER_COMMANDS = frozenset({"/ilova", "/toladim", "/obuna"})
 
 Keyboard = list[list[tuple[str, str]]]
 
@@ -154,6 +155,7 @@ class ChatService:
         self._storage = storage
         self._shops = shops
         self._staff = staff
+        self._accounts_service = CustomerAccountService(storage, now)
         self._now = now or (lambda: datetime.now(UTC))
 
     def _today(self) -> date:
@@ -245,6 +247,18 @@ class ChatService:
                         for account in accounts[:20]
                     ],
                 )
+        elif command == "/ochirish":
+            accounts = await session.my_accounts(incoming.user_id)
+            if not accounts:
+                await replies.send(say(lang, "no_accounts"))
+            else:
+                await replies.send(
+                    say(lang, "removal_choose"),
+                    [
+                        [(say(lang, "removal_button", shop=account.shop_name), callback("del", account.link_id.hex))]
+                        for account in accounts[:20]
+                    ],
+                )
         elif command == "/yordam":
             await replies.send(say(lang, "help"))
         elif command in _LATER_COMMANDS:
@@ -286,6 +300,8 @@ class ChatService:
             await replies.show(say(lang, "shop_switched", shop=mine[shop_id].name))
         elif action in ("ok", "no") and arguments:
             await self._consent_answer(session, incoming, replies, action, arguments[0])
+        elif action in ("del", "delok", "delno") and arguments:
+            await self._removal_answer(session, incoming, replies, action, arguments[0])
         elif action == "unl" and arguments:
             shop_id = _uuid(arguments[0])
             accounts = {account.shop_id: account for account in await session.my_accounts(incoming.user_id)}
@@ -412,6 +428,48 @@ class ChatService:
             "taken": "link_taken",
         }
         await replies.show(say(lang, texts.get(outcome, "link_invalid"), shop=shop_name))
+
+    async def _removal_answer(
+        self, session: PlatformSession, incoming: Incoming, replies: Replies, action: str, link_hex: str
+    ) -> None:
+        """/ochirish: choose the shop, confirm, then the same removal as the API (REQ-029)."""
+        lang = incoming.lang
+        link_id = _uuid(link_hex)
+        accounts = {account.link_id: account for account in await session.my_accounts(incoming.user_id)}
+        if link_id is None or link_id not in accounts:
+            await replies.show(say(lang, "expired"))
+            return
+        account = accounts[link_id]
+        if action == "del":
+            await replies.show(
+                say(lang, "removal_confirm", shop=account.shop_name),
+                [
+                    [
+                        (say(lang, "removal_yes"), callback("delok", link_id.hex)),
+                        (say(lang, "reverse_no"), callback("delno", link_id.hex)),
+                    ]
+                ],
+            )
+            return
+        if action == "delno":
+            await replies.show(say(lang, "cancelled"))
+            return
+        try:
+            result = await self._accounts_service.request_removal(incoming.user_id, link_id)
+        except NotFound:
+            await replies.show(say(lang, "expired"))
+            return
+        if result["removed"]:
+            await replies.show(say(lang, "removal_done", shop=account.shop_name))
+        else:
+            await replies.show(
+                say(
+                    lang,
+                    "removal_waiting",
+                    shop=account.shop_name,
+                    balance=money(lang, int(result["waiting_for_balance"])),
+                )
+            )
 
     # --- shops ---------------------------------------------------------------------------------------
 
