@@ -1,0 +1,19 @@
+{
+  "event_id": "4d951fc1df7c",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T19:50:30+00:00",
+  "path": ".project-alpha\\decisions\\DEC-031.md",
+  "stage": "04-prd",
+  "title": "Staff screen choices",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-031",
+  "decision": "Sellers see the catalog read-only and no review queue; managers see shop settings read-only; a seller who is not the author is refused by the server when adding goods; quantity arithmetic is done on integers of thousandths with halves rounded up; the amount field accepts an amount only; a payment above the shown balance is not blocked in the browser because the shown balance may be stale; errors are shown without a new colour so that Telegram themes keep their contrast",
+  "context": "Decided by an agent during the autonomous build under DEC-020; implemented and awaiting the founder's review",
+  "chosen_option": "Choices as listed in pull requests 17 and 23",
+  "rationale": "Each follows the role table of the specification or avoids showing a number the server would not accept",
+  "impact": "Low",
+  "reversibility": "High",
+  "evidence": "EVID-048",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}
