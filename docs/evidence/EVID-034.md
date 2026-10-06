@@ -1,0 +1,10 @@
+# Evidence Record
+
+- Evidence ID: EVID-034
+- CLAIM: The founder's own expectations for a typical mahalla grocery shop, given as answers to the twenty interview questions: unpaid credit is a top problem; credit goes to almost anyone; 100+ debtors and over 50 million UZS outstanding; entries include the list of goods and the promised repayment date; family or hired sellers also record; shopkeepers do not know their repayment rates; customers should link and see their debt but should not have to confirm entries; 100,000 UZS a month is an acceptable price. These are hypotheses, not shopkeeper interviews.
+- SOURCE: Founder Q&A in chat on 2026-10-06; see docs/02-problem-discovery/founder-hypotheses.md
+- DATE: 2026-10-06
+- CONFIDENCE: LOW
+- TYPE: ASSUMPTION
+- RISK: MEDIUM
+- Stage: 02-problem-discovery
