@@ -53,6 +53,6 @@ Not started.
 
 ## What the founder is needed for next
 
-1. Create two Telegram test bots in BotFather (one for development, one for automated tests) and place their tokens in a local `.env` file; needed for S1.4 and S2.1.
+1. Done on 2026-10-06: development and test bots exist and the local `.env` is filled. Still missing there: a public HTTPS address (`QD_PUBLIC_BASE_URL`).
 2. Choose two hosting providers or facilities in Uzbekistan (S1.5).
-3. Start the shopkeeper interviews and the pDaftar test now; both must be recorded before M4.
+3. Run the shopkeeper interviews and the pDaftar test. By DEC-020 they no longer block the build, but launch criterion 1 cannot be met without them, and the later they happen the more of the build rests on untested assumptions.

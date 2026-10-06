@@ -26,8 +26,8 @@ Version 1 (pilot MVP, 18 to 31 days, DEC-010) is superseded and remains in versi
 
 | Check | Gates | Must finish before |
 |---|---|---|
-| 15 to 20 shopkeeper interviews; the founder's own answers (EVID-034) say what to listen for | Stop conditions from Market Research; nearly all of release 1 rests on EVID-034 | M4 |
-| Hands-on test of pDaftar | Whether the incumbent already covers the scope | M4 |
+| 15 to 20 shopkeeper interviews; the founder's own answers (EVID-034) say what to listen for | Stop conditions from Market Research; nearly all of release 1 rests on EVID-034 | M9 (launch); no longer blocks the build (DEC-020) |
+| Hands-on test of pDaftar | Whether the incumbent already covers the scope | M9 (launch); no longer blocks the build (DEC-020) |
 | Legal review of the open questions in the Technical Specification, including payments to a personal card (EVID-035) and the consent text | Any real customer data; any payment | M9; much better before M4 |
 | Two hosting providers or facilities in Uzbekistan chosen and reachable from Telegram | ADR-014 | End of M1 |
 | Review group and administrator procedures agreed | REQ-055 | M7 |
@@ -163,7 +163,7 @@ Work off the critical path: import (S14.1) and activity view (S5.1) any time aft
 
 Decision points on the path:
 
-1. **After M4**, about 46 to 69 days in: the product can record itemized credit, link customers, and handle disputes and requests. This is the earliest point at which real shops could try it. The founder has decided not to; the interviews and the pDaftar test are due here regardless.
+1. **After M4**, about 46 to 69 days in: the product can record itemized credit, link customers, and handle disputes and requests. This is the earliest point at which real shops could try it. The founder has decided not to. Until 2026-10-06 the interviews and the pDaftar test were due here; by DEC-020 they now gate launch only, so the build continues past this point without them.
 2. **Before M9**: legal review complete.
 
 ## Risks
@@ -273,4 +273,5 @@ Every requirement of PRD version 2 that is not withdrawn appears in the table.
 | Record | Subject | Status |
 |---|---|---|
 | DEC-010 / APR-010 | Version 1 plan | Superseded; its two gates are carried into M0 |
+| DEC-020 / APR-020 | Gate change: interviews and the pDaftar test no longer block the build before M4; they remain launch criterion 1. The build is run by an orchestrating agent with parallel helpers, which decides open points itself and records each as a decision for later review | Approved 2026-10-06 |
 | DEC-018 | Version 2 plan: milestones M1 to M9, a build estimate of 92 to 138 focused days without calendar commitment, no pilot stage by founder decision, shops onboarded one at a time for the first two weeks, and the validation and legal track with its gates | Approved 2026-10-06 (APR-018) |
