@@ -1,0 +1,85 @@
+# Local rehearsal of the two-server database design (ADR-014, ADR-015, ADR-020).
+# One machine, throwaway data, loopback ports only. Never used in production.
+name: qd-rehearsal
+
+x-postgres: &postgres
+  build: ./postgres
+  image: qd-rehearsal-postgres:16
+  stop_grace_period: 30s
+  healthcheck:
+    test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "qarz"]
+    interval: 2s
+    timeout: 2s
+    retries: 60
+
+x-postgres-env: &postgres-env
+  POSTGRES_USER: postgres
+  POSTGRES_DB: qarz
+  POSTGRES_PASSWORD: ${QD_POSTGRES_PASSWORD:?run scripts/up.sh, which generates .env}
+  QD_REPL_PASSWORD: ${QD_REPL_PASSWORD:?run scripts/up.sh, which generates .env}
+  PGBACKREST_REPO1_CIPHER_PASS: ${QD_BACKUP_CIPHER_PASS:?run scripts/up.sh, which generates .env}
+
+services:
+  pg-primary:
+    <<: *postgres
+    environment:
+      <<: *postgres-env
+      QD_ROLE: primary
+      QD_NODE: pg-primary
+      QD_IGNORE_FENCE: ${QD_IGNORE_FENCE:-0}
+    ports:
+      - "127.0.0.1:${QD_PORT_PRIMARY:-55532}:5432"
+    volumes:
+      - primary-data:/var/lib/postgresql/data
+      - backup-repo:/var/lib/pgbackrest
+      - fence:/fence
+
+  pg-standby:
+    <<: *postgres
+    environment:
+      <<: *postgres-env
+      QD_ROLE: standby
+      QD_NODE: pg-standby
+    ports:
+      - "127.0.0.1:${QD_PORT_STANDBY:-55533}:5432"
+    volumes:
+      - standby-data:/var/lib/postgresql/data
+      - backup-repo:/var/lib/pgbackrest
+      - fence:/fence
+
+  # Started only by scripts/pitr.sh. Its data lives in an anonymous volume
+  # that is removed together with the container.
+  pg-pitr:
+    <<: *postgres
+    profiles: ["pitr"]
+    environment:
+      <<: *postgres-env
+      QD_ROLE: pitr
+      QD_NODE: pg-pitr
+      QD_PITR_TARGET: ${QD_PITR_TARGET:-}
+      QD_PITR_TIMELINE: ${QD_PITR_TIMELINE:-}
+    ports:
+      - "127.0.0.1:${QD_PORT_PITR:-55534}:5432"
+    volumes:
+      - /var/lib/postgresql/data
+      - backup-repo:/var/lib/pgbackrest
+
+  filestore:
+    build: ./filestore
+    image: qd-rehearsal-filestore:1
+    environment:
+      GARAGE_RPC_SECRET: ${QD_FILESTORE_RPC_SECRET:?run scripts/up.sh, which generates .env}
+      GARAGE_ADMIN_TOKEN: ${QD_FILESTORE_ADMIN_TOKEN:?run scripts/up.sh, which generates .env}
+    ports:
+      - "127.0.0.1:${QD_PORT_FILESTORE:-55900}:3900"
+    volumes:
+      - filestore-meta:/var/lib/garage/meta
+      - filestore-data:/var/lib/garage/data
+
+volumes:
+  primary-data:
+  standby-data:
+  backup-repo:
+  fence:
+  filestore-meta:
+  filestore-data:
