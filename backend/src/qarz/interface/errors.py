@@ -29,6 +29,7 @@ _STATUS = {
     "DISPUTE_NOT_ALLOWED": 409,
     "DELETION_ALREADY_REQUESTED": 409,
     "DELETION_NOT_REQUESTED": 409,
+    "ONLINE_PAY_OFF": 409,
     "LIMIT_REACHED": 409,
     "REMINDERS_OFF": 409,
     "REMINDER_NOT_DUE": 409,
@@ -84,6 +85,7 @@ _MESSAGES = {
         "LIMIT_REACHED": "Bu savdo mijozning nasiya limitidan oshadi. Menejer yoki do'kon egasi yoza oladi.",
         "DELETION_ALREADY_REQUESTED": "Do'konni o'chirish allaqachon so'ralgan.",
         "DELETION_NOT_REQUESTED": "Do'konni o'chirish so'ralmagan.",
+        "ONLINE_PAY_OFF": "Onlayn to'lov hozircha yoqilmagan. Karta orqali to'lash: /obuna",
         "ERROR": "Xatolik yuz berdi.",
     },
     "ru": {
@@ -124,6 +126,7 @@ _MESSAGES = {
         "LIMIT_REACHED": "Эта продажа превысит лимит клиента. Записать может менеджер или владелец.",
         "DELETION_ALREADY_REQUESTED": "Удаление магазина уже запрошено.",
         "DELETION_NOT_REQUESTED": "Удаление магазина не запрашивалось.",
+        "ONLINE_PAY_OFF": "Онлайн-оплата пока не включена. Оплата переводом на карту: /obuna",
         "ERROR": "Произошла ошибка.",
     },
 }

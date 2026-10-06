@@ -21,6 +21,29 @@ def test_with_a_bot_token_and_secret_the_api_and_webhook_are_served() -> None:
     assert {"/healthz", "/tg/webhook", "/api/v1/me", "/api/v1/auth/telegram-webapp"} <= paths
 
 
+def test_the_payment_provider_endpoints_are_served_whatever_the_configuration() -> None:
+    """They answer "disabled" until the switch is on, so they must exist even with nothing configured."""
+    for settings in (
+        Settings(database_url=DB, bot_token="", webhook_secret=""),
+        Settings(database_url=DB, bot_token="123:test", webhook_secret="a-long-enough-secret"),
+    ):
+        assert {"/pay/payme", "/pay/click"} <= _paths(settings)
+
+
+def test_the_provider_keys_come_from_the_environment_and_are_empty_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    names = ("PAYME_MERCHANT_ID", "PAYME_SECRET_KEY", "CLICK_SERVICE_ID", "CLICK_MERCHANT_ID", "CLICK_SECRET_KEY")
+    for name in names:
+        monkeypatch.delenv(f"QD_{name}", raising=False)
+    empty = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert [getattr(empty, name.lower()) for name in names] == [""] * 5
+    for name in names:
+        monkeypatch.setenv(f"QD_{name}", f"value-of-{name}")
+    filled = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert [getattr(filled, name.lower()) for name in names] == [f"value-of-{name}" for name in names]
+
+
 def test_without_a_bot_token_no_api_is_served() -> None:
     """No token means no way to verify who is calling, so the API must not exist at all."""
     paths = _paths(Settings(database_url=DB, bot_token="", webhook_secret="a-long-enough-secret"))
