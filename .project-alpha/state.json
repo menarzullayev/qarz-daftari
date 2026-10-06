@@ -1,11 +1,11 @@
 {
   "framework_version": "1.0.0",
-  "current_stage": "idea-selection",
+  "current_stage": "01-vision",
   "lifecycle": "REVIEW",
-  "global_audit_status": "NOT_RUN",
+  "global_audit_status": "BLOCKED",
   "stages": {
-    "idea-selection": "REVIEW",
-    "01-vision": "NOT_STARTED",
+    "idea-selection": "PASSED",
+    "01-vision": "REVIEW",
     "02-problem-discovery": "NOT_STARTED",
     "03-market-research": "NOT_STARTED",
     "04-prd": "NOT_STARTED",
@@ -16,5 +16,5 @@
     "09-development-plan": "NOT_STARTED",
     "10-operations": "NOT_STARTED"
   },
-  "updated_at": "2026-10-06T08:46:13+00:00"
+  "updated_at": "2026-10-06T08:50:22+00:00"
 }

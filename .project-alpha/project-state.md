@@ -1,15 +1,15 @@
 # Project State
 
 framework_version: 1.0.0
-current_stage: idea-selection
+current_stage: 01-vision
 lifecycle: REVIEW
-global_audit_status: NOT_RUN
+global_audit_status: BLOCKED
 blocked_stage:
 blocked_reason:
 
 ## Stage status
-- idea-selection: REVIEW
-- 01-vision: NOT_STARTED
+- idea-selection: PASSED
+- 01-vision: REVIEW
 - 02-problem-discovery: NOT_STARTED
 - 03-market-research: NOT_STARTED
 - 04-prd: NOT_STARTED

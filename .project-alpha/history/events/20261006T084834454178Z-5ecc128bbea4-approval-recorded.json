@@ -1,0 +1,11 @@
+{
+  "event_id": "5ecc128bbea4",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T08:48:34+00:00",
+  "path": ".project-alpha\\approvals\\APR-001.md",
+  "stage": "idea-selection",
+  "decision_id": "DEC-001",
+  "approval_id": "APR-001",
+  "approver": "Saidakbar Narzullayev",
+  "status": "approved"
+}

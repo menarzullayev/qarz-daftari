@@ -1,6 +1,6 @@
 # Idea Selection
 
-Status: awaiting human decision. Prepared 2026-10-06. Evidence records live in `docs/evidence/`.
+Status: approved by the founder on 2026-10-06. Evidence records live in `docs/evidence/`.
 
 ## Candidate ideas
 
@@ -122,10 +122,9 @@ This recommendation has moderate confidence. The comparison between candidates i
 
 ## Human decision
 
-Pending. Decision record: DEC-001 (approval required, status pending).
+Approved on 2026-10-06 by the founder (Saidakbar Narzullayev): candidate B enters the pipeline. Records: DEC-001, APR-001.
 
-The founder is asked to decide:
+Not explicitly confirmed by the founder and therefore still carried as assumptions into Stage 01:
 
-1. Whether candidate B is the idea that enters the pipeline.
-2. Whether the founder-context assumptions above (team, budget, experience, first market) are correct.
-3. Whether "Qarz Daftari" stays as the working project name.
+- The founder-context assumptions listed above (team, budget, experience, first market).
+- "Qarz Daftari" as the working project name.

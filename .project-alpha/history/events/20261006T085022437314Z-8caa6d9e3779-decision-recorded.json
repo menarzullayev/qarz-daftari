@@ -1,0 +1,19 @@
+{
+  "event_id": "8caa6d9e3779",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T08:50:22+00:00",
+  "path": ".project-alpha\\decisions\\DEC-002.md",
+  "stage": "01-vision",
+  "title": "Approve mission and strategic direction",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-002",
+  "decision": "Adopt the mission, vision, principles and scope boundaries in docs/01-vision/OUTPUT.md as the product direction",
+  "context": "Candidate B was approved in DEC-001; Stage 01 turns it into an explicit direction centered on repayment, with lending, cross-shop data sharing and POS out of scope",
+  "chosen_option": "Repayment-first, Telegram-first, record-not-lender",
+  "rationale": "Targets the only evidenced pain (EVID-001), avoids licensed activity (EVID-009), and keeps the MVP feasible; demand assumptions EVID-012 and EVID-013 remain to be tested in Stage 02",
+  "impact": "High",
+  "reversibility": "Medium",
+  "evidence": "EVID-001, EVID-009, EVID-012, EVID-013",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}
