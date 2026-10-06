@@ -6,6 +6,7 @@ from here; they are queued in the outbox inside the same transaction (ADR-007). 
 decided by `ChatService`.
 """
 
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -41,6 +42,7 @@ class UpdateProcessor:
         return (await self.handle(update)).fresh
 
     async def handle(self, update: dict[str, Any]) -> Processed:
+        received = time.perf_counter()
         update_id = update.get("update_id")
         if not _is_id(update_id):
             raise ValueError("update has no integer update_id")
@@ -103,7 +105,7 @@ class UpdateProcessor:
                     await self._chat.handle_callback(session, incoming, data)
                 return Processed(True, answer)
 
-            incoming = Incoming(update_id, person, user_id, lang, None, profile_name)
+            incoming = Incoming(update_id, person, user_id, lang, None, profile_name, received)
             text = message.get("text")
             if isinstance(text, str) and text.strip():
                 await self._chat.handle_text(session, incoming, text)

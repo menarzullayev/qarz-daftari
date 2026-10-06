@@ -11,6 +11,7 @@ import signal
 from aiogram import Bot
 
 from qarz.application.dispatch import Dispatcher
+from qarz.application.measurement import MeasurementService
 from qarz.application.reminders import ReminderService
 from qarz.application.scheduler import Scheduler
 from qarz.application.shop_deletion import ShopDeletionService
@@ -37,6 +38,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
         ReminderService(database),
         subscriptions=SubscriptionService(database),
         deletion=ShopDeletionService(database),
+        measurement=MeasurementService(database),
     )
     next_schedule = 0.0
     try:

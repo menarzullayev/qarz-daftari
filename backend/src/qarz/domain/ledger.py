@@ -304,6 +304,25 @@ def allocate(entries: Iterable[Entry], as_of: datetime | None = None) -> list[Al
     return _allocate(debts, payments)
 
 
+def payment_timeliness(entries: Iterable[Entry], payment_id: UUID) -> tuple[int, int]:
+    """How much of one payment covered debt on or before its promised date, and how much covered it late.
+
+    The payment is split by the oldest-first allocation (BR-3). A part is in time when the payment was
+    made, in Tashkent, on or before the promised date of the debt it covers. The two amounts add up to
+    the payment; a reversed payment covers nothing and gives (0, 0).
+    """
+    in_time = late = 0
+    for allocation in allocate(entries):
+        for part in allocation.parts:
+            if part.payment_id != payment_id:
+                continue
+            if tashkent_date(part.paid_at) <= allocation.promised_date:
+                in_time += part.amount
+            else:
+                late += part.amount
+    return in_time, late
+
+
 def overdue(entries: Iterable[Entry], today: date) -> OverdueStatus:
     """BR-4: what is uncovered after allocation on entries whose current promised date is before `today`.
 
