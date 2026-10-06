@@ -1,0 +1,14 @@
+{
+  "event_id": "b998ebf56872",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T13:55:44+00:00",
+  "path": "docs\\evidence\\EVID-036.md",
+  "stage": "09-development-plan",
+  "claim": "Stories S1.1 and S1.2 of milestone M1 are implemented and verified: on 2026-10-06 the CI run for pull request 1 passed with backend (format, lint, strict types, 2 layering contracts, migration on an empty database, 55 tests including 24 database rule tests, dependency scan with hash-pinned install), front end (lint, types, 34 tests, build of three entry points, dependency scan) and document checks all successful. The goods-line time limit, previously unverified, is tested on both sides of its boundary.",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/1 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37474498692",
+  "date": "2026-10-06",
+  "confidence": "high",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-036"
+}
