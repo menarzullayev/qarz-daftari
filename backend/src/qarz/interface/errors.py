@@ -25,6 +25,7 @@ _STATUS = {
     "CANNOT_REVERSE_REVERSAL": 409,
     "WOULD_GO_NEGATIVE": 409,
     "PROMISE_ALREADY_SET": 409,
+    "CUSTOMER_ALREADY_LINKED": 409,
     "CATALOG_NAME_TAKEN": 409,
     "CATALOG_ITEM_NOT_LEARNED": 409,
     "CATALOG_MERGE_TARGET_INVALID": 409,
@@ -54,6 +55,7 @@ _MESSAGES = {
         "CATALOG_NAME_TAKEN": "Katalogda shu nomli mahsulot bor (yashirilgan bo'lishi ham mumkin).",
         "CATALOG_ITEM_NOT_LEARNED": "Bu mahsulot allaqachon ko'rib chiqilgan.",
         "CATALOG_MERGE_TARGET_INVALID": "Faqat katalogda ko'rinadigan, ko'rib chiqilgan mahsulotga birlashtiriladi.",
+        "CUSTOMER_ALREADY_LINKED": "Bu mijoz allaqachon Telegram hisobiga ulangan.",
         "ERROR": "Xatolik yuz berdi.",
     },
     "ru": {
@@ -79,6 +81,7 @@ _MESSAGES = {
         "CATALOG_NAME_TAKEN": "В каталоге уже есть товар с таким названием (возможно, он скрыт).",
         "CATALOG_ITEM_NOT_LEARNED": "Этот товар уже проверен.",
         "CATALOG_MERGE_TARGET_INVALID": "Объединить можно только с проверенным товаром, который виден в каталоге.",
+        "CUSTOMER_ALREADY_LINKED": "Этот клиент уже подключён к аккаунту Telegram.",
         "ERROR": "Произошла ошибка.",
     },
 }

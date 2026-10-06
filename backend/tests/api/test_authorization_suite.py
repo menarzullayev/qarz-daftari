@@ -138,6 +138,20 @@ CALLS: dict[str, Call] = {
         None,  # the body is a date a few days from now; filled in by _body
         True,
     ),
+    "customers.link.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/customers/{w.customer_a}/link"),
+    "customers.link.create": Call(
+        "POST", lambda w, shop: f"/api/v1/shops/{shop}/customers/{w.settled_customer_a}/link", None, True, 201
+    ),
+    "counter_code.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/counter-code"),
+    "counter_code.rotate": Call("POST", lambda w, shop: f"/api/v1/shops/{shop}/counter-code", None, True, 201),
+    "waiting.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/waiting"),
+    "waiting.attach": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/waiting/{w.waiting_a}/attach",
+        None,  # the body names a customer of shop A; filled in by _body
+        True,
+    ),
+    "waiting.dismiss": Call("POST", lambda w, shop: f"/api/v1/shops/{shop}/waiting/{w.waiting_a}/dismiss", None, True),
     "overview.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview"),
     "overview.debtors": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview/debtors"),
     "catalog.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/catalog"),
@@ -196,6 +210,14 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "ledger.entry.reverse": {Role.MANAGER, Role.OWNER},
     # Any staff member by role; within the operation only the entry's author or a manager (REQ-008).
     "ledger.entry.promise.choose": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "customers.link.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "customers.link.create": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "counter_code.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    # The code is printed and hangs at the counter; replacing it invalidates the print.
+    "counter_code.rotate": {Role.MANAGER, Role.OWNER},
+    "waiting.list": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "waiting.attach": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "waiting.dismiss": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "overview.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "overview.debtors": {Role.SELLER, Role.MANAGER, Role.OWNER},
     # Specification, resources table: "Manager, owner; sellers read".
@@ -249,6 +271,8 @@ def _key() -> dict[str, str]:
 def _body(world: World, op_name: str, call: Call) -> dict[str, Any] | None:
     if op_name == "ownership.transfer.start":
         return {"membership_id": str(world.manager_a_membership)}
+    if op_name == "waiting.attach":
+        return {"customer_id": str(world.settled_customer_a)}
     if op_name == "ledger.entry.promise.choose":
         return {"promised_date": (datetime.now(UTC).date() + timedelta(days=3)).isoformat()}
     if op_name == "catalog.learned.merge":
@@ -295,6 +319,11 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
         ).fetchall(),
         owner.execute("SELECT count(*) FROM promise WHERE shop_id = %s", (shop,)).fetchone(),
         owner.execute("SELECT count(*) FROM chat_pending").fetchone(),
+        owner.execute(
+            "SELECT id, customer_id, user_id, status, waiting_name FROM customer_link WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
+        owner.execute("SELECT count(*) FROM outbox_message WHERE shop_id = %s", (shop,)).fetchone(),
         owner.execute(
             "SELECT id, name, name_norm, unit, price, learned, status, merged_into FROM catalog_item "
             "WHERE shop_id = %s ORDER BY id",
@@ -411,6 +440,7 @@ def test_a_member_of_one_shop_cannot_reach_another(
         world.entry_a,
         world.catalog_item_a,
         world.learned_item_a,
+        world.waiting_a,
     )
     uses_foreign_resource = any(str(resource) in call.path(world, world.shop_b) for resource in foreign)
     if uses_foreign_resource:

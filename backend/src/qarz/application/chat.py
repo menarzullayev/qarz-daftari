@@ -15,7 +15,7 @@ from typing import Any
 from uuid import UUID, uuid5
 
 from qarz.application import idempotency
-from qarz.application.chat_texts import LANGUAGE_NAMES, day, money, say
+from qarz.application.chat_texts import CONSENT_VERSION, LANGUAGE_NAMES, day, money, say
 from qarz.application.customers import CREATE_CUSTOMER, create_customer_in, require_writable
 from qarz.application.errors import AlreadyMember, AppError, ForbiddenRole, NotFound, ValidationFailed
 from qarz.application.ledger_service import (
@@ -27,9 +27,10 @@ from qarz.application.ledger_service import (
     clean_entry,
     reverse_entry_in,
 )
+from qarz.application.links import COUNTER_PREFIX, PERSONAL_PREFIX
 from qarz.application.ports import MyShop, PlatformSession, Storage, TenantSession
 from qarz.application.shops import ShopService, require_member
-from qarz.application.staff import StaffService
+from qarz.application.staff import StaffService, token_hash
 from qarz.domain.access import Capability, allows
 from qarz.domain.chat_entry import ParsedEntry, ParseError, ParseErrorCode, parse_entry
 from qarz.domain.ledger import EntryKind
@@ -55,7 +56,7 @@ _PARSE_TEXTS = {
     ParseErrorCode.AMOUNT_TOO_SMALL: "amount_range",
     ParseErrorCode.AMOUNT_TOO_LARGE: "amount_range",
 }
-_LATER_COMMANDS = frozenset({"/ilova", "/qarzim", "/toladim", "/obuna", "/uzish", "/ochirish"})
+_LATER_COMMANDS = frozenset({"/ilova", "/toladim", "/obuna", "/ochirish"})
 
 Keyboard = list[list[tuple[str, str]]]
 
@@ -86,6 +87,7 @@ class Incoming:
     user_id: UUID
     lang: str
     message_id: int | None = None  # the message a pressed button belongs to
+    profile_name: str | None = None  # the name in the person's Telegram profile
 
     @property
     def key(self) -> str:
@@ -172,7 +174,7 @@ class ChatService:
 
         shops = await session.my_memberships(incoming.user_id)
         if not shops:
-            await replies.send(say(incoming.lang, "welcome_new"), self._open_shop(incoming.lang))
+            await self._home_without_shop(session, incoming, replies)
             return
 
         awaiting_date = await session.current_pending(incoming.user_id, "promise_date", self._now())
@@ -205,10 +207,15 @@ class ChatService:
             if argument.startswith(STAFF_INVITATION_PREFIX):
                 await self._join(session, incoming, replies, argument[len(STAFF_INVITATION_PREFIX) :])
                 return
+            if argument.startswith((PERSONAL_PREFIX, COUNTER_PREFIX)):
+                await self._ask_consent(session, incoming, replies, argument[len(PERSONAL_PREFIX) :])
+                return
+            # Someone who had blocked the bot and comes back can be notified again.
+            await session.mark_recipient_reachable(incoming.user_id)
             shops = await session.my_memberships(incoming.user_id)
             shop = await self._active_shop(session, incoming.user_id, shops)
             if not shops:
-                await replies.send(say(lang, "welcome_new"), self._open_shop(lang))
+                await self._home_without_shop(session, incoming, replies)
             elif shop is None:
                 await replies.send(say(lang, "choose_shop"), self._shop_buttons(shops))
             else:
@@ -223,6 +230,21 @@ class ChatService:
                 await replies.send(say(lang, "choose_shop"), self._shop_buttons(shops))
             else:
                 await replies.send(say(lang, "no_shops"), self._open_shop(lang))
+        elif command == "/qarzim":
+            await session.mark_recipient_reachable(incoming.user_id)
+            await self._accounts(session, incoming, replies)
+        elif command == "/uzish":
+            accounts = await session.my_accounts(incoming.user_id)
+            if not accounts:
+                await replies.send(say(lang, "no_accounts"))
+            else:
+                await replies.send(
+                    say(lang, "unlink_choose"),
+                    [
+                        [(say(lang, "unlink_button", shop=account.shop_name), callback("unl", account.shop_id.hex))]
+                        for account in accounts[:20]
+                    ],
+                )
         elif command == "/yordam":
             await replies.send(say(lang, "help"))
         elif command in _LATER_COMMANDS:
@@ -262,6 +284,15 @@ class ChatService:
                 return
             await session.set_active_shop(incoming.user_id, shop_id)
             await replies.show(say(lang, "shop_switched", shop=mine[shop_id].name))
+        elif action in ("ok", "no") and arguments:
+            await self._consent_answer(session, incoming, replies, action, arguments[0])
+        elif action == "unl" and arguments:
+            shop_id = _uuid(arguments[0])
+            accounts = {account.shop_id: account for account in await session.my_accounts(incoming.user_id)}
+            if shop_id is None or shop_id not in accounts or not await session.end_my_link(incoming.user_id, shop_id):
+                await replies.show(say(lang, "expired"))
+                return
+            await replies.show(say(lang, "unlinked", shop=accounts[shop_id].shop_name))
         elif action in ("nc", "pk", "x") and arguments:
             await self._pending_entry(session, incoming, replies, action, arguments)
         elif action in ("pd", "rv", "rvok", "keep") and arguments:
@@ -299,6 +330,88 @@ class ChatService:
                 await replies.buttons(None)
         else:
             await replies.buttons(None)
+
+    # --- customers -----------------------------------------------------------------------------------
+
+    async def _home_without_shop(self, session: PlatformSession, incoming: Incoming, replies: Replies) -> None:
+        """Someone who works in no shop: a customer sees what they owe, anyone else how to begin."""
+        if await session.my_accounts(incoming.user_id):
+            await self._accounts(session, incoming, replies)
+        else:
+            await replies.send(say(incoming.lang, "welcome_new"), self._open_shop(incoming.lang))
+
+    async def _accounts(self, session: PlatformSession, incoming: Incoming, replies: Replies) -> None:
+        lang = incoming.lang
+        accounts = await session.my_accounts(incoming.user_id)
+        if not accounts:
+            await replies.send(say(lang, "no_accounts"))
+            return
+        lines = [say(lang, "accounts_header")]
+        lines += [
+            say(lang, "account_line", shop=account.shop_name, balance=money(lang, account.balance))
+            for account in accounts
+        ]
+        await replies.send("\n".join(lines))
+
+    async def _ask_consent(self, session: PlatformSession, incoming: Incoming, replies: Replies, token: str) -> None:
+        """Show what will be stored, by whom and why. Nothing is stored about the person until they agree."""
+        lang = incoming.lang
+        usable = token.isascii() and 20 <= len(token) <= 128
+        info = await session.customer_token_info(token_hash(token)) if usable else None
+        if info is None:
+            await replies.send(say(lang, "link_invalid"))
+            return
+        _, _, shop_name = info
+        pending_id = self._pending_id(incoming)
+        await session.put_pending(
+            pending_id=pending_id,
+            user_id=incoming.user_id,
+            kind="consent",
+            # Only the hash: the code itself is never stored anywhere.
+            payload={"code": token_hash(token).hex(), "shop": shop_name},
+            now=self._now(),
+            expires_at=self._now() + PENDING_LIFETIME,
+        )
+        await replies.send(
+            say(lang, "consent_v2", shop=shop_name),
+            [
+                [
+                    (say(lang, "consent_yes"), callback("ok", pending_id.hex)),
+                    (say(lang, "consent_no"), callback("no", pending_id.hex)),
+                ]
+            ],
+        )
+
+    async def _consent_answer(
+        self, session: PlatformSession, incoming: Incoming, replies: Replies, action: str, pending_hex: str
+    ) -> None:
+        lang = incoming.lang
+        pending_id = _uuid(pending_hex)
+        payload = (
+            None
+            if pending_id is None
+            else await session.take_pending(pending_id, incoming.user_id, "consent", self._now())
+        )
+        if payload is None:
+            await replies.show(say(lang, "expired"))
+            return
+        if action == "no":
+            await replies.show(say(lang, "consent_declined"))
+            return
+        try:
+            code = bytes.fromhex(str(payload.get("code", "")))
+        except ValueError:
+            await replies.show(say(lang, "expired"))
+            return
+        outcome, _, _ = await session.link_customer(code, incoming.user_id, CONSENT_VERSION, incoming.profile_name)
+        shop_name = str(payload.get("shop", ""))
+        texts = {
+            "linked": "linked",
+            "waiting": "waiting_ok",
+            "already": "link_already",
+            "taken": "link_taken",
+        }
+        await replies.show(say(lang, texts.get(outcome, "link_invalid"), shop=shop_name))
 
     # --- shops ---------------------------------------------------------------------------------------
 

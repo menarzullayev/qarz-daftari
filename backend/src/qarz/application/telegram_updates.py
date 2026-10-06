@@ -92,14 +92,18 @@ class UpdateProcessor:
                 return Processed(True, answer)
 
             lang = _language(await session.user_language(user_id), sender.get("language_code"))
+            names = [sender.get(part) for part in ("first_name", "last_name")]
+            profile_name = " ".join(" ".join(str(n) for n in names if isinstance(n, str)).split())[:80] or None
             message_id = message.get("message_id")
             if isinstance(pressed, dict):
-                incoming = Incoming(update_id, person, user_id, lang, message_id if _is_id(message_id) else None)
+                incoming = Incoming(
+                    update_id, person, user_id, lang, message_id if _is_id(message_id) else None, profile_name
+                )
                 if isinstance(data, str):
                     await self._chat.handle_callback(session, incoming, data)
                 return Processed(True, answer)
 
-            incoming = Incoming(update_id, person, user_id, lang)
+            incoming = Incoming(update_id, person, user_id, lang, None, profile_name)
             text = message.get("text")
             if isinstance(text, str) and text.strip():
                 await self._chat.handle_text(session, incoming, text)

@@ -79,6 +79,41 @@ UZ = {
     "CANNOT_REVERSE_REVERSAL": "Bekor qilish yozuvini bekor qilib bo'lmaydi.",
     "WOULD_GO_NEGATIVE": "Bekor qilinsa qarz manfiy bo'lib qoladi. Avval keyingi to'lovni bekor qiling.",
     "error": "Xatolik yuz berdi. Qaytadan urinib ko'ring.",
+    "consent_v2": (
+        "{shop} do'koni sizning nasiya xaridlaringiz va to'lovlaringizni Qarz Daftari xizmati orqali "
+        "yuritadi. Saqlanadigan ma'lumotlar: do'kon sizni qanday nomlagani, telefon raqamingiz (agar bergan "
+        "bo'lsangiz), Telegram hisobingiz identifikatori, nasiya va to'lov yozuvlari, olingan mahsulotlar. "
+        "Maqsad: qarz hisobini siz ham ko'rib turishingiz va eslatmalar yuborish. Ma'lumotlar faqat sizga "
+        "va shu do'kon xodimlariga ko'rinadi, boshqa do'konlarga berilmaydi. Istalgan payt /uzish orqali "
+        "uzilishingiz yoki /ochirish orqali ma'lumotlaringizni o'chirishni so'rashingiz mumkin. Rozimisiz?"
+    ),
+    "consent_yes": "✅ Roziman",
+    "consent_no": "Yo'q",
+    "consent_declined": "Rozilik berilmadi. Siz haqingizda hech narsa saqlanmadi.",
+    "linked": (
+        "✅ Siz «{shop}» do'konidagi hisobingizga ulandingiz. Endi har bir yozuv haqida shu yerda xabar "
+        "olasiz.\n"
+        "Qarzingizni ko'rish: /qarzim"
+    ),
+    "waiting_ok": "✅ So'rovingiz «{shop}» do'koniga yuborildi. Sotuvchi sizni daftardagi yozuvingizga ulaydi.",
+    "link_invalid": "Bu havola yaroqsiz yoki muddati o'tgan. Do'kondan yangisini so'rang.",
+    "link_taken": "Bu hisob boshqa Telegram hisobiga ulangan. Do'konga murojaat qiling.",
+    "link_already": "Siz bu do'konga allaqachon ulangansiz yoki ulanishni kutyapsiz. Qarzingiz: /qarzim",
+    "accounts_header": "Sizning qarzlaringiz:",
+    "account_line": "{shop}: {balance}",
+    "no_accounts": "Siz hali hech bir do'kondagi hisobga ulanmagansiz. Do'kondan havola yoki QR kod so'rang.",
+    "unlink_choose": "Qaysi do'kondan uzilasiz? Xabarlar to'xtaydi; do'kon daftaridagi yozuvlar qoladi.",
+    "unlink_button": "Uzilish: {shop}",
+    "unlinked": "Siz «{shop}» do'konidan uzildingiz. Endi bu do'kondan xabar kelmaydi.",
+    "n_credit": (
+        "{shop}\n{name}, sizga nasiya yozildi: {amount}\n{goods}To'lash muddati: {date}\nJami qarzingiz: {balance}"
+    ),
+    "n_payment": "{shop}\n{name}, to'lovingiz qabul qilindi: {amount}\nQolgan qarzingiz: {balance}",
+    "n_reversed_credit": "{shop}\n{name}, {amount} nasiya yozuvi bekor qilindi.\nJami qarzingiz: {balance}",
+    "n_reversed_payment": "{shop}\n{name}, {amount} to'lov yozuvi bekor qilindi.\nJami qarzingiz: {balance}",
+    "n_promise": "{shop}\n{name}, {amount} nasiyaning to'lash muddati: {date}\nJami qarzingiz: {balance}",
+    "n_line": "• {name} — {qty} {unit}: {total}",
+    "n_more_lines": "… va yana {count} ta mahsulot",
     "currency": "so'm",
 }
 
@@ -155,8 +190,44 @@ RU = {
     "CANNOT_REVERSE_REVERSAL": "Запись об отмене отменить нельзя.",
     "WOULD_GO_NEGATIVE": "После такой отмены долг стал бы отрицательным. Сначала отмените более позднюю оплату.",
     "error": "Произошла ошибка. Попробуйте ещё раз.",
+    "consent_v2": (
+        "Магазин {shop} ведёт учёт ваших покупок в долг и оплат через сервис Qarz Daftari. Хранятся: как "
+        "магазин вас записал, ваш номер телефона (если вы его дали), идентификатор вашего аккаунта "
+        "Telegram, записи о долгах и оплатах, купленные товары. Цель: чтобы вы тоже видели свой долг, и для "
+        "отправки напоминаний. Данные видны только вам и сотрудникам этого магазина и не передаются другим "
+        "магазинам. В любой момент можно отключиться командой /uzish или попросить удалить ваши данные "
+        "командой /ochirish. Вы согласны?"
+    ),
+    "consent_yes": "✅ Согласен",
+    "consent_no": "Нет",
+    "consent_declined": "Согласие не дано. О вас ничего не сохранено.",
+    "linked": (
+        "✅ Вы подключены к своему счёту в магазине «{shop}». Теперь о каждой записи вы будете узнавать "
+        "здесь.\n"
+        "Посмотреть долг: /qarzim"
+    ),
+    "waiting_ok": "✅ Запрос отправлен в магазин «{shop}». Продавец подключит вас к вашей записи в книге.",
+    "link_invalid": "Эта ссылка недействительна или устарела. Попросите в магазине новую.",
+    "link_taken": "Этот счёт подключён к другому аккаунту Telegram. Обратитесь в магазин.",
+    "link_already": "Вы уже подключены к этому магазину или ждёте подключения. Ваш долг: /qarzim",
+    "accounts_header": "Ваши долги:",
+    "account_line": "{shop}: {balance}",
+    "no_accounts": "Вы пока не подключены ни к одному счёту в магазине. Попросите в магазине ссылку или QR-код.",
+    "unlink_choose": "От какого магазина отключиться? Сообщения прекратятся; записи в книге магазина останутся.",
+    "unlink_button": "Отключиться: {shop}",
+    "unlinked": "Вы отключились от магазина «{shop}». Сообщений от него больше не будет.",
+    "n_credit": "{shop}\n{name}, вам записан долг: {amount}\n{goods}Срок оплаты: {date}\nВсего долг: {balance}",
+    "n_payment": "{shop}\n{name}, ваша оплата принята: {amount}\nОстаток долга: {balance}",
+    "n_reversed_credit": "{shop}\n{name}, запись о долге {amount} отменена.\nВсего долг: {balance}",
+    "n_reversed_payment": "{shop}\n{name}, запись об оплате {amount} отменена.\nВсего долг: {balance}",
+    "n_promise": "{shop}\n{name}, срок оплаты долга {amount}: {date}\nВсего долг: {balance}",
+    "n_line": "• {name} — {qty} {unit}: {total}",
+    "n_more_lines": "… и ещё товаров: {count}",
     "currency": "сум",
 }
+
+# The version of the consent text a customer agrees to (REQ-014). Changing the text means a new version.
+CONSENT_VERSION = 2
 
 CATALOGS = {"uz": UZ, "ru": RU}
 LANGUAGE_NAMES = {"uz": "O'zbekcha", "ru": "Русский"}
