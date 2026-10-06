@@ -175,9 +175,11 @@ of about 700 entries. For the shop with 200,000 that is wrong by a factor of 270
 | Reading one customer's entries was planned as the intersection of the customer index and the whole shop's index: ten million index entries for a page of 50 customers. | Migration 0020, index `ledger_shop_customer (shop_id, customer_id, seq)`. |
 | The overview and debtors queries looked up the promised date of every debt, 127,000 index lookups, though only uncovered debts need one. | Query rewrite: the lookup is made for uncovered debts only (about 4,000). |
 
-Each change has a test in the existing suites (`tests/api/test_customers_ledger.py`,
-`tests/db/test_schema_rules.py`), and the existing comparison of the SQL figures with the domain rules on
-generated accounts still passes. Cost of the two indexes: about 210 MB at this size, and two more index
+The two rewrites have tests of their results in `tests/api/test_customers_ledger.py`, and the existing
+comparison of the SQL figures with the domain rules on generated accounts still passes. For the indexes
+`tests/db/test_schema_rules.py` checks only that they exist as defined: whether the planner uses them
+depends on the size of the tables, so no test pins a plan, and the evidence that they are used at this
+size is the run above. Cost of the two indexes: about 210 MB at this size, and two more index
 entries per recorded entry; the write figures above include that cost.
 
 Effect on single queries in the large shop, measured alone: search 1,129 ms to 15 ms; overview 2,758 ms to

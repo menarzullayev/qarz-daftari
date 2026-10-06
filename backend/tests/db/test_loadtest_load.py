@@ -209,9 +209,15 @@ def test_the_driver_sends_only_requests_the_application_accepts(loaded: Loaded) 
         try:
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://loadtest") as client:
                 driver = drive.Driver([client], world, random.Random(3), warmup=0)  # noqa: S311
-                await driver.run(
-                    duration=4, rate=25, large_write_rate=25, read_rate=25, large_read_rate=25, report_every=0.25
-                )
+                # A gentle load in short rounds, until every operation has been sent at least once: the
+                # point here is that the requests are right, and a slow machine must not turn that into
+                # a test of speed.
+                for _ in range(15):
+                    await driver.run(
+                        duration=2, rate=8, large_write_rate=8, read_rate=8, large_read_rate=8, report_every=0.5
+                    )
+                    if world_is_covered(driver.results):
+                        break
         finally:
             await database.dispose()
         with psycopg.connect(loaded.url, autocommit=True) as connection:
