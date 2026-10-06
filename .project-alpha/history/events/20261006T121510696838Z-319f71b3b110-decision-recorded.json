@@ -1,0 +1,19 @@
+{
+  "event_id": "319f71b3b110",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T12:15:10+00:00",
+  "path": ".project-alpha\\decisions\\DEC-013.md",
+  "stage": "04-prd",
+  "title": "Approve release 1 scope (PRD version 2)",
+  "risk": "HIGH",
+  "decision_id": "DEC-013",
+  "decision": "Release 1 consists of features FEAT-001 to FEAT-023 as specified in PRD version 2: staff roles, itemized credit entries with a goods catalog, promised repayment dates, customer notification with dispute and no confirmation, Mini App and web panel, Uzbek and Russian, reminders with SMS fallback behind a switch, credit limits and in-shop payment history, owner reports, 30-day trial and a subscription of 100,000 UZS a month paid by card transfer with administrator approval, platform administration, and production-grade non-functional targets",
+  "context": "The founder changed direction in DEC-012 and defined the release through the question form on 2026-10-06; stages 05 to 10 must be revised to match",
+  "chosen_option": "PRD version 2 as written",
+  "rationale": "Specifies what the founder decided. Most new scope rests on a single assumption-type record (EVID-034); legality of collecting payments without a registered entity and Telegram's payment rules (EVID-028) are unresolved; price is about four times the incumbent entry tier (EVID-021).",
+  "impact": "High",
+  "reversibility": "Medium",
+  "evidence": "EVID-034, EVID-021, EVID-027, EVID-028, EVID-013",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

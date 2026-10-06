@@ -1,0 +1,12 @@
+{
+  "event_id": "d5a1049a39ee",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T12:01:08+00:00",
+  "path": ".project-alpha\\approvals\\APR-012.md",
+  "stage": "04-prd",
+  "decision_id": "DEC-012",
+  "decision": "Change of direction to a full production-grade product with notification-and-dispute, itemized entries, multi-seller roles and 100,000 UZS a month",
+  "approval_id": "APR-012",
+  "approver": "Saidakbar Narzullayev",
+  "status": "approved"
+}

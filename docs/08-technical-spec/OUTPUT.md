@@ -1,5 +1,7 @@
 # Technical Specification
 
+> **Stale since 2026-10-06.** This document was written for PRD version 1 (pilot MVP). The founder changed direction to a full production-grade product (DEC-012 / APR-012) and the PRD is now version 2. This document has not yet been revised and must not be relied on where it conflicts with `docs/04-prd/OUTPUT.md`.
+
 Status: approved by the founder on 2026-10-06 (DEC-009 / APR-009). Legal review of the consent text and four legal questions remains a gate before the pilot.
 Upstream: PRD (DEC-005), Domain Model (DEC-006), Architecture (DEC-007), decision records ADR-001 to ADR-010 (DEC-008).
 

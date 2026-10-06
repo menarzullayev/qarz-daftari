@@ -1,5 +1,7 @@
 # Domain Model
 
+> **Stale since 2026-10-06.** This document was written for PRD version 1 (pilot MVP). The founder changed direction to a full production-grade product (DEC-012 / APR-012) and the PRD is now version 2. This document has not yet been revised and must not be relied on where it conflicts with `docs/04-prd/OUTPUT.md`.
+
 Status: core business rules approved by the founder on 2026-10-06 (DEC-006 / APR-006).
 Upstream: `docs/04-prd/OUTPUT.md` (MVP scope approved, DEC-005 / APR-005).
 

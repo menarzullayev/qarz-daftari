@@ -1,5 +1,7 @@
 # Market Research
 
+> **Partly superseded on 2026-10-06.** By founder decision (DEC-012 / APR-012) the pricing direction is now 100,000 UZS a month and positioning no longer rests on customer acknowledgement. The research findings below are unchanged; the Positioning and Pricing recommendations no longer describe the approved direction.
+
 Status: positioning and pricing direction approved by the founder on 2026-10-06 (DEC-004 / APR-004). Field checks are still outstanding.
 Upstream: `docs/02-problem-discovery/OUTPUT.md` (passed provisionally, DEC-003 / APR-003; field interviews still outstanding).
 

@@ -29,15 +29,18 @@ blocked_reason:
 - Production Ready requires explicit human approval of the global audit.
 
 ## Pending approvals
-- Production launch approval (launch criterion 11 in docs/10-operations/OUTPUT.md): not requested; cannot be given until criteria 1 to 10 are met.
+- DEC-013: release 1 scope in PRD version 2.
+- Production launch approval: not requested; cannot be given until launch criteria are met.
 
 ## Blockers
-- 10-operations is held in REVIEW by founder decision (2026-10-06) until the production launch criteria are met. Not a workflow BLOCKED state.
-- Global audit cannot pass with framework 1.0.0 as released: early-stage EVID and DEC references are reported as forward references, and approval APR-001 lacks a Decision field the documented CLI command never asked for. A framework fix has been proposed but not made.
+- Change of direction (DEC-012 / APR-012, 2026-10-06): PRD is at version 2; stages 05 to 10 are marked PASSED or REVIEW in this file but their documents are stale and carry a banner saying so. They must be revised in order after DEC-013 is decided. The framework CLI has no transition to reopen a passed stage, so the stage statuses above overstate the real state.
+- 10-operations is held in REVIEW by founder decision until production launch criteria are met.
+- Global audit cannot pass with framework 1.0.0 as released (early-stage EVID and DEC references; APR-001 lacks a Decision field). A framework fix has been proposed but not made.
 
 ## Open questions
-- Field validation outstanding: 15 to 20 shopkeeper interviews and a hands-on pDaftar test (gate before milestone M3).
-- Legal review outstanding: four questions and the consent text (gate before any real customer data).
+- Field validation outstanding: shopkeeper interviews and a hands-on pDaftar test. The founder's own answers are recorded as EVID-034 (assumption) and do not satisfy this gate.
+- Legal review outstanding, now including: accepting subscription payments on a personal card without a registered entity, Telegram payment rules, receipt retention, and SMS without consent.
+- No registered business entity; online payments and SMS ship switched off.
 - Hosting and backup providers in Uzbekistan not chosen.
 - Final product name not chosen; "Qarz Daftari" is a working title.
 

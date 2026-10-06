@@ -1,5 +1,7 @@
 # Quality & Operations
 
+> **Stale since 2026-10-06.** This document was written for PRD version 1 (pilot MVP). The founder changed direction to a full production-grade product (DEC-012 / APR-012) and the PRD is now version 2. This document has not yet been revised and must not be relied on where it conflicts with `docs/04-prd/OUTPUT.md`.
+
 Status: operations definition approved by the founder on 2026-10-06 (DEC-011 / APR-011). By the founder's decision the stage stays in REVIEW and is not passed until the launch criteria below are met. This document defines how the MVP is tested, released, watched, and recovered. It does **not** claim the product is ready to launch: nothing has been built, and most launch criteria below are unmet by design. Prepared 2026-10-06.
 Upstream: Development Plan (DEC-010), Technical Specification (DEC-009), decision records ADR-001 to ADR-010 (DEC-008).
 
