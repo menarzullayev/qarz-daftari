@@ -1,19 +1,19 @@
-"""Chat questions for payment notices, and indexes for notices and stored files.
+"""Weekly measurement figures.
 
-Revision ID: 0012
-Revises: 0018
+Revision ID: 0018
+Revises: 0017
 """
 
 from pathlib import Path
 
 from alembic import op
 
-revision = "0012"
-down_revision = "0018"
+revision = "0018"
+down_revision = "0017"
 branch_labels = None
 depends_on = None
 
-_SQL = Path(__file__).resolve().parent.parent / "sql" / "0012_payment_notices.sql"
+_SQL = Path(__file__).resolve().parent.parent / "sql" / "0018_measure_weekly.sql"
 
 
 def upgrade() -> None:

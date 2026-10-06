@@ -139,6 +139,27 @@ _DELETION_STATE = "SELECT status, deletion_due FROM shop WHERE status <> 'erased
 _DELETION_LOCKED = f"{_DELETION_STATE} FOR UPDATE"
 
 
+# One week of measurement events, without any identity (ADR-010). A share is NULL when nothing fell under it.
+_WEEK_FIGURES = (
+    "SELECT count(DISTINCT shop_ref) FILTER (WHERE kind = 'credit') AS active_shops, "
+    "count(*) FILTER (WHERE kind = 'credit') AS credit_count, "
+    "coalesce(sum(amount) FILTER (WHERE kind = 'credit'), 0) AS credit_sum, "
+    "count(*) FILTER (WHERE kind = 'payment') AS payment_count, "
+    "coalesce(sum(amount) FILTER (WHERE kind = 'payment'), 0) AS payment_sum, "
+    "count(*) FILTER (WHERE kind = 'reversal') AS reversal_count, "
+    "count(*) FILTER (WHERE kind = 'dispute_opened') AS disputes_opened, "
+    "count(*) FILTER (WHERE kind = 'dispute_opened')::numeric "
+    "  / nullif(count(*) FILTER (WHERE kind = 'credit'), 0) AS dispute_rate, "
+    "coalesce(sum(amount) FILTER (WHERE kind = 'repaid_in_time'), 0) AS repaid_in_time_sum, "
+    "coalesce(sum(amount) FILTER (WHERE kind = 'repaid_late'), 0) AS repaid_late_sum, "
+    "sum(amount) FILTER (WHERE kind = 'repaid_in_time')::numeric "
+    "  / nullif(sum(amount) FILTER (WHERE kind IN ('repaid_in_time', 'repaid_late')), 0) AS in_time_share, "
+    "percentile_cont(0.5) WITHIN GROUP (ORDER BY handle_ms) "
+    "  FILTER (WHERE kind = 'credit' AND handle_ms IS NOT NULL) AS median_credit_handle_ms "
+    "FROM measure.event WHERE at >= :start AND at < :end"
+)
+
+
 def _like_pattern(part: str) -> str:
     escaped = part.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
@@ -634,11 +655,13 @@ class PgTenantSession:
             },
         )
 
-    async def record_measure(self, *, kind: str, entry_ref: UUID, amount: int, promised: date | None) -> None:
+    async def record_measure(
+        self, *, kind: str, entry_ref: UUID, amount: int, promised: date | None, handle_ms: int | None = None
+    ) -> None:
         await self._conn.execute(
             text(
-                "INSERT INTO measure.event (id, shop_ref, entry_ref, kind, amount, promised) "
-                "VALUES (:id, :shop_ref, :entry_ref, :kind, :amount, :promised)"
+                "INSERT INTO measure.event (id, shop_ref, entry_ref, kind, amount, promised, handle_ms) "
+                "VALUES (:id, :shop_ref, :entry_ref, :kind, :amount, :promised, :handle_ms)"
             ),
             {
                 "id": uuid4(),
@@ -647,6 +670,7 @@ class PgTenantSession:
                 "kind": kind,
                 "amount": amount,
                 "promised": promised,
+                "handle_ms": handle_ms,
             },
         )
 
@@ -1604,6 +1628,33 @@ class PgPlatformSession:
     async def erase_shop(self, shop_id: UUID) -> bool:
         row = (await self._conn.execute(text("SELECT erase_shop(:shop_id) AS erased"), {"shop_id": shop_id})).one()
         return bool(row.erased)
+
+    async def measure_between(self, start: datetime, end: datetime) -> dict[str, float | None]:
+        row = (await self._conn.execute(text(_WEEK_FIGURES), {"start": start, "end": end})).one()
+        return {name: None if value is None else float(value) for name, value in row._mapping.items()}
+
+    async def store_week(self, week_start: date, metrics: dict[str, float | None]) -> None:
+        for metric, value in metrics.items():
+            await self._conn.execute(
+                text(
+                    "INSERT INTO measure.weekly (week_start, metric, value) VALUES (:week, :metric, :value) "
+                    "ON CONFLICT (week_start, metric) DO UPDATE SET value = EXCLUDED.value, computed_at = now()"
+                ),
+                {"week": week_start, "metric": metric, "value": value},
+            )
+
+    async def stored_weeks(self, limit: int) -> list[tuple[date, str, float | None]]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT week_start, metric, value FROM measure.weekly WHERE week_start IN ("
+                    "  SELECT DISTINCT week_start FROM measure.weekly ORDER BY week_start DESC LIMIT :limit) "
+                    "ORDER BY week_start, metric"
+                ),
+                {"limit": limit},
+            )
+        ).all()
+        return [(row.week_start, str(row.metric), None if row.value is None else float(row.value)) for row in rows]
 
     async def shops_due_for_reminders(self, hour: int) -> list[UUID]:
         rows = (

@@ -11,6 +11,7 @@ import signal
 from aiogram import Bot
 
 from qarz.application.dispatch import Dispatcher
+from qarz.application.measurement import MeasurementService
 from qarz.application.reminders import ReminderService
 from qarz.application.scheduler import Scheduler
 from qarz.application.shop_deletion import ShopDeletionService
@@ -40,6 +41,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
         subscriptions=SubscriptionService(database),
         # Erasing a shop deletes its receipts from the file store too.
         deletion=ShopDeletionService(database, files=build_file_store(settings, max_object_bytes=MAX_FILE_BYTES)),
+        measurement=MeasurementService(database),
     )
     next_schedule = 0.0
     try:

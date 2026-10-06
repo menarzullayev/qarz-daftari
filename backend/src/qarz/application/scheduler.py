@@ -8,6 +8,7 @@ period at once for the same reason, and nothing is sent twice.
 from collections.abc import Callable
 from datetime import UTC, datetime
 
+from qarz.application.measurement import MeasurementService
 from qarz.application.ports import Storage
 from qarz.application.reminders import ReminderService
 from qarz.application.shop_deletion import ShopDeletionService
@@ -19,6 +20,7 @@ REMINDERS = "reminders"
 SUBSCRIPTIONS = "subscriptions"
 SUBSCRIPTION_HOUR = 9
 ERASURE = "erasure"
+MEASURE_WEEK = "measure_week"
 
 
 class Scheduler:
@@ -29,11 +31,13 @@ class Scheduler:
         now: Callable[[], datetime] | None = None,
         subscriptions: SubscriptionService | None = None,
         deletion: ShopDeletionService | None = None,
+        measurement: MeasurementService | None = None,
     ) -> None:
         self._storage = storage
         self._reminders = reminders
         self._subscriptions = subscriptions
         self._deletion = deletion
+        self._measurement = measurement
         self._now = now or (lambda: datetime.now(UTC))
 
     async def tick(self) -> int:
@@ -56,6 +60,15 @@ class Scheduler:
                 await self._deletion.erase_due()
                 async with self._storage.platform() as session:
                     await session.finish_job(ERASURE, period)
+        if self._measurement is not None and local.hour >= SUBSCRIPTION_HOUR:
+            # The week that ended last Sunday, computed once; any day of the following week will do.
+            week = self._measurement.last_finished_week()
+            async with self._storage.platform() as session:
+                done = await session.job_done(MEASURE_WEEK, week.isoformat())
+            if not done:
+                await self._measurement.compute_week(week)
+                async with self._storage.platform() as session:
+                    await session.finish_job(MEASURE_WEEK, week.isoformat())
         if self._subscriptions is not None and local.hour >= SUBSCRIPTION_HOUR:
             period = local.date().isoformat()
             async with self._storage.platform() as session:
