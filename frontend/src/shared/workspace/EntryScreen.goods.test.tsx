@@ -200,6 +200,16 @@ describe("itemized credit sale (REQ-037)", () => {
     await openGoods(server);
     fireEvent.click(screen.getByRole("button", { name: "Ro'yxatga qo'shish" }));
     expect(screen.getAllByRole("alert").map((alert) => alert.textContent)).toEqual(["Mahsulot nomini kiriting.", "Narxni kiriting."]);
+    // A good price does not make up for a missing name.
+    type(screen.getByLabelText("Narxi, so'm"), "18000");
+    type(screen.getByLabelText("Tovar nomi"), "   ");
+    fireEvent.click(screen.getByRole("button", { name: "Ro'yxatga qo'shish" }));
+    expect(screen.getByRole("alert").textContent).toBe("Mahsulot nomini kiriting.");
+    expect(screen.queryByRole("list", { name: "Tanlangan tovarlar" })).toBeNull();
+    type(screen.getByLabelText("Tovar nomi"), "n".repeat(81));
+    fireEvent.click(screen.getByRole("button", { name: "Ro'yxatga qo'shish" }));
+    expect(screen.getByRole("alert").textContent).toBe("Nom 80 belgidan oshmasligi kerak.");
+    expect(screen.queryByRole("list", { name: "Tanlangan tovarlar" })).toBeNull();
     type(screen.getByLabelText("Tovar nomi"), "Choy");
     for (const [typed, message] of [
       ["0", "Narx 1 so'mdan 100 000 000 so'mgacha bo'lishi kerak."],

@@ -64,13 +64,18 @@ describe("line total (a port of backend/src/qarz/domain/rounding.py)", () => {
     expect(lineTotal(qty("0.004"), 100)).toBeNull(); // 0.4
   });
 
-  it("is exact where binary floating point is not", () => {
-    // In doubles 1.005 * 1000 is 1004.9999999999999 and 0.57 * 100 is 56.99999999999999.
-    expect(lineTotal(qty("1.005"), 1_000)).toBe(1_005);
-    expect(lineTotal(qty("0.57"), 100)).toBe(57);
-    expect(lineTotal(qty("0.615"), 1_000)).toBe(615);
-    expect(lineTotal(qty("1.15"), 10)).toBe(12); // 11.5 rounds up; in doubles it is 11.499999999999998
-    expect(lineTotal(qty("8.345"), 100)).toBe(835); // 834.5 rounds up; in doubles it is 834.4999999999999
+  // Each product is exactly a half; in doubles `qty * price` lands just below it and would round down.
+  it.each([
+    ["0.009", 1_500, 14, 13.499999999999998],
+    ["0.018", 750, 14, 13.499999999999998],
+    ["0.145", 100, 15, 14.499999999999998],
+    ["0.043", 2_500, 108, 107.49999999999999],
+    ["0.071", 1_500, 107, 106.49999999999999],
+    ["0.142", 2_750, 391, 390.49999999999994],
+  ])("is exact where binary floating point is not: %s × %i = %i", (quantity, price, expected, inDoubles) => {
+    expect(Number(quantity) * price).toBe(inDoubles);
+    expect(Math.round(Number(quantity) * price)).toBe(expected - 1);
+    expect(lineTotal(qty(quantity), price)).toBe(expected);
   });
 
   it("stays exact at the largest quantity and price", () => {

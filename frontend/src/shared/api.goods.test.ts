@@ -63,8 +63,8 @@ describe("goods lines", () => {
     ]);
   });
 
-  it("never sends a line the server would refuse, a payment with lines, or more than fifty lines", () => {
-    const server = fakeServer(() => ok({}));
+  it("never sends a line the server would refuse, a payment with lines, or more than fifty lines", async () => {
+    const server = fakeServer(() => ok({ entry: { id: ENTRY_ID, amount: 200000, lines: [] } }, 201));
     const api = shopApi(server.fetch);
     const one: NewLine = { catalogItemId: ITEM_ID, qty: 1000, unitPrice: 4000 };
     const bad: NewLine[][] = [
@@ -85,7 +85,8 @@ describe("goods lines", () => {
     expect(() => api.recordEntry(CUSTOMER_ID, { kind: "payment", lines: [one], note: null, promisedDate: null }, KEY)).toThrow(RangeError);
     expect(server.sent).toHaveLength(0);
     // Fifty is allowed.
-    expect(() => api.addLines(ENTRY_ID, Array<NewLine>(50).fill(one), KEY)).not.toThrow();
+    await api.addLines(ENTRY_ID, Array<NewLine>(50).fill(one), KEY);
+    expect((server.sent[0]?.body as { lines: unknown[] }).lines).toHaveLength(50);
   });
 
   it("adds lines to an entry and reads what was saved", async () => {
