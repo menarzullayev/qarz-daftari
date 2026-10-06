@@ -107,6 +107,26 @@ class ShopTotals:
 
 
 @dataclass(frozen=True)
+class WaitingLink:
+    """Someone who started the bot from the counter code and agreed, not yet attached to a record."""
+
+    link_id: UUID
+    name: str | None
+    since: datetime
+
+
+@dataclass(frozen=True)
+class CustomerAccount:
+    """One shop a person is linked to as a customer, and what they owe there."""
+
+    shop_id: UUID
+    shop_name: str
+    customer_id: UUID
+    display_name: str
+    balance: int
+
+
+@dataclass(frozen=True)
 class ActivityRow:
     activity_id: UUID
     at: datetime
@@ -300,6 +320,32 @@ class TenantSession(Protocol):
         """Items in name order; `after` is the normalized name and identifier of the last item already seen."""
         ...
 
+    async def issue_customer_link(self, token_hash: bytes, customer_id: UUID, expires_at: datetime) -> None: ...
+
+    async def rotate_counter_code(self, token_hash: bytes) -> None: ...
+
+    async def counter_code_since(self) -> datetime | None: ...
+
+    async def link_state(self, customer_id: UUID) -> tuple[str, datetime] | None:
+        """Status and start of the customer's live link, if there is one."""
+        ...
+
+    async def waiting_links(self, since: datetime) -> list[WaitingLink]: ...
+
+    async def attach_waiting(self, link_id: UUID, customer_id: UUID, since: datetime) -> bool: ...
+
+    async def dismiss_waiting(self, link_id: UUID, now: datetime) -> bool: ...
+
+    async def waiting_recipient(self, link_id: UUID) -> tuple[int, str] | None: ...
+
+    async def customer_recipient(self, customer_id: UUID) -> tuple[int, str] | None:
+        """Telegram chat and language of the customer's active link; None when nobody is to be notified."""
+        ...
+
+    async def enqueue(self, *, recipient: str, payload: dict[str, Any], dedupe_key: str) -> bool:
+        """Queue a Telegram message in this shop's transaction. False when the key was already queued."""
+        ...
+
     async def lock_request_key(self, key: str) -> None:
         """Serialize concurrent requests that carry the same idempotency key, until the transaction ends."""
         ...
@@ -373,6 +419,22 @@ class PlatformSession(Protocol):
     async def current_pending(self, user_id: UUID, kind: str, now: datetime) -> tuple[UUID, dict[str, Any]] | None: ...
 
     async def drop_pending(self, user_id: UUID, kind: str) -> None: ...
+
+    async def customer_token_info(self, token_hash: bytes) -> tuple[str, UUID, str] | None:
+        """Kind (counter or customer), shop and shop name a usable code leads to."""
+        ...
+
+    async def link_customer(
+        self, token_hash: bytes, user_id: UUID, consent_version: int, name: str | None
+    ) -> tuple[str, UUID | None, UUID | None]:
+        """Outcome (linked, waiting, already, taken, invalid), shop, and customer when linked."""
+        ...
+
+    async def my_accounts(self, user_id: UUID) -> list[CustomerAccount]: ...
+
+    async def end_my_link(self, user_id: UUID, shop_id: UUID) -> bool: ...
+
+    async def mark_recipient_reachable(self, user_id: UUID) -> int: ...
 
     async def accept_staff_invitation(self, token_hash: bytes, user_id: UUID) -> UUID | None:
         """Join the shop the invitation belongs to. None when the invitation cannot be used."""

@@ -19,6 +19,7 @@ from qarz.application.errors import AlreadyMember
 from qarz.application.ports import (
     ActivityRow,
     CatalogItemRecord,
+    CustomerAccount,
     CustomerRecord,
     DebtFigures,
     EntryRow,
@@ -31,6 +32,7 @@ from qarz.application.ports import (
     ShopTotals,
     StaffInvitation,
     TransferRecord,
+    WaitingLink,
 )
 from qarz.domain.access import Role
 from qarz.domain.ledger import Entry, EntryKind
@@ -747,6 +749,129 @@ class PgTenantSession:
         ).all()
         return [self._catalog_item(row) for row in rows]
 
+    async def issue_customer_link(self, token_hash: bytes, customer_id: UUID, expires_at: datetime) -> None:
+        # A new personal link replaces the one issued before for the same customer.
+        await self._conn.execute(
+            text(
+                "UPDATE invitation SET status = 'cancelled' "
+                "WHERE kind = 'customer' AND customer_id = :customer_id AND status = 'issued'"
+            ),
+            {"customer_id": customer_id},
+        )
+        await self._conn.execute(
+            text(
+                "INSERT INTO invitation (token_hash, shop_id, kind, customer_id, expires_at) "
+                "VALUES (:token_hash, :shop_id, 'customer', :customer_id, :expires_at)"
+            ),
+            {"token_hash": token_hash, "shop_id": self._shop_id, "customer_id": customer_id, "expires_at": expires_at},
+        )
+
+    async def rotate_counter_code(self, token_hash: bytes) -> None:
+        await self._conn.execute(
+            text("UPDATE invitation SET status = 'cancelled' WHERE kind = 'counter' AND status = 'issued'")
+        )
+        await self._conn.execute(
+            text("INSERT INTO invitation (token_hash, shop_id, kind) VALUES (:token_hash, :shop_id, 'counter')"),
+            {"token_hash": token_hash, "shop_id": self._shop_id},
+        )
+
+    async def counter_code_since(self) -> datetime | None:
+        row = (
+            await self._conn.execute(
+                text("SELECT created_at FROM invitation WHERE kind = 'counter' AND status = 'issued'")
+            )
+        ).first()
+        return None if row is None else row.created_at
+
+    async def link_state(self, customer_id: UUID) -> tuple[str, datetime] | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT status, created_at FROM customer_link "
+                    "WHERE customer_id = :customer_id AND status IN ('active', 'unreachable')"
+                ),
+                {"customer_id": customer_id},
+            )
+        ).first()
+        return None if row is None else (str(row.status), row.created_at)
+
+    async def waiting_links(self, since: datetime) -> list[WaitingLink]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT id, waiting_name, created_at FROM customer_link "
+                    "WHERE status = 'waiting' AND created_at > :since ORDER BY created_at, id"
+                ),
+                {"since": since},
+            )
+        ).all()
+        return [WaitingLink(row.id, row.waiting_name, row.created_at) for row in rows]
+
+    async def attach_waiting(self, link_id: UUID, customer_id: UUID, since: datetime) -> bool:
+        result = await self._conn.execute(
+            text(
+                "UPDATE customer_link SET customer_id = :customer_id, status = 'active', waiting_name = NULL "
+                "WHERE id = :id AND status = 'waiting' AND created_at > :since"
+            ),
+            {"id": link_id, "customer_id": customer_id, "since": since},
+        )
+        return int(result.rowcount) == 1
+
+    async def dismiss_waiting(self, link_id: UUID, now: datetime) -> bool:
+        result = await self._conn.execute(
+            text(
+                "UPDATE customer_link SET status = 'ended', ended_at = :now, waiting_name = NULL "
+                "WHERE id = :id AND status = 'waiting'"
+            ),
+            {"id": link_id, "now": now},
+        )
+        return int(result.rowcount) == 1
+
+    async def waiting_recipient(self, link_id: UUID) -> tuple[int, str] | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT u.tg_id, u.lang FROM customer_link l JOIN app_user u ON u.id = l.user_id "
+                    "WHERE l.id = :id AND u.tg_id IS NOT NULL"
+                ),
+                {"id": link_id},
+            )
+        ).first()
+        return None if row is None else (int(row.tg_id), str(row.lang))
+
+    async def customer_recipient(self, customer_id: UUID) -> tuple[int, str] | None:
+        # Only an active link is notified: an ended one has no right to the data, an unreachable one
+        # has blocked the bot.
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT u.tg_id, u.lang FROM customer_link l JOIN app_user u ON u.id = l.user_id "
+                    "WHERE l.customer_id = :customer_id AND l.status = 'active' AND u.tg_id IS NOT NULL"
+                ),
+                {"customer_id": customer_id},
+            )
+        ).first()
+        return None if row is None else (int(row.tg_id), str(row.lang))
+
+    async def enqueue(self, *, recipient: str, payload: dict[str, Any], dedupe_key: str) -> bool:
+        row = (
+            await self._conn.execute(
+                text(
+                    "INSERT INTO outbox_message (id, channel, recipient, shop_id, payload, dedupe_key) "
+                    "VALUES (:id, 'telegram', :recipient, :shop_id, CAST(:payload AS jsonb), :dedupe_key) "
+                    "ON CONFLICT (dedupe_key) DO NOTHING RETURNING id"
+                ),
+                {
+                    "id": uuid4(),
+                    "recipient": recipient,
+                    "shop_id": self._shop_id,
+                    "payload": json.dumps(payload, ensure_ascii=False),
+                    "dedupe_key": dedupe_key,
+                },
+            )
+        ).first()
+        return row is not None
+
     async def lock_request_key(self, key: str) -> None:
         # Transaction-scoped advisory lock: a second request with the same key in the same shop waits here
         # until the first commits, then finds the stored response.
@@ -956,6 +1081,55 @@ class PgPlatformSession:
             text("DELETE FROM chat_pending WHERE user_id = :user_id AND kind = :kind"),
             {"user_id": user_id, "kind": kind},
         )
+
+    async def customer_token_info(self, token_hash: bytes) -> tuple[str, UUID, str] | None:
+        row = (
+            await self._conn.execute(
+                text("SELECT kind, shop_id, shop_name FROM customer_token_info(:token_hash)"),
+                {"token_hash": token_hash},
+            )
+        ).first()
+        return None if row is None else (str(row.kind), row.shop_id, str(row.shop_name))
+
+    async def link_customer(
+        self, token_hash: bytes, user_id: UUID, consent_version: int, name: str | None
+    ) -> tuple[str, UUID | None, UUID | None]:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT outcome, shop_id, customer_id "
+                    "FROM link_customer(:token_hash, :user_id, CAST(:version AS smallint), :name)"
+                ),
+                {"token_hash": token_hash, "user_id": user_id, "version": consent_version, "name": name},
+            )
+        ).one()
+        return str(row.outcome), row.shop_id, row.customer_id
+
+    async def my_accounts(self, user_id: UUID) -> list[CustomerAccount]:
+        rows = (
+            await self._conn.execute(
+                text("SELECT shop_id, shop_name, customer_id, display_name, balance FROM my_accounts(:user_id)"),
+                {"user_id": user_id},
+            )
+        ).all()
+        return [
+            CustomerAccount(row.shop_id, str(row.shop_name), row.customer_id, str(row.display_name), int(row.balance))
+            for row in rows
+        ]
+
+    async def end_my_link(self, user_id: UUID, shop_id: UUID) -> bool:
+        row = (
+            await self._conn.execute(
+                text("SELECT end_my_link(:user_id, :shop_id) AS ended"), {"user_id": user_id, "shop_id": shop_id}
+            )
+        ).one()
+        return int(row.ended) == 1
+
+    async def mark_recipient_reachable(self, user_id: UUID) -> int:
+        row = (
+            await self._conn.execute(text("SELECT mark_recipient_reachable(:user_id) AS n"), {"user_id": user_id})
+        ).one()
+        return int(row.n)
 
     async def accept_staff_invitation(self, token_hash: bytes, user_id: UUID) -> UUID | None:
         try:

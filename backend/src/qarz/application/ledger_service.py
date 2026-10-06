@@ -13,7 +13,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from qarz.application import idempotency
+from qarz.application import idempotency, notify
 from qarz.application.customers import (
     MAX_PAGE,
     CustomerArchived,
@@ -185,7 +185,7 @@ async def append_entry_in(
     await session.record_measure(kind=kind.value, entry_ref=entry_id, amount=amount, promised=promised)
 
     balance = ledger.balance([row.entry for row in account]) + (amount if kind is EntryKind.CREDIT else -amount)
-    return {
+    body = {
         "entry": {
             "id": str(entry_id),
             "seq": seq,
@@ -197,6 +197,8 @@ async def append_entry_in(
         },
         "customer": customer_body(customer, balance),
     }
+    await notify.entry_recorded(session, customer_id, body)
+    return body
 
 
 async def reverse_entry_in(
@@ -242,7 +244,7 @@ async def reverse_entry_in(
     balance = ledger.balance([row.entry for row in account]) + (
         -original.amount if debt_increasing else original.amount
     )
-    return {
+    body = {
         "entry": {
             "id": str(reversal_id),
             "seq": seq,
@@ -253,6 +255,8 @@ async def reverse_entry_in(
         },
         "customer": customer_body(customer, balance),
     }
+    await notify.entry_reversed(session, customer_id, body, original.kind.value)
+    return body
 
 
 async def choose_promise_in(
@@ -298,10 +302,12 @@ async def choose_promise_in(
     )
     await session.record_measure(kind="promise_chosen", entry_ref=entry_id, amount=entry.amount, promised=chosen)
     balance = ledger.balance([other.entry for other in account])
-    return {
+    body = {
         "entry": {"id": str(entry_id), "amount": entry.amount, "promised_date": chosen.isoformat()},
         "customer": customer_body(customer, balance),
     }
+    await notify.promise_chosen(session, customer_id, body)
+    return body
 
 
 class LedgerService:

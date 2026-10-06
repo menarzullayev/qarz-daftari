@@ -64,6 +64,7 @@ class Chat:
     def __init__(self, client: TestClient, owner: psycopg.Connection, tg_id: int, language: str = "uz") -> None:
         self.client, self.owner, self.tg_id, self.language = client, owner, tg_id, language
         self.last_message_id = 0
+        self.profile: dict[str, str] = {}  # first_name, last_name as Telegram would send them
 
     def _post(self, update: dict[str, Any]) -> Said:
         response = self.client.post("/tg/webhook", json=update, headers=SECRET)
@@ -75,7 +76,7 @@ class Chat:
         return Said(update["update_id"], [row[0] for row in rows], response.json() if response.content else None)
 
     def _from(self) -> dict[str, Any]:
-        return {"id": self.tg_id, "language_code": self.language}
+        return {"id": self.tg_id, "language_code": self.language, **self.profile}
 
     def say(self, text: str, update_id: int | None = None) -> Said:
         self.last_message_id = next(_message_ids)
@@ -534,8 +535,14 @@ def test_someone_with_no_shop_cannot_record_anything(
     client: TestClient, world: World, owner: psycopg.Connection
 ) -> None:
     before = entries(owner, world.shop_a)
-    for user in (world.stranger, world.customer_of_a, world.suspended_a):
+    for user in (world.stranger, world.suspended_a, world.waiter):
         assert chat_of(client, owner, user).say("Ali 45000").text == say("uz", "welcome_new")
+    # A linked customer is shown what they owe; their words are never read as an entry.
+    as_customer = chat_of(client, owner, world.customer_of_a).say("Ali 45000")
+    assert as_customer.text.split("\n") == [
+        say("uz", "accounts_header"),
+        say("uz", "account_line", shop="Shop A", balance=money("uz", 50000)),
+    ]
     assert entries(owner, world.shop_a) == before
 
 
