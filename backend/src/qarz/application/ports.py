@@ -172,6 +172,34 @@ class SubscriptionToReview:
 
 
 @dataclass(frozen=True)
+class DateRequestRecord:
+    """A customer's request to move the promised date of one entry (DOM-015)."""
+
+    request_id: UUID
+    entry_id: UUID
+    customer_id: UUID
+    customer_name: str
+    amount: int  # of the entry
+    promised_date: date | None  # the entry's promised date now, whatever became of the request
+    requested_date: date
+    reason: str | None
+    status: str
+    decline_reason: str | None
+    created_at: datetime
+    closed_at: datetime | None
+
+
+@dataclass(frozen=True)
+class PromiseRecord:
+    """One row of an entry's promise history (INV-9). The newest row is the current promised date."""
+
+    promised_date: date
+    actor: str
+    reason: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class WaitingLink:
     """Someone who started the bot from the counter code and agreed, not yet attached to a record."""
 
@@ -342,7 +370,13 @@ class TenantSession(Protocol):
         created_at: datetime,
     ) -> None: ...
 
-    async def add_promise(self, *, entry_id: UUID, promised_date: date, actor: str, created_at: datetime) -> None: ...
+    async def add_promise(
+        self, *, entry_id: UUID, promised_date: date, actor: str, created_at: datetime, reason: str | None = None
+    ) -> None: ...
+
+    async def promises_of(self, entry_ids: list[UUID]) -> dict[UUID, list[PromiseRecord]]:
+        """The promise history of the given entries, oldest first. An entry without a promise is absent."""
+        ...
 
     async def record_measure(self, *, kind: str, entry_ref: UUID, amount: int, promised: date | None) -> None:
         """One row for product measurement. Carries no name, phone, or Telegram identity."""
@@ -456,6 +490,24 @@ class TenantSession(Protocol):
 
     async def open_disputes(self) -> list[tuple[DisputeRecord, str]]:
         """Open disputes of the shop, oldest first, each with the customer's name."""
+        ...
+
+    async def get_date_request(self, request_id: UUID) -> DateRequestRecord | None: ...
+
+    async def date_requests_of_customer(self, customer_id: UUID) -> list[DateRequestRecord]:
+        """Every date request ever made on the customer's entries, oldest first."""
+        ...
+
+    async def open_date_request(
+        self, *, request_id: UUID, entry_id: UUID, requested_date: date, reason: str | None, now: datetime
+    ) -> DateRequestRecord: ...
+
+    async def close_date_request(
+        self, request_id: UUID, *, status: str, decline_reason: str | None, decided_by: UUID | None, now: datetime
+    ) -> DateRequestRecord: ...
+
+    async def open_date_requests(self) -> list[DateRequestRecord]:
+        """Open date requests of the shop, oldest first."""
         ...
 
     async def staff_recipients(self, roles: list[str]) -> list[tuple[int, str]]:

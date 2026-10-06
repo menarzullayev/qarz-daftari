@@ -38,17 +38,33 @@ from qarz.application.goods_lines import (
     store_lines_in,
 )
 from qarz.application.operations import operation
-from qarz.application.ports import EntryRow, GoodsLineRecord, Membership, Storage, TenantSession
+from qarz.application.ports import (
+    DateRequestRecord,
+    EntryRow,
+    GoodsLineRecord,
+    Membership,
+    PromiseRecord,
+    Storage,
+    TenantSession,
+)
 from qarz.application.shops import require_member
 from qarz.domain import ledger
 from qarz.domain.access import Capability, Role, allows
 from qarz.domain.credit import LimitOutcome, check_limit, effective_limit
-from qarz.domain.ledger import EntryKind, Refusal
-from qarz.domain.promise import default_promise_date, tashkent_date, validate_promise_date
+from qarz.domain.date_requests import (
+    PromiseChangeRefusal,
+    may_change_promise,
+    reason_fits,
+    request_is_met,
+    tidy_reason,
+)
+from qarz.domain.ledger import Entry, EntryKind, Refusal
+from qarz.domain.promise import PromiseDateError, default_promise_date, tashkent_date, validate_promise_date
 
 RECORD_ENTRY = operation("ledger.entry.create", Capability.RECORD)
 REVERSE_ENTRY = operation("ledger.entry.reverse", Capability.MANAGE)
 CHOOSE_PROMISE = operation("ledger.entry.promise.choose", Capability.RECORD)
+CHANGE_PROMISE = operation("ledger.entry.promise.change", Capability.MANAGE)
 READ_CUSTOMER = operation("customers.read", Capability.RECORD)
 READ_OVERVIEW = operation("overview.read", Capability.RECORD)
 LIST_DEBTORS = operation("overview.debtors", Capability.RECORD)
@@ -61,6 +77,8 @@ PROMISE_CHOICE_WINDOW = timedelta(hours=24)
 # Who set a promise row: the shop default, or a person.
 DEFAULT_ACTOR = "default"
 STAFF_ACTOR = "staff"
+# A date the customer asked for and a manager or owner accepted (REQ-067).
+CUSTOMER_REQUEST_ACTOR = "customer_request"
 
 _REFUSAL_CODES = {
     Refusal.EXCEEDS_BALANCE: "EXCEEDS_BALANCE",
@@ -79,6 +97,79 @@ async def close_dispute_on_reversal(session: TenantSession, actor: Membership, e
         )
 
 
+async def expire_settled_date_requests(
+    session: TenantSession, customer_id: UUID, entries: Sequence[Entry], now: datetime
+) -> None:
+    """An open date request on an entry that is now reversed or fully paid has nothing left to ask.
+
+    `entries` is the account as it stands after the entry just written. A reversed credit frees the
+    payments that covered it, so other entries may have become fully paid as well.
+    """
+    waiting = [r for r in await session.date_requests_of_customer(customer_id) if r.status == "open"]
+    if not waiting:
+        return
+    owed = {allocation.entry_id for allocation in ledger.allocate(entries) if allocation.remaining > 0}
+    for request in waiting:
+        if request.entry_id not in owed:
+            await session.close_date_request(
+                request.request_id, status="expired", decline_reason=None, decided_by=None, now=now
+            )
+
+
+async def close_met_date_request(
+    session: TenantSession,
+    customer_id: UUID,
+    entry_id: UUID,
+    new_date: date,
+    *,
+    status: str,
+    decided_by: UUID | None,
+    now: datetime,
+) -> DateRequestRecord | None:
+    """Close the entry's open date request when the date just set is the one asked for, or later.
+
+    So an open request always asks for a date after the current one, and accepting it can only move
+    the promise forward.
+    """
+    for request in await session.date_requests_of_customer(customer_id):
+        if (
+            request.entry_id == entry_id
+            and request.status == "open"
+            and request_is_met(request.requested_date, new_date)
+        ):
+            return await session.close_date_request(
+                request.request_id, status=status, decline_reason=None, decided_by=decided_by, now=now
+            )
+    return None
+
+
+def promise_body(record: PromiseRecord) -> dict[str, Any]:
+    return {
+        "promised_date": record.promised_date.isoformat(),
+        "actor": record.actor,
+        "reason": record.reason,
+        "created_at": record.created_at.isoformat(),
+    }
+
+
+def date_request_body(record: DateRequestRecord) -> dict[str, Any]:
+    return {
+        "id": str(record.request_id),
+        "entry_id": str(record.entry_id),
+        "status": record.status,
+        "requested_date": record.requested_date.isoformat(),
+        "reason": record.reason,
+        "decline_reason": record.decline_reason,
+        "created_at": record.created_at.isoformat(),
+        "closed_at": None if record.closed_at is None else record.closed_at.isoformat(),
+    }
+
+
+def latest_date_requests(records: Sequence[DateRequestRecord]) -> dict[UUID, DateRequestRecord]:
+    """The newest request of each entry, from records given oldest first."""
+    return {record.entry_id: record for record in records}
+
+
 class LedgerRefused(AppError):
     """The domain rules do not allow this entry. The code says which rule."""
 
@@ -93,6 +184,12 @@ class PromiseAlreadySet(AppError):
     code = "PROMISE_ALREADY_SET"
 
 
+class PromiseNotChangeable(AppError):
+    """Only a credit sale or an opening balance that still stands has a promised date to change."""
+
+    code = "PROMISE_NOT_CHANGEABLE"
+
+
 def _refuse(refusal: Refusal) -> AppError:
     code = _REFUSAL_CODES.get(refusal)
     if code is None:
@@ -101,7 +198,13 @@ def _refuse(refusal: Refusal) -> AppError:
     return LedgerRefused(code)
 
 
-def _entry_body(row: EntryRow, reversed_ids: set[UUID], lines: Sequence[GoodsLineRecord] = ()) -> dict[str, Any]:
+def _entry_body(
+    row: EntryRow,
+    reversed_ids: set[UUID],
+    lines: Sequence[GoodsLineRecord] = (),
+    promises: Sequence[PromiseRecord] = (),
+    date_request: DateRequestRecord | None = None,
+) -> dict[str, Any]:
     entry = row.entry
     return {
         "id": str(entry.id),
@@ -116,6 +219,9 @@ def _entry_body(row: EntryRow, reversed_ids: set[UUID], lines: Sequence[GoodsLin
         "disputed": entry.disputed,
         "author_id": str(row.author_id),
         "lines": [line_body(line) for line in lines],
+        # Every promised date the entry has carried, oldest first; the last one is the current date.
+        "promises": [promise_body(promise) for promise in promises],
+        "date_request": None if date_request is None else date_request_body(date_request),
     }
 
 
@@ -266,6 +372,8 @@ async def append_entry_in(
         subject_id=customer_id,
     )
     await session.record_measure(kind=kind.value, entry_ref=entry_id, amount=amount, promised=promised)
+    written = Entry(id=entry_id, seq=seq, kind=kind, amount=amount, created_at=now, promised_date=promised)
+    await expire_settled_date_requests(session, customer_id, [*(row.entry for row in account), written], now)
 
     body: dict[str, Any] = {
         "entry": {
@@ -327,6 +435,10 @@ async def reverse_entry_in(
     )
     await session.record_measure(kind="reversal", entry_ref=reversal_id, amount=original.amount, promised=None)
     await close_dispute_on_reversal(session, actor, entry_id, now)
+    reversal = Entry(
+        id=reversal_id, seq=seq, kind=EntryKind.REVERSAL, amount=original.amount, created_at=now, reverses_id=entry_id
+    )
+    await expire_settled_date_requests(session, customer_id, [*(row.entry for row in account), reversal], now)
 
     debt_increasing = original.kind in (EntryKind.CREDIT, EntryKind.OPENING)
     balance = ledger.balance([row.entry for row in account]) + (
@@ -383,6 +495,8 @@ async def choose_promise_in(
         raise ValidationFailed({"promised_date": problem.value})
 
     await session.add_promise(entry_id=entry_id, promised_date=chosen, actor=STAFF_ACTOR, created_at=now)
+    # Not a decision on the request: the date it asked for has simply been reached or passed.
+    await close_met_date_request(session, customer_id, entry_id, chosen, status="expired", decided_by=None, now=now)
     await session.record_activity(
         membership_id=actor.membership_id,
         action="ledger.promise_chosen",
@@ -397,6 +511,72 @@ async def choose_promise_in(
     }
     await notify.promise_chosen(session, customer_id, body)
     return body
+
+
+async def change_promise_in(
+    session: TenantSession, actor: Membership, entry_id: UUID, chosen: date, reason: str | None, *, now: datetime
+) -> dict[str, Any]:
+    """A manager or owner moves the promised date of a debt that still stands (REQ-067).
+
+    The date it replaces stays in the promise history (INV-9). An open date request on the entry is
+    closed as accepted when the new date is the one asked for, or later; otherwise it stays open.
+    """
+    customer_id = await session.customer_of_entry(entry_id)
+    if customer_id is None:
+        raise NotFound()
+    customer = await session.get_customer(customer_id, for_update=True)
+    if customer is None:
+        raise NotFound()
+    account = await session.entries_of(customer_id)
+    entry = {row.entry.id: row.entry for row in account}[entry_id]
+    refusal = may_change_promise(
+        kind=entry.kind,
+        is_reversed=entry_id in {other.entry.reverses_id for other in account},
+        sale_date=tashkent_date(entry.created_at),
+        current=entry.promised_date,
+        chosen=chosen,
+    )
+    if isinstance(refusal, PromiseDateError):
+        raise ValidationFailed({"promised_date": refusal.value})
+    if refusal is PromiseChangeRefusal.UNCHANGED:
+        raise ValidationFailed({"promised_date": "PROMISE_UNCHANGED"})
+    if refusal is not None:
+        raise PromiseNotChangeable({"reason": refusal.value})
+    previous = entry.promised_date
+    assert previous is not None  # a credit or opening entry always has a promised date (INV-9)
+
+    await session.add_promise(entry_id=entry_id, promised_date=chosen, actor=STAFF_ACTOR, created_at=now, reason=reason)
+    closed = await close_met_date_request(
+        session, customer_id, entry_id, chosen, status="accepted", decided_by=actor.membership_id, now=now
+    )
+    await session.record_activity(
+        membership_id=actor.membership_id,
+        action="ledger.promise_changed",
+        subject_type="customer",
+        subject_id=customer_id,
+    )
+    await session.record_measure(kind="promise_changed", entry_ref=entry_id, amount=entry.amount, promised=chosen)
+    await notify.promise_changed(
+        session,
+        customer_id,
+        entry_id=entry_id,
+        name=customer.display_name,
+        amount=entry.amount,
+        previous=previous,
+        promised=chosen,
+        reason=reason,
+        at=now,
+    )
+    return {
+        "entry": {
+            "id": str(entry_id),
+            "amount": entry.amount,
+            "promised_date": chosen.isoformat(),
+            "previous_date": previous.isoformat(),
+        },
+        "customer": customer_body(customer, ledger.balance([other.entry for other in account])),
+        "date_request": None if closed is None else date_request_body(closed),
+    }
 
 
 class LedgerService:
@@ -514,6 +694,36 @@ class LedgerService:
                 action=apply,
             )
 
+    async def change_promise(
+        self,
+        user_id: UUID,
+        shop_id: UUID,
+        entry_id: UUID,
+        promised_date: date,
+        reason: str | None,
+        request_key: str | None,
+    ) -> dict[str, Any]:
+        async with self._storage.tenant(shop_id) as session:
+            actor = await require_member(session, user_id, CHANGE_PROMISE)
+            key = idempotency.validate_key(request_key)
+            text = tidy_reason(reason)
+            if not reason_fits(text):
+                raise ValidationFailed({"reason": "at most 300 characters"})
+            # Moving a date is not a new credit sale, so it stays possible in limited mode (BR-29).
+            await require_writable(session, self._today(), new_credit=False)
+
+            async def apply() -> dict[str, Any]:
+                return await change_promise_in(session, actor, entry_id, promised_date, text, now=self._now())
+
+            return await idempotency.run_once(
+                session,
+                key=key,
+                operation=CHANGE_PROMISE.name,
+                user_id=user_id,
+                request={"entry": str(entry_id), "promised_date": promised_date, "reason": text},
+                action=apply,
+            )
+
     async def customer_detail(self, user_id: UUID, shop_id: UUID, customer_id: UUID) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, READ_CUSTOMER)
@@ -529,6 +739,8 @@ class LedgerService:
             newest_first = sorted(account, key=lambda row: row.entry.seq, reverse=True)
             shown = newest_first[:HISTORY_PAGE]
             lines = await session.goods_lines_of([row.entry.id for row in shown])
+            promises = await session.promises_of([row.entry.id for row in shown])
+            requests = latest_date_requests(await session.date_requests_of_customer(customer_id))
             return {
                 **customer_body(customer, ledger.balance(entries)),
                 "overdue": _overdue_body(ledger.overdue(entries, today)),
@@ -541,7 +753,16 @@ class LedgerService:
                     "due_amount": history.due_amount,
                     "longest_delay_days": history.longest_delay_days,
                 },
-                "entries": [_entry_body(row, reversed_ids, lines.get(row.entry.id, ())) for row in shown],
+                "entries": [
+                    _entry_body(
+                        row,
+                        reversed_ids,
+                        lines.get(row.entry.id, ()),
+                        promises.get(row.entry.id, ()),
+                        requests.get(row.entry.id),
+                    )
+                    for row in shown
+                ],
                 "entries_total": len(account),
             }
 

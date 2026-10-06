@@ -19,6 +19,7 @@ from qarz.application.customers import (
 )
 from qarz.application.goods_lines import ADD_LINES, LineRequest
 from qarz.application.ledger_service import (
+    CHANGE_PROMISE,
     CHOOSE_PROMISE,
     LIST_DEBTORS,
     READ_CUSTOMER,
@@ -87,6 +88,13 @@ class PromiseChoice(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     promised_date: date
+
+
+class PromiseChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    promised_date: date
+    reason: str | None = Field(default=None, max_length=1000)
 
 
 def add_customer_routes(
@@ -178,6 +186,12 @@ def add_customer_routes(
         shop_id: UUID, entry_id: UUID, body: PromiseChoice, user_id: user, idempotency_key: IdempotencyKey = None
     ) -> dict[str, Any]:
         return await ledger.choose_promise(user_id, shop_id, entry_id, body.promised_date, idempotency_key)
+
+    @app.post("/api/v1/shops/{shop_id}/entries/{entry_id}/promise", name=CHANGE_PROMISE.name)
+    async def change_promise(
+        shop_id: UUID, entry_id: UUID, body: PromiseChange, user_id: user, idempotency_key: IdempotencyKey = None
+    ) -> dict[str, Any]:
+        return await ledger.change_promise(user_id, shop_id, entry_id, body.promised_date, body.reason, idempotency_key)
 
     @app.get("/api/v1/shops/{shop_id}/overview", name=READ_OVERVIEW.name)
     async def overview(shop_id: UUID, user_id: user) -> dict[str, Any]:

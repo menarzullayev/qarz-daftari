@@ -5,7 +5,7 @@ message for an entry that failed, and no entry without its message. Only an acti
 customer who is not linked, who disconnected, or who blocked the bot gets nothing.
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -55,7 +55,9 @@ async def _send(session: TenantSession, customer_id: UUID, dedupe_key: str, key:
         # There is no confirm button and never will be (BR-10): objecting is the only thing asked.
         payload["reply_markup"] = {
             "inline_keyboard": [
-                [{"text": say(lang, "dispute_button"), "callback_data": f"v2:dsp:{UUID(dispute_entry).hex}"}]
+                [{"text": say(lang, "dispute_button"), "callback_data": f"v2:dsp:{UUID(dispute_entry).hex}"}],
+                # Only a credit sale's message carries these: it is the one entry with a date to move.
+                [{"text": say(lang, "move_date_button"), "callback_data": f"v2:dmv:{UUID(dispute_entry).hex}"}],
             ]
         }
     await session.enqueue(recipient=str(tg_id), payload=payload, dedupe_key=dedupe_key)
@@ -105,4 +107,80 @@ async def promise_chosen(session: TenantSession, customer_id: UUID, body: dict[s
         amount=entry["amount"],
         balance=customer["balance"],
         promised=date.fromisoformat(entry["promised_date"]),
+    )
+
+
+# --- promised dates moved later on (REQ-066, REQ-067) ----------------------------------------------------
+
+
+def with_reason(lang: str, text: str, reason: str | None) -> str:
+    """The text, followed by the reason on a line of its own when one was given."""
+    return text if reason is None else f"{text}\n{say(lang, 'reason_line', reason=reason)}"
+
+
+async def _tell_customer(
+    session: TenantSession, customer_id: UUID, dedupe_key: str, key: str, reason: str | None, **values: Any
+) -> None:
+    recipient = await session.customer_recipient(customer_id)
+    if recipient is None:
+        return
+    tg_id, lang = recipient
+    settings = await session.shop_settings()
+    text = say(
+        lang,
+        key,
+        shop="" if settings is None else settings.name,
+        amount=money(lang, int(values.pop("amount"))),
+        **{name: day(value) if isinstance(value, date) else value for name, value in values.items()},
+    )
+    await session.enqueue(
+        recipient=str(tg_id), payload={"text": with_reason(lang, text, reason)}, dedupe_key=dedupe_key
+    )
+
+
+async def promise_changed(
+    session: TenantSession,
+    customer_id: UUID,
+    *,
+    entry_id: UUID,
+    name: str,
+    amount: int,
+    previous: date,
+    promised: date,
+    reason: str | None,
+    at: datetime,
+) -> None:
+    """A manager or owner moved the date. The time is in the key: a date may be set, changed and set again."""
+    await _tell_customer(
+        session,
+        customer_id,
+        f"entry:{entry_id}:promise-changed:{at.isoformat()}",
+        "n_date_changed",
+        reason,
+        name=name,
+        amount=amount,
+        old=previous,
+        date=promised,
+    )
+
+
+async def date_request_decided(
+    session: TenantSession,
+    customer_id: UUID,
+    *,
+    request_id: UUID,
+    accepted: bool,
+    amount: int,
+    requested: date,
+    reason: str | None,
+) -> None:
+    """Tell the customer what became of their request to move a date."""
+    await _tell_customer(
+        session,
+        customer_id,
+        f"date-request:{request_id}:{'accepted' if accepted else 'declined'}",
+        "n_date_accepted" if accepted else "n_date_declined",
+        reason,
+        amount=amount,
+        date=requested,
     )

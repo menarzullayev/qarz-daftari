@@ -17,6 +17,7 @@ from qarz.application.chat import ChatService
 from qarz.application.credit import CreditService
 from qarz.application.customer_account import CustomerAccountService
 from qarz.application.customers import CustomerService
+from qarz.application.date_requests import DateRequestService
 from qarz.application.disputes import DisputeService
 from qarz.application.errors import AppError, Unauthenticated
 from qarz.application.ledger_service import LedgerService
@@ -33,6 +34,7 @@ from qarz.interface.auth_api import SessionAuthenticator, add_auth_routes
 from qarz.interface.catalog_api import add_catalog_routes
 from qarz.interface.credit_api import add_credit_routes
 from qarz.interface.customers_api import add_customer_routes
+from qarz.interface.date_requests_api import add_date_request_routes
 from qarz.interface.disputes_api import add_dispute_routes
 from qarz.interface.errors import app_error_handler, error_response
 from qarz.interface.links_api import add_link_routes
@@ -117,6 +119,7 @@ def create_app(
         add_credit_routes(app, CreditService(storage, now), current_user)
         add_reminder_routes(app, ReminderService(storage, now), current_user)
         add_dispute_routes(app, DisputeService(storage, now), current_user)
+        add_date_request_routes(app, DateRequestService(storage, now), current_user)
         add_customer_routes(app, CustomerService(storage, now), LedgerService(storage, now), current_user)
         add_catalog_routes(app, CatalogService(storage, now), current_user)
         add_account_routes(
