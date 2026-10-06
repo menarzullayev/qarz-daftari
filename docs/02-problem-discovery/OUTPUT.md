@@ -98,7 +98,7 @@ Validation criteria for this stage, proposed by the agent and open to change by 
 
 ## Evidence
 
-Records added in this stage: EVID-014 to EVID-019. Records reused from earlier stages: EVID-001, EVID-003, EVID-004, EVID-005, EVID-012 and EVID-013 (see `docs/evidence/`).
+Records added in this stage: EVID-014 to EVID-019 inclusive. Records reused from earlier stages: EVID-001, EVID-003, EVID-004, EVID-005, EVID-012 and EVID-013 (see `docs/evidence/`).
 
 Limits of this evidence:
 

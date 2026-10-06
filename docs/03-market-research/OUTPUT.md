@@ -20,7 +20,7 @@ Upstream: `docs/02-problem-discovery/OUTPUT.md` (passed provisionally, DEC-003 /
 
 The number that matters most, how many grocery shops sell on credit, could not be found. An honest market size cannot be computed from these sources.
 
-Illustrative ceiling, to show the order of magnitude only: if 20,000 shops paid 25,000 UZS a month, revenue would be 500 million UZS a month, roughly 42,000 USD at the exchange rate implied by EVID-021. Both inputs are agent assumptions. The scenario shows that this is a small market in revenue terms even at an adoption level no local competitor has reported.
+Illustrative ceiling, to show the order of magnitude only: if 20,000 shops paid 25,000 UZS a month, revenue would be 500 million UZS a month, roughly 42,000 USD at the exchange rate implied by pDaftar's price list (EVID-021). Both inputs are agent assumptions. The scenario shows that this is a small market in revenue terms even at an adoption level no local competitor has reported.
 
 ## Competitors
 
@@ -120,7 +120,7 @@ Payment collection is itself an open issue: subscriptions sold inside a Telegram
 
 ## Evidence register
 
-Added in this stage: EVID-020 to EVID-030. Reused: EVID-002, EVID-004, EVID-005, EVID-007, EVID-009, EVID-010, EVID-013, EVID-014, EVID-015, EVID-018, EVID-019.
+Added in this stage: EVID-020 to EVID-030. Reused: EVID-002, EVID-004, EVID-005, EVID-007, EVID-009, EVID-010, EVID-013, EVID-014, EVID-015, EVID-018 and EVID-019 (see `docs/evidence/`).
 
 Correction to earlier work: EVID-003 described pDaftar as an iOS app from its App Store listing only. EVID-020 supersedes that picture. Idea Selection scored candidate B's differentiation at 2 out of 5 on the earlier, incomplete view; on current evidence it would be lower.
 
