@@ -60,6 +60,10 @@ class Authenticator(Protocol):
     async def user_id(self, request: Request) -> UUID | None: ...
 
 
+# What a caller can be answered without being a member of the shop: not found, and a malformed request.
+_STRANGER_ANSWERS = frozenset({404, 422})
+
+
 def _shop_in_path(request: Request) -> UUID | None:
     raw = request.path_params.get("shop_id")
     try:
@@ -142,8 +146,9 @@ def create_app(
             ) -> Response:
                 response = await call_next(request)
                 user_id, shop_id = getattr(request.state, "counted_for", (None, None))
-                # 404 is what a stranger gets: only an answer given to a member counts against the shop.
-                if user_id is not None and shop_id is not None and response.status_code != 404:
+                # Only an answer given to a member counts against the shop. A stranger gets 404, or 422 when
+                # the request is malformed, which is found before anyone is asked who they are.
+                if user_id is not None and shop_id is not None and response.status_code not in _STRANGER_ANSWERS:
                     counted.answered(user_id, shop_id)
                 return response
 

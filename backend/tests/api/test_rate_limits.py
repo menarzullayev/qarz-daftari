@@ -143,6 +143,20 @@ def test_strangers_cannot_use_up_a_shops_rate(per_shop: Limited, world: World) -
     assert [client.get(path, headers=as_user(world.owner_a)).status_code for _ in range(4)] == [200] * 4
 
 
+def test_strangers_cannot_use_up_a_shops_rate_with_malformed_requests(per_shop: Limited, world: World) -> None:
+    """A malformed body is refused with 422 before membership is looked at, so it must not count either."""
+    client = per_shop.client
+    path = f"/api/v1/shops/{world.shop_a}"
+    for who in (world.owner_b, world.stranger):
+        for _ in range(15):
+            refused = client.patch(path, json={"name": 5}, headers={**as_user(who), "Idempotency-Key": "malformed-1"})
+            assert refused.status_code == 422
+    assert [client.get(path, headers=as_user(world.owner_a)).status_code for _ in range(4)] == [200] * 4
+    assert client.get(path, headers=as_user(world.owner_a)).status_code == 429
+    # And having sent them does not make a stranger known as a member.
+    assert client.get(path, headers=as_user(world.owner_b)).status_code == 404
+
+
 def test_a_malformed_shop_identifier_is_not_found_and_limits_nothing(per_shop: Limited, world: World) -> None:
     client = per_shop.client
     for _ in range(10):
