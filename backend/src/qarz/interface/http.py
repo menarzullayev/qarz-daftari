@@ -12,8 +12,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from qarz.application.account import AccountService, ActivityService
 from qarz.application.auth import AuthService
-from qarz.application.chat import ChatService
 from qarz.application.catalog import CatalogService
+from qarz.application.chat import ChatService
 from qarz.application.customers import CustomerService
 from qarz.application.errors import AppError, Unauthenticated
 from qarz.application.ledger_service import LedgerService
