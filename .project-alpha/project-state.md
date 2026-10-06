@@ -29,12 +29,10 @@ blocked_reason:
 - Production Ready requires explicit human approval of the global audit.
 
 ## Pending approvals
-- DEC-014 to DEC-019: version 2 of the domain model, architecture, decision records, technical specification, development plan, and operations definition. Written without stopping by founder instruction; awaiting his single end-of-sequence review.
 - Production launch approval: not requested; cannot be given until the sixteen launch criteria in docs/10-operations/OUTPUT.md are met.
 
 ## Blockers
-- Stages 05 to 09 show PASSED in this file because the framework CLI cannot reopen a passed stage. Their documents are now version 2 and are NOT yet approved (DEC-014 to DEC-018 pending). Treat them as in review.
-- 10-operations is held in REVIEW by founder decision until production launch criteria are met.
+- 10-operations is held in REVIEW by founder decision until production launch criteria are met. Its version 2 definition is approved (DEC-019 / APR-019).
 - Global audit cannot pass with framework 1.0.0 as released (early-stage EVID and DEC references are reported as forward references; APR-001 lacks a Decision field the documented CLI command never asked for). A framework fix has been proposed but not made.
 
 ## Open questions

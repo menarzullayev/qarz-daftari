@@ -1,0 +1,12 @@
+{
+  "event_id": "8b76d5e1d89e",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T13:26:49+00:00",
+  "path": ".project-alpha\\approvals\\APR-018.md",
+  "stage": "09-development-plan",
+  "decision_id": "DEC-018",
+  "decision": "Development plan version 2 as written, 92 to 138 focused days, no pilot stage",
+  "approval_id": "APR-018",
+  "approver": "Saidakbar Narzullayev",
+  "status": "approved"
+}

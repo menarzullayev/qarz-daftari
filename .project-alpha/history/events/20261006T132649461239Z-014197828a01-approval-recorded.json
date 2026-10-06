@@ -1,0 +1,12 @@
+{
+  "event_id": "014197828a01",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T13:26:49+00:00",
+  "path": ".project-alpha\\approvals\\APR-015.md",
+  "stage": "06-architecture",
+  "decision_id": "DEC-015",
+  "decision": "Architecture version 2 as written",
+  "approval_id": "APR-015",
+  "approver": "Saidakbar Narzullayev",
+  "status": "approved"
+}

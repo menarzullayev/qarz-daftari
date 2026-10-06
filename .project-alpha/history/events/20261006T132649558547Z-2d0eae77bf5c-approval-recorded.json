@@ -1,0 +1,12 @@
+{
+  "event_id": "2d0eae77bf5c",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T13:26:49+00:00",
+  "path": ".project-alpha\\approvals\\APR-016.md",
+  "stage": "07-adr",
+  "decision_id": "DEC-016",
+  "decision": "Decision records version 2 as written",
+  "approval_id": "APR-016",
+  "approver": "Saidakbar Narzullayev",
+  "status": "approved"
+}

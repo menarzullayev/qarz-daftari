@@ -1,6 +1,6 @@
 # System Architecture
 
-Version 2. Status: rewritten for PRD version 2 (DEC-013 / APR-013); awaiting the founder's end-of-sequence review (DEC-015). Prepared 2026-10-06.
+Version 2. Status: rewritten for PRD version 2 (DEC-013 / APR-013); approved by the founder on 2026-10-06 (DEC-015 / APR-015) with no changes to the rules the agent decided. Prepared 2026-10-06.
 Version 1 (single server, chat only, DEC-007) is superseded and remains in version history.
 
 **Design stance.** Release 1 is now a multi-tenant product with three clients, staff roles, a subscription, and stated targets for scale and recovery (REQ-N08, REQ-N09, REQ-N13). It is still built and run by one person. The architecture therefore adds what those targets require, a standby server, continuous database archiving, an HTTP API, and a web front end, and refuses everything else. Where a choice trades operational simplicity for capability, simplicity wins unless a requirement forbids it.
@@ -234,4 +234,4 @@ Every requirement in PRD version 2 that is not withdrawn is covered by a row abo
 | Record | Subject | Status |
 |---|---|---|
 | DEC-007 / APR-007 | Version 1 architecture | Superseded; Python and hosting in Uzbekistan are kept |
-| DEC-015 | Version 2 architecture: API and worker monolith, React front end for Mini App, web and admin, PostgreSQL primary and standby in Uzbekistan with manual failover, row-level tenant isolation, self-hosted file store, SMS and online payment adapters switched off | Pending end-of-sequence review |
+| DEC-015 | Version 2 architecture: API and worker monolith, React front end for Mini App, web and admin, PostgreSQL primary and standby in Uzbekistan with manual failover, row-level tenant isolation, self-hosted file store, SMS and online payment adapters switched off | Approved 2026-10-06 (APR-015) |

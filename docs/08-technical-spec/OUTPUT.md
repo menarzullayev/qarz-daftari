@@ -1,6 +1,6 @@
 # Technical Specification
 
-Version 2. Status: rewritten for PRD version 2 and the version 2 architecture; awaiting the founder's end-of-sequence review (DEC-017). Prepared 2026-10-06.
+Version 2. Status: rewritten for PRD version 2 and the version 2 architecture; approved by the founder on 2026-10-06 (DEC-017 / APR-017) with no changes to the rules the agent decided. Prepared 2026-10-06.
 Version 1 (chat-only pilot, DEC-009) is superseded and remains in version history.
 Upstream: PRD version 2 (DEC-013), Domain Model version 2, Architecture version 2, decision records ADR-002 to ADR-021 (DEC-016).
 
@@ -314,4 +314,4 @@ A reply that says something was saved is sent only after commit.
 | Record | Subject | Status |
 |---|---|---|
 | DEC-009 / APR-009 | Version 1 specification | Superseded |
-| DEC-017 | Version 2 specification: HTTP API and chat contract, schema with row-level security and insert-only ledger, Telegram-only authentication with administrator second factor, role matrix, retention periods, performance targets NFR-001 to NFR-013, and the draft consent text | Pending end-of-sequence review |
+| DEC-017 | Version 2 specification: HTTP API and chat contract, schema with row-level security and insert-only ledger, Telegram-only authentication with administrator second factor, role matrix, retention periods, performance targets NFR-001 to NFR-013, and the draft consent text | Approved 2026-10-06 (APR-017) |

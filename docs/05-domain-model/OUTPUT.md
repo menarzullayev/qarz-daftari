@@ -1,6 +1,6 @@
 # Domain Model
 
-Version 2. Status: rewritten for PRD version 2 (DEC-013 / APR-013); awaiting the founder's end-of-sequence review (DEC-014). Prepared 2026-10-06.
+Version 2. Status: rewritten for PRD version 2 (DEC-013 / APR-013); approved by the founder on 2026-10-06 (DEC-014 / APR-014) with no changes to the rules the agent decided. Prepared 2026-10-06.
 Version 1 (DEC-006) is superseded and remains in version history.
 
 This model covers release 1 as defined in PRD version 2. Rules that go beyond what the PRD states are marked **decided here**; by the founder's instruction they were decided by the agent without stopping and are listed for review at the end.
@@ -261,4 +261,4 @@ Requirements with no domain element because they constrain clients or operations
 |---|---|---|
 | DEC-006 / APR-006 | Version 1 business rules | Superseded in part; immutability and whole-entry reversal are kept |
 | DEC-013 / APR-013 | Release 1 scope | Approved 2026-10-06 |
-| DEC-014 | Rules decided in this version: dispute once per entry within 30 days, closed by reversal, decline, or withdrawal; one-time addition of goods lines; promised dates changeable with history; 30-day default promise; payment history calculation; limited-mode behavior; support access of at most 24 hours; 30-day shop deletion period | Pending end-of-sequence review |
+| DEC-014 | Rules decided in this version: dispute once per entry within 30 days, closed by reversal, decline, or withdrawal; one-time addition of goods lines; promised dates changeable with history; 30-day default promise; payment history calculation; limited-mode behavior; support access of at most 24 hours; 30-day shop deletion period | Approved 2026-10-06 (APR-014) |

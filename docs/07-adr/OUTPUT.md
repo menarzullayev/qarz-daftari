@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-Version 2. Status: rewritten for the version 2 architecture; awaiting the founder's end-of-sequence review (DEC-016). Prepared 2026-10-06.
+Version 2. Status: rewritten for the version 2 architecture; approved by the founder on 2026-10-06 (DEC-016 / APR-016) with no changes to the rules the agent decided. Prepared 2026-10-06.
 Version 1 (ten records, DEC-008) remains in version history.
 
 Records keep their numbers. Four version 1 records are superseded, six are kept or amended, and eleven are new. By the founder's instruction the new records were decided by the agent without stopping and are all subject to his review.
@@ -45,7 +45,7 @@ Records keep their numbers. Four version 1 records are superseded, six are kept 
 
 **Consequences.** Module boundaries are kept by import rules checked in continuous integration. Scheduled jobs need a single active runner, taken by a database lock.
 
-**Evidence.** EVID-032 | **Reversibility.** High. **Approval.** Agent; founder review pending.
+**Evidence.** EVID-032 | **Reversibility.** High. **Approval.** Agent; approved by the founder on 2026-10-06.
 
 ---
 
@@ -111,7 +111,7 @@ Records keep their numbers. Four version 1 records are superseded, six are kept 
 
 ## ADR-011: Three clients from one front-end application, chat fast path kept
 
-**Status:** Accepted by the agent; founder review pending. Supersedes the chat-only record (ADR-001).
+**Status:** Accepted by the agent; approved by the founder on 2026-10-06. Supersedes the chat-only record (ADR-001).
 
 **Context / problem.** The founder chose a Mini App plus a separate web panel (question form, 2026-10-06). Itemized entry, large customer lists, reports, and administration do not fit a chat. Recording in a queue on a poor connection still must work (REQ-N03).
 
@@ -129,7 +129,7 @@ Records keep their numbers. Four version 1 records are superseded, six are kept 
 
 ## ADR-012: FastAPI for the HTTP API
 
-**Status:** Accepted by the agent; founder review pending.
+**Status:** Accepted by the agent; approved by the founder on 2026-10-06.
 
 **Context / problem.** The Mini App, web panel, and admin panel need an HTTP API in the Python codebase already chosen (ADR-003).
 
@@ -147,7 +147,7 @@ Records keep their numbers. Four version 1 records are superseded, six are kept 
 
 ## ADR-013: TypeScript and React for the front end
 
-**Status:** Accepted by the agent; founder review pending.
+**Status:** Accepted by the agent; approved by the founder on 2026-10-06.
 
 **Options considered.** (1) React with TypeScript. (2) Vue. (3) Server-rendered pages.
 
@@ -163,7 +163,7 @@ Records keep their numbers. Four version 1 records are superseded, six are kept 
 
 ## ADR-014: Two servers in Uzbekistan, primary and standby, manual failover
 
-**Status:** Accepted by the agent; founder review pending. Supersedes the single-server record (ADR-008).
+**Status:** Accepted by the agent; approved by the founder on 2026-10-06. Supersedes the single-server record (ADR-008).
 
 **Context / problem.** Version 2 requires recovery within 1 hour and availability of 99.5% in shop hours (REQ-N09), with data in Uzbekistan (REQ-N04, EVID-027).
 
@@ -181,7 +181,7 @@ Records keep their numbers. Four version 1 records are superseded, six are kept 
 
 ## ADR-015: Streaming replication and continuous archiving
 
-**Status:** Accepted by the agent; founder review pending. Supersedes the daily-backup record (ADR-009).
+**Status:** Accepted by the agent; approved by the founder on 2026-10-06. Supersedes the daily-backup record (ADR-009).
 
 **Context / problem.** At most 5 minutes of entries may be lost (REQ-N08).
 
@@ -199,7 +199,7 @@ Records keep their numbers. Four version 1 records are superseded, six are kept 
 
 ## ADR-016: Tenant isolation by row-level security
 
-**Status:** Accepted by the agent; founder review pending.
+**Status:** Accepted by the agent; approved by the founder on 2026-10-06.
 
 **Context / problem.** Thousands of shops share one database. One shop's data must be unreachable from another "below the application code as well as in it" (REQ-N12), and administrators must not read shop data without a logged support access (REQ-059).
 
@@ -217,7 +217,7 @@ Records keep their numbers. Four version 1 records are superseded, six are kept 
 
 ## ADR-017: Authentication only through Telegram identity
 
-**Status:** Accepted by the agent; founder review pending.
+**Status:** Accepted by the agent; approved by the founder on 2026-10-06.
 
 **Context / problem.** Users arrive through chat, Mini App, and a web browser (REQ-050). The PRD says there are no separate passwords.
 
@@ -235,7 +235,7 @@ Records keep their numbers. Four version 1 records are superseded, six are kept 
 
 ## ADR-018: Platform switches and prices stored in the database
 
-**Status:** Accepted by the agent; founder review pending.
+**Status:** Accepted by the agent; approved by the founder on 2026-10-06.
 
 **Selected solution.** Trial on or off, trial length, subscription price, SMS on or off and quotas, online payment on or off, the receiving card number, and the review group are rows in a settings table, changed in the admin panel, cached briefly by the application, and logged on every change (REQ-N14, REQ-058). Alternatives were environment variables, which need a restart and leave no audit trail, and a third-party flag service, which would sit outside Uzbekistan.
 
@@ -265,7 +265,7 @@ Records keep their numbers. Four version 1 records are superseded, six are kept 
 
 ## ADR-020: Self-hosted S3-compatible file store
 
-**Status:** Accepted by the agent; founder review pending.
+**Status:** Accepted by the agent; approved by the founder on 2026-10-06.
 
 **Selected solution.** Receipt images and import files are kept in an S3-compatible object store run on the service's own servers and replicated to the standby. Alternatives were database large objects, which bloat backups and replication, and a foreign object storage service, which conflicts with data localization (EVID-027).
 
@@ -277,7 +277,7 @@ Records keep their numbers. Four version 1 records are superseded, six are kept 
 
 ## ADR-021: Two languages through message catalogs
 
-**Status:** Accepted by the agent; founder review pending.
+**Status:** Accepted by the agent; approved by the founder on 2026-10-06.
 
 **Selected solution.** Every user-facing string is a key resolved from an Uzbek and a Russian catalog, on the server for chat messages and notifications and in the front end for screens (REQ-051, REQ-N01). The build fails when a key is missing in either language. A user's language is stored on the user; a notification uses the recipient's language. The alternative, text written in code, was rejected because two languages cannot be kept in step that way.
 

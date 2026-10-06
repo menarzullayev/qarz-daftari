@@ -1,6 +1,6 @@
 # Quality & Operations
 
-Version 2. Status: rewritten for release 1 as a production service; awaiting the founder's end-of-sequence review (DEC-019). The stage stays in REVIEW by the founder's earlier decision until the launch criteria are met. Prepared 2026-10-06.
+Version 2. Status: rewritten for release 1 as a production service; approved by the founder on 2026-10-06 (DEC-019 / APR-019) with no changes to the rules the agent decided. The stage stays in REVIEW by the founder's earlier decision until the launch criteria are met. Prepared 2026-10-06.
 Version 1 (ten-shop pilot, DEC-011) is superseded and remains in version history.
 
 This document defines how release 1 is tested, released, watched, and recovered. It does not claim readiness: nothing has been built and no launch criterion is met.
@@ -219,5 +219,5 @@ No operational evidence exists: no test run, deployment, failover, restore, or a
 | Record | Subject | Status |
 |---|---|---|
 | DEC-011 / APR-011 | Version 1 operations definition | Superseded |
-| DEC-019 | Version 2 operations definition: test strategy with a blocking tenant suite, staged releases with backward-compatible migrations, monitoring and alerting, replication with point-in-time recovery, recovery targets of 1 hour and 5 minutes, runbooks, and sixteen launch criteria | Pending end-of-sequence review |
+| DEC-019 | Version 2 operations definition: test strategy with a blocking tenant suite, staged releases with backward-compatible migrations, monitoring and alerting, replication with point-in-time recovery, recovery targets of 1 hour and 5 minutes, runbooks, and sixteen launch criteria | Approved 2026-10-06 (APR-019) |
 | Production launch approval | Launch criterion 16 | Not requested; cannot be given until criteria 1 to 15 are met |

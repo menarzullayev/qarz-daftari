@@ -1,0 +1,12 @@
+{
+  "event_id": "f8e41603d917",
+  "event_type": "approval.recorded",
+  "timestamp": "2026-10-06T13:26:49+00:00",
+  "path": ".project-alpha\\approvals\\APR-014.md",
+  "stage": "05-domain-model",
+  "decision_id": "DEC-014",
+  "decision": "Domain model version 2 rules as written",
+  "approval_id": "APR-014",
+  "approver": "Saidakbar Narzullayev",
+  "status": "approved"
+}

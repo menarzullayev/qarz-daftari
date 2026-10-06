@@ -1,6 +1,6 @@
 # Development Plan
 
-Version 2. Status: rewritten for release 1 as defined in PRD version 2 (DEC-013 / APR-013); awaiting the founder's end-of-sequence review (DEC-018). Prepared 2026-10-06.
+Version 2. Status: rewritten for release 1 as defined in PRD version 2 (DEC-013 / APR-013); approved by the founder on 2026-10-06 (DEC-018 / APR-018) with no changes to the rules the agent decided. Prepared 2026-10-06.
 Version 1 (pilot MVP, 18 to 31 days, DEC-010) is superseded and remains in version history.
 
 **How to read the estimates.** Focused working days for one founder working full time with AI agents. They are agent estimates with no historical data from this project behind them, given as ranges. They are not commitments. The total is about five times the version 1 plan, because the scope is.
@@ -273,4 +273,4 @@ Every requirement of PRD version 2 that is not withdrawn appears in the table.
 | Record | Subject | Status |
 |---|---|---|
 | DEC-010 / APR-010 | Version 1 plan | Superseded; its two gates are carried into M0 |
-| DEC-018 | Version 2 plan: milestones M1 to M9, a build estimate of 92 to 138 focused days without calendar commitment, no pilot stage by founder decision, shops onboarded one at a time for the first two weeks, and the validation and legal track with its gates | Pending end-of-sequence review |
+| DEC-018 | Version 2 plan: milestones M1 to M9, a build estimate of 92 to 138 focused days without calendar commitment, no pilot stage by founder decision, shops onboarded one at a time for the first two weeks, and the validation and legal track with its gates | Approved 2026-10-06 (APR-018) |
