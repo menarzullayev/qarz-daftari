@@ -1,0 +1,132 @@
+"""Keeping a file for a shop (ADR-020; technical specification, "Security" and "Retention").
+
+The content goes to the file store under a random key; the shop's database row says what it is, how big,
+its SHA-256 and when it must be deleted. The row is written in the caller's shop transaction and read back
+only inside a transaction of the same shop, so row-level security decides who can reach a file.
+
+The store is not transactional. A file is therefore staged first, outside any shop transaction, and
+discarded again by the caller if the transaction that was to record it does not commit.
+"""
+
+import contextlib
+import hashlib
+import secrets
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime
+from uuid import UUID, uuid4
+
+from qarz.application.errors import AppError, NotFound, ValidationFailed
+from qarz.application.ports import FileMissing, FileStore, FileStoreError, Storage, StoredFileRecord, TenantSession
+from qarz.domain.files import FileRefusal, check_receipt, object_key
+
+PURGE_BATCH = 100
+
+
+class FileStoreUnavailable(AppError):
+    """No file store is configured, or it did not answer. Nothing was stored."""
+
+    code = "FILE_STORE_UNAVAILABLE"
+
+
+@dataclass(frozen=True)
+class StagedFile:
+    """Content already in the store, not yet recorded for any shop."""
+
+    key: str
+    sha256: bytes
+    size_bytes: int
+    mime: str
+
+
+def _new_token() -> str:
+    # 256 random bits: the key cannot be guessed and carries nothing about the shop, the person or the time.
+    return secrets.token_hex(32)
+
+
+class FileService:
+    def __init__(self, storage: Storage, store: FileStore | None, new_token: Callable[[], str] | None = None) -> None:
+        self._storage = storage
+        self._store = store
+        self._new_token = new_token or _new_token
+
+    @staticmethod
+    def check(data: bytes) -> str:
+        """The type of an acceptable receipt. The declared type and the file name are never consulted."""
+        outcome = check_receipt(data)
+        if isinstance(outcome, FileRefusal):
+            raise ValidationFailed({"receipt": outcome.value})
+        return outcome
+
+    async def stage(self, data: bytes) -> StagedFile:
+        mime = self.check(data)
+        if self._store is None:
+            raise FileStoreUnavailable()
+        staged = StagedFile(object_key(self._new_token()), hashlib.sha256(data).digest(), len(data), mime)
+        try:
+            await self._store.put(staged.key, data, mime)
+        except FileStoreError:
+            raise FileStoreUnavailable() from None
+        return staged
+
+    async def discard(self, staged: StagedFile) -> None:
+        """Remove a staged file that was not recorded. Best effort: a failure here must not hide the cause."""
+        if self._store is not None:
+            with contextlib.suppress(Exception):
+                await self._store.delete(staged.key)
+
+    @staticmethod
+    async def record_in(
+        session: TenantSession, staged: StagedFile, *, purpose: str, now: datetime, delete_after: datetime
+    ) -> UUID:
+        file_id = uuid4()
+        await session.add_stored_file(
+            file_id=file_id,
+            purpose=purpose,
+            object_key=staged.key,
+            sha256=staged.sha256,
+            size_bytes=staged.size_bytes,
+            mime=staged.mime,
+            now=now,
+            delete_after=delete_after,
+        )
+        return file_id
+
+    async def read_in(self, session: TenantSession, file_id: UUID) -> tuple[StoredFileRecord, bytes]:
+        """A file of the session's shop and its content. Another shop's file does not exist here."""
+        record = await session.get_stored_file(file_id)
+        if record is None:
+            raise NotFound()
+        if self._store is None:
+            raise FileStoreUnavailable()
+        try:
+            data = await self._store.get(record.object_key)
+        except FileMissing:
+            raise NotFound() from None
+        except FileStoreError:
+            raise FileStoreUnavailable() from None
+        # What was stored is what is served: content that no longer matches its record is not handed out.
+        if hashlib.sha256(data).digest() != record.sha256:
+            raise NotFound()
+        return record, data
+
+    async def purge_due_receipts(self, shop_id: UUID, now: datetime, limit: int = PURGE_BATCH) -> int:
+        """Delete the shop's payment-notice receipts whose retention has run out. For the retention job.
+
+        The object goes first and its row after, each row in its own short transaction, so no network
+        call is made inside a transaction and a failure leaves a row that the next run finds again.
+        """
+        if self._store is None:
+            raise FileStoreUnavailable()
+        async with self._storage.tenant(shop_id) as session:
+            due = await session.due_receipt_files(now, limit)
+        removed = 0
+        for record in due:
+            try:
+                await self._store.delete(record.object_key)
+            except FileStoreError:
+                continue
+            async with self._storage.tenant(shop_id) as session:
+                await session.remove_stored_file(record.file_id)
+            removed += 1
+        return removed

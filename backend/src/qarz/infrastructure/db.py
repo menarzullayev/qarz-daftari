@@ -37,6 +37,7 @@ from qarz.application.ports import (
     ShopToErase,
     ShopTotals,
     StaffInvitation,
+    StoredFileRecord,
     SubscriptionToReview,
     TransferRecord,
     WaitingLink,
@@ -107,6 +108,13 @@ _DISPUTE_BY_ID = f"{_DISPUTE_SELECT} WHERE d.id = :id"
 _DISPUTE_BY_ENTRY = f"{_DISPUTE_SELECT} WHERE d.entry_id = :id"
 _DISPUTES_OF_CUSTOMER = f"{_DISPUTE_SELECT} WHERE e.customer_id = :id"
 _OPEN_DISPUTES = f"{_DISPUTE_SELECT} WHERE d.status = 'open' ORDER BY d.created_at, d.id"
+
+_FILE_COLUMNS = "f.id, f.purpose, f.object_key, f.sha256, f.size_bytes, f.mime, f.delete_after"
+_FILE_BY_ID = f"SELECT {_FILE_COLUMNS} FROM stored_file f WHERE f.id = :id"
+_DUE_RECEIPT_FILES = (
+    f"SELECT {_FILE_COLUMNS} FROM stored_file f "
+    "WHERE f.purpose = 'payment_notice' AND f.delete_after <= :now ORDER BY f.delete_after, f.id LIMIT :limit"
+)
 
 
 _REMINDER_SETTINGS = (
@@ -1097,6 +1105,74 @@ class PgTenantSession:
     async def open_disputes(self) -> list[tuple[DisputeRecord, str]]:
         rows = (await self._conn.execute(text(_OPEN_DISPUTES))).all()
         return [(self._dispute(row), str(row.display_name)) for row in rows]
+
+    # --- stored files ---------------------------------------------------------------------------------
+
+    @staticmethod
+    def _file(row: Any) -> StoredFileRecord:
+        return StoredFileRecord(
+            row.id,
+            str(row.purpose),
+            str(row.object_key),
+            bytes(row.sha256),
+            int(row.size_bytes),
+            str(row.mime),
+            row.delete_after,
+        )
+
+    async def add_stored_file(
+        self,
+        *,
+        file_id: UUID,
+        purpose: str,
+        object_key: str,
+        sha256: bytes,
+        size_bytes: int,
+        mime: str,
+        now: datetime,
+        delete_after: datetime | None,
+    ) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO stored_file (id, shop_id, purpose, object_key, sha256, size_bytes, mime, created_at, "
+                "delete_after) VALUES (:id, :shop_id, :purpose, :object_key, :sha256, :size_bytes, :mime, :now, "
+                ":delete_after)"
+            ),
+            {
+                "id": file_id,
+                "shop_id": self._shop_id,
+                "purpose": purpose,
+                "object_key": object_key,
+                "sha256": sha256,
+                "size_bytes": size_bytes,
+                "mime": mime,
+                "now": now,
+                "delete_after": delete_after,
+            },
+        )
+
+    async def get_stored_file(self, file_id: UUID) -> StoredFileRecord | None:
+        row = (await self._conn.execute(text(_FILE_BY_ID), {"id": file_id})).first()
+        return None if row is None else self._file(row)
+
+    async def shorten_file_retention(self, file_id: UUID, delete_after: datetime) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE stored_file SET delete_after = least(coalesce(delete_after, :delete_after), :delete_after) "
+                "WHERE id = :id"
+            ),
+            {"id": file_id, "delete_after": delete_after},
+        )
+
+    async def due_receipt_files(self, now: datetime, limit: int) -> list[StoredFileRecord]:
+        rows = (await self._conn.execute(text(_DUE_RECEIPT_FILES), {"now": now, "limit": limit})).all()
+        return [self._file(row) for row in rows]
+
+    async def remove_stored_file(self, file_id: UUID) -> None:
+        await self._conn.execute(text("UPDATE payment_notice SET file_id = NULL WHERE file_id = :id"), {"id": file_id})
+        await self._conn.execute(
+            text("DELETE FROM stored_file WHERE id = :id AND purpose = 'payment_notice'"), {"id": file_id}
+        )
 
     async def staff_recipients(self, roles: list[str]) -> list[tuple[int, str]]:
         rows = (

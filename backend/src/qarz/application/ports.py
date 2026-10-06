@@ -180,6 +180,19 @@ class ShopToErase:
 
 
 @dataclass(frozen=True)
+class StoredFileRecord:
+    """A file the service keeps for a shop. The key is random and names nobody."""
+
+    file_id: UUID
+    purpose: str
+    object_key: str
+    sha256: bytes
+    size_bytes: int
+    mime: str
+    delete_after: datetime | None
+
+
+@dataclass(frozen=True)
 class WaitingLink:
     """Someone who started the bot from the counter code and agreed, not yet attached to a record."""
 
@@ -466,6 +479,33 @@ class TenantSession(Protocol):
         """Open disputes of the shop, oldest first, each with the customer's name."""
         ...
 
+    async def add_stored_file(
+        self,
+        *,
+        file_id: UUID,
+        purpose: str,
+        object_key: str,
+        sha256: bytes,
+        size_bytes: int,
+        mime: str,
+        now: datetime,
+        delete_after: datetime | None,
+    ) -> None: ...
+
+    async def get_stored_file(self, file_id: UUID) -> StoredFileRecord | None: ...
+
+    async def shorten_file_retention(self, file_id: UUID, delete_after: datetime) -> None:
+        """Bring the day a file is deleted forward. It is never moved later."""
+        ...
+
+    async def due_receipt_files(self, now: datetime, limit: int) -> list[StoredFileRecord]:
+        """Payment-notice receipts whose retention has run out, oldest first."""
+        ...
+
+    async def remove_stored_file(self, file_id: UUID) -> None:
+        """Forget a file whose object has been deleted, and whatever notice still pointed to it."""
+        ...
+
     async def staff_recipients(self, roles: list[str]) -> list[tuple[int, str]]:
         """Telegram chat and language of each active member holding one of the roles."""
         ...
@@ -677,3 +717,25 @@ class SendFailed(Exception):
 
 class Sender(Protocol):
     async def send(self, channel: str, recipient: str, payload: dict[str, Any]) -> None: ...
+
+
+class FileMissing(Exception):
+    """The file store holds nothing under the key."""
+
+
+class FileStoreError(Exception):
+    """The file store could not be reached or refused the request. Never carries file content."""
+
+
+class FileStore(Protocol):
+    """Where file contents live (ADR-020). Keys are opaque; see `qarz.domain.files.is_safe_key`."""
+
+    async def put(self, key: str, data: bytes, mime: str) -> None: ...
+
+    async def get(self, key: str) -> bytes:
+        """Raises FileMissing when there is no such object."""
+        ...
+
+    async def delete(self, key: str) -> None:
+        """Deleting what is not there is not an error."""
+        ...
