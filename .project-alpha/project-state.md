@@ -1,7 +1,7 @@
 # Project State
 
 framework_version: 1.0.0
-current_stage: 07-adr
+current_stage: 08-technical-spec
 lifecycle: REVIEW
 global_audit_status: BLOCKED
 blocked_stage:
@@ -15,8 +15,8 @@ blocked_reason:
 - 04-prd: PASSED
 - 05-domain-model: PASSED
 - 06-architecture: PASSED
-- 07-adr: REVIEW
-- 08-technical-spec: NOT_STARTED
+- 07-adr: PASSED
+- 08-technical-spec: REVIEW
 - 09-development-plan: NOT_STARTED
 - 10-operations: NOT_STARTED
 

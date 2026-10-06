@@ -1,0 +1,19 @@
+{
+  "event_id": "cf2a8bec0701",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T10:32:20+00:00",
+  "path": ".project-alpha\\decisions\\DEC-009.md",
+  "stage": "08-technical-spec",
+  "title": "Approve security, data and compliance specification",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-009",
+  "decision": "Adopt the technical specification in docs/08-technical-spec/OUTPUT.md, including authentication by Telegram identity, the authorization matrix, database roles that enforce ledger immutability, invitation token handling, log and retention rules, and the draft consent text, which must be reviewed by a lawyer before the pilot",
+  "context": "The stage contract requires approval for critical security, data and compliance decisions; four legal questions tied to the personal data law remain open",
+  "chosen_option": "Specification as written; consent text and legal questions gated before pilot",
+  "rationale": "Implements ADR-001 to ADR-010 and every PRD requirement; the schema was executed and its key constraints tested; compliance items are explicit and gated, not assumed",
+  "impact": "High",
+  "reversibility": "Medium",
+  "evidence": "EVID-027, EVID-032, EVID-033",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

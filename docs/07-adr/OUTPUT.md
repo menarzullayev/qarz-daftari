@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-Status: draft for review; awaiting human approval to close the stage. Prepared 2026-10-06.
+Status: all ten records accepted by the founder on 2026-10-06 (DEC-008 / APR-008), including the three first approved by the agent as routine.
 Upstream: `docs/06-architecture/OUTPUT.md` (approved, DEC-007 / APR-007).
 
 Ten records follow, one per decision proposed in the architecture. Seven formalize choices the founder already approved (mostly under DEC-007); three are routine, reversible engineering choices that the stage contract allows the agent to approve; they are marked as such so the founder can overrule them.
