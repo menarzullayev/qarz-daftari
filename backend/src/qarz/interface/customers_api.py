@@ -17,6 +17,7 @@ from qarz.application.customers import (
     UPDATE_CUSTOMER,
     CustomerService,
 )
+from qarz.application.goods_lines import ADD_LINES, LineRequest
 from qarz.application.ledger_service import (
     CHOOSE_PROMISE,
     LIST_DEBTORS,
@@ -47,14 +48,37 @@ class CustomerPatch(BaseModel):
     reminders_off: bool | None = None
 
 
+class GoodsLine(BaseModel):
+    # Not strict as a whole: an identifier arrives as a string. The price stays strict so "4000" or
+    # 4000.0 is refused; a quantity is a decimal string, which the application reads.
+    model_config = ConfigDict(extra="forbid")
+
+    catalog_item_id: UUID | None = None
+    name: str | None = Field(default=None, max_length=200)
+    qty: str = Field(max_length=24)
+    unit: str | None = Field(default=None, max_length=40)
+    unit_price: int = Field(strict=True)
+
+    def request(self) -> LineRequest:
+        return LineRequest(self.catalog_item_id, self.name, self.qty, self.unit, self.unit_price)
+
+
 class NewEntry(BaseModel):
     # Not strict: a date arrives as a string. `amount` stays strict so "45000" or 45000.0 is refused.
     model_config = ConfigDict(extra="forbid")
 
     kind: str = Field(max_length=16)
-    amount: int = Field(strict=True)
+    # May be left out only when goods lines are given: it is then their sum.
+    amount: int | None = Field(default=None, strict=True)
     note: str | None = Field(default=None, max_length=400)
     promised_date: date | None = None
+    lines: list[GoodsLine] | None = None
+
+
+class NewLines(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lines: list[GoodsLine]
 
 
 class PromiseChoice(BaseModel):
@@ -129,6 +153,15 @@ def add_customer_routes(
             note=body.note,
             promised_date=body.promised_date,
             request_key=idempotency_key,
+            lines=None if body.lines is None else [line.request() for line in body.lines],
+        )
+
+    @app.post("/api/v1/shops/{shop_id}/entries/{entry_id}/lines", name=ADD_LINES.name, status_code=201)
+    async def add_lines(
+        shop_id: UUID, entry_id: UUID, body: NewLines, user_id: user, idempotency_key: IdempotencyKey = None
+    ) -> dict[str, Any]:
+        return await ledger.add_lines(
+            user_id, shop_id, entry_id, [line.request() for line in body.lines], idempotency_key
         )
 
     @app.post("/api/v1/shops/{shop_id}/entries/{entry_id}/reversal", name=REVERSE_ENTRY.name, status_code=201)

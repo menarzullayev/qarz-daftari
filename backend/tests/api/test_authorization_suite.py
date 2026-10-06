@@ -152,6 +152,13 @@ CALLS: dict[str, Call] = {
         True,
     ),
     "waiting.dismiss": Call("POST", lambda w, shop: f"/api/v1/shops/{shop}/waiting/{w.waiting_a}/dismiss", None, True),
+    "ledger.entry.lines.add": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/entries/{w.entry_a}/lines",
+        {"lines": [{"name": "Guruch", "qty": "2", "unit": "kg", "unit_price": 25000}]},
+        True,
+        201,
+    ),
     "overview.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview"),
     "overview.debtors": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview/debtors"),
     "catalog.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/catalog"),
@@ -218,6 +225,9 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "waiting.list": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "waiting.attach": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "waiting.dismiss": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    # Specification, resources table: "Author, manager, owner". Any staff member by role; within the
+    # operation only the entry's author or a manager (REQ-038).
+    "ledger.entry.lines.add": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "overview.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "overview.debtors": {Role.SELLER, Role.MANAGER, Role.OWNER},
     # Specification, resources table: "Manager, owner; sellers read".
@@ -338,6 +348,11 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
         owner.execute(
             "SELECT id, name, name_norm, unit, price, learned, status, merged_into FROM catalog_item "
             "WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
+        owner.execute(
+            "SELECT entry_id, line_no, catalog_item_id, name, qty, unit, unit_price, line_total FROM goods_line "
+            "WHERE shop_id = %s ORDER BY entry_id, line_no",
             (shop,),
         ).fetchall(),
         # Measurement rows carry no shop identifier; tests run one at a time, so a total is enough.

@@ -23,6 +23,7 @@ from qarz.application.ports import (
     CustomerRecord,
     DebtFigures,
     EntryRow,
+    GoodsLineRecord,
     MemberRecord,
     Membership,
     MyShop,
@@ -590,6 +591,60 @@ class PgTenantSession:
                 "promised": promised,
             },
         )
+
+    async def add_goods_lines(self, entry_id: UUID, lines: list[GoodsLineRecord]) -> None:
+        # One transaction, so every row takes the same `batch_at` (its default is the transaction start)
+        # and the trigger sees one batch.
+        await self._conn.execute(
+            text(
+                "INSERT INTO goods_line "
+                "(id, shop_id, entry_id, line_no, catalog_item_id, name, qty, unit, unit_price, line_total) "
+                "VALUES (:id, :shop_id, :entry_id, :line_no, :item, :name, :qty, :unit, :unit_price, :line_total)"
+            ),
+            [
+                {
+                    "id": uuid4(),
+                    "shop_id": self._shop_id,
+                    "entry_id": entry_id,
+                    "line_no": line.line_no,
+                    "item": line.catalog_item_id,
+                    "name": line.name,
+                    "qty": line.qty,
+                    "unit": line.unit,
+                    "unit_price": line.unit_price,
+                    "line_total": line.line_total,
+                }
+                for line in lines
+            ],
+        )
+
+    async def goods_lines_of(self, entry_ids: list[UUID]) -> dict[UUID, list[GoodsLineRecord]]:
+        if not entry_ids:
+            return {}
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT g.entry_id, g.line_no, g.catalog_item_id, g.name, g.qty, g.unit, g.unit_price, "
+                    "       g.line_total "
+                    "FROM goods_line g WHERE g.entry_id = ANY(CAST(:ids AS uuid[])) ORDER BY g.entry_id, g.line_no"
+                ),
+                {"ids": entry_ids},
+            )
+        ).all()
+        found: dict[UUID, list[GoodsLineRecord]] = {}
+        for row in rows:
+            found.setdefault(row.entry_id, []).append(
+                GoodsLineRecord(
+                    line_no=int(row.line_no),
+                    catalog_item_id=row.catalog_item_id,
+                    name=row.name,
+                    qty=row.qty,
+                    unit=row.unit,
+                    unit_price=int(row.unit_price),
+                    line_total=int(row.line_total),
+                )
+            )
+        return found
 
     async def shop_totals(self, today: date) -> ShopTotals:
         row = (
