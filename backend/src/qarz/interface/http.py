@@ -1,5 +1,6 @@
 """HTTP application factory (technical specification, API contract)."""
 
+import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Protocol
@@ -41,6 +42,7 @@ from qarz.interface.disputes_api import add_dispute_routes
 from qarz.interface.errors import app_error_handler, error_response
 from qarz.interface.links_api import add_link_routes
 from qarz.interface.me_api import add_me_routes
+from qarz.interface.rate_limit import RateLimiter, RateLimits
 from qarz.interface.reminders_api import add_reminder_routes
 from qarz.interface.reports_api import add_report_routes
 from qarz.interface.shop_deletion_api import add_shop_deletion_routes
@@ -58,6 +60,14 @@ class Authenticator(Protocol):
     async def user_id(self, request: Request) -> UUID | None: ...
 
 
+def _shop_in_path(request: Request) -> UUID | None:
+    raw = request.path_params.get("shop_id")
+    try:
+        return None if raw is None else UUID(str(raw))
+    except ValueError:
+        return None
+
+
 def create_app(
     database_reachable: HealthCheck,
     storage: Storage | None = None,
@@ -66,12 +76,15 @@ def create_app(
     authenticator: Authenticator | None = None,
     webhook_secret: str | None = None,
     now: Callable[[], datetime] | None = None,
+    rate_limits: RateLimits | None = None,
+    monotonic: Callable[[], float] = time.monotonic,
 ) -> FastAPI:
     """Build the application.
 
     With only a health check it serves `/healthz`. With storage and an auth service it serves the API,
     authenticating through Telegram-backed sessions; `authenticator` replaces that only in tests, and `now`
-    replaces the clock of the ledger only in tests.
+    replaces the clock of the ledger only in tests. `rate_limits` are applied to signed-in callers; the
+    deployed application always has them, and most tests leave them out.
     """
     app = FastAPI(title="Qarz Daftari", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -106,13 +119,33 @@ def create_app(
 
     if storage is not None and auth is not None:
         resolver: Authenticator = authenticator or SessionAuthenticator(auth)
+        limiter = None if rate_limits is None else RateLimiter(rate_limits, monotonic)
 
         async def current_user(request: Request) -> UUID:
             user_id = await resolver.user_id(request)
             if user_id is None:
                 raise Unauthenticated()
+            if limiter is not None:
+                shop_id = _shop_in_path(request)
+                # Before anything else is done for the request, so that a flood costs little.
+                limiter.check(user_id, shop_id)
+                request.state.counted_for = (user_id, shop_id)
             request.state.lang = await storage.user_language(user_id) or "uz"
             return user_id
+
+        if limiter is not None:
+            counted = limiter
+
+            @app.middleware("http")
+            async def count_for_the_shop(
+                request: Request, call_next: Callable[[Request], Awaitable[Response]]
+            ) -> Response:
+                response = await call_next(request)
+                user_id, shop_id = getattr(request.state, "counted_for", (None, None))
+                # 404 is what a stranger gets: only an answer given to a member counts against the shop.
+                if user_id is not None and shop_id is not None and response.status_code != 404:
+                    counted.answered(user_id, shop_id)
+                return response
 
         add_auth_routes(app, auth, current_user)
         add_shop_routes(app, ShopService(storage), current_user)
