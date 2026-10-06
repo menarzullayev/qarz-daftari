@@ -366,7 +366,7 @@ def test_a_manager_sends_one_reminder_a_day_by_hand(
     assert logged == [(world.manager_a_membership,)]
 
     again = manual(client, world, customer, world.owner_a)
-    assert (again.status_code, again.json()["error"]["code"]) == (409, "LIMIT_REACHED")
+    assert (again.status_code, again.json()["error"]["code"]) == (409, "REMINDER_LIMIT_REACHED")
     assert len(reminders(owner, world)) == 1
     assert len(messages(owner, world)) == 1
 

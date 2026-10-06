@@ -47,7 +47,7 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
         "PROMISE_ALREADY_SET",  # said as "promise_closed"
         "REMINDERS_OFF",  # reminders are managed in the Mini App, not in the chat
         "REMINDER_NOT_DUE",
-        "LIMIT_REACHED",
+        "REMINDER_LIMIT_REACHED",
         "CUSTOMER_UNREACHABLE",
         "CUSTOMER_ALREADY_LINKED",  # linking is offered in the Mini App; the customer hears "link_taken"
         "CATALOG_NAME_TAKEN",  # the catalog is managed in the Mini App, not in the chat

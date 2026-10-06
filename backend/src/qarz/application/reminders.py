@@ -54,7 +54,7 @@ class ReminderNotDue(AppError):
 class LimitReached(AppError):
     """A manual reminder was already sent to this customer today (REQ-025)."""
 
-    code = "LIMIT_REACHED"
+    code = "REMINDER_LIMIT_REACHED"
 
 
 class CustomerUnreachable(AppError):
