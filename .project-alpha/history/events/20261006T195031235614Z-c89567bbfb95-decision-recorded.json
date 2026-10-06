@@ -1,0 +1,19 @@
+{
+  "event_id": "c89567bbfb95",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-06T19:50:31+00:00",
+  "path": ".project-alpha\\decisions\\DEC-034.md",
+  "stage": "04-prd",
+  "title": "Dispute choices",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-034",
+  "decision": "The 30 days of BR-11 run from the later of the entry's time and the time the link was made; reasons are 3 to 300 characters; withdrawing is offered on the customer page and not in chat; the refusal names which rule applied; reversing a disputed entry ends the dispute",
+  "context": "Decided by an agent during the autonomous build under DEC-020; implemented and awaiting the founder's review",
+  "chosen_option": "Choices as listed in pull request 25",
+  "rationale": "An old entry is new to a customer who has just been linked, and BR-11 counts from being notified",
+  "impact": "Medium",
+  "reversibility": "High",
+  "evidence": "EVID-050",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

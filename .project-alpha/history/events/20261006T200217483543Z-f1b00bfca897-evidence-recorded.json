@@ -1,0 +1,15 @@
+{
+  "event_id": "f1b00bfca897",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T20:02:17+00:00",
+  "path": "docs\\evidence\\EVID-051.md",
+  "stage": "09-development-plan",
+  "title": "Itemized entries and the follow-ups green on main",
+  "claim": "The itemized credit sale and the later addition of goods lines (stories S6.2 and S6.3, pull request 26), together with goods on the customer page and the membership identifier in the shop list (pull request 27), passed CI on main in the run for commit c710af0. The run for the merge of pull request 26 alone was cancelled when the next merge superseded it, so this later run is the one that shows the work green on main. Recorded because EVID-047 was written while that merge was held up by a GitHub outage",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/26 ; https://github.com/menarzullayev/qarz-daftari/pull/27 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37522595598",
+  "date": "2026-10-07",
+  "confidence": "high",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-051"
+}

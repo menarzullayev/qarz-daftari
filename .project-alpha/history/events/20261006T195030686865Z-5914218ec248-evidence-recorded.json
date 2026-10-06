@@ -1,0 +1,15 @@
+{
+  "event_id": "5914218ec248",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T19:50:30+00:00",
+  "path": "docs\\evidence\\EVID-050.md",
+  "stage": "09-development-plan",
+  "title": "Disputes verified in CI",
+  "claim": "Story S10.1 is implemented and verified in CI on main: a linked customer disputes a debt entry once within 30 days, the entry stays in the balance and is marked, the owner and managers are told, and the dispute ends by reversal, by a decline with a reason sent to the customer, or by withdrawal. 30 hand mutations were each caught. No message asks a customer to confirm anything",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/25 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37520022593",
+  "date": "2026-10-07",
+  "confidence": "high",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-050"
+}
