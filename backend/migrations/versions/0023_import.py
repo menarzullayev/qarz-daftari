@@ -1,7 +1,7 @@
 """Import: indexes for batches and matching, and import files in the retention job.
 
 Revision ID: 0023
-Revises: 0016
+Revises: 0025
 """
 
 from pathlib import Path
@@ -9,7 +9,7 @@ from pathlib import Path
 from alembic import op
 
 revision = "0023"
-down_revision = "0016"
+down_revision = "0025"
 branch_labels = None
 depends_on = None
 

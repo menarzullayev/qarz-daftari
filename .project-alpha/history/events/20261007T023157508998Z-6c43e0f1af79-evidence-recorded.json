@@ -1,0 +1,15 @@
+{
+  "event_id": "6c43e0f1af79",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-07T02:31:57+00:00",
+  "path": "docs\\evidence\\EVID-066.md",
+  "stage": "09-development-plan",
+  "title": "Administrator sign-in and the panel API pass CI on main",
+  "claim": "Administrator access by allow-list and a time-based second factor, an eight-hour administrator session, the shop list and subscription actions, platform settings and the administrator audit (story S18.1, pull request 42) passed CI on main in the run for commit 9fcbf53. No administrator has ever signed in with a real authenticator application; the code was verified against generated codes",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/42 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37561033186",
+  "date": "2026-10-07",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-066"
+}

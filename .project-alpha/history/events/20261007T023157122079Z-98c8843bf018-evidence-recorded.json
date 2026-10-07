@@ -1,0 +1,15 @@
+{
+  "event_id": "98c8843bf018",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-07T02:31:57+00:00",
+  "path": "docs\\evidence\\EVID-062.md",
+  "stage": "09-development-plan",
+  "title": "Structured logs, request identifiers, metrics and alert rules pass CI on main",
+  "claim": "JSON logs with identifiers only, a request identifier on every answer, a metrics endpoint behind a token and alert rules written against it (part of story S19.4, pull request 47) passed CI on main in the run for commit 2598c63. No monitoring system exists: the rules were never loaded into one, were not parsed by Prometheus, and no alert was triggered or received",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/47 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37554597369",
+  "date": "2026-10-07",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-062"
+}

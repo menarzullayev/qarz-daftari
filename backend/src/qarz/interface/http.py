@@ -38,6 +38,7 @@ from qarz.application.shop_deletion import ShopDeletionService
 from qarz.application.shops import ShopService
 from qarz.application.staff import StaffService
 from qarz.application.subscription import SubscriptionService
+from qarz.application.support_access import SupportAccessService
 from qarz.application.telegram_updates import UpdateProcessor
 from qarz.interface.account_api import add_account_routes
 from qarz.interface.admin_api import add_admin_routes
@@ -62,6 +63,7 @@ from qarz.interface.shop_deletion_api import add_shop_deletion_routes
 from qarz.interface.shops_api import add_shop_routes
 from qarz.interface.staff_api import add_staff_routes
 from qarz.interface.subscription_api import add_subscription_routes
+from qarz.interface.support_api import add_admin_support_routes, add_owner_support_routes
 from qarz.interface.telegram_webhook import add_webhook_route
 
 HealthCheck = Callable[[], Awaitable[bool]]
@@ -197,6 +199,8 @@ def create_app(
         add_online_order_routes(app, payments, current_user)
         add_credit_routes(app, CreditService(storage, now), current_user)
         add_reminder_routes(app, ReminderService(storage, now), current_user)
+        support = SupportAccessService(storage, now)
+        add_owner_support_routes(app, support, current_user)
         add_report_routes(app, ReportService(storage, now), current_user)
         add_dispute_routes(app, DisputeService(storage, now), current_user)
         add_payment_notice_routes(app, PaymentNoticeService(storage, files, now), current_user)
@@ -209,7 +213,7 @@ def create_app(
         )
 
         if admin is not None:
-            add_admin_routes(
+            admin_user = add_admin_routes(
                 app,
                 admin,
                 AdminService(storage, admin, now),
@@ -217,6 +221,7 @@ def create_app(
                 storage.user_language,
                 None if limiter is None else (lambda user_id: counted.check(user_id, None)),
             )
+            add_admin_support_routes(app, support, admin_user)
 
     if webhook_secret is not None and storage is not None:
         chat = ChatService(storage, ShopService(storage, now), StaffService(storage, now), now, files)

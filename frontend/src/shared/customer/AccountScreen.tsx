@@ -16,6 +16,7 @@ import {
 import { type CalendarDay, formatCalendarDay, formatDateTime, formatMoney } from "../format";
 import { type Submission, useLoad, useSubmit } from "../hooks";
 import { parseIsoDate } from "../promise";
+import { PaymentNoticeSection } from "./PaymentNoticeSection";
 import { DateReasonForm, dayText, PromiseHistory } from "../promiseParts";
 import { GoodsList } from "../workspace/GoodsEditor";
 import { Confirm, ENTRY_KIND_LABELS, errorText, Failure, formatInstant, Loading, ReasonForm } from "../workspace/parts";
@@ -315,6 +316,8 @@ function Detail({
       {account.dueToday > 0 ? (
         <p className="row__meta">{t("due.todayAmount", { amount: formatMoney(account.dueToday, language) })}</p>
       ) : null}
+
+      <PaymentNoticeSection api={api} balance={account.balance} notices={account.paymentNotices} onSent={reload} />
 
       <section aria-labelledby="my-entries-title">
         <h2 id="my-entries-title">{t("customer.entries")}</h2>

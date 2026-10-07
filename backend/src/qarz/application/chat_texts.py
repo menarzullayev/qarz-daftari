@@ -158,6 +158,13 @@ UZ = {
         "Endi faqat do'kon egasi ma'lumotlarni ko'ra oladi va eksport qila oladi."
     ),
     "shop_unsuspended": "«{shop}» do'koni yana ishlamoqda: to'xtatish bekor qilindi. Izoh: {reason}",
+    "support_opened": (
+        "«{shop}»: xizmat ma'muri yordam berish uchun do'kon ma'lumotlarini ko'rish ruxsatini ochdi. "
+        "Sabab: {reason}\n"
+        "Ruxsat {until} gacha amal qiladi va o'zi tugaydi. U faqat ko'rish uchun: hech narsa o'zgartirilmaydi. "
+        "Istalgan payt panelda yopishingiz mumkin."
+    ),
+    "support_closed": "«{shop}»: xizmat ma'muri do'kon ma'lumotlarini ko'rish ruxsatini yopdi.",
     "LIMIT_REACHED": "Bu savdo mijozning nasiya limitidan oshadi. Uni menejer yoki do'kon egasi yoza oladi.",
     "limit_warning": "⚠️ Qarz limitdan oshdi: limit {limit}, qarz {balance}.",
     "sub_header": "«{shop}» — obuna",
@@ -414,6 +421,13 @@ RU = {
         "Теперь только владелец может просматривать и выгружать данные."
     ),
     "shop_unsuspended": "Магазин «{shop}» снова работает: приостановка снята. Комментарий: {reason}",
+    "support_opened": (
+        "«{shop}»: администратор сервиса открыл доступ к просмотру данных магазина, чтобы помочь. "
+        "Причина: {reason}\n"
+        "Доступ действует до {until} и закончится сам. Он только для просмотра: ничего не изменяется. "
+        "Вы можете закрыть его в панели в любой момент."
+    ),
+    "support_closed": "«{shop}»: администратор сервиса закрыл доступ к просмотру данных магазина.",
     "LIMIT_REACHED": "Эта продажа превысит лимит клиента. Записать её может менеджер или владелец.",
     "limit_warning": "⚠️ Долг превысил лимит: лимит {limit}, долг {balance}.",
     "sub_header": "«{shop}» — подписка",

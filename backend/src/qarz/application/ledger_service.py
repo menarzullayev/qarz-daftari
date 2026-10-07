@@ -595,6 +595,48 @@ async def change_promise_in(
     }
 
 
+async def customer_detail_in(session: TenantSession, customer_id: UUID, today: date, now: datetime) -> dict[str, Any]:
+    """One customer with balance, history and entries. The caller has already decided who may see them."""
+    customer = await session.get_customer(customer_id, for_update=False)
+    if customer is None or customer.status == "anonymized":
+        raise NotFound()
+    account = await session.entries_of(customer_id)
+    entries = [row.entry for row in account]
+    history = ledger.payment_history(entries, today)
+    reversed_ids = {row.entry.reverses_id for row in account if row.entry.reverses_id is not None}
+    newest_first = sorted(account, key=lambda row: row.entry.seq, reverse=True)
+    shown = newest_first[:HISTORY_PAGE]
+    lines = await session.goods_lines_of([row.entry.id for row in shown])
+    promises = await session.promises_of([row.entry.id for row in shown])
+    requests = latest_date_requests(await session.date_requests_of_customer(customer_id))
+    return {
+        **customer_body(customer, ledger.balance(entries)),
+        "overdue": _overdue_body(ledger.overdue(entries, today)),
+        # Derived from this shop's records only and shown to its staff only (REQ-045).
+        "payment_history": None
+        if history is None
+        else {
+            "on_time_percent": history.on_time_percent,
+            "on_time_amount": history.on_time_amount,
+            "due_amount": history.due_amount,
+            "longest_delay_days": history.longest_delay_days,
+        },
+        "entries": [
+            _entry_body(
+                row,
+                reversed_ids,
+                lines.get(row.entry.id, ()),
+                promises.get(row.entry.id, ()),
+                requests.get(row.entry.id),
+            )
+            for row in shown
+        ],
+        "entries_total": len(account),
+        # Payment notices of this customer that wait for a decision (REQ-061).
+        "payment_notices": await open_notices_of(session, customer_id, now),
+    }
+
+
 class LedgerService:
     def __init__(self, storage: Storage, now: Callable[[], datetime] | None = None) -> None:
         self._storage = storage
@@ -746,45 +788,7 @@ class LedgerService:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, READ_CUSTOMER)
             await require_viewable(session, actor, self._today())
-            customer = await session.get_customer(customer_id, for_update=False)
-            if customer is None or customer.status == "anonymized":
-                raise NotFound()
-            account = await session.entries_of(customer_id)
-            entries = [row.entry for row in account]
-            today = self._today()
-            history = ledger.payment_history(entries, today)
-            reversed_ids = {row.entry.reverses_id for row in account if row.entry.reverses_id is not None}
-            newest_first = sorted(account, key=lambda row: row.entry.seq, reverse=True)
-            shown = newest_first[:HISTORY_PAGE]
-            lines = await session.goods_lines_of([row.entry.id for row in shown])
-            promises = await session.promises_of([row.entry.id for row in shown])
-            requests = latest_date_requests(await session.date_requests_of_customer(customer_id))
-            return {
-                **customer_body(customer, ledger.balance(entries)),
-                "overdue": _overdue_body(ledger.overdue(entries, today)),
-                # Derived from this shop's records only and shown to its staff only (REQ-045).
-                "payment_history": None
-                if history is None
-                else {
-                    "on_time_percent": history.on_time_percent,
-                    "on_time_amount": history.on_time_amount,
-                    "due_amount": history.due_amount,
-                    "longest_delay_days": history.longest_delay_days,
-                },
-                "entries": [
-                    _entry_body(
-                        row,
-                        reversed_ids,
-                        lines.get(row.entry.id, ()),
-                        promises.get(row.entry.id, ()),
-                        requests.get(row.entry.id),
-                    )
-                    for row in shown
-                ],
-                "entries_total": len(account),
-                # Payment notices of this customer that wait for a decision (REQ-061).
-                "payment_notices": await open_notices_of(session, customer_id, self._now()),
-            }
+            return await customer_detail_in(session, customer_id, self._today(), self._now())
 
     async def overview(self, user_id: UUID, shop_id: UUID) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:

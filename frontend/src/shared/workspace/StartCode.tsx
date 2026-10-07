@@ -12,7 +12,7 @@ const INK = "#000000";
 const CRISP = "crispEdges";
 
 /** The link as a QR code. The encoder is fetched when a code is first shown, not on first load. */
-function QrCode({ text }: { text: string }) {
+export function QrCode({ text }: { text: string }) {
   const { t } = useI18n();
   const [drawing, setDrawing] = useState<QrDrawing | "failed" | null>(null);
 

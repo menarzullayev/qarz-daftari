@@ -67,6 +67,9 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
         "ADMIN_ALREADY_ENROLLED",
         "ADMIN_NOT_ENROLLED",
         "SUBSCRIPTION_CHANGE_REFUSED",
+        "SUPPORT_ACCESS_REQUIRED",
+        "SUPPORT_ACCESS_ALREADY_OPEN",
+        "SUPPORT_ACCESS_NOT_OPEN",  # the owner ends it in the panel
     }
     assert set(_STATUS) - spoken_elsewhere <= set(UZ)
 

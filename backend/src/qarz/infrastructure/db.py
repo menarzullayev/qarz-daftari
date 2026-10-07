@@ -55,6 +55,8 @@ from qarz.application.ports import (
     StaffInvitation,
     StoredFileRecord,
     SubscriptionToReview,
+    SupportAccessRow,
+    SupportChange,
     TransferRecord,
     UncoveredDebt,
     WaitingLink,
@@ -274,6 +276,9 @@ _WEEK_FIGURES = (
     "  FILTER (WHERE kind = 'credit' AND handle_ms IS NOT NULL) AS median_credit_handle_ms "
     "FROM measure.event WHERE at >= :start AND at < :end"
 )
+_SUPPORT_COLUMNS = "id, shop_id, admin_id, reason, starts_at, ends_at, closed_at, closed_by"
+_SUPPORT_BY_ID = f"SELECT {_SUPPORT_COLUMNS} FROM support_access WHERE id = :id AND shop_id = :shop_id"
+_SUPPORT_LOCKED = f"{_SUPPORT_BY_ID} FOR UPDATE"
 _ADMIN_ACCOUNT = (
     "SELECT status, totp_secret, confirmed_at, failed_codes, locked_until, last_step "
     "FROM admin_account WHERE user_id = :id"
@@ -2085,6 +2090,71 @@ class PgTenantSession:
             {"id": uuid4(), "shop_id": self._shop_id, "action": action, "subject_id": subject_id},
         )
 
+    async def record_admin_activity(self, *, admin_id: UUID, action: str, subject_type: str, subject_id: UUID) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO activity (id, shop_id, actor_kind, actor_id, action, subject_type, subject_id) "
+                "VALUES (:id, :shop_id, 'admin', :admin_id, :action, :subject_type, :subject_id)"
+            ),
+            {
+                "id": uuid4(),
+                "shop_id": self._shop_id,
+                "admin_id": admin_id,
+                "action": action,
+                "subject_type": subject_type,
+                "subject_id": subject_id,
+            },
+        )
+
+    @staticmethod
+    def _support_access(row: Any) -> SupportAccessRow:
+        return SupportAccessRow(
+            access_id=row.id,
+            shop_id=row.shop_id,
+            admin_id=row.admin_id,
+            reason=row.reason,
+            starts_at=row.starts_at,
+            ends_at=row.ends_at,
+            closed_at=row.closed_at,
+            closed_by=row.closed_by,
+        )
+
+    async def support_accesses(self, *, before: tuple[datetime, UUID] | None, limit: int) -> list[SupportAccessRow]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    f"SELECT {_SUPPORT_COLUMNS} FROM support_access WHERE shop_id = :shop_id "
+                    "AND (CAST(:before_at AS timestamptz) IS NULL "
+                    "     OR (starts_at, id) < (CAST(:before_at AS timestamptz), CAST(:before_id AS uuid))) "
+                    "ORDER BY starts_at DESC, id DESC LIMIT :limit"
+                ),
+                {
+                    "shop_id": self._shop_id,
+                    "before_at": before[0] if before else None,
+                    "before_id": before[1] if before else None,
+                    "limit": limit,
+                },
+            )
+        ).all()
+        return [self._support_access(row) for row in rows]
+
+    async def support_access(self, access_id: UUID, *, for_update: bool) -> SupportAccessRow | None:
+        row = (
+            await self._conn.execute(
+                text(_SUPPORT_LOCKED if for_update else _SUPPORT_BY_ID), {"id": access_id, "shop_id": self._shop_id}
+            )
+        ).first()
+        return None if row is None else self._support_access(row)
+
+    async def end_support_access(self, access_id: UUID, now: datetime) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE support_access SET closed_at = :now, closed_by = 'owner' "
+                "WHERE id = :id AND shop_id = :shop_id AND closed_at IS NULL"
+            ),
+            {"id": access_id, "shop_id": self._shop_id, "now": now},
+        )
+
     async def deletion_state(self, *, for_update: bool = False) -> tuple[str, datetime | None]:
         row = (await self._conn.execute(text(_DELETION_LOCKED if for_update else _DELETION_STATE))).one()
         return str(row.status), row.deletion_due
@@ -2547,7 +2617,13 @@ class PgPlatformSession:
         return audit_id
 
     async def list_admin_audit(
-        self, *, shop_id: UUID | None, action_prefix: str | None, before: tuple[datetime, UUID] | None, limit: int
+        self,
+        *,
+        shop_id: UUID | None,
+        action_prefix: str | None,
+        before: tuple[datetime, UUID] | None,
+        limit: int,
+        admin_id: UUID | None = None,
     ) -> list[AdminAuditRow]:
         rows = (
             await self._conn.execute(
@@ -2555,6 +2631,7 @@ class PgPlatformSession:
                     "SELECT id, at, admin_id, action, target_type, target_id, target_shop, reason, detail "
                     "FROM admin_audit "
                     "WHERE (CAST(:shop_id AS uuid) IS NULL OR target_shop = CAST(:shop_id AS uuid)) "
+                    "  AND (CAST(:admin_id AS uuid) IS NULL OR admin_id = CAST(:admin_id AS uuid)) "
                     "  AND (CAST(:prefix AS text) IS NULL OR starts_with(action, CAST(:prefix AS text))) "
                     "  AND (CAST(:before_at AS timestamptz) IS NULL "
                     "       OR (at, id) < (CAST(:before_at AS timestamptz), CAST(:before_id AS uuid))) "
@@ -2562,6 +2639,7 @@ class PgPlatformSession:
                 ),
                 {
                     "shop_id": shop_id,
+                    "admin_id": admin_id,
                     "prefix": action_prefix,
                     "before_at": before[0] if before else None,
                     "before_id": before[1] if before else None,
@@ -2666,6 +2744,91 @@ class PgPlatformSession:
                 owner_tg=None if row.owner_tg is None else int(row.owner_tg),
                 staff_count=int(row.staff_count),
                 customer_count=int(row.customer_count),
+            )
+            for row in rows
+        ]
+
+    async def admin_open_shop(self, admin_id: UUID, shop_id: UUID, now: datetime) -> tuple[UUID, datetime] | None:
+        row = (
+            await self._conn.execute(
+                text("SELECT access_id, ends_at FROM admin_open_shop(:admin, :shop, :now)"),
+                {"admin": admin_id, "shop": shop_id, "now": now},
+            )
+        ).first()
+        return None if row is None else (row.access_id, row.ends_at)
+
+    @staticmethod
+    def _support_change(row: Any, *, already_open: bool) -> SupportChange:
+        return SupportChange(
+            access_id=row.access_id,
+            shop_name=row.shop_name,
+            owner_tg=None if row.owner_tg is None else int(row.owner_tg),
+            owner_lang=row.owner_lang,
+            already_open=already_open,
+        )
+
+    async def admin_support_open(
+        self, admin_id: UUID, shop_id: UUID, *, access_id: UUID, reason: str, now: datetime, ends_at: datetime
+    ) -> SupportChange | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT outcome, access_id, shop_name, owner_tg, owner_lang "
+                    "FROM admin_support_open(:admin, :shop, :id, :reason, :now, :ends)"
+                ),
+                {"admin": admin_id, "shop": shop_id, "id": access_id, "reason": reason, "now": now, "ends": ends_at},
+            )
+        ).first()
+        return None if row is None else self._support_change(row, already_open=row.outcome != "opened")
+
+    async def admin_support_close(self, admin_id: UUID, shop_id: UUID, now: datetime) -> SupportChange | None:
+        row = (
+            await self._conn.execute(
+                text("SELECT access_id, shop_name, owner_tg, owner_lang FROM admin_support_close(:admin, :shop, :now)"),
+                {"admin": admin_id, "shop": shop_id, "now": now},
+            )
+        ).first()
+        return None if row is None else self._support_change(row, already_open=False)
+
+    async def admin_support_list(
+        self,
+        admin_id: UUID,
+        *,
+        shop_id: UUID | None,
+        open_only: bool,
+        now: datetime,
+        after: tuple[datetime, UUID] | None,
+        limit: int,
+    ) -> list[SupportAccessRow]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT access_id, shop_id, shop_name, admin_id, reason, starts_at, ends_at, closed_at, closed_by "
+                    "FROM admin_support_list(:admin, CAST(:shop AS uuid), :open_only, :now, "
+                    "  CAST(:after_start AS timestamptz), CAST(:after_id AS uuid), :limit)"
+                ),
+                {
+                    "admin": admin_id,
+                    "shop": shop_id,
+                    "open_only": open_only,
+                    "now": now,
+                    "after_start": after[0] if after else None,
+                    "after_id": after[1] if after else None,
+                    "limit": limit,
+                },
+            )
+        ).all()
+        return [
+            SupportAccessRow(
+                access_id=row.access_id,
+                shop_id=row.shop_id,
+                admin_id=row.admin_id,
+                reason=row.reason,
+                starts_at=row.starts_at,
+                ends_at=row.ends_at,
+                closed_at=row.closed_at,
+                closed_by=row.closed_by,
+                shop_name=row.shop_name,
             )
             for row in rows
         ]

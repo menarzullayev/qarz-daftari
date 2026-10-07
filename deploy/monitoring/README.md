@@ -16,7 +16,8 @@ into a real monitoring system: there are no servers yet, so no alert has been tr
 - **Metrics.** `GET /metrics` in the Prometheus text format, served only when `QD_METRICS_TOKEN` is set
   and only to a request that sends it as a bearer token. The proxy must not publish this path.
   - `qd_requests_total{method,route,status}` and `qd_request_duration_ms` (histogram) by route template.
-  - `qd_security_events_total{kind}`: `shop_not_member`, `bad_sign_in`, `bad_webhook_secret`, `bad_second_factor`.
+  - `qd_security_events_total{kind}`: `shop_not_member`, `bad_sign_in`, `bad_webhook_secret`, `bad_second_factor`,
+    `support_access_opened`, `admin_without_support_access`.
   - `qd_outbox_oldest_due_seconds{channel}` and `qd_job_last_finished_seconds{job}`, read from the
     database when the metrics are read.
 - **Alert rules.** `alerts.yml`, written against those metrics with the thresholds of the operations
