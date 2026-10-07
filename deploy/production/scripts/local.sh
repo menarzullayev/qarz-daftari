@@ -4,6 +4,7 @@
 #
 #   local.sh up [<git-ref>]   generate the certificate and an env file, then run deploy.sh (default HEAD)
 #   local.sh smoke            smoke.sh from outside, then a look at the proxy's access log
+#   local.sh rollback <ref>   rollback.sh against the local stack
 #   local.sh down             remove the containers, networks, volumes, the images and the generated files
 #
 # Everything generated lives in deploy/production/.local/ (ignored by git). The images are built from the
@@ -122,6 +123,7 @@ down() {
 case "${1:-}" in
   up) up "${2:-}" ;;
   smoke) smoke ;;
+  rollback) bash "$SCRIPTS_DIR/rollback.sh" "${2:-}" ;;
   down) down ;;
-  *) die "usage: local.sh up [<git-ref>] | smoke | down" ;;
+  *) die "usage: local.sh up [<git-ref>] | smoke | rollback <git-ref> | down" ;;
 esac

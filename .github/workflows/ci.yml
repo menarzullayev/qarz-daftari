@@ -84,6 +84,69 @@ jobs:
       - name: Dependency vulnerabilities
         run: npm audit --audit-level=high
 
+  # The deployment files (deploy/production): both images build, the compose files are valid, the scripts
+  # pass shellcheck, and the stack comes up on the runner and passes its own smoke test.
+  deploy-files:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      COMMIT: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Scripts
+        run: shellcheck --external-sources --severity=warning deploy/production/scripts/*.sh
+      - name: Compose files are valid
+        env:
+          DEPLOY_RELEASE: ci
+          QD_DATABASE_URL: postgresql://qd_app@db.invalid/qarz
+          QD_MIGRATION_URL: postgresql://owner@db.invalid/qarz
+          LOCAL_POSTGRES_PASSWORD: ci
+          LOCAL_APP_PASSWORD: ci
+        run: |
+          docker compose -f deploy/production/compose.yml config --quiet
+          docker compose -f deploy/production/compose.yml -f deploy/production/compose.local.yml config --quiet
+      - uses: docker/setup-buildx-action@v3
+      - name: Backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          load: true
+          tags: qarz-daftari/backend:${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+      - name: Proxy image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/production/nginx/Dockerfile
+          load: true
+          build-args: VITE_BOT_USERNAME=qd_local_proof_bot
+          tags: qarz-daftari/proxy:${{ github.sha }}
+          cache-from: type=gha,scope=proxy
+          cache-to: type=gha,scope=proxy,mode=max
+      - name: The backend image runs as a non-root user and carries no tools
+        run: |
+          docker run --rm "qarz-daftari/backend:$COMMIT" sh -ec '
+            test "$(id -u)" = 10001
+            python -c "import qarz.interface.asgi, qarz.interface.worker"
+            for tool in pip pytest ruff mypy; do
+              if python -c "import $tool" 2>/dev/null; then echo "$tool is in the image" >&2; exit 1; fi
+            done
+          '
+      - name: The stack comes up and passes the smoke test
+        env:
+          SMOKE_AUTH_WAIT: "0"
+        run: |
+          test "$(git rev-parse HEAD)" = "$COMMIT"
+          deploy/production/scripts/local.sh up
+          deploy/production/scripts/local.sh smoke
+      - name: Logs when it failed
+        if: failure()
+        run: docker compose -p qd-deploy-proof logs --no-color --tail 60 || true
+      - name: Remove the stack
+        if: always()
+        run: deploy/production/scripts/local.sh down || true
+
   documents:
     runs-on: ubuntu-latest
     steps:

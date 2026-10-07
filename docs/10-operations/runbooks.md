@@ -1,8 +1,9 @@
 # Runbooks
 
 The thirteen runbooks the operations document asks for (`OUTPUT.md`, "Runbooks"). They are written from the
-system as it is built on 2026-10-07. **None has been executed**: there are no servers, no proxy, no
-monitoring system and no production configuration yet, so launch criterion 10 ("each executed once") is
+system as it is built on 2026-10-07. **None has been executed**: there are no servers, no monitoring
+system and no production environment yet (the deployment files of `deploy/production/` have run only on
+a developer machine), so launch criterion 10 ("each executed once") is
 open. Where a step cannot be carried out with what exists, it says so in a line starting **Not yet
 possible**. A runbook is to be corrected the first time it is run for real.
 
@@ -11,8 +12,9 @@ Conventions used below:
 - `primary` and `standby` are the two servers of ADR-014. Commands are run as the service's operating-system
   user unless a step says otherwise.
 - The application is two processes of one code base: the API (`uvicorn qarz.interface.asgi:build --factory`)
-  and the worker (`python -m qarz.interface.worker`). Both read their configuration from the environment;
-  the names are listed in `.env.example`. Secrets live in the operator's password manager, never in the
+  and the worker (`python -m qarz.interface.worker`), run as the services `api` and `worker` of
+  `deploy/production/compose.yml` behind the `proxy` service. Both read their configuration from the
+  environment; the names are listed in `.env.example` and, by service, in `deploy/production/.env.example`. Secrets live in the operator's password manager, never in the
   repository and never in a chat.
 - "The owner connection" means a database session as the migration owner, which is not subject to
   row-level security. The application itself connects as `qd_app`.
@@ -23,25 +25,39 @@ Conventions used below:
 
 **When.** A new version is to be put into service, or the one just deployed must be withdrawn.
 
+The tooling is in `deploy/production/` (nginx and Docker Compose); its `README.md` has the one-time setup
+of a host. All commands are run on the application host, from a checkout of the release, as the deploying
+user.
+
 1. Confirm that the commit to deploy is on `main` and that its CI run succeeded for that commit.
 2. Read the migrations the release adds (`backend/migrations/sql/`). A migration that would make the
    previous release fail (a dropped or renamed column) must not be deployed in the same step as the code
    that needs it; the operations document requires migrations to be backward compatible.
-3. Take note of the current release (commit) and of the current migration head
-   (`alembic current` with `QD_MIGRATION_URL` set to the owner connection).
-4. Apply the migrations: `alembic upgrade head`. Migration `0026_open_debt` fills a table from the whole
-   ledger; on the generated load database of 3.69 million entries this took 52 seconds.
-5. Restart the worker, then the API, with the new code.
-6. Check: `/healthz` answers `{"status": "ok"}`; `/metrics` (with the token) is answered; a test shop's
-   overview opens in the Mini App; the bot answers `/start`.
-7. Watch the error rate and the request log for fifteen minutes.
+3. Take note of the current release: `cat /var/lib/qarz/deploy/current`. That is the reference a roll
+   back needs.
+4. `deploy/production/scripts/deploy.sh <git-ref>`. It builds the two images of that commit (or reuses or
+   pulls them), runs `alembic upgrade head` as the one-shot `migrate` service with the owner connection
+   and prints the migration head, restarts the worker, then the API, then the proxy, and waits for
+   `/healthz`. It stops at the first step that fails. Migration `0026_open_debt` fills a table from the
+   whole ledger; on the generated load database of 3.69 million entries this took 52 seconds.
+5. `deploy/production/scripts/smoke.sh https://<public host>`: `/healthz`, the redirect to HTTPS, the
+   security headers, `/metrics` closed from outside, an unauthenticated call, the three pages, the body
+   limits and the sign-in limit. Every line must say `ok`.
+6. Check by hand what the script cannot: `/metrics` is answered inside the network (with the token); a
+   test shop's overview opens in the Mini App; the bot answers `/start`.
+7. Watch the error rate and the request log for fifteen minutes
+   (`docker compose -p qarz logs -f proxy api worker`).
 
-**Roll back.** Stop the API and the worker, start the previous release. Do not run `alembic downgrade`:
-the migrations have no tested downgrade, and because they are backward compatible the previous code runs
-on the newer schema.
+**Roll back.** `deploy/production/scripts/rollback.sh <previous-ref>` (the last release is in
+`/var/lib/qarz/deploy/previous`), then `smoke.sh` again. It starts the previous images and runs no
+migration. Do not run `alembic downgrade`: the migrations have no tested downgrade, and because they are
+backward compatible the previous code runs on the newer schema.
 
-**Not yet possible.** There is no deployment tooling: no production compose file or service units, no
-proxy configuration, no image registry. Steps 4 to 6 are the commands of the processes themselves.
+**Not yet possible.** The scripts have run only on a developer machine, against a throwaway database and
+with a self-signed certificate; there is no server, so steps 4 to 7 have never been done for real. There
+is no image registry (images are built on the host), no staging, no restore point before a release and no
+update of the standby's images, all of which the operations document asks for. Step 6 needs a real bot
+and a monitoring system, and neither exists.
 
 ## 2. Fail over to the standby; rebuild a standby
 
