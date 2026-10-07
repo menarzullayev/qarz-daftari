@@ -98,11 +98,22 @@ record_release() {
   printf '%s %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" "$commit" >> "$STATE_DIR/history"
 }
 
+# The worker has no health check (it listens on nothing), and `up --wait` refuses such a service on some
+# Compose versions. So: start it, and make sure it is still the same running container a moment later.
+start_worker() {
+  local id state
+  compose up --detach --no-deps worker
+  id="$(compose ps --quiet worker)"
+  sleep 8
+  state="$(docker inspect --format '{{.State.Status}} {{.RestartCount}}' "$id" 2>/dev/null || true)"
+  [ "$state" = "running 0" ] || die "the worker did not stay up ($state); see: docker compose -p $PROJECT logs worker"
+}
+
 # Worker first, then the API, then the proxy (it carries the static files of the release).
 # --no-deps: the migration is run by deploy.sh on purpose and by rollback.sh never.
 restart_services() {
   say "worker: starting"
-  compose up --detach --no-deps --wait --wait-timeout 120 worker
+  start_worker
   say "api: starting"
   compose up --detach --no-deps --wait --wait-timeout 120 api
   say "proxy: starting"
