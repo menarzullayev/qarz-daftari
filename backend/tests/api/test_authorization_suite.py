@@ -928,7 +928,13 @@ def _assert_reads_like_an_unknown_route(response: Any, unknown: Any) -> None:
     assert response.status_code == 404, response.text
     assert response.content == unknown.content
     assert response.json() == {"error": {"code": "NOT_FOUND", "message": "Topilmadi.", "fields": {}}}
-    assert dict(response.headers) == dict(unknown.headers)
+
+    # Every answer has its own request identifier; nothing else in the headers may differ.
+    def headers(answer: Any) -> dict[str, str]:
+        return {name: value for name, value in answer.headers.items() if name.lower() != "x-request-id"}
+
+    assert headers(response) == headers(unknown)
+    assert set(response.headers) == set(unknown.headers)
     assert "set-cookie" not in response.headers
 
 
