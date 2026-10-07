@@ -154,6 +154,10 @@ def security_kind(route: str, status: int, signed_in: bool) -> str | None:
     return None
 
 
+# Answers of the API carry personal data: no cache may keep one, and no browser may guess its type.
+_API_HEADERS = ((b"cache-control", b"no-store"), (b"x-content-type-options", b"nosniff"))
+
+
 class Observe:
     """ASGI middleware: the request identifier, one log line and one measurement for each request.
 
@@ -174,6 +178,7 @@ class Observe:
         request_id = given.decode("ascii") if _GIVEN_ID.fullmatch(given) else uuid4().hex
         state = scope.setdefault("state", {})
         state["request_id"] = request_id
+        protected = str(scope.get("path", "")).startswith("/api/")
         started = self._clock()
         status = 500
         answered = False
@@ -184,6 +189,11 @@ class Observe:
                 status = int(message["status"])
                 answered = True
                 headers = [pair for pair in message.get("headers", []) if pair[0].lower() != REQUEST_ID_HEADER]
+                if protected:
+                    # Set here and not only in the proxy, so that it holds without one (security review,
+                    # finding 12). A route that names its own caching rule keeps it.
+                    named = {pair[0].lower() for pair in headers}
+                    headers += [pair for pair in _API_HEADERS if pair[0] not in named]
                 message = {**message, "headers": [*headers, (REQUEST_ID_HEADER, request_id.encode("ascii"))]}
             await send(message)
 

@@ -10,8 +10,13 @@ from uuid import UUID
 
 from qarz.application.errors import Unauthenticated, ValidationFailed
 from qarz.application.operations import public_operation, self_operation
-from qarz.application.ports import SessionInfo, Storage
-from qarz.domain.telegram_auth import InvalidTelegramData, verify_login_data, verify_webapp_init_data
+from qarz.application.ports import PlatformSession, SessionInfo, Storage
+from qarz.domain.telegram_auth import (
+    InvalidTelegramData,
+    TelegramIdentity,
+    verify_login_data,
+    verify_webapp_init_data,
+)
 
 SIGN_IN_WEBAPP = public_operation("auth.telegram_webapp")
 SIGN_IN_WEB = public_operation("auth.telegram_login")
@@ -21,12 +26,19 @@ UPDATE_ME = self_operation("me.update")
 
 LANGUAGES = ("uz", "ru")
 SIGNED_DATA_MAX_AGE = timedelta(hours=1)
+# A record of a used payload must outlive the last instant at which the payload itself would still be
+# accepted; the margin covers a difference between this server's clock and the database's.
+REPLAY_MARGIN = timedelta(minutes=5)
 WEBAPP_SESSION = timedelta(hours=12)
 WEB_SESSION = timedelta(days=14)
 
 
 def _hash(token: str) -> bytes:
     return hashlib.sha256(token.encode("ascii")).digest()
+
+
+def _replay_key(kind: str, identity: TelegramIdentity) -> bytes:
+    return hashlib.sha256(f"{kind}:{identity.signature}".encode("ascii")).digest()
 
 
 def _language(code: str | None) -> str:
@@ -57,6 +69,7 @@ class AuthService:
         token = secrets.token_urlsafe(32)
         expires = now + WEBAPP_SESSION
         async with self._storage.platform() as session:
+            await self._use_once(session, "webapp", identity)
             user_id = await session.ensure_user(identity.tg_id, _language(identity.language_code))
             await session.create_session(
                 token_hash=_hash(token), user_id=user_id, kind="webapp", csrf_hash=None, now=now, expires_at=expires
@@ -72,11 +85,24 @@ class AuthService:
         token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         expires = now + WEB_SESSION
         async with self._storage.platform() as session:
+            await self._use_once(session, "web", identity)
             user_id = await session.ensure_user(identity.tg_id, "uz")
             await session.create_session(
                 token_hash=_hash(token), user_id=user_id, kind="web", csrf_hash=_hash(csrf), now=now, expires_at=expires
             )
         return IssuedSession(token, expires, csrf)
+
+    @staticmethod
+    async def _use_once(session: PlatformSession, kind: str, identity: TelegramIdentity) -> None:
+        """Refuse signed data that was accepted before (security review, finding 9).
+
+        In the transaction that creates the session: a payload is either recorded with its session or not
+        at all. A second use is answered exactly as a wrong signature is; the session the first use made
+        is not touched.
+        """
+        expires = identity.auth_date + SIGNED_DATA_MAX_AGE + REPLAY_MARGIN
+        if not await session.use_signed_data(_replay_key(kind, identity), expires):
+            raise Unauthenticated()
 
     async def resolve(self, token: str) -> SessionInfo | None:
         if not token.isascii() or not 20 <= len(token) <= 128:

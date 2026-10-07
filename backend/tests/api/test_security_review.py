@@ -9,8 +9,11 @@ Two kinds of test live here:
   not already cover it.
 """
 
+import asyncio
 import itertools
+import threading
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import psycopg
@@ -18,11 +21,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 from qarz.application.auth import AuthService
+from qarz.application.chat_texts import say
+from qarz.application.reminders import ReminderService
+from qarz.application.scheduler import Scheduler
 from qarz.infrastructure.db import Database
 from qarz.interface.http import create_app
+from tests.test_telegram_auth import login_data, webapp_init_data
 
-from .conftest import TEST_BOT_TOKEN, WEBHOOK_SECRET, HeaderAuthenticator, World, as_user
+from .conftest import TEST_BOT_TOKEN, WEBHOOK_SECRET, HeaderAuthenticator, SessionClient, World, as_user
 from .test_authorization_suite import CALLS, _invoke, _key, _prepare, _snapshot
+from .test_chat import Chat
 
 pytestmark = pytest.mark.db
 
@@ -314,3 +322,338 @@ def test_a_removed_member_reaches_nothing_of_the_shop(
     assert shops.status_code == 200
     assert shops.json()["items"] == []
     assert _snapshot(owner, world.shop_a) == before
+
+
+# --- finding 9: signed sign-in data is accepted once ------------------------------------------------------
+
+_WEBAPP = "/api/v1/auth/telegram-webapp"
+_LOGIN = "/api/v1/auth/telegram-login"
+_tg_ids = itertools.count(9_300_000_001)
+
+
+def _signed_at() -> datetime:
+    return datetime.now(UTC) - timedelta(seconds=30)
+
+
+def test_mini_app_launch_data_signs_in_once_and_the_first_session_stays(session_client: SessionClient) -> None:
+    """The widget may send the same data twice. The second is refused as a wrong signature is, and the
+    person is not locked out: the session the first one made keeps working."""
+    data = webapp_init_data(next(_tg_ids), token=TEST_BOT_TOKEN, auth_date=_signed_at())
+    first = session_client.http.post(_WEBAPP, json={"init_data": data})
+    assert first.status_code == 200, first.text
+    bearer = {"Authorization": f"Bearer {first.json()['token']}"}
+
+    again = session_client.http.post(_WEBAPP, json={"init_data": data})
+    forged = session_client.http.post(_WEBAPP, json={"init_data": data[:-1] + ("0" if data[-1] != "0" else "1")})
+    assert again.status_code == 401 and "token" not in again.text
+    assert again.json()["error"] | {"request_id": ""} == forged.json()["error"] | {"request_id": ""}
+    assert session_client.http.get("/api/v1/me", headers=bearer).status_code == 200
+
+
+def test_the_same_launch_data_written_in_another_order_is_still_the_same_data(session_client: SessionClient) -> None:
+    data = webapp_init_data(next(_tg_ids), token=TEST_BOT_TOKEN, auth_date=_signed_at())
+    reordered = "&".join(reversed(data.split("&")))
+    assert reordered != data
+    assert session_client.http.post(_WEBAPP, json={"init_data": data}).status_code == 200
+    assert session_client.http.post(_WEBAPP, json={"init_data": reordered}).status_code == 401
+
+
+def test_web_login_data_signs_in_once_and_the_first_session_stays(session_client: SessionClient) -> None:
+    data = login_data(next(_tg_ids), token=TEST_BOT_TOKEN, auth_date=_signed_at())
+    first = session_client.http.post(_LOGIN, json=data)
+    assert first.status_code == 200, first.text
+    token = first.headers["set-cookie"].split("qd_session=")[1].split(";")[0]
+    session_client.http.cookies.clear()
+
+    again = session_client.http.post(_LOGIN, json=data)
+    assert again.status_code == 401 and "set-cookie" not in again.headers
+    assert session_client.http.get("/api/v1/me", headers={"Cookie": f"qd_session={token}"}).status_code == 200
+
+
+def test_a_person_signs_in_again_with_data_signed_anew(session_client: SessionClient) -> None:
+    """Only the very same signed data is refused; opening the Mini App again gives new data and a new session."""
+    tg_id, at = next(_tg_ids), _signed_at()
+    first = session_client.http.post(
+        _WEBAPP, json={"init_data": webapp_init_data(tg_id, token=TEST_BOT_TOKEN, auth_date=at)}
+    )
+    later = webapp_init_data(tg_id, token=TEST_BOT_TOKEN, auth_date=at + timedelta(seconds=5))
+    second = session_client.http.post(_WEBAPP, json={"init_data": later})
+    assert (first.status_code, second.status_code) == (200, 200)
+    assert first.json()["token"] != second.json()["token"]
+
+
+def test_a_refused_repeat_leaves_one_session_and_one_record(
+    session_client: SessionClient, owner: psycopg.Connection
+) -> None:
+    tg_id = next(_tg_ids)
+    data = webapp_init_data(tg_id, token=TEST_BOT_TOKEN, auth_date=_signed_at())
+    before = owner.execute("SELECT count(*) FROM signin_replay").fetchone()
+    for _ in range(3):
+        session_client.http.post(_WEBAPP, json={"init_data": data})
+    after = owner.execute("SELECT count(*) FROM signin_replay").fetchone()
+    sessions = owner.execute(
+        "SELECT count(*) FROM user_session s JOIN app_user u ON u.id = s.user_id WHERE u.tg_id = %s", (tg_id,)
+    ).fetchone()
+    assert before is not None and after is not None
+    assert (after[0] - before[0], sessions) == (1, (1,))
+    kept = owner.execute("SELECT min(expires_at) > now() + interval '30 minutes' FROM signin_replay").fetchone()
+    assert kept == (True,), "a record is kept for as long as its data would still be accepted"
+
+
+def test_the_worker_purges_dead_sessions_and_used_sign_in_data_once_an_hour(
+    session_client: SessionClient, owner: psycopg.Connection, app_database_url: str, world: World
+) -> None:
+    tg_id = next(_tg_ids)
+    token = session_client.http.post(
+        _WEBAPP, json={"init_data": webapp_init_data(tg_id, token=TEST_BOT_TOKEN, auth_date=_signed_at())}
+    ).json()["token"]
+    bearer = {"Authorization": f"Bearer {token}"}
+    gone, dead = uuid.uuid4().bytes * 2, uuid.uuid4().bytes * 2
+    owner.execute(
+        "INSERT INTO user_session (id, token_hash, user_id, kind, created_at, expires_at) "
+        "VALUES (gen_random_uuid(), %s, %s, 'webapp', now() - interval '1 day', now() - interval '1 hour')",
+        (gone, world.stranger),
+    )
+    owner.execute(
+        "INSERT INTO signin_replay (payload_hash, expires_at) VALUES (%s, now() - interval '1 hour')", (dead,)
+    )
+    owner.execute("DELETE FROM job_run WHERE job = 'sign_in_cleanup'")
+    moment = datetime(2084, 4, 4, 21, 30, tzinfo=UTC)  # night in Tashkent: no other job has work
+
+    def tick() -> None:
+        async def run() -> None:
+            database = Database(app_database_url)
+            try:
+                clock = lambda: moment  # noqa: E731
+                await Scheduler(database, ReminderService(database, clock), clock, sign_in_cleanup=True).tick()
+            finally:
+                await database.dispose()
+
+        asyncio.run(run())
+
+    def left() -> tuple[int, int]:
+        sessions = owner.execute("SELECT count(*) FROM user_session WHERE token_hash = %s", (gone,)).fetchone()
+        replays = owner.execute("SELECT count(*) FROM signin_replay WHERE payload_hash = %s", (dead,)).fetchone()
+        assert sessions is not None and replays is not None
+        return int(sessions[0]), int(replays[0])
+
+    tick()
+    assert left() == (0, 0)
+    assert session_client.http.get("/api/v1/me", headers=bearer).status_code == 200, "a live session is kept"
+    assert owner.execute("SELECT period FROM job_run WHERE job = 'sign_in_cleanup'").fetchall() == [("2084-04-05T02",)]
+
+    # Signed out, then the same hour again: the job has run for this period, so the row waits for the next.
+    assert session_client.http.post("/api/v1/auth/sign-out", headers=bearer).status_code in (200, 204)
+    tick()
+    revoked = "SELECT count(*) FROM user_session s JOIN app_user u ON u.id = s.user_id WHERE u.tg_id = %s"
+    assert owner.execute(revoked, (tg_id,)).fetchone() == (1,)
+    moment += timedelta(hours=1)
+    tick()
+    assert owner.execute(revoked, (tg_id,)).fetchone() == (0,)
+    owner.execute("DELETE FROM job_run WHERE job = 'sign_in_cleanup'")
+
+
+# --- finding 12: API answers are not to be cached, with or without the proxy -------------------------------
+
+
+def _caching(response: Any) -> tuple[list[str], list[str]]:
+    return response.headers.get_list("cache-control"), response.headers.get_list("x-content-type-options")
+
+
+def test_every_api_answer_forbids_caching_and_type_guessing(client: TestClient, world: World) -> None:
+    answers = [
+        client.get("/api/v1/me", headers=as_user(world.owner_a)),
+        client.get(f"/api/v1/shops/{world.shop_a}/customers", headers=as_user(world.owner_a)),
+        client.get("/api/v1/me"),  # 401
+        client.get(f"/api/v1/shops/{world.shop_a}", headers=as_user(world.stranger)),  # 404
+        client.get("/api/v1/nothing-here"),
+        client.post("/api/v1/shops", content=b"{", headers=as_user(world.owner_a)),  # 422
+    ]
+    assert [answer.status_code for answer in answers] == [200, 200, 401, 404, 404, 422]
+    for answer in answers:
+        assert _caching(answer) == (["no-store"], ["nosniff"]), answer.request.url
+
+
+def test_an_unhandled_failure_is_not_to_be_cached_either(app_database_url: str, world: World) -> None:
+    database = Database(app_database_url)
+
+    class Broken(HeaderAuthenticator):
+        async def user_id(self, request: Any) -> uuid.UUID | None:
+            raise RuntimeError("broken")
+
+    app = create_app(database.reachable, database, auth=AuthService(database, TEST_BOT_TOKEN), authenticator=Broken())
+    with TestClient(app, raise_server_exceptions=False) as broken:
+        response = broken.get("/api/v1/me", headers=as_user(world.owner_a))
+        broken.portal.call(database.dispose)  # type: ignore[union-attr]
+    assert response.status_code == 500
+    assert _caching(response) == (["no-store"], ["nosniff"])
+
+
+def test_a_route_that_names_its_own_caching_rule_keeps_it_once(client: TestClient, world: World) -> None:
+    """The import template says `no-store` itself: the header is not sent twice. And what is not the API
+    (the health check a load balancer reads) is left alone."""
+    template = client.get(f"/api/v1/shops/{world.shop_a}/imports/template", headers=as_user(world.owner_a))
+    assert template.status_code == 200, template.text
+    assert _caching(template) == (["no-store"], ["nosniff"])
+    assert _caching(client.get("/healthz")) == ([], [])
+
+
+# --- finding 13: shops and trials per person ----------------------------------------------------------------
+
+
+def _open_shop(client: TestClient, user: uuid.UUID, name: str = "Do'kon") -> Any:
+    return client.post("/api/v1/shops", json={"name": name, "lang": "uz"}, headers={**as_user(user), **_key()})
+
+
+def _person(owner: psycopg.Connection, lang: str = "uz") -> uuid.UUID:
+    person = uuid.uuid4()
+    owner.execute(
+        "INSERT INTO app_user (id, tg_id, lang) VALUES (%s, %s, %s)", (person, uuid.uuid4().int % 10**15, lang)
+    )
+    return person
+
+
+def _subscriptions(owner: psycopg.Connection, person: uuid.UUID) -> list[str]:
+    rows = owner.execute(
+        "SELECT sub.state FROM membership m JOIN shop s ON s.id = m.shop_id "
+        "JOIN subscription sub ON sub.shop_id = s.id WHERE m.user_id = %s AND m.role = 'owner' "
+        "ORDER BY s.created_at, s.id",
+        (person,),
+    ).fetchall()
+    return [state for (state,) in rows]
+
+
+def test_the_trial_is_for_a_persons_first_shop_and_later_shops_start_limited(
+    client: TestClient, owner: psycopg.Connection
+) -> None:
+    person = _person(owner)
+    first, second = _open_shop(client, person, "Birinchi"), _open_shop(client, person, "Ikkinchi")
+    assert (first.status_code, second.status_code) == (201, 201), second.text
+    assert (first.json()["subscription_state"], second.json()["subscription_state"]) == ("trial", "limited")
+    assert sorted(_subscriptions(owner, person)) == ["limited", "trial"]
+    trial_ends = owner.execute(
+        "SELECT trial_ends FROM subscription WHERE shop_id = %s", (second.json()["id"],)
+    ).fetchone()
+    assert trial_ends == (None,)
+    # A shop that starts limited takes no credit sale until it is paid for (BR-29).
+    shop = second.json()["id"]
+    customer = client.post(
+        f"/api/v1/shops/{shop}/customers", json={"display_name": "Ali"}, headers={**as_user(person), **_key()}
+    )
+    assert customer.status_code == 201, customer.text
+    sale = client.post(
+        f"/api/v1/shops/{shop}/customers/{customer.json()['id']}/entries",
+        json={"kind": "credit", "amount": 1000},
+        headers={**as_user(person), **_key()},
+    )
+    assert sale.status_code == 402 and sale.json()["error"]["code"] == "SUBSCRIPTION_LIMITED", sale.text
+
+
+@pytest.mark.parametrize(
+    ("lang", "words"), [("uz", "Bir kishi ko'pi bilan 5 ta do'kon"), ("ru", "не больше 5 магазинов")]
+)
+def test_the_sixth_shop_is_refused_in_the_persons_language_and_nothing_is_written(
+    client: TestClient, owner: psycopg.Connection, lang: str, words: str
+) -> None:
+    person = _person(owner, lang)
+    for number in range(5):
+        assert _open_shop(client, person, f"Do'kon {number}").status_code == 201
+    shops = owner.execute("SELECT count(*) FROM shop").fetchone()
+
+    refused = _open_shop(client, person, "Oltinchi")
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["error"]["code"] == "SHOP_LIMIT_REACHED"
+    assert words in refused.json()["error"]["message"]
+    assert owner.execute("SELECT count(*) FROM shop").fetchone() == shops
+    assert len(_subscriptions(owner, person)) == 5
+    # Somebody else is not held back by it.
+    assert _open_shop(client, _person(owner)).status_code == 201
+
+
+def test_an_erased_shop_frees_a_place_and_a_repeated_request_is_not_counted_twice(
+    client: TestClient, owner: psycopg.Connection
+) -> None:
+    person = _person(owner)
+    key = _key()
+    for _ in range(3):
+        again = client.post("/api/v1/shops", json={"name": "Bir", "lang": "uz"}, headers={**as_user(person), **key})
+        assert again.status_code == 201
+    assert len(_subscriptions(owner, person)) == 1
+    for number in range(4):
+        assert _open_shop(client, person, f"Do'kon {number}").status_code == 201
+    assert _open_shop(client, person).status_code == 409
+    # The fifth shop's stored answer is still given to a repeat of its own request.
+    assert (
+        client.post("/api/v1/shops", json={"name": "Bir", "lang": "uz"}, headers={**as_user(person), **key}).status_code
+        == 201
+    )
+
+    one = owner.execute(
+        "SELECT shop_id FROM membership WHERE user_id = %s AND role = 'owner' LIMIT 1", (person,)
+    ).fetchone()
+    assert one is not None
+    owner.execute(
+        "UPDATE shop SET status = 'deletion_pending', deletion_due = now() - interval '1 second' WHERE id = %s", one
+    )
+    assert _open_shop(client, person).status_code == 409, "a shop waiting to be erased still exists"
+    assert owner.execute("SELECT erase_shop(%s)", one).fetchone() == (True,)
+    assert _open_shop(client, person).status_code == 201
+
+
+def test_two_requests_at_once_cannot_both_take_the_last_place(client: TestClient, owner: psycopg.Connection) -> None:
+    person = _person(owner)
+    for number in range(4):
+        assert _open_shop(client, person, f"Do'kon {number}").status_code == 201
+    results: list[int] = []
+
+    def call() -> None:
+        results.append(_open_shop(client, person, "Poyga").status_code)
+
+    threads = [threading.Thread(target=call) for _ in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(results) == [201, 409, 409, 409, 409, 409]
+    assert len(_subscriptions(owner, person)) == 5
+
+
+def test_two_first_shops_at_once_get_one_trial_between_them(client: TestClient, owner: psycopg.Connection) -> None:
+    person = _person(owner)
+    results: list[int] = []
+
+    def call() -> None:
+        results.append(_open_shop(client, person, "Poyga").status_code)
+
+    threads = [threading.Thread(target=call) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert results == [201] * 4
+    assert sorted(_subscriptions(owner, person)) == ["limited", "limited", "limited", "trial"]
+
+
+def test_the_chat_says_in_words_that_a_later_shop_has_no_trial_and_that_the_sixth_is_refused(
+    client: TestClient, owner: psycopg.Connection
+) -> None:
+    person = Chat(client, owner, next(_tg_ids), language="ru")
+    new_shop = person.say("/start").button("🏪")
+
+    def open_shop(name: str) -> str:
+        assert person.press(new_shop).text == say("ru", "ask_shop_name")
+        return person.say(name).text
+
+    assert open_shop("Первый") == say("ru", "shop_created", shop="Первый")
+    for name in ("Второй", "Третий", "Четвёртый", "Пятый"):
+        assert open_shop(name) == say("ru", "shop_created_limited", shop=name)
+    assert open_shop("Шестой") == say("ru", "shop_limit_reached")
+    assert "5" in say("uz", "shop_limit_reached") and "5" in say("ru", "shop_limit_reached")
+    names = owner.execute(
+        "SELECT count(*) FROM shop s JOIN membership m ON m.shop_id = s.id JOIN app_user u ON u.id = m.user_id "
+        "WHERE u.tg_id = %s",
+        (person.tg_id,),
+    ).fetchone()
+    assert names == (5,)
+    # The refusal ended the question: the next message is not taken for a shop's name.
+    assert person.say("Седьмой").text != say("ru", "shop_limit_reached")

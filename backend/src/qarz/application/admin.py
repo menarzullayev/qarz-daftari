@@ -18,7 +18,7 @@ from uuid import UUID
 from qarz.application import idempotency
 from qarz.application.admin_access import AdminAccess, AdminRequestKeys
 from qarz.application.chat_texts import say
-from qarz.application.errors import AppError, NotFound, ValidationFailed
+from qarz.application.errors import AppError, NotFound, Unauthenticated, ValidationFailed
 from qarz.application.operations import admin_operation
 from qarz.application.ports import AdminAuditRow, AdminShopRow, PlatformSession, Storage
 from qarz.domain import platform_settings
@@ -424,13 +424,12 @@ class AdminService:
                 stored = await session.platform_settings()
                 for name in sorted(cleaned):
                     old = platform_settings.effective(name, stored[name][0] if name in stored else None)
-                    await session.set_platform_setting(name, cleaned[name], updated_by=str(admin_id), now=now)
-                    await session.add_admin_audit(
+                    # One call: the database stores the setting and its audit row together, and refuses
+                    # both unless it finds the administrator itself (security review, finding 11).
+                    stored_now = await session.set_platform_setting(
+                        name,
+                        cleaned[name],
                         admin_id=admin_id,
-                        action="setting.changed",
-                        target_type="setting",
-                        target_id=name,
-                        shop_id=None,
                         reason=why,
                         detail={
                             "before": platform_settings.masked(name, old),
@@ -438,6 +437,8 @@ class AdminService:
                         },
                         now=now,
                     )
+                    if not stored_now:
+                        raise Unauthenticated()
                 return await self._settings_body(session)
 
             try:

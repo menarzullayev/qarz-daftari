@@ -481,6 +481,15 @@ class PgTenantSession:
             },
         )
 
+    async def claim_owned_shop(self, user_id: UUID, *, wants_trial: bool) -> str:
+        row = (
+            await self._conn.execute(
+                text("SELECT claim_owned_shop(:user_id, :wants_trial) AS answer"),
+                {"user_id": user_id, "wants_trial": wants_trial},
+            )
+        ).one()
+        return str(row.answer)
+
     async def create_shop(self, *, name: str, lang: str) -> ShopSettings:
         row = (
             await self._conn.execute(
@@ -2808,6 +2817,23 @@ class PgPlatformSession:
             {"job": job, "period": period},
         )
 
+    async def use_signed_data(self, payload_hash: bytes, expires_at: datetime) -> bool:
+        # Two requests with one payload: the second waits for the first's transaction and then conflicts.
+        row = (
+            await self._conn.execute(
+                text(
+                    "INSERT INTO signin_replay (payload_hash, expires_at) VALUES (:hash, :expires_at) "
+                    "ON CONFLICT (payload_hash) DO NOTHING RETURNING payload_hash"
+                ),
+                {"hash": payload_hash, "expires_at": expires_at},
+            )
+        ).first()
+        return row is not None
+
+    async def purge_expired_sign_ins(self) -> int:
+        row = (await self._conn.execute(text("SELECT purge_expired_sign_ins() AS n"))).one()
+        return int(row.n)
+
     async def update_seen(self, update_id: int) -> bool:
         row = (
             await self._conn.execute(text("SELECT 1 FROM processed_update WHERE update_id = :id"), {"id": update_id})
@@ -2821,12 +2847,13 @@ class PgPlatformSession:
         return None if row is None else str(row.lang)
 
     async def ensure_user(self, tg_id: int, lang: str) -> UUID:
-        # The no-op update makes RETURNING yield the existing row without changing its language.
+        # The no-op update makes RETURNING yield the existing row without changing its language. It names
+        # the language and not the Telegram identifier: the application role may not rewrite that one.
         row = (
             await self._conn.execute(
                 text(
                     "INSERT INTO app_user (id, tg_id, lang) VALUES (:id, :tg_id, :lang) "
-                    "ON CONFLICT (tg_id) DO UPDATE SET tg_id = EXCLUDED.tg_id RETURNING id"
+                    "ON CONFLICT (tg_id) DO UPDATE SET lang = app_user.lang RETURNING id"
                 ),
                 {"id": uuid4(), "tg_id": tg_id, "lang": lang},
             )
@@ -3457,16 +3484,28 @@ class PgPlatformSession:
         # The driver hands a jsonb value over already decoded; a stored string must not be decoded again.
         return {row.key: (row.value, row.updated_by, row.updated_at) for row in rows}
 
-    async def set_platform_setting(self, key: str, value: Any, *, updated_by: str, now: datetime) -> None:
-        await self._conn.execute(
-            text(
-                "INSERT INTO platform_setting (key, value, updated_by, updated_at) "
-                "VALUES (:key, CAST(:value AS jsonb), :updated_by, :now) "
-                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, "
-                "  updated_at = EXCLUDED.updated_at"
-            ),
-            {"key": key, "value": json.dumps(value), "updated_by": updated_by, "now": now},
-        )
+    async def set_platform_setting(
+        self, key: str, value: Any, *, admin_id: UUID, reason: str | None, detail: dict[str, Any], now: datetime
+    ) -> bool:
+        # The application role cannot write the table; the function checks the administrator and writes
+        # the audit row with the setting.
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT admin_set_platform_setting(:admin, :key, CAST(:value AS jsonb), "
+                    "  CAST(:reason AS text), CAST(:detail AS jsonb), :now) AS stored"
+                ),
+                {
+                    "admin": admin_id,
+                    "key": key,
+                    "value": json.dumps(value),
+                    "reason": reason,
+                    "detail": json.dumps(detail, ensure_ascii=False),
+                    "now": now,
+                },
+            )
+        ).one()
+        return bool(row.stored)
 
     async def set_active_shop(self, user_id: UUID, shop_id: UUID) -> None:
         await self._conn.execute(

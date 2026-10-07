@@ -24,6 +24,9 @@ class TelegramIdentity:
     tg_id: int
     language_code: str | None
     auth_date: datetime
+    # The signature that was verified, as this server computed it: one value per signed payload,
+    # whatever the order or spelling of the fields that carried it.
+    signature: str
 
 
 def _check_string(fields: dict[str, str]) -> bytes:
@@ -71,7 +74,9 @@ def verify_webapp_init_data(init_data: str, bot_token: str, now: datetime, max_a
     if not isinstance(user, dict):
         raise InvalidTelegramData("user")
     language = user.get("language_code")
-    return TelegramIdentity(_positive_int(user.get("id")), language if isinstance(language, str) else None, auth_date)
+    return TelegramIdentity(
+        _positive_int(user.get("id")), language if isinstance(language, str) else None, auth_date, expected
+    )
 
 
 def verify_login_data(data: dict[str, object], bot_token: str, now: datetime, max_age: timedelta) -> TelegramIdentity:
@@ -89,4 +94,4 @@ def verify_login_data(data: dict[str, object], bot_token: str, now: datetime, ma
     raw_id = fields.get("id", "")
     if not raw_id.isascii() or not raw_id.isdigit():
         raise InvalidTelegramData("id")
-    return TelegramIdentity(_positive_int(int(raw_id)), None, auth_date)
+    return TelegramIdentity(_positive_int(int(raw_id)), None, auth_date, expected)

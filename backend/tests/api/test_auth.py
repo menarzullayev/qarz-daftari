@@ -1,5 +1,6 @@
 """Sign-in and sessions through the application as deployed (ADR-017, story S2.1)."""
 
+import itertools
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -17,12 +18,21 @@ LOGIN = "/api/v1/auth/telegram-login"
 ME = "/api/v1/me"
 
 
+_launches = itertools.count(1)
+
+
 def _fresh(**kwargs: Any) -> str:
+    # Each launch of the Mini App is signed anew, with a query identifier of its own. The same signed data
+    # is accepted only once (tests/api/test_security_review.py, finding 9), so two sign-ins of one person
+    # in one second must not be the same data here either.
+    kwargs.setdefault("extra", {"query_id": f"AAE{next(_launches)}"})
     return webapp_init_data(token=TEST_BOT_TOKEN, auth_date=datetime.now(UTC) - timedelta(seconds=30), **kwargs)
 
 
 def _fresh_login(tg_id: int) -> dict[str, object]:
-    return login_data(tg_id, token=TEST_BOT_TOKEN, auth_date=datetime.now(UTC) - timedelta(seconds=30))
+    # Likewise: the widget signs the moment of each login, and two logins never share one.
+    signed_at = datetime.now(UTC) - timedelta(seconds=30 + next(_launches))
+    return login_data(tg_id, token=TEST_BOT_TOKEN, auth_date=signed_at)
 
 
 def _bearer(token: str) -> dict[str, str]:
