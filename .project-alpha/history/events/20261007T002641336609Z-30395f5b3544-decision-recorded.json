@@ -1,0 +1,19 @@
+{
+  "event_id": "30395f5b3544",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-07T00:26:41+00:00",
+  "path": ".project-alpha\\decisions\\DEC-044.md",
+  "stage": "04-prd",
+  "title": "Online payment adapter choices",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-044",
+  "decision": "A table online_payment and three cross-tenant lookup functions beyond the approved schema; the owner makes an order first and the provider is given its identifier; one provider transaction per order and a cancelled order is not paid again; one Click endpoint for prepare and complete; a performed Payme transaction cannot be cancelled through Payme; a suspended shop cannot start paying, and money taken for a shop suspended meanwhile moves the paid-through date without lifting the suspension; disabled is answered with HTTP 503; a setting QD_CLICK_MERCHANT_ID was added",
+  "context": "Decided by an agent during the autonomous build under DEC-020; implemented and awaiting the founder's review",
+  "chosen_option": "Choices as listed in pull request 44",
+  "rationale": "ADR-019 asks for adapters built and off and the specification names two endpoints; neither says how an order is identified or what a provider may undo",
+  "impact": "Medium",
+  "reversibility": "High",
+  "evidence": "EVID-060",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

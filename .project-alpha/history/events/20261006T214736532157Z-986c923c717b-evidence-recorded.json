@@ -1,0 +1,15 @@
+{
+  "event_id": "986c923c717b",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T21:47:36+00:00",
+  "path": "docs\\evidence\\EVID-053.md",
+  "stage": "09-development-plan",
+  "title": "Credit limits and the customer-side screens pass CI on main",
+  "claim": "Credit limits per customer and by shop default (story S12.1, pull request 30) and the screens for the customer's own page, connecting customers and disputes (milestone M4, pull request 31) passed CI on main in the run for commit a59e969. The screens were tested against a fake server only",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/30 ; https://github.com/menarzullayev/qarz-daftari/pull/31 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37527462602",
+  "date": "2026-10-07",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-053"
+}

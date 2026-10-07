@@ -1,0 +1,15 @@
+{
+  "event_id": "87e99b1298fd",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-07T00:17:40+00:00",
+  "path": "docs\\evidence\\EVID-059.md",
+  "stage": "09-development-plan",
+  "title": "The web panel, API rate limits and the security review's tests pass CI on main",
+  "claim": "The web panel with Telegram sign-in, desktop layouts and the owner's back office (story S15.1, pull request 40), rate limits per signed-in user and per shop (pull request 39) and the security review with its tests (story S19.2, pull request 41) passed CI on main in the run for commit 373243d; the runs for the first two merges alone were cancelled when the next merge superseded them. The panel was exercised against a fake server and a stub of the Telegram widget only. The review found no critical or high finding in what it read and lists what it did not read; it is an agent's review, and launch criterion 7 still needs a person",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/40 ; https://github.com/menarzullayev/qarz-daftari/pull/39 ; https://github.com/menarzullayev/qarz-daftari/pull/41 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37549789882",
+  "date": "2026-10-07",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-059"
+}
