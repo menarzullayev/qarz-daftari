@@ -385,3 +385,40 @@ export function openNoticeBody(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+export const EXPORT_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+/** An export as GET /shops/{id}/exports lists one: finished an hour before `NOON`, its file kept a week. */
+export function exportBody(overrides: Record<string, unknown> = {}) {
+  return {
+    id: EXPORT_ID,
+    status: "done",
+    error: null,
+    requested_by: MEMBERSHIP_ID,
+    created_at: "2026-10-06T05:58:00+00:00",
+    finished_at: "2026-10-06T06:00:00+00:00",
+    rows: 1234,
+    available: true,
+    available_until: "2026-10-13T06:00:00+00:00",
+    ...overrides,
+  };
+}
+
+export const ACCESS_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+export const SUPPORT_ADMIN_ID = "dddddddd-dddd-4ddd-8ddd-dddddda1b2c3";
+
+/** A support access as the owner's list gives one: open at `NOON`, from an hour before it to an hour after. */
+export function supportAccessBody(overrides: Record<string, unknown> = {}) {
+  return {
+    id: ACCESS_ID,
+    shop_id: SHOP_ID,
+    admin_id: SUPPORT_ADMIN_ID,
+    reason: "Egasi yordam so'radi",
+    state: "active",
+    starts_at: "2026-10-06T06:00:00+00:00",
+    ends_at: "2026-10-06T08:00:00+00:00",
+    closed_at: null,
+    closed_by: null,
+    ...overrides,
+  };
+}

@@ -123,7 +123,8 @@ describe("an ownership offer, as the manager it is addressed to sees it", () => 
   it("shows the owner no answer buttons for their own offer", async () => {
     const server = backend(transferBody(), (sent) => (sent.path.endsWith("/deletion") ? ok({ status: "active", deletion_due: null }) : null));
     const view = renderOffice(<OfficeBanner />, { fetch: server.fetch, role: "owner", membershipId: OWNER_ID });
-    await waitFor(() => expect(server.sent).toHaveLength(2));
+    // The owner's three reads: the deletion request, the ownership offer, and the support accesses.
+    await waitFor(() => expect(server.sent).toHaveLength(3));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(view.container.textContent).toBe("");
   });

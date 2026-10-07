@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useI18n } from "../i18n/I18nProvider";
 import { useSubmit } from "../shared/hooks";
 import { Link } from "../shared/router";
+import { isOpen } from "../shared/support/supportApi";
 import { useWorkspace } from "../shared/workspace/context";
 import { Confirm, formatInstant } from "../shared/workspace/parts";
 import type { Transfer } from "./backoffice";
@@ -60,11 +61,41 @@ function Offer({ offer }: { offer: Transfer }) {
   );
 }
 
+/** For the owner, while an administrator can read the shop: that it is so, why, and until when (REQ-059). */
+function SupportNotice() {
+  const { role, now } = useWorkspace();
+  const { support } = useOffice();
+  const { t, language } = useI18n();
+  if (role !== "owner" || support.status !== "ready") {
+    return null;
+  }
+  // The clock is asked again on every render: an access whose time has run out is no longer announced.
+  return support.data
+    .filter((access) => isOpen(access, now()))
+    .map((access) => (
+      <p key={access.id} className="notice notice--error" role="status">
+        <span>{t("support.banner", { date: formatInstant(access.endsAt, language) })}</span>{" "}
+        <span>{t("support.banner.reason", { reason: access.reason })}</span>{" "}
+        <Link to="/shop-settings">{t("support.banner.open")}</Link>
+      </p>
+    ));
+}
+
 /**
- * Above every screen: for the owner, that the shop is waiting to be deleted and on which day; for a
- * manager, an ownership offer addressed to them. Anyone else sees nothing.
+ * Above every screen: for the owner, that an administrator can read the shop now, and that the shop is
+ * waiting to be deleted and on which day; for a manager, an ownership offer addressed to them. Anyone
+ * else sees nothing.
  */
 export function OfficeBanner() {
+  return (
+    <>
+      <SupportNotice />
+      <OtherNotice />
+    </>
+  );
+}
+
+function OtherNotice() {
   const { role, membershipId } = useWorkspace();
   const { deletion, transfer } = useOffice();
   const { t, language } = useI18n();

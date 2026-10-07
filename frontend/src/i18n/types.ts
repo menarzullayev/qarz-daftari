@@ -1,6 +1,8 @@
 import type { uzAdmin } from "./admin/uz";
+import type { uzExports } from "./exports/uz";
 import type { uzPanel } from "./panel/uz";
 import type { uzReports } from "./reports/uz";
+import type { uzSupport } from "./support/uz";
 import type { uz } from "./uz";
 
 /** Uzbek nouns do not change after a number, so one form is enough. */
@@ -20,11 +22,23 @@ export type PanelMessageKey = keyof typeof uzPanel;
 /** Keys of the reports' own catalog, added when the reports screen is first opened (see `addMessages`). */
 export type ReportsMessageKey = keyof typeof uzReports;
 
+/** Keys of the export screen's own catalog, added when that screen is first opened (see `addMessages`). */
+export type ExportsMessageKey = keyof typeof uzExports;
+
+/** Keys of the owner's view of support access: added by the web panel, and by the Mini App on demand. */
+export type SupportMessageKey = keyof typeof uzSupport;
+
 /** Keys of the administrator's panel, added by the admin entry only (see `addMessages`). */
 export type AdminMessageKey = keyof typeof uzAdmin;
 
 /** The Uzbek catalogs define the key set; every other catalog must match it exactly (ADR-021, NFR-007). */
-export type MessageKey = CoreMessageKey | PanelMessageKey | ReportsMessageKey | AdminMessageKey;
+export type MessageKey =
+  | CoreMessageKey
+  | PanelMessageKey
+  | ReportsMessageKey
+  | ExportsMessageKey
+  | SupportMessageKey
+  | AdminMessageKey;
 
 /** Shape the Russian catalog must have: the same keys, and a plural entry wherever Uzbek has one. */
 export type RuCatalog = {
@@ -39,6 +53,16 @@ export type RuPanelCatalog = {
 /** And for the reports' catalog. */
 export type RuReportsCatalog = {
   [K in ReportsMessageKey]: (typeof uzReports)[K] extends string ? string : RuPlural;
+};
+
+/** And for the export screen's catalog. */
+export type RuExportsCatalog = {
+  [K in ExportsMessageKey]: (typeof uzExports)[K] extends string ? string : RuPlural;
+};
+
+/** And for the owner's view of support access. */
+export type RuSupportCatalog = {
+  [K in SupportMessageKey]: (typeof uzSupport)[K] extends string ? string : RuPlural;
 };
 
 /** And for the administrator's catalog. */

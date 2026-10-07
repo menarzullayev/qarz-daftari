@@ -12,7 +12,7 @@ import { BOT_USERNAME } from "./settings";
 import { Shell } from "./Shell";
 import { AddGoodsScreen } from "./workspace/AddGoodsScreen";
 import { CatalogScreen } from "./workspace/CatalogScreen";
-import { WorkspaceProvider } from "./workspace/context";
+import { useWorkspace, WorkspaceProvider } from "./workspace/context";
 import { CounterCodeScreen } from "./workspace/CounterCodeScreen";
 import { CreditSettingsSection } from "./workspace/CreditSettingsSection";
 import { CustomerScreen } from "./workspace/CustomerScreen";
@@ -66,6 +66,22 @@ const systemClock = () => new Date();
 const PaymentNoticesScreen = lazy(() => import("./workspace/PaymentNoticesScreen"));
 const DateRequestsScreen = lazy(() => import("./workspace/DateRequestsScreen"));
 const ReportsScreen = lazy(() => import("./reports/ReportsScreen"));
+const ExportsScreen = lazy(() => import("./exports/ExportsScreen"));
+const SupportAccessSection = lazy(() => import("./support/SupportAccessSection"));
+
+/**
+ * Support access under the settings of the Mini App, for the owner alone: nobody else may read it, so
+ * for nobody else is its code loaded or anything asked. The web panel shows the same section through
+ * its extension, where the notice above every screen shares its state.
+ */
+function OwnerSupportAccess() {
+  const { role } = useWorkspace();
+  return role === "owner" ? (
+    <Suspense fallback={<Loading />}>
+      <SupportAccessSection />
+    </Suspense>
+  ) : null;
+}
 
 /**
  * One customer. On a wide screen of the web panel the customer book stays beside it: the list on the
@@ -131,6 +147,12 @@ function workspaceScreen(
           <ReportsScreen />
         </Suspense>
       );
+    case "exports":
+      return (
+        <Suspense fallback={<Loading />}>
+          <ExportsScreen />
+        </Suspense>
+      );
     case "catalog":
       return <CatalogScreen />;
     case "reminders":
@@ -143,7 +165,7 @@ function workspaceScreen(
         <>
           <ShopSettingsScreen />
           <CreditSettingsSection />
-          {extension ? <extension.SettingsExtra /> : null}
+          {extension ? <extension.SettingsExtra /> : <OwnerSupportAccess />}
         </>
       );
   }

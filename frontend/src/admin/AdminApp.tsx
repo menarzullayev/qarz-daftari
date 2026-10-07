@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
 import { I18nProvider, useI18n } from "../i18n/I18nProvider";
 import type { Language, MessageKey } from "../i18n/types";
@@ -17,6 +17,10 @@ import { isUuid } from "./rules";
 import { SettingsScreen } from "./SettingsScreen";
 import { ShopScreen } from "./ShopScreen";
 import { ShopsScreen } from "./ShopsScreen";
+import { CustomerScreen } from "./support/CustomerScreen";
+import { CustomersScreen } from "./support/CustomersScreen";
+import { SupportAccessScreen } from "./SupportAccessScreen";
+import type { Who } from "./SupportSection";
 
 type AdminAppProps = {
   /** False shows only the sign-in notice. Used to look at the frame while developing; see `AdminRoot`. */
@@ -41,23 +45,54 @@ type Match = { sectionPath: string; titleKey: MessageKey; screen: ReactNode };
 
 const systemClock = () => new Date();
 
-/** The screen for an address, or null. A shop's identifier is a UUID; anything else is an unknown address. */
-function match(path: string, api: AdminApi, now: () => Date): Match | null {
-  const [, first, second, ...rest] = path.split("/");
-  if (rest.length > 0) {
+/**
+ * The screens that show a shop's customers (REQ-059). They are reached under the shop, and only they
+ * name a customer anywhere in this panel; the server answers them only under an open support access.
+ */
+function customers(shopId: string, rest: readonly string[], api: AdminApi): Match | null {
+  const [customerId, ...more] = rest;
+  if (more.length > 0) {
+    return null;
+  }
+  if (customerId === undefined) {
+    return { sectionPath: "/", titleKey: "admin.support.customers.title", screen: <CustomersScreen key={shopId} api={api} shopId={shopId} /> };
+  }
+  return isUuid(customerId)
+    ? {
+        sectionPath: "/",
+        titleKey: "admin.support.customer.title",
+        screen: <CustomerScreen key={customerId} api={api} shopId={shopId} customerId={customerId} />,
+      }
+    : null;
+}
+
+/** The screen for an address, or null. An identifier is a UUID; anything else is an unknown address. */
+function match(path: string, api: AdminApi, now: () => Date, who: Who): Match | null {
+  const [, first, second, third, ...rest] = path.split("/");
+  if (first === "shops" && second !== undefined && isUuid(second) && third === "customers") {
+    return customers(second, rest, api);
+  }
+  if (third !== undefined) {
     return null;
   }
   if (path === "/") {
     return { sectionPath: "/", titleKey: "admin.nav.shops", screen: <ShopsScreen api={api} /> };
   }
   if (first === "shops" && second !== undefined && isUuid(second)) {
-    return { sectionPath: "/", titleKey: "admin.shop.title", screen: <ShopScreen key={second} api={api} shopId={second} now={now} /> };
+    return { sectionPath: "/", titleKey: "admin.shop.title", screen: <ShopScreen key={second} api={api} shopId={second} now={now} who={who} /> };
+  }
+  if (first === "support-access" && (second === undefined || isUuid(second))) {
+    return {
+      sectionPath: "/support-access",
+      titleKey: "admin.nav.supportAccess",
+      screen: <SupportAccessScreen key={second ?? ""} api={api} shopId={second ?? null} now={now} who={who} />,
+    };
   }
   if (path === "/settings") {
     return { sectionPath: "/settings", titleKey: "admin.nav.settings", screen: <SettingsScreen api={api} /> };
   }
   if (first === "audit" && (second === undefined || isUuid(second))) {
-    return { sectionPath: "/audit", titleKey: "admin.nav.audit", screen: <AuditScreen key={second ?? ""} api={api} shopId={second ?? null} /> };
+    return { sectionPath: "/audit", titleKey: "admin.nav.audit", screen: <AuditScreen api={api} shopId={second ?? null} /> };
   }
   return null;
 }
@@ -85,12 +120,18 @@ function CloseSession({ api, sessionEnds, onClosed }: { api: AdminApi; sessionEn
   );
 }
 
-/** The administrator's panel behind the door: its own navigation, no shop, and no customer data anywhere. */
+/**
+ * The administrator's panel behind the door: its own navigation and no shop. No customer data is
+ * anywhere in it but on the two screens of an open support access.
+ */
 export function AdminRoutes({ api, now = systemClock, sessionEnds = null, onSessionClosed }: AdminRoutesProps) {
   const { t } = useI18n();
   const path = useHashPath();
   const section = ADMIN_SECTIONS.find((candidate) => candidate.path === path);
-  const found = api ? match(path, api, now) : null;
+  // Which administrator this is, once an access opened here has said so; see `Who`. Memory only.
+  const [me, setMe] = useState<string | null>(null);
+  const who = useMemo<Who>(() => ({ me, learn: setMe }), [me]);
+  const found = api ? match(path, api, now, who) : null;
 
   let title = t("notFound.title");
   let screen: ReactNode = <NotFoundScreen />;
@@ -98,7 +139,7 @@ export function AdminRoutes({ api, now = systemClock, sessionEnds = null, onSess
     title = t(found.titleKey);
     screen = found.screen;
   } else if (section) {
-    // Subscription receipts and support access are other stories: their sections wait, and call nothing.
+    // Subscription receipts are another story: their section waits, and calls nothing.
     title = t(section.labelKey);
     screen = <PlaceholderScreen />;
   }

@@ -1,4 +1,4 @@
-import { type ApiAuth, type ApiError, call, type Fetch, type Page, reading, type Transport } from "../shared/api";
+import { type ApiAuth, type ApiError, call, type Call, type Fetch, type Page, reading, type Transport } from "../shared/api";
 
 /**
  * The administrator's side of the API, under /api/admin/v1 (backend/src/qarz/interface/admin_api.py).
@@ -8,8 +8,10 @@ import { type ApiAuth, type ApiError, call, type Fetch, type Page, reading, type
  * authenticator is accepted. Someone who is not an administrator is answered "not found" on every route
  * here, exactly as for a route that does not exist.
  *
- * Nothing here returns a shop's customers, entries or balances: the API does not give them (REQ-059),
- * and no call for them may be added.
+ * Nothing in this file returns a shop's customers, entries or balances. The API gives them in one place
+ * only, to an administrator whose support access to that shop is open (REQ-059), and the calls for it
+ * live with the support-access screens (`support/customers.ts`), built on `send`. No other call for
+ * them may be added.
  */
 
 const { record, text, textOrNull, whole, wholeOrNull, flag, list } = reading;
@@ -93,6 +95,26 @@ export type PlatformSettings = {
   changed: Readonly<Record<string, { by: string; at: string }>>;
 };
 
+/**
+ * A support access: one administrator may read one shop for a few hours, for a stated reason
+ * (backend/src/qarz/application/support_access.py, `access_body`).
+ */
+export type SupportAccess = {
+  id: string;
+  shopId: string;
+  /** Given by the list across shops; null where the server names no shop. */
+  shopName: string | null;
+  adminId: string;
+  reason: string;
+  /** As the server saw it when it answered: "active", "expired" or "closed". */
+  state: string;
+  startsAt: string;
+  endsAt: string;
+  closedAt: string | null;
+  /** Who ended it before its time: "owner" or "admin"; null when nobody did. */
+  closedBy: string | null;
+};
+
 export const SUBSCRIPTION_ACTIONS = ["trial", "endTrial", "paidThrough", "suspend", "unsuspend"] as const;
 export type SubscriptionAction = (typeof SUBSCRIPTION_ACTIONS)[number];
 
@@ -144,6 +166,22 @@ function auditRow(value: unknown): AuditRow {
     shopId: textOrNull(body["shop_id"]),
     reason: textOrNull(body["reason"]),
     detail: body["detail"] === null || body["detail"] === undefined ? {} : record(body["detail"]),
+  };
+}
+
+function supportAccess(value: unknown): SupportAccess {
+  const body = record(value);
+  return {
+    id: text(body["id"]),
+    shopId: text(body["shop_id"]),
+    shopName: textOrNull(body["shop_name"]),
+    adminId: text(body["admin_id"]),
+    reason: text(body["reason"]),
+    state: text(body["state"]),
+    startsAt: text(body["starts_at"]),
+    endsAt: text(body["ends_at"]),
+    closedAt: textOrNull(body["closed_at"]),
+    closedBy: textOrNull(body["closed_by"]),
   };
 }
 
@@ -206,6 +244,17 @@ export function createAdminApi(options: {
 }) {
   const transport: Transport = options;
   return {
+    /** Where every call of the administrator's side lives. */
+    base: BASE,
+
+    /**
+     * One request of a call that is not built here: the support-access screens read a shop's customers
+     * through it, with the same headers, errors and refusal hooks as every other call.
+     */
+    send<T>(request: Call<T>): Promise<T> {
+      return call(transport, request);
+    },
+
     readAuth(signal?: AbortSignal): Promise<AuthStatus> {
       return call(transport, { method: "GET", path: `${BASE}/auth`, signal, read: authStatus });
     },
@@ -294,14 +343,52 @@ export function createAdminApi(options: {
       return call(transport, { method: "PATCH", path: `${BASE}/settings`, body, idempotencyKey, read: platformSettings });
     },
 
+    /**
+     * Opens the caller's support access to a shop for `hours` (1 to 24). The owner is told the reason
+     * and the time it ends. One administrator has at most one open access to a shop.
+     */
+    openSupport(shopId: string, input: { reason: string; hours: number }, idempotencyKey: string): Promise<SupportAccess> {
+      return call(transport, {
+        method: "POST",
+        path: `${BASE}/shops/${segment(shopId)}/support-access`,
+        body: { reason: input.reason, hours: input.hours },
+        idempotencyKey,
+        read: supportAccess,
+      });
+    },
+
+    /** Ends the caller's own open access to the shop before its time. */
+    closeSupport(shopId: string, idempotencyKey: string): Promise<void> {
+      return call(transport, {
+        method: "POST",
+        path: `${BASE}/shops/${segment(shopId)}/support-access/close`,
+        idempotencyKey,
+        read: () => undefined,
+      });
+    },
+
+    /** Support accesses across shops, whoever opened them, newest first. */
+    listSupport(
+      params: { shopId?: string | null; open?: boolean; cursor?: string | null },
+      signal?: AbortSignal,
+    ): Promise<Page<SupportAccess>> {
+      return call(transport, {
+        method: "GET",
+        path: `${BASE}/support-access`,
+        query: { shop_id: params.shopId, open: params.open ? "true" : null, cursor: params.cursor },
+        signal,
+        read: reading.page(supportAccess),
+      });
+    },
+
     listAudit(
-      params: { shopId?: string | null; action?: string | null; cursor?: string | null },
+      params: { shopId?: string | null; action?: string | null; adminId?: string | null; cursor?: string | null },
       signal?: AbortSignal,
     ): Promise<Page<AuditRow>> {
       return call(transport, {
         method: "GET",
         path: `${BASE}/audit`,
-        query: { shop_id: params.shopId, action: params.action, cursor: params.cursor },
+        query: { shop_id: params.shopId, action: params.action, admin_id: params.adminId, cursor: params.cursor },
         signal,
         read: reading.page(auditRow),
       });

@@ -310,15 +310,42 @@ describe("the administrator's entry keeps to itself", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("asks for nothing of a shop's customers, entries or balances: no call outside the admin API but sign-in", () => {
-    expect(admin.length).toBeGreaterThan(8);
+  /**
+   * The one place a shop's customers may appear on the administrator's side (REQ-059): the module that
+   * reads them under an open support access, and the two screens that show what it read.
+   */
+  const SUPPORT_SCREENS = ["admin/support/customers.ts", "admin/support/CustomersScreen.tsx", "admin/support/CustomerScreen.tsx"];
+  const CUSTOMER_WORDS =
+    /displayName|display_name|customerName|customer_name|\bbalance\b|creditLimit|listCustomers|readCustomer|reading\.customer|supportCustomers|CustomerDetail\b/;
+
+  it("never reaches the shop's own API or the customer's: no call outside the admin API but sign-in", () => {
+    expect(admin.length).toBeGreaterThan(12);
     for (const file of admin) {
-      // The shop API, the customer's API and their readers are the only way to such data.
       expect(file.text, file.name).not.toMatch(/createApi\(|\.shop\(|\.account\(|\/api\/v1\/shops|\/api\/v1\/me\b/);
-      expect(file.text, file.name).not.toMatch(/displayName|display_name|customerName|customer_name|\bbalance\b|listCustomers|readCustomer/);
     }
     const paths = admin.flatMap((file) => [...file.text.matchAll(/["'`](\/api\/[^"'`$]*)/g)].map((match) => match[1]));
     expect([...new Set(paths)]).toEqual(["/api/admin/v1"]);
+  });
+
+  it("names a shop's customers, entries or balances nowhere but on the support-access screens", () => {
+    const elsewhere = admin.filter((file) => !SUPPORT_SCREENS.includes(file.name));
+    expect(elsewhere).toHaveLength(admin.length - SUPPORT_SCREENS.length);
+    expect(elsewhere.map((file) => file.name)).toEqual(expect.arrayContaining(["admin/adminApi.ts", "admin/ShopScreen.tsx", "admin/SupportSection.tsx", "admin/SupportAccessScreen.tsx", "admin/AuditScreen.tsx", "admin/AdminApp.tsx"]));
+    expect(elsewhere.filter((file) => CUSTOMER_WORDS.test(file.text)).map((file) => file.name)).toEqual([]);
+    // The rule has teeth: it does find the three files that are allowed to name a customer.
+    expect(admin.filter((file) => CUSTOMER_WORDS.test(file.text)).map((file) => file.name).sort()).toEqual([...SUPPORT_SCREENS].sort());
+  });
+
+  it("reads a shop's customers in one module, which the two support-access screens alone use, and only the routes open them", () => {
+    const using = (pattern: RegExp) => admin.filter((file) => imports(file.text).some((specifier) => pattern.test(specifier))).map((file) => file.name).sort();
+    // `send` is the only way to a call that the admin API does not build itself.
+    expect(admin.filter((file) => /\.send\(/.test(file.text)).map((file) => file.name)).toEqual(["admin/support/customers.ts"]);
+    expect(using(/(^|\/)customers$/)).toEqual(["admin/support/CustomerScreen.tsx", "admin/support/CustomersScreen.tsx"]);
+    expect(using(/(^|\/)CustomerScreen$/)).toEqual(["admin/AdminApp.tsx"]);
+    // The customer's page borrows the list's two notices; nothing else borrows anything from either.
+    expect(using(/(^|\/)CustomersScreen$/)).toEqual(["admin/AdminApp.tsx", "admin/support/CustomerScreen.tsx"]);
+    // Nothing of them is reachable from the shared code or the other two entries.
+    expect(others.filter((file) => /admin\/support|supportCustomers/.test(file.text)).map((file) => file.name)).toEqual([]);
   });
 
   it("stores nothing in the browser", () => {

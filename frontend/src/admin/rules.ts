@@ -147,6 +147,31 @@ export function isChangeRefusal(value: unknown): value is ChangeRefusal {
   return CHANGE_REFUSALS.some((reason) => reason === value);
 }
 
+// --- support access --------------------------------------------------------------------------------------
+
+/** How long a support access may last, in whole hours (backend/src/qarz/domain/support_access.py, BR-31). */
+export const SUPPORT_HOURS_MIN = 1;
+export const SUPPORT_HOURS_MAX = 24;
+
+/** The typed number of hours when it is a whole number from 1 to 24; null otherwise. */
+export function parseHours(input: string): number | null {
+  const text = input.trim();
+  if (!/^[0-9]{1,2}$/.test(text)) {
+    return null;
+  }
+  const hours = Number(text);
+  return hours >= SUPPORT_HOURS_MIN && hours <= SUPPORT_HOURS_MAX ? hours : null;
+}
+
+/**
+ * Whether an access lets its administrator read the shop at `now`. The server's word is from the moment
+ * it answered; an access whose time has run out since then is no longer open.
+ */
+export function isOpenAccess(access: { state: string; endsAt: string }, now: Date): boolean {
+  const ends = new Date(access.endsAt).getTime();
+  return access.state === "active" && !Number.isNaN(ends) && ends > now.getTime();
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function isUuid(text: string): boolean {

@@ -13,6 +13,7 @@ import {
   auditBody,
   cells,
   CSRF,
+  NOBODY,
   NOW,
   ok,
   OTHER_SHOP,
@@ -103,8 +104,11 @@ describe("one shop", () => {
   type Held = { detail: unknown };
   const open = (detail: unknown = shopDetailBody(), onWrite: (sent: Sent) => Reply = () => ok(shopBody())) => {
     const held: Held = { detail };
-    const made = adminApi((sent) => (sent.method === "GET" ? ok(held.detail) : onWrite(sent)));
-    renderAdmin(<ShopScreen api={made.api} shopId={SHOP_ID} now={now} />);
+    const made = adminApi((sent) =>
+      // The page also reads the shop's open support accesses; these tests are about the rest of it.
+      sent.path === `${ADMIN}/support-access` ? ok({ items: [], next_cursor: null }) : sent.method === "GET" ? ok(held.detail) : onWrite(sent),
+    );
+    renderAdmin(<ShopScreen api={made.api} shopId={SHOP_ID} now={now} who={NOBODY} />);
     return { server: made.server, held };
   };
   const buttons = () => within(screen.getByRole("region", { name: "Obuna" })).getAllByRole("button").map((button) => button.textContent);
@@ -209,7 +213,8 @@ describe("one shop", () => {
     // The page shows what the server answered, and the only change now offered is the way back.
     await waitFor(() => expect(buttons()).toEqual(["To'xtatishni bekor qilish"]));
     expect(screen.getByText("To'xtatilishidan oldin: Sinov muddati")).toBeTruthy();
-    expect(server.sent.filter((s) => s.method === "GET")).toHaveLength(2);
+    // The shop was read again once, for its history.
+    expect(server.sent.filter((s) => s.method === "GET" && s.path === `${ADMIN}/shops/${SHOP_ID}`)).toHaveLength(2);
   });
 
   it.each([
@@ -291,12 +296,12 @@ describe("one shop", () => {
 
   it("shows the not-found screen for a shop that does not exist, and a failure with a retry otherwise", async () => {
     const missing = adminApi(() => refusal(404, "NOT_FOUND", "Topilmadi."));
-    renderAdmin(<ShopScreen api={missing.api} shopId={SHOP_ID} now={now} />);
+    renderAdmin(<ShopScreen api={missing.api} shopId={SHOP_ID} now={now} who={NOBODY} />);
     expect(await screen.findByText("Bunday sahifa yo'q yoki sizda unga ruxsat yo'q.")).toBeTruthy();
     cleanup();
     let fail = true;
     const flaky = adminApi(() => (fail ? "offline" : ok(shopDetailBody())));
-    renderAdmin(<ShopScreen api={flaky.api} shopId={SHOP_ID} now={now} />);
+    renderAdmin(<ShopScreen api={flaky.api} shopId={SHOP_ID} now={now} who={NOBODY} />);
     expect((await screen.findByRole("alert")).textContent).toContain("Serverga ulanib bo'lmadi");
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Qayta urinish" }));
@@ -504,19 +509,23 @@ describe("the audit", () => {
     const table = await screen.findByRole("table", { name: "Audit jurnali" });
     const rows = cells(table);
     expect(rows[0]).toEqual(["Vaqt", "Administrator", "Amal", "Nima haqida", "Sabab", "Tafsilot"]);
-    expect(rows[1]?.slice(0, 5)).toEqual(["2026-yil 5-oktabr, 11:00", "a1b2c3", "Sinov muddati belgilandi", "Do'kon · 00aaaa", "Egasi so'radi"]);
-    expect(rows[2]).toEqual(["2026-yil 5-oktabr, 11:00", "a1b2c3", "Sozlama o'zgartirildi", "Oylik obuna narxi, so'm", "—", "before: 100000; after: 120000"]);
+    // Beside the administrator's code sits the control that narrows the audit to them.
+    const who = "a1b2c3Faqat shu administrator";
+    expect(rows[1]?.slice(0, 5)).toEqual(["2026-yil 5-oktabr, 11:00", who, "Sinov muddati belgilandi", "Do'kon · 00aaaa", "Egasi so'radi"]);
+    expect(rows[2]).toEqual(["2026-yil 5-oktabr, 11:00", who, "Sozlama o'zgartirildi", "Oylik obuna narxi, so'm", "—", "before: 100000; after: 120000"]);
     expect(rows[3]?.slice(2)).toEqual(["Admin sessiyasi ochildi", "Administrator", "—", "—"]);
     // An action and a target the catalog does not know are shown under the server's own words.
     expect(rows[4]?.slice(2, 4)).toEqual(["future.thing", "gadget"]);
     expect(within(table).getByRole("link", { name: "Do'kon · 00aaaa" }).getAttribute("href")).toBe(`#/shops/${SHOP_ID}`);
-    expect(table.querySelectorAll("button, input, select")).toHaveLength(0);
+    // Nothing in the table changes anything: its only controls are the filters by administrator.
+    expect(table.querySelectorAll("input, select, textarea")).toHaveLength(0);
+    expect([...table.querySelectorAll("button")].map((button) => button.textContent)).toEqual(ROWS.map(() => "Faqat shu administrator"));
   });
 
   it("filters by the kind of action, as the start of its name", async () => {
     const server = open();
     const select = (await screen.findByLabelText("Amal")) as HTMLSelectElement;
-    expect([...select.options].map((option) => option.value)).toEqual(["", "admin", "shop", "subscription", "setting"]);
+    expect([...select.options].map((option) => option.value)).toEqual(["", "admin", "shop", "subscription", "setting", "support"]);
     expect(asked(server)).toEqual([{}]);
     fireEvent.change(select, { target: { value: "subscription" } });
     await waitFor(() => expect(asked(server).at(-1)).toEqual({ action: "subscription" }));

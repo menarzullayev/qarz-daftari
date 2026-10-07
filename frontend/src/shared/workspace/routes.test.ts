@@ -30,7 +30,7 @@ describe("matchWorkspaceRoute", () => {
   });
 
   it.each([
-    "/import-export",
+    "/import-export/x",
     "/reports/period",
     "/date-requests/1",
     "/customers/",

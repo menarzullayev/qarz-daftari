@@ -5,6 +5,7 @@ import { I18nProvider } from "../i18n/I18nProvider";
 import type { Language } from "../i18n/types";
 import { fakeServer, ok, refusal, type Reply, type Sent } from "../testing/fakeServer";
 import { createAdminApi } from "./adminApi";
+import type { Who } from "./SupportSection";
 
 /** Test helpers of the administrator's panel; nothing here is part of a build. */
 
@@ -91,6 +92,28 @@ export const platformBody = (overrides: Record<string, unknown> = {}, settings: 
   changed: { price_uzs: { by: ADMIN_ID, at: "2026-10-01T05:00:00+00:00" } },
   ...overrides,
 });
+
+export const OTHER_ADMIN = "77777777-7777-4777-8777-777777d4e5f6";
+export const ACCESS_ID = "88888888-8888-4888-8888-888888888881";
+
+/** A support access open at `NOW`: from an hour before it until an hour after. */
+export const supportBody = (overrides: Record<string, unknown> = {}) => ({
+  id: ACCESS_ID,
+  shop_id: SHOP_ID,
+  shop_name: "Baraka savdo",
+  admin_id: ADMIN_ID,
+  reason: "Egasi yordam so'radi",
+  state: "active",
+  starts_at: "2026-10-06T06:00:00+00:00",
+  ends_at: "2026-10-06T08:00:00+00:00",
+  closed_at: null,
+  closed_by: null,
+  ...overrides,
+});
+
+/** A panel that has not learnt which administrator it serves, and one that has. */
+export const NOBODY: Who = { me: null, learn: () => undefined };
+export const KNOWN: Who = { me: ADMIN_ID, learn: () => undefined };
 
 /** An administrator's API over a fake server, with the web session's cookie and CSRF token. */
 export function adminApi(handler: (sent: Sent, index: number) => Reply) {
