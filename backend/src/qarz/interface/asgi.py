@@ -13,11 +13,13 @@ from qarz.infrastructure.file_store import build_file_store
 from qarz.infrastructure.settings import Settings
 from qarz.infrastructure.telegram_files import TelegramFileFetcher
 from qarz.interface.http import create_app
+from qarz.interface.observability import configure_logging
 from qarz.interface.rate_limit import Limit, RateLimits
 
 
 def build(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
+    configure_logging()
     database = Database(settings.database_url)
     # Without a bot token no Telegram signature can be verified, so no API is served at all.
     auth = AuthService(database, settings.bot_token) if settings.bot_token else None
@@ -29,6 +31,7 @@ def build(settings: Settings | None = None) -> FastAPI:
         # A store that is named but misconfigured stops the start; none at all only refuses receipts.
         file_store=build_file_store(settings, max_object_bytes=MAX_FILE_BYTES),
         telegram_files=TelegramFileFetcher.for_token(settings.bot_token) if settings.bot_token else None,
+        metrics_token=settings.metrics_token or None,
         payment_keys=PaymentKeys(
             payme_merchant_id=settings.payme_merchant_id,
             payme_key=settings.payme_secret_key,

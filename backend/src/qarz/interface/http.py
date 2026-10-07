@@ -1,5 +1,6 @@
 """HTTP application factory (technical specification, API contract)."""
 
+import hmac
 import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime
@@ -46,6 +47,7 @@ from qarz.interface.disputes_api import add_dispute_routes
 from qarz.interface.errors import app_error_handler, error_response
 from qarz.interface.links_api import add_link_routes
 from qarz.interface.me_api import add_me_routes
+from qarz.interface.observability import Metrics, Observe
 from qarz.interface.online_payment_api import add_online_order_routes, add_provider_routes
 from qarz.interface.payment_notices_api import RECEIPT_UPLOAD, add_payment_notice_routes
 from qarz.interface.rate_limit import RateLimiter, RateLimits
@@ -91,6 +93,7 @@ def create_app(
     payment_keys: PaymentKeys | None = None,
     rate_limits: RateLimits | None = None,
     monotonic: Callable[[], float] = time.monotonic,
+    metrics_token: str | None = None,
 ) -> FastAPI:
     """Build the application.
 
@@ -148,6 +151,7 @@ def create_app(
             user_id = await resolver.user_id(request)
             if user_id is None:
                 raise Unauthenticated()
+            request.state.user_id = user_id  # for the request's log line
             if limiter is not None:
                 shop_id = _shop_in_path(request)
                 # Before anything else is done for the request, so that a flood costs little.
@@ -195,4 +199,25 @@ def create_app(
         chat = ChatService(storage, ShopService(storage, now), StaffService(storage, now), now, files)
         add_webhook_route(app, UpdateProcessor(storage, chat, telegram_files), webhook_secret)
 
+    metrics = Metrics()
+    if metrics_token is not None:
+        if len(metrics_token) < 16:
+            raise ValueError("the metrics token is too short")
+        expected = f"Bearer {metrics_token}".encode()
+
+        @app.get("/metrics", include_in_schema=False)
+        async def read_metrics(request: Request) -> Response:
+            # For the monitoring system on the same host only; without the token it does not exist.
+            given = request.headers.get("authorization", "").encode("utf-8")
+            if not hmac.compare_digest(given, expected):
+                return error_response("NOT_FOUND", "uz")
+            gauges: dict[str, dict[str, float]] = {}
+            if storage is not None:
+                async with storage.platform() as session:
+                    gauges = await session.health_figures()
+            return Response(metrics.render(gauges), media_type="text/plain; version=0.0.4")
+
+    # Added last, so it is outermost: every request is identified, measured and logged, whatever
+    # answers it.
+    app.add_middleware(Observe, metrics=metrics)
     return app

@@ -1181,8 +1181,10 @@ def test_a_receipt_is_not_left_in_the_store_when_the_notice_could_not_be_recorde
         raise RuntimeError("the database went away")
 
     monkeypatch.setattr(PgTenantSession, "add_payment_notice", fail)
-    with pytest.raises(RuntimeError, match="went away"):
-        send(client, world.customer_of_a, link_of(owner, world.customer_a), 20000, JPEG)
+    # The failure is not the caller's to see: it is answered as a server error and logged.
+    response = send(client, world.customer_of_a, link_of(owner, world.customer_a), 20000, JPEG)
+    assert response.status_code == 500
+    assert "went away" not in response.text
     assert staged_then == [1], "the receipt had been stored before the transaction failed"
     assert stored_objects(file_root) == []
     assert notices(owner, world.shop_a) == [] and files(owner, world.shop_a) == []

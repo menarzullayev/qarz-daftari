@@ -1943,6 +1943,25 @@ class PgPlatformSession:
         ).first()
         return row is not None
 
+    async def health_figures(self) -> dict[str, dict[str, float]]:
+        waiting = (
+            await self._conn.execute(
+                text(
+                    "SELECT channel, extract(epoch FROM now() - min(next_try_at)) AS seconds "
+                    "FROM outbox_message WHERE status = 'pending' AND next_try_at <= now() GROUP BY channel"
+                )
+            )
+        ).all()
+        jobs = (
+            await self._conn.execute(
+                text("SELECT job, extract(epoch FROM now() - max(finished_at)) AS seconds FROM job_run GROUP BY job")
+            )
+        ).all()
+        return {
+            "qd_outbox_oldest_due_seconds": {str(row.channel): float(row.seconds) for row in waiting},
+            "qd_job_last_finished_seconds": {str(row.job): float(row.seconds) for row in jobs},
+        }
+
     async def subscriptions_to_review(self, today: date) -> list[SubscriptionToReview]:
         rows = (
             await self._conn.execute(

@@ -816,6 +816,11 @@ class PlatformSession(Protocol):
 
     async def subscriptions_to_review(self, today: date) -> list[SubscriptionToReview]: ...
 
+    async def health_figures(self) -> dict[str, dict[str, float]]:
+        """Numbers for monitoring: how long the oldest due message of each channel has waited, in
+        seconds, and how long ago each scheduled job last finished. No identifiers."""
+        ...
+
     async def online_payment_shop(self, order_id: UUID) -> UUID | None:
         """The shop an order belongs to; nothing else about it."""
         ...
