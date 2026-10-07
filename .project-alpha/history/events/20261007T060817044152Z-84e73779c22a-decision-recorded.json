@@ -1,0 +1,19 @@
+{
+  "event_id": "84e73779c22a",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-07T06:08:17+00:00",
+  "path": ".project-alpha\\decisions\\DEC-056.md",
+  "stage": "04-prd",
+  "title": "Subscription receipt choices",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-056",
+  "decision": "A receipt states an amount and a number of months, with 1, 3, 6 and 12 months offered in chat; at most three receipts of a shop may wait; duplicates are looked for across all shops and shown only to administrators; the image is not forwarded to anyone and is opened through a signed link; the file is kept three years as the specification says pending advice; a receipt can be sent in any mode, even suspended; a column stated_months was added",
+  "context": "Decided by an agent during the autonomous build under DEC-020; implemented and awaiting the founder's review",
+  "chosen_option": "Choices as listed in pull request 54",
+  "rationale": "ADR-019 names stored hashes and flagged duplicates and leaves the rest open",
+  "impact": "High",
+  "reversibility": "High",
+  "evidence": "EVID-069",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

@@ -1,0 +1,21 @@
+{
+  "event_id": "4684be53dd31",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-07T06:08:16+00:00",
+  "path": ".project-alpha\\decisions\\DEC-051.md",
+  "stage": "04-prd",
+  "title": "Who decides a subscription receipt from the review group",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-051",
+  "decision": "The announcement in the review group carries the approve and reject buttons, and administrators in the group decide from there. The agent took this to mean platform administrators: a press is honoured only from someone on the allow-list with an active, confirmed account and a live administrator session, so ADR-017 holds in the group as elsewhere; any other member's press changes nothing. If the founder meant the Telegram group's own administrators, this must be revisited",
+  "context": "Answered by the founder on 2026-10-07 when asked by the agent in the working session",
+  "chosen_option": "Buttons in the group, honoured for platform administrators only",
+  "rationale": "The founder's words were that administrators in the group can approve and that a message without buttons will not do; this answers the specification's open question 5",
+  "impact": "Medium",
+  "reversibility": "High",
+  "evidence": "EVID-069",
+  "approval_required": "yes",
+  "approval_status": "approved",
+  "approver": "founder",
+  "approved_at": "2026-10-07"
+}

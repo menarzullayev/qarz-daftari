@@ -1,0 +1,21 @@
+{
+  "event_id": "a30a8e6af053",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-07T06:08:16+00:00",
+  "path": ".project-alpha\\decisions\\DEC-053.md",
+  "stage": "04-prd",
+  "title": "Store open debts to cure the slow overview of a very large shop",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-053",
+  "decision": "Each debt not yet fully paid is stored with what is left of it and its promised date, in a table kept by the database from the ledger, beyond the approved schema. The founder first chose a stored balance; the agent measured that it would not help and said so, and he then chose this",
+  "context": "Answered by the founder on 2026-10-07 when asked by the agent in the working session",
+  "chosen_option": "Table open_debt maintained by triggers; the ledger stays the only truth",
+  "rationale": "A stored balance gives the total owed but not the overdue figures; storing the open debts took the overview's totals for a shop of 200 298 entries from 361 ms to 2.3 ms on the generated load database",
+  "impact": "High",
+  "reversibility": "High",
+  "evidence": "EVID-063",
+  "approval_required": "yes",
+  "approval_status": "approved",
+  "approver": "founder",
+  "approved_at": "2026-10-07"
+}
