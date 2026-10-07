@@ -107,6 +107,11 @@ function OpenDisputes() {
 
   return (
     <>
+      <nav className="actions" aria-label={t("nav.disputes")}>
+        <Link to="/date-requests" className="button">
+          {t("dates.title")}
+        </Link>
+      </nav>
       <p className="hint">{t("disputes.hint")}</p>
       {done !== null ? (
         <p className="notice notice--done" role="status">

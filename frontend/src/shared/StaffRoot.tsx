@@ -229,7 +229,7 @@ export function StaffWorkspace({
           </Gate>
         }
       >
-        <CustomerArea api={phase.api} staffHome={phase.shops.length > 0} />
+        <CustomerArea api={phase.api} staffHome={phase.shops.length > 0} now={now} />
       </Suspense>
     );
   }

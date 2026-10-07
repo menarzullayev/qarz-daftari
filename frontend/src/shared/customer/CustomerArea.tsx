@@ -48,7 +48,7 @@ function AccountRow({ account }: { account: MyAccount }) {
 }
 
 /** The shops where the person is a customer. With a single one there is nothing to choose: it is shown. */
-function Accounts({ api }: { api: Api }) {
+function Accounts({ api, now }: { api: Api; now: (() => Date) | undefined }) {
   const { t } = useI18n();
   const { state, reload } = useLoad((signal) => api.myAccounts(signal), [api]);
   const only = state.status === "ready" && state.data.length === 1 ? state.data[0] : undefined;
@@ -68,6 +68,7 @@ function Accounts({ api }: { api: Api }) {
     return (
       <AccountScreen
         api={onlyApi}
+        now={now}
         back={
           <button type="button" className="button" onClick={reload}>
             {t("my.back")}
@@ -88,12 +89,13 @@ function Accounts({ api }: { api: Api }) {
   );
 }
 
-function OneAccount({ api, linkId }: { api: Api; linkId: string }) {
+function OneAccount({ api, linkId, now }: { api: Api; linkId: string; now: (() => Date) | undefined }) {
   const { t } = useI18n();
   const account = useMemo(() => api.account(linkId), [api, linkId]);
   return (
     <AccountScreen
       api={account}
+      now={now}
       back={
         <Link to={MY_PATH} className="button">
           {t("my.back")}
@@ -107,13 +109,15 @@ export type CustomerAreaProps = {
   api: Api;
   /** True when the person also works in a shop: the navigation then offers the way back to it. */
   staffHome: boolean;
+  /** The current instant; tests pass a fixed one. */
+  now?: (() => Date) | undefined;
 };
 
 /**
  * The customer's own pages inside the shell: their accounts and one account. It is loaded on demand,
  * so a member of staff who is nobody's customer never downloads it.
  */
-export default function CustomerArea({ api, staffHome }: CustomerAreaProps) {
+export default function CustomerArea({ api, staffHome, now }: CustomerAreaProps) {
   const { t } = useI18n();
   const path = useHashPath();
   const route = matchCustomerRoute(path, staffHome);
@@ -123,10 +127,10 @@ export default function CustomerArea({ api, staffHome }: CustomerAreaProps) {
   let screen: ReactNode = <NotFoundScreen />;
   if (route?.screen === "accounts") {
     title = t("my.title");
-    screen = <Accounts api={api} />;
+    screen = <Accounts api={api} now={now} />;
   } else if (route?.screen === "account") {
     title = t("my.account.title");
-    screen = <OneAccount key={route.linkId} api={api} linkId={route.linkId} />;
+    screen = <OneAccount key={route.linkId} api={api} linkId={route.linkId} now={now} />;
   }
 
   return (

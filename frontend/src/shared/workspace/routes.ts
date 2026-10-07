@@ -12,6 +12,8 @@ export type WorkspaceRoute =
   | { screen: "waiting" }
   | { screen: "counterCode" }
   | { screen: "disputes" }
+  | { screen: "dateRequests" }
+  | { screen: "reports" }
   | { screen: "catalog" }
   | { screen: "reminders" }
   | { screen: "subscription" }
@@ -46,6 +48,11 @@ export function matchWorkspaceRoute(path: string): WorkspaceMatch | null {
       return { route: { screen: "counterCode" }, sectionPath: "/customers", titleKey: "counter.title" };
     case "/disputes":
       return { route: { screen: "disputes" }, sectionPath: "/disputes", titleKey: "disputes.title" };
+    // Requests to move a date sit with the disputes: both are what customers ask and managers answer.
+    case "/date-requests":
+      return { route: { screen: "dateRequests" }, sectionPath: "/disputes", titleKey: "dates.title" };
+    case "/reports":
+      return { route: { screen: "reports" }, sectionPath: "/reports", titleKey: "nav.reports" };
     case "/new":
       return { route: { screen: "pickCustomer" }, sectionPath: "/new", titleKey: "nav.newEntry" };
     case "/catalog":

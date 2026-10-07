@@ -184,6 +184,8 @@ describe("what a role is offered (REQ-033)", () => {
       disputed: false,
       authorId: null,
       lines: [],
+      promises: [],
+      dateRequest: null,
       ...overrides,
     });
     expect(canReverse(entry({}), true)).toBe(true);
