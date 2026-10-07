@@ -79,7 +79,8 @@ class Scheduler:
                 async with self._storage.platform() as session:
                     await session.finish_job(ERASURE, period)
         if self._notices is not None:
-            # Expiry of payment notices and deletion of receipts past their retention, once an hour.
+            # Expiry of payment notices and deletion of receipts past their retention (those of payment
+            # notices after 90 days, those of the subscription after 3 years), once an hour.
             period = f"{local.date().isoformat()}T{local.hour:02d}"
             async with self._storage.platform() as session:
                 done = await session.job_done(RECEIPTS, period)

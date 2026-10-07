@@ -32,6 +32,12 @@ FUNCTIONS = [
     "admin_support_open(uuid, uuid, uuid, text, timestamptz, timestamptz)",
     "admin_support_close(uuid, uuid, timestamptz)",
     "admin_support_list(uuid, uuid, boolean, timestamptz, timestamptz, uuid, integer)",
+    # Subscription receipts (migration 0024); what each does is tested in test_subscription_receipt_functions.py.
+    "admin_receipts(uuid, text, timestamptz, uuid, integer)",
+    "admin_receipt(uuid, uuid, boolean)",
+    "admin_receipt_copies(uuid, uuid)",
+    "admin_decide_receipt(uuid, uuid, text, smallint, text, timestamptz)",
+    "admin_shop_activity(uuid, uuid, text, uuid)",
 ]
 SEARCH = "SELECT * FROM admin_shop_search(%s, %s, %s, %s, %s, %s, %s, %s)"
 SEARCH_COLUMNS = [

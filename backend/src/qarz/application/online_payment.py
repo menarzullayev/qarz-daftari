@@ -26,7 +26,7 @@ from qarz.domain import platform_settings
 from qarz.domain.access import Capability
 from qarz.domain.online_payment import CANCELLED, CLICK, CREATED, PAID, PAYME, PENDING
 from qarz.domain.promise import tashkent_date
-from qarz.domain.subscription import DEFAULT_PRICE_UZS, MAX_MONTHS, SUSPENDED, extend_paid_through
+from qarz.domain.subscription import DEFAULT_PRICE_UZS, LIMITED, MAX_MONTHS, SUSPENDED, after_payment
 
 CREATE_ONLINE_ORDER = operation("shop.subscription.online_order.create", Capability.ADMINISTER_SHOP)
 
@@ -180,8 +180,14 @@ class OnlinePaymentService:
         """The money was taken: the order is paid and the shop is paid through a later date."""
         now = self._now()
         stored = await session.subscription_locked()
-        paid_through = extend_paid_through(None if stored is None else stored[2], self._today(), order.months)
-        await session.pay_subscription(paid_through, now)
+        # The same rule as a transfer an administrator approves (qarz.application.admin_receipts).
+        state, paid_through, prior_state = after_payment(
+            LIMITED if stored is None else stored[0],
+            None if stored is None else stored[2],
+            self._today(),
+            order.months,
+        )
+        await session.pay_subscription(state=state, paid_through=paid_through, prior_state=prior_state, now=now)
         await session.finish_online_payment(order.id, now)
         await session.record_system_activity(action="subscription.paid_online", subject_id=order.id)
         settings = await session.shop_settings()

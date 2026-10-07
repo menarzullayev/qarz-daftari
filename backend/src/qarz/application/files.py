@@ -177,7 +177,8 @@ class FileService:
         return data
 
     async def purge_due_receipts(self, shop_id: UUID, now: datetime, limit: int = PURGE_BATCH) -> int:
-        """Delete the shop's payment-notice receipts whose retention has run out. For the retention job.
+        """Delete the shop's receipts, of payment notices and of the subscription, whose retention has
+        run out. For the retention job.
 
         The object goes first and its row after, each row in its own short transaction, so no network
         call is made inside a transaction and a failure leaves a row that the next run finds again.

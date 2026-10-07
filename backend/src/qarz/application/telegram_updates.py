@@ -47,6 +47,10 @@ class Processed:
     webhook_reply: dict[str, Any] | None = None
 
 
+# The buttons that may be pressed outside a private chat: the decisions on a subscription receipt.
+GROUP_BUTTONS = ("v2:sra:", "v2:srj:")
+
+
 class UpdateProcessor:
     def __init__(self, storage: Storage, chat: ChatService, files: TelegramFiles | None = None) -> None:
         self._storage = storage
@@ -91,7 +95,24 @@ class UpdateProcessor:
             and sender_id == chat.get("id")
         )
 
-        person: int | None = sender_id if served and isinstance(sender_id, int) else None
+        # One exception: a button of the receipt announcement pressed in a group by someone on the
+        # administrators' allow-list. Whether the group is the review group is checked below, and
+        # whether the person may decide, when the press is handled. Nobody else is looked at, so
+        # pressing a button in a group makes nobody a user of the service.
+        group_press = (
+            not served
+            and isinstance(pressed, dict)
+            and isinstance(message, dict)
+            and chat.get("type") in ("group", "supergroup")
+            and isinstance(data, str)
+            and data.startswith(GROUP_BUTTONS)
+            and isinstance(sender_id, int)
+            and not isinstance(sender_id, bool)
+            and sender_id > 0
+            and self._chat.on_allow_list(sender_id)
+        )
+
+        person: int | None = sender_id if (served or group_press) and isinstance(sender_id, int) else None
 
         sent_file = _sent_file(message) if isinstance(message, dict) and not isinstance(pressed, dict) else None
         wanted = False
@@ -122,8 +143,28 @@ class UpdateProcessor:
             profile_name = " ".join(" ".join(str(n) for n in names if isinstance(n, str)).split())[:80] or None
             message_id = message.get("message_id")
             if isinstance(pressed, dict):
+                group: tuple[int, int] | None = None
+                if group_press:
+                    group_id = chat.get("id")
+                    if (
+                        not isinstance(group_id, int)
+                        or isinstance(group_id, bool)
+                        or not _is_id(message_id)
+                        or not await self._chat.is_review_group(session, group_id)
+                    ):
+                        return Processed(True, answer)
+                    assert isinstance(message_id, int)
+                    group = (group_id, message_id)
                 incoming = Incoming(
-                    update_id, person, user_id, lang, message_id if _is_id(message_id) else None, profile_name
+                    update_id,
+                    person,
+                    user_id,
+                    lang,
+                    # In the group the presser is answered in their own chat, where that message is not.
+                    message_id if group is None and _is_id(message_id) else None,
+                    profile_name,
+                    None,
+                    group,
                 )
                 if isinstance(data, str):
                     await self._chat.handle_callback(session, incoming, data)

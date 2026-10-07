@@ -70,6 +70,7 @@ AS $$
   SELECT n.shop_id FROM payment_notice n WHERE n.status = 'sent' AND n.created_at < p_stale_before
   UNION
   SELECT f.shop_id FROM stored_file f
-   WHERE f.purpose IN ('payment_notice', 'export', 'import') AND f.delete_after <= p_now
+   WHERE f.purpose IN ('payment_notice', 'export', 'subscription_receipt', 'import')
+     AND f.delete_after <= p_now
   ORDER BY 1;
 $$;

@@ -1,19 +1,19 @@
-"""Import: the states and claim of worker steps, indexes, and import files in the retention job.
+"""Subscription receipts: stated months, the administrator's queue and decision, duplicates, retention.
 
-Revision ID: 0023
-Revises: 0024
+Revision ID: 0024
+Revises: 0022
 """
 
 from pathlib import Path
 
 from alembic import op
 
-revision = "0023"
-down_revision = "0024"
+revision = "0024"
+down_revision = "0022"
 branch_labels = None
 depends_on = None
 
-_SQL = Path(__file__).resolve().parent.parent / "sql" / "0023_import.sql"
+_SQL = Path(__file__).resolve().parent.parent / "sql" / "0024_subscription_receipts.sql"
 
 
 def upgrade() -> None:

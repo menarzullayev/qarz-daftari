@@ -457,6 +457,13 @@ def test_every_administrator_write_leaves_exactly_one_audit_row_saying_who_what_
         assert (target_type, target_id, target_shop) == ("shop", str(world.shop_a), world.shop_a)
         assert body is not None
         assert reason == body["reason"]
+    elif "receipts" in op_name:
+        receipt = call.path(world).split("/")[-2]
+        decided = {"admin.receipts.approve": "approved", "admin.receipts.reject": "rejected"}[op_name]
+        assert action == f"subscription.receipt_{decided}"
+        assert (target_type, target_id, target_shop) == ("receipt", receipt, world.shop_a)
+        assert body is not None
+        assert reason == body.get("reason")
     else:
         assert (action, target_type, target_id, target_shop) == ("setting.changed", "setting", "trial_days", None)
 

@@ -8,13 +8,15 @@ platform transaction failed after the shop's transaction had committed.
 Every action is authorized again when a button is pressed: callback data is only an identifier.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Container
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid5
 
 from qarz.application import idempotency
+from qarz.application.admin_receipts import CHAT as DECIDED_IN_CHAT
+from qarz.application.admin_receipts import AdminReceiptService, ReceiptAlreadyDecided
 from qarz.application.chat_texts import CONSENT_VERSION, LANGUAGE_NAMES, day, money, say
 from qarz.application.customer_account import CustomerAccountService
 from qarz.application.customers import CREATE_CUSTOMER, create_customer_in, require_writable
@@ -47,11 +49,15 @@ from qarz.application.ports import CustomerAccount, Membership, MyShop, Platform
 from qarz.application.shops import ShopService, require_member
 from qarz.application.staff import StaffService, token_hash
 from qarz.application.subscription import SubscriptionService
+from qarz.application.subscription_receipts import REVIEW_GROUP, SubscriptionReceiptService
+from qarz.domain import platform_settings
 from qarz.domain.access import Capability, allows
 from qarz.domain.chat_entry import ParsedEntry, ParseError, ParseErrorCode, parse_amount, parse_entry
 from qarz.domain.disputes import clean_reason
 from qarz.domain.ledger import EntryKind
 from qarz.domain.promise import QuickChoice, parse_day_month, quick_choice_date, tashkent_date
+from qarz.domain.subscription_receipts import OFFERED_MONTHS, expected_amount
+from qarz.domain.subscription_receipts import clean_reason as clean_receipt_reason
 
 CALLBACK_VERSION = "v2"
 PENDING_LIFETIME = timedelta(minutes=15)
@@ -106,6 +112,9 @@ def _uuid(hex_text: str) -> UUID | None:
         return None
 
 
+GROUP_LANG = "uz"  # the review group is answered in the language its announcement was written in
+
+
 @dataclass(frozen=True)
 class Incoming:
     update_id: int
@@ -115,6 +124,10 @@ class Incoming:
     message_id: int | None = None  # the message a pressed button belongs to
     profile_name: str | None = None  # the name in the person's Telegram profile
     received: float | None = None  # time.perf_counter() when the update arrived; for the handling time
+    # Set when a button of the receipt announcement was pressed in the review group: that chat and
+    # the announcement's message. `chat_id` is then the presser's own private chat, where they are
+    # answered; the group only sees the announcement change once a decision is made.
+    group: tuple[int, int] | None = None
 
     @property
     def key(self) -> str:
@@ -166,6 +179,24 @@ class Replies:
             }
         )
 
+    async def strip(self, message_id: int) -> None:
+        """Take the buttons off an earlier message of this chat."""
+        await self._queue({"method": "editMessageReplyMarkup", "message_id": message_id, "reply_markup": _markup(None)})
+
+    async def close_in_group(self, chat_id: int, message_id: int, text: str) -> None:
+        """Replace the announcement in the review group: it says what was decided and has no buttons."""
+        await self._session.enqueue(
+            channel="telegram",
+            recipient=str(chat_id),
+            payload={
+                "method": "editMessageText",
+                "message_id": message_id,
+                "text": text,
+                "reply_markup": _markup(None),
+            },
+            dedupe_key=f"update:{self._incoming.update_id}:group",
+        )
+
     async def buttons(self, keyboard: Keyboard | None) -> None:
         if self._incoming.message_id is not None:
             await self._queue(
@@ -185,6 +216,7 @@ class ChatService:
         staff: StaffService,
         now: Callable[[], datetime] | None = None,
         files: FileService | None = None,
+        admin_tg_ids: Container[int] = (),
     ) -> None:
         self._storage = storage
         self._shops = shops
@@ -194,6 +226,12 @@ class ChatService:
         self._subscriptions = SubscriptionService(storage, now)
         # Without a file service a notice can still be sent; only a receipt is refused.
         self._notices = PaymentNoticeService(storage, files or FileService(storage, None), now)
+        self._receipts = SubscriptionReceiptService(
+            storage, files or FileService(storage, None), now, admin_tg_ids=admin_tg_ids
+        )
+        # The allow-list of the administrator's side, and the same decisions the panel makes.
+        self._reviewers = admin_tg_ids
+        self._admin_receipts = AdminReceiptService(storage, files or FileService(storage, None), now)
         self._date_requests = DateRequestService(storage, now)
         self._now = now or (lambda: datetime.now(UTC))
 
@@ -206,8 +244,11 @@ class ChatService:
         replies = Replies(session, incoming)
         text = text.strip()
         if text.startswith("/"):
-            # A command ends an unfinished payment notice: what is typed next is not its amount.
+            # A command ends an unfinished payment notice: what is typed next is not its amount. It ends
+            # a subscription receipt that was being sent as well.
             await session.drop_pending(incoming.user_id, "notice")
+            await session.drop_pending(incoming.user_id, "sub_receipt")
+            await session.drop_pending(incoming.user_id, "receipt_reject")
             await self._command(session, incoming, replies, text)
             return
 
@@ -227,6 +268,10 @@ class ChatService:
         asked = await session.current_pending(incoming.user_id, "notice_decline", self._now())
         if asked is not None:
             await self._notice_decline_reason(session, incoming, replies, asked[1], text)
+            return
+        asked = await session.current_pending(incoming.user_id, "receipt_reject", self._now())
+        if asked is not None:
+            await self._receipt_reject_reason(session, incoming, replies, asked[1], text)
             return
         asked = await session.current_pending(incoming.user_id, "notice", self._now())
         if asked is not None:
@@ -330,10 +375,7 @@ class ChatService:
             elif shop is None:
                 await replies.send(say(lang, "choose_shop"), self._shop_buttons(shops))
             else:
-                try:
-                    await replies.send(await self._subscriptions.chat_text(incoming.user_id, shop.shop_id, lang))
-                except AppError as error:
-                    await replies.send(self._error_text(lang, error))
+                await self._subscription_offer(incoming, replies, shop)
         elif command == "/toladim":
             await self._notice_start(session, incoming, replies)
         elif command == "/yordam":
@@ -435,6 +477,16 @@ class ChatService:
             await self._notice_shop(session, incoming, replies, arguments[0])
         elif action in ("pns", "pnx"):
             await self._notice_finish(session, incoming, replies, action)
+        elif action == "srm" and len(arguments) == 2:
+            await self._sub_receipt_start(session, incoming, replies, arguments[0], arguments[1])
+        elif action in ("sra", "srj") and len(arguments) == 1:
+            await self._receipt_pressed(session, incoming, replies, action, arguments[0])
+        elif action == "srn":
+            await session.drop_pending(incoming.user_id, "receipt_reject")
+            await replies.show(say(lang, "cancelled"))
+        elif action == "srx":
+            await session.drop_pending(incoming.user_id, "sub_receipt")
+            await replies.show(say(lang, "cancelled"))
         elif action in ("pna", "pnd") and arguments:
             notice_id = _uuid(arguments[0])
             if notice_id is None:
@@ -783,7 +835,10 @@ class ChatService:
     async def awaits_receipt(self, session: PlatformSession, user_id: UUID) -> bool:
         """Whether a file from this person would be the receipt of a payment notice they are sending."""
         asked = await session.current_pending(user_id, "notice", self._now())
-        return asked is not None and "amount" in asked[1]
+        if asked is not None and "amount" in asked[1]:
+            return True
+        # Or the receipt of a subscription payment, after a period was chosen under /obuna.
+        return await session.current_pending(user_id, "sub_receipt", self._now()) is not None
 
     async def handle_file(self, session: PlatformSession, incoming: Incoming, content: bytes | None) -> None:
         """A photo or a document. `content` is None when it could not be had or is too large.
@@ -793,7 +848,10 @@ class ChatService:
         replies = Replies(session, incoming)
         lang = incoming.lang
         asked = await session.current_pending(incoming.user_id, "notice", self._now())
-        if asked is None or "amount" not in asked[1]:
+        paying = await session.current_pending(incoming.user_id, "sub_receipt", self._now())
+        if (asked is None or "amount" not in asked[1]) and paying is not None:
+            await self._sub_receipt_send(session, incoming, replies, paying[1], content)
+        elif asked is None or "amount" not in asked[1]:
             await replies.send(say(lang, "only_text"))
         elif content is None:
             await replies.send(say(lang, "notice_receipt_invalid"), self._receipt_buttons(lang))
@@ -839,6 +897,228 @@ class ChatService:
             return
         await session.drop_pending(incoming.user_id, "notice")
         await replies.show(say(lang, "notice_sent", shop=account.shop_name, amount=money(lang, amount)))
+
+    # --- paying the subscription by card transfer (REQ-054) -------------------------------------------
+
+    async def _subscription_offer(
+        self, incoming: Incoming, replies: Replies, shop: MyShop, *, months: int | None = None
+    ) -> tuple[str, int] | None:
+        """Show `/obuna` with the periods to pay for, or return the shop's name and price for a chosen one."""
+        lang = incoming.lang
+        try:
+            text, name, price = await self._subscriptions.chat_offer(incoming.user_id, shop.shop_id, lang)
+        except AppError as error:
+            await replies.show(self._error_text(lang, error))
+            return None
+        if months is not None:
+            if price is None:
+                await replies.show(text)
+                return None
+            return name, price
+        if price is None:
+            await replies.send(text)
+            return None
+        await replies.send(
+            text + "\n" + say(lang, "sub_choose_months"),
+            [
+                [
+                    (
+                        say(lang, "sub_months_button", months=count, amount=money(lang, expected_amount(price, count))),
+                        callback("srm", shop.shop_id.hex, count),
+                    )
+                ]
+                for count in OFFERED_MONTHS
+            ],
+        )
+        return None
+
+    async def _sub_receipt_start(
+        self, session: PlatformSession, incoming: Incoming, replies: Replies, shop_hex: str, months_text: str
+    ) -> None:
+        """A period was chosen under `/obuna`: remember it and ask for the receipt."""
+        lang = incoming.lang
+        shop_id = _uuid(shop_hex)
+        mine = {shop.shop_id: shop for shop in await session.my_memberships(incoming.user_id)}
+        months = int(months_text) if months_text.isascii() and months_text.isdigit() else 0
+        if shop_id is None or shop_id not in mine or months not in OFFERED_MONTHS:
+            await replies.show(say(lang, "expired"))
+            return
+        offer = await self._subscription_offer(incoming, replies, mine[shop_id], months=months)
+        if offer is None:
+            return
+        name, price = offer
+        amount = expected_amount(price, months)
+        for kind in ("notice", "sub_receipt"):
+            await session.drop_pending(incoming.user_id, kind)
+        await session.put_pending(
+            pending_id=self._pending_id(incoming),
+            user_id=incoming.user_id,
+            kind="sub_receipt",
+            payload={"shop": shop_id.hex, "months": months, "amount": amount},
+            now=self._now(),
+            expires_at=self._now() + PENDING_LIFETIME,
+        )
+        await replies.show(
+            say(lang, "ask_sub_receipt", shop=name, months=months, amount=money(lang, amount)),
+            [[(say(lang, "cancel"), callback("srx"))]],
+        )
+
+    async def _sub_receipt_send(
+        self,
+        session: PlatformSession,
+        incoming: Incoming,
+        replies: Replies,
+        payload: dict[str, Any],
+        content: bytes | None,
+    ) -> None:
+        lang = incoming.lang
+        cancel: Keyboard = [[(say(lang, "cancel"), callback("srx"))]]
+        shop_id = _uuid(str(payload.get("shop", "")))
+        mine = {shop.shop_id: shop for shop in await session.my_memberships(incoming.user_id)}
+        amount, months = payload.get("amount"), payload.get("months")
+        if shop_id is None or shop_id not in mine or not isinstance(amount, int) or not isinstance(months, int):
+            await session.drop_pending(incoming.user_id, "sub_receipt")
+            await replies.send(say(lang, "expired"))
+            return
+        try:
+            # A file that could not be had, or is too large, is refused like any other that is no receipt.
+            await self._receipts.submit(incoming.user_id, shop_id, amount, months, content, update_key=incoming.key)
+        except AppError as error:
+            if isinstance(error, ValidationFailed) and "receipt" in error.fields:
+                await replies.send(say(lang, "sub_receipt_invalid"), cancel)
+                return
+            if error.code != "FILE_STORE_UNAVAILABLE":
+                await session.drop_pending(incoming.user_id, "sub_receipt")
+            await replies.send(self._error_text(lang, error))
+            return
+        await session.drop_pending(incoming.user_id, "sub_receipt")
+        await replies.send(
+            say(lang, "sub_receipt_sent", shop=mine[shop_id].name, months=months, amount=money(lang, amount))
+        )
+
+    # --- an administrator decides a subscription receipt from their private chat (REQ-055) -------------
+
+    def on_allow_list(self, tg_id: int) -> bool:
+        """Whether a press in the review group is looked at at all: nobody else becomes a user by it."""
+        return tg_id in self._reviewers
+
+    @staticmethod
+    async def is_review_group(session: PlatformSession, chat_id: int) -> bool:
+        group = platform_settings.effective(REVIEW_GROUP, await session.platform_setting(REVIEW_GROUP))
+        return isinstance(group, int) and not isinstance(group, bool) and group == chat_id
+
+    async def _reviewer(self, session: PlatformSession, incoming: Incoming) -> bool | None:
+        """Whether the person may decide receipts here (ADR-017).
+
+        True: on the allow-list, with an active and confirmed administrator account, and holding an admin
+        session that is still valid, which is the proof that they passed the second factor within its
+        lifetime. False: an administrator who lacks only that. None: anyone else, to whom these buttons
+        are no buttons at all.
+        """
+        if incoming.chat_id not in self._reviewers:
+            return None
+        account = await session.admin_account(incoming.user_id, for_update=False)
+        if account is None or account.status != "active":
+            return None
+        return account.confirmed and await session.admin_has_live_session(incoming.user_id, self._now())
+
+    async def _receipt_pressed(
+        self, session: PlatformSession, incoming: Incoming, replies: Replies, action: str, receipt_hex: str
+    ) -> None:
+        lang = incoming.lang
+        receipt_id = _uuid(receipt_hex)
+        allowed = await self._reviewer(session, incoming)
+        if receipt_id is None or allowed is None:
+            # Exactly what an unknown button gets; nothing about receipts is said.
+            await replies.buttons(None)
+            return
+        if not allowed:
+            await replies.send(say(lang, "a_sign_in_first"))
+            return
+        try:
+            if action == "srj":
+                await self._admin_receipts.require_waiting(incoming.user_id, receipt_id)
+                await session.drop_pending(incoming.user_id, "receipt_reject")
+                await session.put_pending(
+                    pending_id=self._pending_id(incoming),
+                    user_id=incoming.user_id,
+                    kind="receipt_reject",
+                    # The message the button was on: its buttons go once the receipt is rejected.
+                    payload={
+                        "receipt": receipt_id.hex,
+                        "message": incoming.message_id,
+                        "group": None if incoming.group is None else list(incoming.group),
+                    },
+                    now=self._now(),
+                    expires_at=self._now() + PENDING_LIFETIME,
+                )
+                await replies.send(say(lang, "ask_receipt_reject_reason"), [[(say(lang, "cancel"), callback("srn"))]])
+                return
+            # The months the owner stated; correcting them is done in the panel.
+            body = await self._admin_receipts.approve(
+                incoming.user_id, receipt_id, None, None, None, update_key=incoming.key, via=DECIDED_IN_CHAT
+            )
+        except ReceiptAlreadyDecided:
+            await replies.show(say(lang, "a_receipt_decided"))
+            if incoming.group is not None:
+                await replies.close_in_group(*incoming.group, say(GROUP_LANG, "a_receipt_decided"))
+            return
+        except ValidationFailed:
+            await replies.send(say(lang, "a_receipt_use_panel"))
+            return
+        except AppError as error:
+            await replies.show(self._error_text(lang, error))
+            return
+        # The message with the buttons is replaced: this administrator's copy has none any more.
+        paid_through = day(date.fromisoformat(body["subscription"]["paid_through"]))
+        await replies.show(
+            say(lang, "a_receipt_approved", shop=body["shop_name"], months=body["months"], date=paid_through)
+        )
+        if incoming.group is not None:
+            await replies.close_in_group(
+                *incoming.group,
+                say(GROUP_LANG, "a_receipt_approved", shop=body["shop_name"], months=body["months"], date=paid_through),
+            )
+
+    async def _receipt_reject_reason(
+        self, session: PlatformSession, incoming: Incoming, replies: Replies, payload: dict[str, Any], text: str
+    ) -> None:
+        """An administrator's next message after pressing "reject" is the reason told to the owner."""
+        lang = incoming.lang
+        receipt_id = _uuid(str(payload.get("receipt", "")))
+        allowed = await self._reviewer(session, incoming)
+        if receipt_id is None or allowed is None:
+            await session.drop_pending(incoming.user_id, "receipt_reject")
+            await replies.send(say(lang, "expired"))
+            return
+        if not allowed:
+            # The session ran out while the reason was being written. The question stays open.
+            await replies.send(say(lang, "a_sign_in_first"))
+            return
+        reason = clean_receipt_reason(text)
+        if reason is None:
+            await replies.send(say(lang, "a_reason_invalid"), [[(say(lang, "cancel"), callback("srn"))]])
+            return
+        await session.drop_pending(incoming.user_id, "receipt_reject")
+        try:
+            body = await self._admin_receipts.reject(
+                incoming.user_id, receipt_id, reason, None, update_key=incoming.key, via=DECIDED_IN_CHAT
+            )
+        except ReceiptAlreadyDecided:
+            await replies.send(say(lang, "a_receipt_decided"))
+            return
+        except AppError as error:
+            await replies.send(self._error_text(lang, error))
+            return
+        await replies.send(say(lang, "a_receipt_rejected", shop=body["shop_name"], reason=reason))
+        group = payload.get("group")
+        if isinstance(group, list) and len(group) == 2 and all(isinstance(part, int) for part in group):
+            await replies.close_in_group(
+                group[0], group[1], say(GROUP_LANG, "a_receipt_rejected", shop=body["shop_name"], reason=reason)
+            )
+        announced = payload.get("message")
+        if isinstance(announced, int) and not isinstance(announced, bool):
+            await replies.strip(announced)
 
     async def _shop_of_notice(self, shops: list[MyShop], notice_id: UUID) -> MyShop | None:
         """Which of the caller's shops holds the notice. Only a lookup, like `_shop_of_entry`."""
