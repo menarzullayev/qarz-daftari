@@ -1,0 +1,19 @@
+{
+  "event_id": "a7496fd629d4",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-07T00:31:21+00:00",
+  "path": ".project-alpha\\decisions\\DEC-045.md",
+  "stage": "04-prd",
+  "title": "Choices made in fixing the security review's findings",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-045",
+  "decision": "One mebibyte as the limit for every request body, with uploads to get a larger allowance of their own; five minutes of allowance in the database's check of the 30-day wait for the application server's clock; opening a shop from the chat keeps an API-shaped request key; asking for and cancelling deletion stay allowed in a suspended shop while changes to settings, staff and ownership are refused there",
+  "context": "Decided by an agent during the autonomous build under DEC-020; implemented and awaiting the founder's review",
+  "chosen_option": "Choices as listed in pull request 45",
+  "rationale": "The review names the defects and leaves the limits, and whether a suspended shop's owner may still ask for erasure, to be decided",
+  "impact": "Medium",
+  "reversibility": "High",
+  "evidence": "EVID-061",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}
