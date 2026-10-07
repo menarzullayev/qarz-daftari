@@ -8,9 +8,10 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from zoneinfo import ZoneInfo
 
 from qarz.application import idempotency
-from qarz.application.errors import ForbiddenRole, NotFound, ValidationFailed
+from qarz.application.errors import AppError, ForbiddenRole, NotFound, ValidationFailed
 from qarz.application.operations import Operation, operation, self_operation
 from qarz.application.ports import Membership, ShopSettings, Storage, TenantSession
+from qarz.domain import platform_settings
 from qarz.domain.access import Capability, Role, allows, lowest_role_with
 
 READ_SHOP = operation("shop.read", Capability.READ_SHOP)
@@ -36,6 +37,17 @@ async def require_member(session: TenantSession, user_id: UUID, op: Operation) -
     if not allows(membership.role, op.capability):
         raise ForbiddenRole(lowest_role_with(op.capability))
     return membership
+
+
+class ShopSuspended(AppError):
+    code = "SHOP_SUSPENDED"
+
+
+async def refuse_suspended(session: TenantSession) -> None:
+    """BR-30: in a suspended shop nothing is changed; only its owner may still look and export."""
+    stored = await session.subscription()
+    if stored is not None and stored[0] == "suspended":
+        raise ShopSuspended()
 
 
 @dataclass(frozen=True)
@@ -84,8 +96,9 @@ class ShopService:
             raise ValidationFailed(fields)
 
         async with self._storage.platform() as platform:
-            trial_on = await platform.platform_setting("trial_on")
-            trial_days = await platform.platform_setting("trial_days")
+            # Read as the administrator's panel shows them: a stored value that is not valid does not apply.
+            trial_on = platform_settings.effective("trial_on", await platform.platform_setting("trial_on"))
+            trial_days = platform_settings.effective("trial_days", await platform.platform_setting("trial_days"))
         trial_on = True if trial_on is None else bool(trial_on)
         days = (
             trial_days
@@ -135,6 +148,7 @@ class ShopService:
         async with self._storage.tenant(shop_id) as session:
             # Authorize before validating, so a non-member learns nothing about what the shop accepts.
             membership = await require_member(session, user_id, UPDATE_SHOP)
+            await refuse_suspended(session)
             key = idempotency.validate_key(request_key)
             change.validate()
 

@@ -8,6 +8,8 @@ again.
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from qarz.domain.subscription import DEFAULT_PRICE_UZS
+
 Kind = Literal["switch", "number", "card", "chat"]
 
 
@@ -31,7 +33,7 @@ MIN_CHAT_ID = -(10**15)
 SETTINGS: dict[str, Setting] = {
     "trial_on": Setting("switch", True, needs_code=True),  # REQ-052: on by default
     "trial_days": Setting("number", 30, 1, 365),
-    "price_uzs": Setting("number", 100_000, 1_000, 10_000_000, needs_code=True),  # REQ-053
+    "price_uzs": Setting("number", DEFAULT_PRICE_UZS, 1_000, 10_000_000, needs_code=True),  # REQ-053
     "card_number": Setting("card", None, needs_code=True),
     # The group that sees subscription receipts: sending them elsewhere is as sensitive as the card.
     "review_group": Setting("chat", None, needs_code=True),

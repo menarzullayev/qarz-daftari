@@ -11,7 +11,7 @@ from qarz.application import idempotency
 from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import operation, self_operation
 from qarz.application.ports import MemberRecord, Storage
-from qarz.application.shops import require_member
+from qarz.application.shops import refuse_suspended, require_member
 from qarz.domain.access import Capability, Role
 
 LIST_STAFF = operation("staff.list", Capability.ADMINISTER_SHOP)
@@ -59,6 +59,7 @@ class StaffService:
     async def invite(self, user_id: UUID, shop_id: UUID, role: str, request_key: str | None) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, INVITE_STAFF)
+            await refuse_suspended(session)
             key = idempotency.validate_key(request_key)
             if role not in {r.value for r in INVITABLE_ROLES}:
                 raise ValidationFailed({"role": "must be manager or seller"})
@@ -108,6 +109,7 @@ class StaffService:
     ) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, CANCEL_INVITATION)
+            await refuse_suspended(session)
             key = idempotency.validate_key(request_key)
             try:
                 digest = bytes.fromhex(invitation_id)
@@ -148,6 +150,7 @@ class StaffService:
     ) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, UPDATE_STAFF)
+            await refuse_suspended(session)
             key = idempotency.validate_key(request_key)
             fields: dict[str, str] = {}
             if role is None and status is None:
@@ -188,6 +191,7 @@ class StaffService:
     ) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, REMOVE_STAFF)
+            await refuse_suspended(session)
             key = idempotency.validate_key(request_key)
 
             async def apply() -> dict[str, Any]:

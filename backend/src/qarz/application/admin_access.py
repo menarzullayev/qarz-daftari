@@ -119,10 +119,10 @@ class AdminAccess:
     async def require_admin(self, user_id: UUID, token: str | None) -> None:
         """The full check every administrator operation starts with."""
         async with self._storage.platform() as session:
-            await self._candidate(session, user_id)
-            # An admin session exists only for an administrator account (a foreign key), so a live one
-            # also proves the account; `_candidate` has already refused a disabled one.
-            if await self._expiry(session, user_id, token) is None:
+            account = await self._candidate(session, user_id)
+            # The schema lets an admin session exist only for an administrator account. The account is
+            # asked for here all the same: two controls, not one (security review, finding 1).
+            if account is None or await self._expiry(session, user_id, token) is None:
                 raise NotFound()
 
     async def _expiry(self, session: PlatformSession, user_id: UUID, token: str | None) -> datetime | None:

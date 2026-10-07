@@ -260,6 +260,16 @@ CALLS: dict[str, Call] = {
         "PATCH", lambda w, shop: f"/api/v1/shops/{shop}/credit-settings", {"sellers_may_exceed": False}, True
     ),
     "shop.subscription.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/subscription"),
+    # Online payment is switched off (ADR-019): the one caller whose role allows it is told so, and the
+    # suite checks that nothing was ordered. With the switch on: tests/api/test_online_payment.py.
+    "shop.subscription.online_order.create": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/subscription/online-orders",
+        {"months": 1},
+        True,
+        201,
+        refused=(("owner_a", 409, "ONLINE_PAY_OFF"),),
+    ),
     "shop.deletion.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/deletion"),
     "shop.deletion.request": Call(
         "POST", lambda w, shop: f"/api/v1/shops/{shop}/deletion", {"confirm_name": "Shop A"}, True, 201
@@ -357,6 +367,8 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "shop.credit.update": {Role.MANAGER, Role.OWNER},
     # Specification, authorization table: the subscription is the owner's.
     "shop.subscription.read": {Role.OWNER},
+    # Paying is the owner's, like the subscription it pays for.
+    "shop.subscription.online_order.create": {Role.OWNER},
     # Specification, resources table: request deletion, cancel deletion: owner.
     "shop.deletion.read": {Role.OWNER},
     "shop.deletion.request": {Role.OWNER},
@@ -528,6 +540,14 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
             "WHERE shop_id = %s ORDER BY entry_id, line_no",
             (shop,),
         ).fetchall(),
+        owner.execute(
+            "SELECT id, state, provider, provider_txn, months, amount FROM online_payment "
+            "WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
+        owner.execute(
+            "SELECT state, trial_ends, paid_through FROM subscription WHERE shop_id = %s", (shop,)
+        ).fetchone(),
         # Measurement rows carry no shop identifier; tests run one at a time, so a total is enough.
         owner.execute("SELECT count(*) FROM measure.event").fetchone(),
     )

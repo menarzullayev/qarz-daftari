@@ -73,7 +73,18 @@ const COPY_LABELS: Readonly<Record<Copied, MessageKey>> = {
  * command to send. The code is a credential and stays in the caller's state: this component puts it on
  * the screen and, when asked, on the clipboard, and nowhere else.
  */
-export function StartCode({ start, caption, printable = false }: { start: string; caption?: string; printable?: boolean }) {
+export function StartCode({
+  start,
+  caption,
+  printable = false,
+  noBotHint,
+}: {
+  start: string;
+  caption?: string;
+  printable?: boolean;
+  /** Who sends the command when the build names no bot; by default the customer. */
+  noBotHint?: string;
+}) {
   const { botUsername } = useWorkspace();
   const { t } = useI18n();
   const [copied, setCopied] = useState<Copied>("idle");
@@ -92,7 +103,7 @@ export function StartCode({ start, caption, printable = false }: { start: string
     <div className="startcode">
       <p className="notice no-print">{t("link.once")}</p>
       {caption ? <p className="startcode__caption">{caption}</p> : null}
-      {link === null ? <p className="hint">{t("link.noBot")}</p> : null}
+      {link === null ? <p className="hint">{noBotHint ?? t("link.noBot")}</p> : null}
       <p className="startcode__text">{shown}</p>
       {link === null ? null : <QrCode text={link} />}
       <p className="actions no-print">

@@ -2,7 +2,8 @@ import { useMemo, type ReactNode } from "react";
 
 import { I18nProvider, useI18n } from "../i18n/I18nProvider";
 import type { Language, MessageKey } from "../i18n/types";
-import type { ShopApi } from "./api";
+import type { ShopApi, ShopMembership } from "./api";
+import { useDesktop, type WorkspaceExtension } from "./layout";
 import { MORE_ITEM, primaryTabCount, staffSections } from "./navigation";
 import { useHashPath } from "./router";
 import { MoreScreen, NotFoundScreen, PlaceholderScreen, SignInRequiredScreen } from "./screens";
@@ -45,16 +46,48 @@ export type StaffRoutesProps = {
   overviewFooter?: ReactNode;
   /** What the server's refusals have said about the shop: limited, suspended, or nothing so far. */
   shopMode?: ShopMode | null | undefined;
+  /** The web panel's screens and sections; the Mini App passes none. */
+  extension?: WorkspaceExtension | undefined;
+  /** Controls under the side navigation of a wide screen. */
+  side?: ReactNode;
+  /** Every shop the person works in. */
+  shops?: readonly ShopMembership[] | undefined;
+  /** Reads the person's shops and roles again. */
+  reloadSession?: (() => void) | undefined;
 };
 
 type StaffAppProps = StaffRoutesProps & { initialLanguage: Language };
 
 const systemClock = () => new Date();
 
-function workspaceScreen(route: WorkspaceRoute, overviewFooter: ReactNode): ReactNode {
+/**
+ * One customer. On a wide screen of the web panel the customer book stays beside it: the list on the
+ * left, the customer on the right, each under its own address as before.
+ */
+function CustomerRoute({ customerId }: { customerId: string }) {
+  const { t } = useI18n();
+  const detail = <CustomerScreen key={customerId} customerId={customerId} />;
+  if (!useDesktop()) {
+    return detail;
+  }
+  return (
+    <div className="panes">
+      <section className="panes__list" aria-label={t("nav.customers")}>
+        <CustomersScreen selectedId={customerId} />
+      </section>
+      <div className="panes__detail">{detail}</div>
+    </div>
+  );
+}
+
+function workspaceScreen(
+  route: WorkspaceRoute,
+  overviewFooter: ReactNode,
+  extension: WorkspaceExtension | undefined,
+): ReactNode {
   switch (route.screen) {
     case "overview":
-      return <OverviewScreen footer={overviewFooter} />;
+      return <OverviewScreen footer={overviewFooter} extra={extension ? <extension.OverviewExtra /> : undefined} />;
     case "customers":
       return <CustomersScreen />;
     case "pickCustomer":
@@ -62,7 +95,7 @@ function workspaceScreen(route: WorkspaceRoute, overviewFooter: ReactNode): Reac
     case "newCustomer":
       return <NewCustomerScreen />;
     case "customer":
-      return <CustomerScreen key={route.customerId} customerId={route.customerId} />;
+      return <CustomerRoute customerId={route.customerId} />;
     case "entry":
       return <EntryScreen key={`${route.customerId}/${route.kind}`} customerId={route.customerId} kind={route.kind} />;
     case "addGoods":
@@ -85,6 +118,7 @@ function workspaceScreen(route: WorkspaceRoute, overviewFooter: ReactNode): Reac
         <>
           <ShopSettingsScreen />
           <CreditSettingsSection />
+          {extension ? <extension.SettingsExtra /> : null}
         </>
       );
   }
@@ -99,6 +133,10 @@ export function StaffRoutes({
   botUsername = BOT_USERNAME,
   overviewFooter,
   shopMode = null,
+  extension,
+  side,
+  shops,
+  reloadSession,
 }: StaffRoutesProps) {
   const { t } = useI18n();
   const path = useHashPath();
@@ -106,8 +144,9 @@ export function StaffRoutes({
   const membershipId = session?.membershipId ?? null;
   const shopName = session?.shopName;
   const workspace = useMemo(
-    () => (api && role ? { api, role, membershipId, botUsername, now, shopName, shopMode } : null),
-    [api, role, membershipId, botUsername, now, shopName, shopMode],
+    () =>
+      api && role ? { api, role, membershipId, botUsername, now, shopName, shopMode, shops, reloadSession } : null,
+    [api, role, membershipId, botUsername, now, shopName, shopMode, shops, reloadSession],
   );
 
   if (!session) {
@@ -138,18 +177,21 @@ export function StaffRoutes({
   let screen: ReactNode = <NotFoundScreen />;
   if (section) {
     title = t(match?.titleKey ?? section.labelKey);
-    screen =
-      match && workspace ? (
-        <WorkspaceProvider value={workspace}>{workspaceScreen(match.route, overviewFooter)}</WorkspaceProvider>
-      ) : (
-        <PlaceholderScreen />
-      );
+    // A section the shared workspace has no screen for may have one in the web panel.
+    const Added = match ? undefined : extension?.sections[section.id];
+    if (match && workspace) {
+      screen = workspaceScreen(match.route, overviewFooter, extension);
+    } else if (Added && workspace) {
+      screen = <Added />;
+    } else {
+      screen = <PlaceholderScreen />;
+    }
   } else if (isMore) {
     title = t(MORE_ITEM.labelKey);
     screen = <MoreScreen items={overflow} />;
   }
 
-  return (
+  const shell = (
     <Shell
       entryKey={entryKey}
       context={{ label: t("shell.activeShop"), value: session.shopName }}
@@ -159,9 +201,20 @@ export function StaffRoutes({
       currentPath={path}
       navPath={sectionPath}
       title={title}
+      side={side}
+      banner={extension && workspace ? <extension.Banner /> : undefined}
     >
       {screen}
     </Shell>
+  );
+  if (!workspace) {
+    return shell;
+  }
+  // The providers add nothing to the page; they sit around the shell so the banner can use them too.
+  return (
+    <WorkspaceProvider value={workspace}>
+      {extension ? <extension.Provider>{shell}</extension.Provider> : shell}
+    </WorkspaceProvider>
   );
 }
 

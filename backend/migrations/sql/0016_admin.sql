@@ -81,7 +81,7 @@ RETURNS TABLE (
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
   SELECT s.id, s.name, s.lang, s.status, s.created_at, s.deletion_due,
          sub.state, e.effective, sub.trial_ends, sub.paid_through, sub.prior_state,
@@ -118,7 +118,7 @@ RETURNS TABLE (
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
   SELECT r.id, r.stated_amount, r.status, r.months, r.reject_reason, r.created_at, r.decided_at
     FROM subscription_receipt r
@@ -138,7 +138,7 @@ RETURNS TABLE (
 LANGUAGE sql
 VOLATILE
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
   SELECT sub.state, sub.trial_ends, sub.paid_through, sub.prior_state, s.name, o.tg_id, o.lang
     FROM subscription sub
@@ -162,7 +162,7 @@ RETURNS boolean
 LANGUAGE plpgsql
 VOLATILE
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   changed integer;

@@ -84,12 +84,20 @@ async def _read[Model: BaseModel](request: Request, model: type[Model]) -> Model
 
 
 def add_admin_routes(
-    app: FastAPI, access: AdminAccess, service: AdminService, user_of: UserOf, language_of: LanguageOf
+    app: FastAPI,
+    access: AdminAccess,
+    service: AdminService,
+    user_of: UserOf,
+    language_of: LanguageOf,
+    count: Callable[[UUID], None] | None = None,
 ) -> None:
     async def _signed_in(request: Request) -> UUID:
         user_id = await user_of(request)
         if user_id is None:
             raise Unauthenticated()
+        if count is not None:
+            # The per-user rate limit, as on every other signed-in route, before anything is looked up.
+            count(user_id)
         return user_id
 
     def _refused(request: Request, user_id: UUID) -> None:

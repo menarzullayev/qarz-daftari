@@ -79,6 +79,12 @@ describe("findHardcodedText", () => {
     ]);
   });
 
+  it("accepts a table header's scope, which is a token, and still rejects text beside it", () => {
+    expect(reasons('export const A = ({ h }: { h: string }) => <th scope="col">{h}</th>;')).toEqual([]);
+    expect(reasons('export const A = () => <th scope="col" title="Mijoz" />;')).toEqual(['text in the "title" attribute']);
+    expect(reasons('export const A = () => <th scope="col">Mijoz</th>;')).toEqual(["text written in JSX"]);
+  });
+
   it("does not see text that reaches JSX through a variable (documented limit)", () => {
     expect(reasons('const label = "Mijozlar";\nexport const A = () => <p>{label}</p>;')).toEqual([]);
   });

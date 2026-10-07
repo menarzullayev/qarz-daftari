@@ -23,6 +23,7 @@ const TECHNICAL_ATTRIBUTES = new Set([
   "dir",
   "src",
   "method",
+  "scope",
   "autoComplete",
   "inputMode",
   "entryKey",

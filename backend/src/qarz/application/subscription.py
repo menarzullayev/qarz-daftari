@@ -14,6 +14,7 @@ from qarz.application.errors import NotFound
 from qarz.application.operations import operation
 from qarz.application.ports import Storage, TenantSession
 from qarz.application.shops import require_member
+from qarz.domain import platform_settings
 from qarz.domain.access import Capability
 from qarz.domain.promise import tashkent_date
 from qarz.domain.subscription import (
@@ -37,7 +38,8 @@ async def subscription_body(session: TenantSession, today: date) -> dict[str, An
     state, trial_ends, paid_through = row if row is not None else (LIMITED, None, None)
     effective = effective_state(state, trial_ends, paid_through, today)
     end = period_end(state, trial_ends, paid_through) if effective in (TRIAL, ACTIVE) else None
-    price = await session.platform_setting(PRICE)
+    # Read as the administrator's panel shows it: a stored value outside the allowed range does not apply.
+    price = platform_settings.effective(PRICE, await session.platform_setting(PRICE))
     card = await session.platform_setting(CARD)
     return {
         "state": effective,
