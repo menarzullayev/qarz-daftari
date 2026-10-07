@@ -182,7 +182,7 @@ consider suspension (the owner is told the reason you write). Note the receipt's
 shown; the file is kept three years.
 
 **Not yet possible.** None of this has run with a real bot, a real group or a real card (launch
-criterion 15). No screen for receipts exists in the admin panel yet; the API and the chat buttons do.
+criterion 15). The admin panel's receipt screens were exercised against a fake server only.
 
 ## 9. Open and close support access
 
@@ -262,5 +262,5 @@ the platform switch (`sms_on`) are settings; each shop then turns SMS on for its
 6. Explain what customers will receive and how a dispute or a request to move a date reaches the shop.
 
 **Not yet possible.** No real shop may be onboarded before the launch criteria are met and the founder
-approves the launch. No import screen exists yet; the API does. The template has not been opened in a
-spreadsheet program, nor a file written by one been read.
+approves the launch. The import screen was exercised against a fake server only. The template has not
+been opened in a spreadsheet program, nor a file written by one been read.

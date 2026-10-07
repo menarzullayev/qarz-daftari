@@ -80,7 +80,7 @@ M3 exit condition: an itemized sale of five catalog goods can be entered in the 
 |---|---|---|---|
 | S13.1 Period report and overdue debt by age | Done | EVID-057, EVID-064; pull requests 37 and 48 | A past period's report can change when one of its sales is reversed later (DEC-040) |
 | S13.2 Exports as jobs with signed downloads | Done | EVID-068, EVID-069; pull requests 52 and 55 | One workbook for the whole shop. Opened in one copy of Excel only; never run against a real object store |
-| S14.1 Import | Done in the API | EVID-069; pull request 53 | The worker checks, applies and undoes, as the architecture says. No screen yet. The template was not opened in a spreadsheet program, nor a file written by one read |
+| S14.1 Import | Done | EVID-069, EVID-071; pull requests 53 and 58 | The worker checks, applies and undoes, as the architecture says. Screens tested against a fake server only. The template was not opened in a spreadsheet program, nor a file written by one read |
 | S15.1 Web panel | Done | EVID-059; pull request 40 | Tested against a fake server and a stub of the Telegram widget. The widget needs the bot's domain set with BotFather, which is the founder's to do |
 | S16.1 Russian catalogs, reviewed by a native speaker | Catalogs written; review blocked on the founder | - | Every Russian text is an agent's draft |
 
@@ -89,7 +89,7 @@ M3 exit condition: an itemized sale of five catalog goods can be entered in the 
 | Story | State | Evidence | Notes |
 |---|---|---|---|
 | S17.1 Subscription states, warnings, limited mode | Done | EVID-054, EVID-056; pull requests 32 and 34 | |
-| S17.2 Pay by card transfer with receipts | Done in the API and chat | EVID-069; pull request 54 | Administrators decide in the panel's API or by buttons in their chat and in the review group (DEC-051). No screen yet. Never run with a real bot, group or card: launch criterion 15 is the founder's |
+| S17.2 Pay by card transfer with receipts | Done | EVID-069, EVID-071; pull requests 54 and 58 | Administrators decide in the panel or by buttons in their chat and in the review group (DEC-051). Screens tested against a fake server only. Never run with a real bot, group or card: launch criterion 15 is the founder's |
 | S17.3 Click and Payme adapters behind the switch | Done, switched off | EVID-060; pull request 44 | Never run against either provider's test environment; must be checked against the providers' current documentation before the switch is ever turned on |
 | S18.1 Administrator sign-in and panel API | Done | EVID-066, EVID-067; pull requests 42 and 50 | Never used with a real authenticator application; screens tested against a fake server only |
 | S18.2 Support access; admin audit | Done | EVID-067, EVID-069; pull requests 51 and 55 | Read-only: customers and their entries. Every look is audited and shown to the owner |
@@ -191,7 +191,7 @@ Decided by the founder on 2026-10-07, and so not awaiting review: DEC-051 (butto
 | 1 | Interviews and pDaftar test | Open; founder |
 | 2 | Legal review | Open; founder |
 | 3 | Registration if required | Open; founder |
-| 4 | M1 to M8 complete, acceptance criteria pass in CI | 42 of 49 stories done in code and CI; S1.5, S16.1, S19.1, S19.2, S19.3 and S19.4 are partly done and each waits on something only people or real servers can give; S2.2's generated API client was never built. Screens for import and subscription receipts are missing |
+| 4 | M1 to M8 complete, acceptance criteria pass in CI | 42 of 49 stories done in code and CI; S1.5, S16.1, S19.1, S19.2, S19.3 and S19.4 are partly done and each waits on something only people or real servers can give; S2.2's generated API client was never built. Every story's screens exist and were exercised against a fake server only; the front end and the back end have still never been run together |
 | 5 | Authorization and tenant suite covers every operation | In place and blocking; grows with each story |
 | 6 | Load test | Not met: measured on a developer machine only; the slow overview was cured and re-measured in single statements, not in a full run (EVID-063, EVID-070) |
 | 7 | Security review | An agent's review is done and most findings fixed (EVID-059, EVID-061); a person's review and the open findings remain |
