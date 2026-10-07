@@ -12,6 +12,13 @@ class Settings(BaseSettings):
     bot_token: str = ""
     # Secret Telegram sends with every webhook call.
     webhook_secret: str = ""
+    # Online payment of the subscription. Empty until provider contracts exist; even when set, the
+    # platform switch `online_pay_on` decides, and it is off unless an administrator turns it on.
+    payme_merchant_id: str = ""
+    payme_secret_key: str = ""
+    click_service_id: str = ""
+    click_merchant_id: str = ""
+    click_secret_key: str = ""
     # API rate limits for signed-in callers: a steady rate per minute and the burst allowed above it.
     rate_user_per_minute: int = 120
     rate_user_burst: int = 60

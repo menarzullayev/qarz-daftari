@@ -164,6 +164,7 @@ UZ = {
     "sub_price": "Narxi: oyiga {price}.",
     "sub_pay_to": "To'lov uchun karta: {card}. O'tkazmadan so'ng chekni shu yerga yuboring.",
     "sub_no_card": "To'lov rekvizitlari hali kiritilmagan.",
+    "sub_paid_online": "«{shop}»: {amount} to'lov qabul qilindi. Obuna {date} gacha to'langan.",
     "sub_trial_ending": "«{shop}»: sinov muddati {days} kundan keyin, {date} kuni tugaydi. Davom ettirish: /obuna",
     "sub_paid_ending": "«{shop}»: to'langan muddat {days} kundan keyin, {date} kuni tugaydi. Uzaytirish: /obuna",
     "sub_limited": (
@@ -361,6 +362,7 @@ RU = {
     "sub_price": "Цена: {price} в месяц.",
     "sub_pay_to": "Карта для оплаты: {card}. После перевода отправьте чек сюда.",
     "sub_no_card": "Реквизиты для оплаты пока не указаны.",
+    "sub_paid_online": "«{shop}»: оплата {amount} получена. Подписка оплачена до {date}.",
     "sub_trial_ending": "«{shop}»: пробный период закончится через {days} дн., {date}. Продолжить: /obuna",
     "sub_paid_ending": "«{shop}»: оплаченный период закончится через {days} дн., {date}. Продлить: /obuna",
     "sub_limited": (

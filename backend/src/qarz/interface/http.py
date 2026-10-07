@@ -23,6 +23,7 @@ from qarz.application.disputes import DisputeService
 from qarz.application.errors import AppError, Unauthenticated
 from qarz.application.ledger_service import LedgerService
 from qarz.application.links import LinkService
+from qarz.application.online_payment import OnlinePaymentService, PaymentKeys
 from qarz.application.ownership import OwnershipService
 from qarz.application.ports import Storage
 from qarz.application.reminders import ReminderService
@@ -42,6 +43,7 @@ from qarz.interface.disputes_api import add_dispute_routes
 from qarz.interface.errors import app_error_handler, error_response
 from qarz.interface.links_api import add_link_routes
 from qarz.interface.me_api import add_me_routes
+from qarz.interface.online_payment_api import add_online_order_routes, add_provider_routes
 from qarz.interface.rate_limit import RateLimiter, RateLimits
 from qarz.interface.reminders_api import add_reminder_routes
 from qarz.interface.reports_api import add_report_routes
@@ -80,6 +82,7 @@ def create_app(
     authenticator: Authenticator | None = None,
     webhook_secret: str | None = None,
     now: Callable[[], datetime] | None = None,
+    payment_keys: PaymentKeys | None = None,
     rate_limits: RateLimits | None = None,
     monotonic: Callable[[], float] = time.monotonic,
 ) -> FastAPI:
@@ -121,7 +124,13 @@ def create_app(
         response.status_code = 404 if code == "NOT_FOUND" else exc.status_code
         return response
 
-    if storage is not None and auth is not None:
+    payments = None if storage is None else OnlinePaymentService(storage, payment_keys or PaymentKeys(), now)
+    if payments is not None:
+        # Served whatever the configuration, so that a provider is always answered: "disabled" until
+        # the platform switch is on and that provider's key is set (ADR-019).
+        add_provider_routes(app, payments)
+
+    if storage is not None and auth is not None and payments is not None:
         resolver: Authenticator = authenticator or SessionAuthenticator(auth)
         limiter = None if rate_limits is None else RateLimiter(rate_limits, monotonic)
 
@@ -159,6 +168,7 @@ def create_app(
         add_me_routes(app, CustomerAccountService(storage, now), current_user)
         add_shop_deletion_routes(app, ShopDeletionService(storage, now), current_user)
         add_subscription_routes(app, SubscriptionService(storage, now), current_user)
+        add_online_order_routes(app, payments, current_user)
         add_credit_routes(app, CreditService(storage, now), current_user)
         add_reminder_routes(app, ReminderService(storage, now), current_user)
         add_report_routes(app, ReportService(storage, now), current_user)
