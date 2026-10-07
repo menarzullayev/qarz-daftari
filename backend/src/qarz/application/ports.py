@@ -393,6 +393,75 @@ class SessionInfo:
 
 
 @dataclass(frozen=True)
+class AdminAccount:
+    """An administrator's account as stored. `secret` is the second factor's secret, still encrypted."""
+
+    status: str
+    secret: bytes
+    confirmed: bool
+    failures: int
+    locked_until: datetime | None
+    last_step: int | None
+
+
+@dataclass(frozen=True)
+class AdminShopRow:
+    """A shop as an administrator may see it: no customer, entry or amount owed (REQ-059)."""
+
+    shop_id: UUID
+    name: str
+    lang: str
+    status: str
+    created_at: datetime
+    deletion_due: datetime | None
+    state: str | None  # as stored; None when the shop has no subscription row
+    effective_state: str
+    trial_ends: date | None
+    paid_through: date | None
+    prior_state: str | None
+    owner_tg: int | None
+    staff_count: int
+    customer_count: int
+
+
+@dataclass(frozen=True)
+class AdminReceiptRow:
+    receipt_id: UUID
+    stated_amount: int
+    status: str
+    months: int | None
+    reject_reason: str | None
+    created_at: datetime
+    decided_at: datetime | None
+
+
+@dataclass(frozen=True)
+class LockedSubscription:
+    """A shop's subscription row, locked for the transaction, and where to reach its owner."""
+
+    state: str
+    trial_ends: date | None
+    paid_through: date | None
+    prior_state: str | None
+    shop_name: str
+    owner_tg: int | None
+    owner_lang: str | None
+
+
+@dataclass(frozen=True)
+class AdminAuditRow:
+    audit_id: UUID
+    at: datetime
+    admin_id: UUID
+    action: str
+    target_type: str
+    target_id: str | None
+    shop_id: UUID | None
+    reason: str | None
+    detail: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class OutboxMessage:
     message_id: UUID
     channel: str
@@ -962,6 +1031,101 @@ class PlatformSession(Protocol):
 
     async def platform_setting(self, key: str) -> Any | None: ...
 
+    # --- the administrator's side (ADR-017, ADR-018) ---------------------------------------------------
+
+    async def telegram_id(self, user_id: UUID) -> int | None: ...
+
+    async def admin_account(self, user_id: UUID, *, for_update: bool) -> AdminAccount | None: ...
+
+    async def enrol_admin(self, user_id: UUID, secret: bytes) -> bool:
+        """Store a new encrypted secret. False when the account is already confirmed or is disabled."""
+        ...
+
+    async def save_factor_state(
+        self,
+        user_id: UUID,
+        *,
+        failures: int,
+        locked_until: datetime | None,
+        last_step: int | None,
+        confirmed_at: datetime | None,
+    ) -> None:
+        """`confirmed_at` is stored only if the account was not confirmed before."""
+        ...
+
+    async def open_admin_session(
+        self, *, token_hash: bytes, user_id: UUID, now: datetime, expires_at: datetime
+    ) -> None:
+        """Revokes the administrator's other admin sessions: one elevation at a time."""
+        ...
+
+    async def admin_session_expiry(self, token_hash: bytes, user_id: UUID, now: datetime) -> datetime | None:
+        """When the admin session with this hash ends, if it is this user's, not revoked and not over."""
+        ...
+
+    async def revoke_admin_sessions(self, user_id: UUID, now: datetime) -> None: ...
+
+    async def add_admin_audit(
+        self,
+        *,
+        admin_id: UUID,
+        action: str,
+        target_type: str,
+        target_id: str | None,
+        shop_id: UUID | None,
+        reason: str | None,
+        detail: dict[str, Any],
+        now: datetime,
+    ) -> UUID: ...
+
+    async def list_admin_audit(
+        self, *, shop_id: UUID | None, action_prefix: str | None, before: tuple[datetime, UUID] | None, limit: int
+    ) -> list[AdminAuditRow]: ...
+
+    async def lock_admin_request_key(self, admin_id: UUID, key: str) -> None: ...
+
+    async def admin_stored_response(self, admin_id: UUID, key: str) -> dict[str, Any] | None: ...
+
+    async def store_admin_response(
+        self, admin_id: UUID, key: str, response: dict[str, Any], about_shop: UUID | None
+    ) -> None:
+        """`about_shop` names the shop the request was about; the row is erased with that shop."""
+        ...
+
+    async def admin_shop_search(
+        self,
+        admin_id: UUID,
+        *,
+        today: date,
+        query: str | None,
+        state: str | None,
+        shop_id: UUID | None,
+        after: tuple[datetime, UUID] | None,
+        limit: int,
+    ) -> list[AdminShopRow]: ...
+
+    async def admin_shop_receipts(self, admin_id: UUID, shop_id: UUID) -> list[AdminReceiptRow]: ...
+
+    async def admin_lock_subscription(self, admin_id: UUID, shop_id: UUID) -> LockedSubscription | None: ...
+
+    async def admin_store_subscription(
+        self,
+        admin_id: UUID,
+        shop_id: UUID,
+        *,
+        state: str,
+        trial_ends: date | None,
+        paid_through: date | None,
+        prior_state: str | None,
+        now: datetime,
+    ) -> bool: ...
+
+    async def platform_settings(self) -> dict[str, tuple[Any, str, datetime]]:
+        """Every stored setting: key -> (value, who changed it last, when)."""
+        ...
+
+    async def set_platform_setting(self, key: str, value: Any, *, updated_by: str, now: datetime) -> None: ...
+
     async def set_active_shop(self, user_id: UUID, shop_id: UUID) -> None: ...
 
     async def active_shop(self, user_id: UUID) -> UUID | None: ...
@@ -1046,6 +1210,24 @@ class Storage(Protocol):
         ...
 
     async def user_language(self, user_id: UUID) -> str | None: ...
+
+
+class SecretUnreadable(Exception):
+    """A stored secret could not be decrypted: the key changed, or the stored bytes are not ours."""
+
+
+class SecretCipher(Protocol):
+    """Encrypts the secrets the application keeps in the database (the second factor's secret).
+
+    `context` binds a ciphertext to the row it belongs to, so one account's secret copied into another
+    account's row does not decrypt.
+    """
+
+    def encrypt(self, plaintext: bytes, context: bytes) -> bytes: ...
+
+    def decrypt(self, ciphertext: bytes, context: bytes) -> bytes:
+        """Raises SecretUnreadable."""
+        ...
 
 
 class RetryLater(Exception):

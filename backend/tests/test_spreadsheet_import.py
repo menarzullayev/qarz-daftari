@@ -527,11 +527,18 @@ def test_rows_of_one_new_customer_are_kept_together_and_said_to_be() -> None:
     ]
 
 
-def test_a_customer_of_the_shop_is_preferred_to_an_earlier_row() -> None:
+def test_a_row_is_set_against_the_shops_customers_and_the_earlier_rows_together() -> None:
     ali = known("Ali", P1)
-    # Row 2 has another phone, so it is a new Ali; row 3 names no phone: the shop's own Ali... or row 2?
-    assert decided([row(2, "Ali", P2), row(3, "Ali", P1)], [ali]) == [
+    # Row 2 has another phone, so it is a new Ali; row 3 has the phone of the shop's Ali; row 4 names no
+    # phone at all, and could be either of the two: it is not guessed.
+    assert decided([row(2, "Ali", P2), row(3, "Ali", P1), row(4, "Ali")], [ali]) == [
         (2, "create", None, None, None),
+        (3, "existing", ali.customer_id, "phone", None),
+        (4, "ambiguous_customer", None, None, None),
+    ]
+    # A phone that a customer of the shop and an earlier row both carry cannot happen: the row was matched.
+    assert decided([row(2, "Vali", P1), row(3, "Boshqa", P1)], [ali]) == [
+        (2, "existing", ali.customer_id, "phone", None),
         (3, "existing", ali.customer_id, "phone", None),
     ]
     plain = known("Vali")

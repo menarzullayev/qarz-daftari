@@ -166,7 +166,6 @@ def _parser() -> expat.XMLParserType:
         raise _Refused(FileProblem.MALFORMED)
 
     parser.StartDoctypeDeclHandler = no_doctype
-    parser.EntityDeclHandler = no_doctype
     parser.buffer_text = True
     return parser
 
@@ -304,8 +303,6 @@ def _sheet_rows(data: bytes, strings: Sequence[str]) -> Table:
 
 
 def _member(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
-    if info.flag_bits & 0x1:  # encrypted
-        raise _Refused(FileProblem.MALFORMED)
     # The declared size is not believed: at most the limit and one byte more is ever expanded.
     with archive.open(info) as member:
         data = member.read(MAX_EXPANDED_BYTES + 1)
@@ -559,28 +556,25 @@ def _match(row: ImportRow, pool: Sequence[tuple[str, str | None]]) -> tuple[int,
 def plan(rows: Sequence[ImportRow], customers: Sequence[Candidate]) -> tuple[list[PlannedRow], list[RowError]]:
     """Decide for every row whether it opens a new customer or goes to one that exists or to an earlier row's.
 
-    Rows are taken in file order. A customer of the shop is looked for first; only then an earlier row
-    of the same file. A row that could mean more than one customer, or means an archived one, is an error.
+    Rows are taken in file order, and each is set against the customers of the shop and the new customers
+    of the rows before it, all at once: a row that could mean more than one of them, or means an archived
+    customer, is an error.
     """
     planned: list[PlannedRow] = []
     errors: list[RowError] = []
-    known = [(customer.name_norm, customer.phone) for customer in customers]
-    new: list[tuple[str, str | None]] = []
-    new_rows: list[int] = []
+    pool = [(customer.name_norm, customer.phone) for customer in customers]
+    new_rows: list[int] = []  # the row that opened each new customer, in the order they follow `customers`
     for row in rows:
-        found = _match(row, known)
-        if found is None:
-            again = _match(row, new)
-            if isinstance(again, RowProblem):
-                errors.append(RowError(row.row, NAME, again))
-            elif again is None:
-                new.append((row.name_norm, row.phone))
-                new_rows.append(row.row)
-                planned.append(PlannedRow(row, CREATE))
-            else:
-                planned.append(PlannedRow(row, SAME_AS_ROW, matched_by=again[1], first_row=new_rows[again[0]]))
-        elif isinstance(found, RowProblem):
+        found = _match(row, pool)
+        if isinstance(found, RowProblem):
             errors.append(RowError(row.row, NAME, found))
+        elif found is None:
+            pool.append((row.name_norm, row.phone))
+            new_rows.append(row.row)
+            planned.append(PlannedRow(row, CREATE))
+        elif found[0] >= len(customers):
+            first_row = new_rows[found[0] - len(customers)]
+            planned.append(PlannedRow(row, SAME_AS_ROW, matched_by=found[1], first_row=first_row))
         elif customers[found[0]].archived:
             errors.append(RowError(row.row, NAME, RowProblem.CUSTOMER_ARCHIVED))
         else:
@@ -601,7 +595,6 @@ def plan_token(planned: Sequence[PlannedRow]) -> str:
             item.row.note,
             item.action,
             None if item.customer_id is None else str(item.customer_id),
-            item.first_row,
         ]
         for item in planned
     ]

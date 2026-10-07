@@ -11,6 +11,7 @@ from qarz.application import idempotency
 from qarz.application.errors import AppError, ForbiddenRole, NotFound, ValidationFailed
 from qarz.application.operations import Operation, operation, self_operation
 from qarz.application.ports import Membership, ShopSettings, Storage, TenantSession
+from qarz.domain import platform_settings
 from qarz.domain.access import Capability, Role, allows, lowest_role_with
 
 READ_SHOP = operation("shop.read", Capability.READ_SHOP)
@@ -95,8 +96,9 @@ class ShopService:
             raise ValidationFailed(fields)
 
         async with self._storage.platform() as platform:
-            trial_on = await platform.platform_setting("trial_on")
-            trial_days = await platform.platform_setting("trial_days")
+            # Read as the administrator's panel shows them: a stored value that is not valid does not apply.
+            trial_on = platform_settings.effective("trial_on", await platform.platform_setting("trial_on"))
+            trial_days = platform_settings.effective("trial_days", await platform.platform_setting("trial_days"))
         trial_on = True if trial_on is None else bool(trial_on)
         days = (
             trial_days

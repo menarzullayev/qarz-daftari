@@ -73,6 +73,13 @@ groups:
         labels: {severity: sight, channel: operator-telegram}
         annotations: {summary: "Repeated invalid signatures ({{ $labels.kind }})"}
 
+      - alert: AdminSecondFactorRepeated
+        # Refused or locked second-factor codes on the administrator's side. Five in a row lock the
+        # factor for fifteen minutes; more than that in a quarter of an hour is somebody trying.
+        expr: increase(qd_security_events_total{kind="bad_second_factor"}[15m]) > 5
+        labels: {severity: sight, channel: operator-telegram}
+        annotations: {summary: "Repeated failed administrator second factor"}
+
   - name: qarz-up
     rules:
       - alert: MetricsMissing

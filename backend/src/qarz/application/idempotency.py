@@ -4,13 +4,22 @@ import hashlib
 import json
 import re
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Protocol
 from uuid import UUID
 
 from qarz.application.errors import AppError, ValidationFailed
-from qarz.application.ports import TenantSession
 
 _KEY = re.compile(r"[A-Za-z0-9_-]{8,128}")
+
+
+class RequestKeys(Protocol):
+    """Where stored results live: a shop's tenant session, or the administrator's own store."""
+
+    async def lock_request_key(self, key: str) -> None: ...
+
+    async def stored_response(self, key: str) -> dict[str, Any] | None: ...
+
+    async def store_response(self, key: str, response: dict[str, Any]) -> None: ...
 
 
 class IdempotencyKeyReused(AppError):
@@ -31,7 +40,7 @@ def fingerprint(request: dict[str, Any]) -> str:
 
 
 async def run_once(
-    session: TenantSession,
+    session: RequestKeys,
     *,
     key: str,
     operation: str,
@@ -40,7 +49,7 @@ async def run_once(
     action: Callable[[], Awaitable[dict[str, Any]]],
     redact: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Run `action` unless this key already produced a result in this shop.
+    """Run `action` unless this key already produced a result in this shop (or for this administrator).
 
     Must be called inside the tenant transaction that performs the write, after authorization. The stored
     result is saved in the same transaction, so a failed write stores nothing and can be retried.

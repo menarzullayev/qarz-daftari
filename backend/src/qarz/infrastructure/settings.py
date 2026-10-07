@@ -1,5 +1,6 @@
 """Runtime configuration read from the environment. Secrets never live in the repository."""
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +13,9 @@ class Settings(BaseSettings):
     bot_token: str = ""
     # Secret Telegram sends with every webhook call.
     webhook_secret: str = ""
+    # Telegram identifiers of the people who may be administrators (ADR-017), separated by commas.
+    # Empty means nobody: the administrator's API is then not served at all.
+    admin_tg_ids: str = Field(default="", repr=False)
     # Where files are kept (ADR-020): "filesystem" (development, tests) or "s3" (production). Empty means
     # no store is configured and every file is refused.
     file_store: str = ""
@@ -23,9 +27,10 @@ class Settings(BaseSettings):
     s3_region: str = "us-east-1"
     s3_access_key: str = ""
     s3_secret_key: str = ""
-    # Server secret from which purpose-specific keys are derived; today the key that signs links to stored
-    # files. Empty: no link is given and no file is served.
-    secrets_key: str = ""
+    # Server secret from which purpose-specific keys are derived: the key that signs links to stored
+    # files, and the key that encrypts the administrators' second-factor secrets. Empty: no link is given,
+    # no file is served, and the administrator's API is not served.
+    secrets_key: str = Field(default="", repr=False)
     # Bearer token the monitoring system sends to read /metrics. Empty: the endpoint is not served.
     metrics_token: str = ""
     # Online payment of the subscription. Empty until provider contracts exist; even when set, the
@@ -46,3 +51,15 @@ class Settings(BaseSettings):
     # across shops and get longer. 0 means no limit.
     statement_timeout_ms: int = 5000
     worker_statement_timeout_ms: int = 60000
+
+    def admin_allow_list(self) -> frozenset[int]:
+        """The allow-list as numbers. Anything that is not a positive whole number refuses to start."""
+        ids: set[int] = set()
+        for part in self.admin_tg_ids.split(","):
+            raw = part.strip()
+            if not raw:
+                continue
+            if not (raw.isascii() and raw.isdigit()) or int(raw) <= 0:
+                raise ValueError("QD_ADMIN_TG_IDS must be Telegram user identifiers separated by commas")
+            ids.add(int(raw))
+        return frozenset(ids)

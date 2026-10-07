@@ -1,8 +1,8 @@
 """HTTP routes for the import of customers with opening balances (REQ-062, REQ-063).
 
 The file is sent as the request body itself, an `.xlsx` workbook or UTF-8 CSV: what it is, is decided
-from its bytes, never from a name or a declared type. The body is read with a hard limit and only after
-the caller has been found to be a manager or owner of the shop who may import now.
+from its bytes, never from a name or a declared type. The body is read with a hard limit; nothing of it is
+parsed or kept before the caller has been found to be a manager or owner of the shop who may import now.
 """
 
 import re
@@ -77,7 +77,6 @@ def add_import_routes(app: FastAPI, service: ImportService, current_user: Curren
     async def upload(
         shop_id: UUID, request: Request, user_id: user, idempotency_key: IdempotencyKey = None
     ) -> dict[str, Any]:
-        await service.may_upload(user_id, shop_id, idempotency_key)
         return await service.upload(user_id, shop_id, await read_file(request), idempotency_key)
 
     @app.get(base, name=LIST_IMPORTS.name)

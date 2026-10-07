@@ -171,11 +171,6 @@ class ImportService:
 
     # --- upload ---------------------------------------------------------------------------------------
 
-    async def may_upload(self, user_id: UUID, shop_id: UUID, request_key: str | None) -> None:
-        """Everything that can refuse an upload without the file. Called before the body is read."""
-        async with self._storage.tenant(shop_id) as session:
-            await self._authorize_upload(session, user_id, request_key)
-
     async def _authorize_upload(
         self, session: TenantSession, user_id: UUID, request_key: str | None
     ) -> tuple[Membership, str]:
@@ -186,7 +181,9 @@ class ImportService:
         return actor, key
 
     async def upload(self, user_id: UUID, shop_id: UUID, data: bytes, request_key: str | None) -> dict[str, Any]:
-        await self.may_upload(user_id, shop_id, request_key)
+        # Everything that can refuse an upload whatever the file is, before the file is looked at.
+        async with self._storage.tenant(shop_id) as session:
+            await self._authorize_upload(session, user_id, request_key)
         parsed = imports.parse(data, self._today())
         if isinstance(parsed, FileProblem):
             # Not a file an import can be made of: nothing of it is kept.

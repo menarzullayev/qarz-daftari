@@ -5,7 +5,14 @@ Every registered operation is exercised according to its scope:
 - shop operations: as each role, as a suspended member, as the owner of another shop, as a customer, as a
   platform administrator without support access, as a stranger, and without signing in;
 - self operations: without signing in, and as any signed-in user;
-- public operations: without signing in, with data that is not validly signed.
+- public operations: without signing in, with data that is not validly signed;
+- administrator operations: as every kind of non-administrator (owner, manager, seller, customer,
+  stranger), as everyone who has some but not all of what makes an administrator (on the allow-list
+  without an account, without the second factor, with a disabled account, with an expired or closed admin
+  session, with another administrator's session, with an account but off the allow-list), and without
+  signing in. Each is answered exactly as for a route that does not exist, and changes nothing;
+- the door to the administrator's side (enrolling and passing the second factor): as everyone who is not
+  on the allow-list or whose account is disabled, and without signing in.
 
 An operation that is registered but not described here fails the suite, and so does an API route that is
 not bound to a registered operation, so nothing can be added without being checked.
@@ -15,8 +22,9 @@ import hashlib
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import psycopg
 import pytest
@@ -28,7 +36,16 @@ from qarz.domain import imports
 from qarz.domain.access import Role, lowest_role_with
 from qarz.domain.promise import tashkent_date
 
-from .conftest import World, as_user, current_file_root
+from .conftest import (
+    ADMIN_API,
+    AdminEnv,
+    World,
+    allow_list,
+    as_user,
+    current_file_root,
+    elevate,
+    make_admin,
+)
 
 pytestmark = pytest.mark.db
 
@@ -937,3 +954,316 @@ def test_unsigned_data_signs_nobody_in(client: TestClient, owner: psycopg.Connec
     assert "set-cookie" not in response.headers
     assert owner.execute("SELECT count(*) FROM user_session").fetchone() == sessions
     assert owner.execute("SELECT count(*) FROM app_user").fetchone() == users
+
+
+# --- the administrator's side: closed to everyone but an administrator who passed the second factor ----
+
+
+@dataclass(frozen=True)
+class AdminCall:
+    """A valid request for an administrator operation, aimed at shop A where it names a shop."""
+
+    method: str
+    path: Callable[[World], str]
+    json: Callable[[World], dict[str, Any]] | None = None
+    changes_data: bool = False  # takes an Idempotency-Key
+    ok_status: int = 200
+    prepare: Callable[[psycopg.Connection, World], None] | None = None
+
+
+def _tashkent_today() -> date:
+    return datetime.now(ZoneInfo("Asia/Tashkent")).date()
+
+
+def _suspended(owner: psycopg.Connection, world: World) -> None:
+    owner.execute(
+        "UPDATE subscription SET state = 'suspended', prior_state = 'trial' WHERE shop_id = %s", (world.shop_a,)
+    )
+
+
+ADMIN_CALLS: dict[str, AdminCall] = {
+    "admin.session.close": AdminCall("DELETE", lambda w: f"{ADMIN_API}/auth/session", ok_status=204),
+    "admin.shops.list": AdminCall("GET", lambda w: f"{ADMIN_API}/shops?q=Shop"),
+    "admin.shops.read": AdminCall("GET", lambda w: f"{ADMIN_API}/shops/{w.shop_a}"),
+    "admin.shops.trial.set": AdminCall(
+        "POST",
+        lambda w: f"{ADMIN_API}/shops/{w.shop_a}/trial",
+        lambda w: {"trial_ends": (_tashkent_today() + timedelta(days=10)).isoformat(), "reason": "Sinovni uzaytirish"},
+        True,
+    ),
+    "admin.shops.trial.end": AdminCall(
+        "POST", lambda w: f"{ADMIN_API}/shops/{w.shop_a}/trial/end", lambda w: {"reason": "Sinov tugatildi"}, True
+    ),
+    "admin.shops.paid_through.set": AdminCall(
+        "POST",
+        lambda w: f"{ADMIN_API}/shops/{w.shop_a}/paid-through",
+        lambda w: {"paid_through": (_tashkent_today() + timedelta(days=30)).isoformat(), "reason": "Naqd to'lov"},
+        True,
+    ),
+    "admin.shops.suspend": AdminCall(
+        "POST", lambda w: f"{ADMIN_API}/shops/{w.shop_a}/suspend", lambda w: {"reason": "Qoidabuzarlik"}, True
+    ),
+    "admin.shops.unsuspend": AdminCall(
+        "POST",
+        lambda w: f"{ADMIN_API}/shops/{w.shop_a}/unsuspend",
+        lambda w: {"reason": "Masala hal bo'ldi"},
+        True,
+        prepare=_suspended,
+    ),
+    "admin.settings.read": AdminCall("GET", lambda w: f"{ADMIN_API}/settings"),
+    # A change that needs no second code, so that it would go through for anyone let in.
+    "admin.settings.update": AdminCall(
+        "PATCH", lambda w: f"{ADMIN_API}/settings", lambda w: {"changes": {"trial_days": 14}}, True
+    ),
+    "admin.audit.list": AdminCall("GET", lambda w: f"{ADMIN_API}/audit"),
+}
+
+# The door: enrolling and passing the second factor. The code is well formed and wrong.
+ADMIN_ENTRY_CALLS: dict[str, AdminCall] = {
+    "admin.auth.read": AdminCall("GET", lambda w: f"{ADMIN_API}/auth"),
+    "admin.auth.enrol": AdminCall("POST", lambda w: f"{ADMIN_API}/auth/enrolment", None, True, 201),
+    "admin.session.open": AdminCall("POST", lambda w: f"{ADMIN_API}/auth/session", lambda w: {"code": "000000"}),
+}
+
+ADMIN_OPS = sorted(op.name for op in all_operations() if op.scope == "admin")
+ADMIN_ENTRY_OPS = sorted(op.name for op in all_operations() if op.scope == "admin_entry")
+
+# People who are simply not administrators, whatever else they are.
+NOT_LISTED = ["owner_a", "manager_a", "seller_a", "suspended_a", "customer_of_a", "stranger"]
+# People with some, but not all, of what makes an administrator. Each lacks exactly one thing.
+ALMOST_ADMINS = [
+    "listed_never_enrolled",  # on the allow-list, no administrator account
+    "listed_without_factor",  # on the allow-list, active account, never passed the second factor
+    "account_not_listed",  # active account and a live admin session, taken off the allow-list
+    "disabled",  # on the allow-list, live admin session, account disabled
+    "expired",  # the admin session ran out
+    "signed_out",  # the admin session was closed
+    "anothers_session",  # an administrator presenting another administrator's admin session
+]
+# Of those, the ones the door itself must turn away: the rest are exactly who the door is for.
+REFUSED_AT_THE_DOOR = ["account_not_listed", "disabled"]
+
+
+def _admin_caller(
+    kind: str, client: TestClient, world: World, owner: psycopg.Connection, env: AdminEnv
+) -> dict[str, str]:
+    """Headers of the named kind of caller. Runs before the snapshot: it is the state the call meets."""
+    if kind in NOT_LISTED:
+        return as_user(getattr(world, kind))
+    if kind == "listed_never_enrolled":
+        allow_list(owner, env, world.stranger)
+        return as_user(world.stranger)
+    secret = make_admin(owner, env, world.admin)
+    if kind == "listed_without_factor":
+        return as_user(world.admin)
+    headers = elevate(client, env, world.admin, secret)
+    if kind == "account_not_listed":
+        env.allowed.clear()
+    elif kind == "disabled":
+        owner.execute("UPDATE admin_account SET status = 'disabled' WHERE user_id = %s", (world.admin,))
+    elif kind == "expired":
+        env.clock.offset += timedelta(hours=8)
+    elif kind == "signed_out":
+        assert client.delete(f"{ADMIN_API}/auth/session", headers=headers).status_code == 204
+    elif kind == "anothers_session":
+        make_admin(owner, env, world.owner_b)
+        return {**as_user(world.owner_b), "Cookie": headers["Cookie"]}
+    else:
+        assert kind == "administrator", kind
+    return headers
+
+
+def _admin_request(client: TestClient, world: World, call: AdminCall, headers: dict[str, str]) -> Any:
+    if call.changes_data:
+        headers = {**headers, **_key()}
+    body = None if call.json is None else call.json(world)
+    return client.request(call.method, call.path(world), json=body, headers=headers)
+
+
+def _admin_snapshot(owner: psycopg.Connection, world: World) -> tuple[Any, ...]:
+    """Everything a refused administrator call could have changed."""
+    return (
+        owner.execute("SELECT key, value, updated_by FROM platform_setting ORDER BY key").fetchall(),
+        owner.execute(
+            "SELECT shop_id, state, trial_ends, paid_through, prior_state FROM subscription ORDER BY shop_id"
+        ).fetchall(),
+        owner.execute(
+            "SELECT user_id, status, totp_secret, confirmed_at, failed_codes, locked_until, last_step "
+            "FROM admin_account ORDER BY user_id"
+        ).fetchall(),
+        owner.execute("SELECT id, user_id, expires_at, revoked_at FROM admin_session ORDER BY id").fetchall(),
+        owner.execute("SELECT count(*) FROM admin_audit").fetchone(),
+        owner.execute("SELECT count(*) FROM admin_request_key").fetchone(),
+        owner.execute("SELECT count(*) FROM outbox_message").fetchone(),
+        owner.execute("SELECT id, lang, active_shop FROM app_user ORDER BY id").fetchall(),
+        _snapshot(owner, world.shop_a),
+        _snapshot(owner, world.shop_b),
+    )
+
+
+def _unknown_route(client: TestClient, call: AdminCall, world: World, headers: dict[str, str]) -> Any:
+    body = None if call.json is None else call.json(world)
+    return client.request(call.method, f"{ADMIN_API}/no-such-thing", json=body, headers={**headers, **_key()})
+
+
+def _assert_reads_like_an_unknown_route(response: Any, unknown: Any) -> None:
+    assert unknown.status_code == 404
+    assert response.status_code == 404, response.text
+    assert response.content == unknown.content
+    assert response.json() == {"error": {"code": "NOT_FOUND", "message": "Topilmadi.", "fields": {}}}
+
+    # Every answer has its own request identifier; nothing else in the headers may differ.
+    def headers(answer: Any) -> dict[str, str]:
+        return {name: value for name, value in answer.headers.items() if name.lower() != "x-request-id"}
+
+    assert headers(response) == headers(unknown)
+    assert set(response.headers) == set(unknown.headers)
+    assert "set-cookie" not in response.headers
+
+
+def test_every_admin_operation_is_described_in_the_suite(client: TestClient) -> None:
+    assert set(ADMIN_CALLS) == set(ADMIN_OPS), "add the new administrator operation to ADMIN_CALLS"
+    assert set(ADMIN_ENTRY_CALLS) == set(ADMIN_ENTRY_OPS), "add the new door operation to ADMIN_ENTRY_CALLS"
+    assert ADMIN_OPS and ADMIN_ENTRY_OPS
+    described = {**ADMIN_CALLS, **ADMIN_ENTRY_CALLS}
+    for route in client.app.routes:  # type: ignore[attr-defined]
+        if isinstance(route, APIRoute) and route.path.startswith(ADMIN_API):
+            assert route.name in described, "every administrator route is an administrator operation"
+            # Every write takes an Idempotency-Key, except passing and dropping the second factor,
+            # which like the ordinary sign-in and sign-out are not repeatable requests.
+            writes = bool(route.methods - {"GET", "HEAD"})
+            keyless = route.name in ("admin.session.open", "admin.session.close")
+            assert described[route.name].changes_data is (writes and not keyless), route.name
+    for op in all_operations():
+        assert op.name.startswith("admin.") is (op.scope in ("admin", "admin_entry")), op.name
+
+
+@pytest.mark.parametrize("op_name", ADMIN_OPS)
+def test_an_administrator_who_passed_the_second_factor_is_let_in(
+    client: TestClient, world: World, owner: psycopg.Connection, admin_env: AdminEnv, op_name: str
+) -> None:
+    """The control for everything below: the same calls do succeed for the one caller they are for."""
+    call = ADMIN_CALLS[op_name]
+    if call.prepare is not None:
+        call.prepare(owner, world)
+    headers = _admin_caller("administrator", client, world, owner, admin_env)
+    response = _admin_request(client, world, call, headers)
+    assert response.status_code == call.ok_status, response.text
+
+
+@pytest.mark.parametrize("op_name", ADMIN_OPS)
+@pytest.mark.parametrize("caller", NOT_LISTED + ALMOST_ADMINS)
+def test_for_anyone_else_the_administrators_side_does_not_exist(
+    client: TestClient, world: World, owner: psycopg.Connection, admin_env: AdminEnv, op_name: str, caller: str
+) -> None:
+    call = ADMIN_CALLS[op_name]
+    if call.prepare is not None:
+        call.prepare(owner, world)
+    # In Russian, so that an answer in the caller's own language would give the route away.
+    owner.execute("UPDATE app_user SET lang = 'ru'")
+    headers = _admin_caller(caller, client, world, owner, admin_env)
+    before = _admin_snapshot(owner, world)
+    response = _admin_request(client, world, call, headers)
+    _assert_reads_like_an_unknown_route(response, _unknown_route(client, call, world, headers))
+    assert _admin_snapshot(owner, world) == before, "a refused call must change nothing"
+
+
+@pytest.mark.parametrize("op_name", ADMIN_OPS + ADMIN_ENTRY_OPS)
+@pytest.mark.parametrize("headers", NO_CREDENTIALS, ids=["no credentials", "bad credentials"])
+def test_unauthenticated_admin_calls_are_refused(
+    client: TestClient,
+    world: World,
+    owner: psycopg.Connection,
+    admin_env: AdminEnv,
+    op_name: str,
+    headers: dict[str, str],
+) -> None:
+    call = {**ADMIN_CALLS, **ADMIN_ENTRY_CALLS}[op_name]
+    if call.prepare is not None:
+        call.prepare(owner, world)
+    # Even with a live admin session of a real administrator in hand: without a sign-in it is nothing.
+    cookie = _admin_caller("administrator", client, world, owner, admin_env)["Cookie"]
+    before = _admin_snapshot(owner, world)
+    response = _admin_request(client, world, call, {**headers, "Cookie": cookie})
+    assert response.status_code == 401, response.text
+    assert response.json()["error"] == {"code": "UNAUTHENTICATED", "message": "Avval tizimga kiring.", "fields": {}}
+    assert _admin_snapshot(owner, world) == before
+
+
+@pytest.mark.parametrize("op_name", [name for name in ADMIN_OPS if ADMIN_CALLS[name].changes_data])
+def test_admin_writes_need_an_idempotency_key_but_outsiders_still_see_not_found(
+    client: TestClient, world: World, owner: psycopg.Connection, admin_env: AdminEnv, op_name: str
+) -> None:
+    call = ADMIN_CALLS[op_name]
+    if call.prepare is not None:
+        call.prepare(owner, world)
+    headers = _admin_caller("administrator", client, world, owner, admin_env)
+    before = _admin_snapshot(owner, world)
+    body = None if call.json is None else call.json(world)
+    inside = client.request(call.method, call.path(world), json=body, headers=headers)
+    assert inside.status_code == 422, inside.text
+    assert "Idempotency-Key" in inside.json()["error"]["fields"]
+    outside = client.request(call.method, call.path(world), json=body, headers=as_user(world.owner_a))
+    assert outside.status_code == 404
+    assert _admin_snapshot(owner, world) == before
+
+
+@pytest.mark.parametrize("op_name", ADMIN_OPS)
+@pytest.mark.parametrize("caller", ["owner_a", "listed_without_factor", "expired"])
+def test_a_malformed_admin_request_tells_an_outsider_nothing(
+    client: TestClient, world: World, owner: psycopg.Connection, admin_env: AdminEnv, op_name: str, caller: str
+) -> None:
+    """A body that is not JSON, a shop identifier that is not one, a missing key: still "not found"."""
+    call = ADMIN_CALLS[op_name]
+    headers = _admin_caller(caller, client, world, owner, admin_env)
+    before = _admin_snapshot(owner, world)
+    path = call.path(world).replace(str(world.shop_a), "not-a-uuid") + ("&limit=x" if "?" in call.path(world) else "")
+    response = client.request(
+        call.method, path, content=b"{not json", headers={**headers, "Content-Type": "application/json"}
+    )
+    unknown = client.request(
+        call.method,
+        f"{ADMIN_API}/no-such-thing",
+        content=b"{not json",
+        headers={**headers, "Content-Type": "application/json"},
+    )
+    _assert_reads_like_an_unknown_route(response, unknown)
+    assert _admin_snapshot(owner, world) == before
+
+
+# --- the door -----------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("op_name", ADMIN_ENTRY_OPS)
+@pytest.mark.parametrize("caller", NOT_LISTED + REFUSED_AT_THE_DOOR)
+def test_the_door_does_not_exist_for_someone_who_is_not_on_the_allow_list_or_is_disabled(
+    client: TestClient, world: World, owner: psycopg.Connection, admin_env: AdminEnv, op_name: str, caller: str
+) -> None:
+    call = ADMIN_ENTRY_CALLS[op_name]
+    owner.execute("UPDATE app_user SET lang = 'ru'")
+    headers = _admin_caller(caller, client, world, owner, admin_env)
+    before = _admin_snapshot(owner, world)
+    response = _admin_request(client, world, call, headers)
+    _assert_reads_like_an_unknown_route(response, _unknown_route(client, call, world, headers))
+    assert _admin_snapshot(owner, world) == before, "a refused call must change nothing"
+
+
+@pytest.mark.parametrize("caller", ["listed_never_enrolled", "listed_without_factor", "expired", "signed_out"])
+def test_the_door_is_there_for_an_allow_listed_person_but_opens_nothing_without_the_code(
+    client: TestClient, world: World, owner: psycopg.Connection, admin_env: AdminEnv, caller: str
+) -> None:
+    headers = _admin_caller(caller, client, world, owner, admin_env)
+    status = _admin_request(client, world, ADMIN_ENTRY_CALLS["admin.auth.read"], headers)
+    assert status.status_code == 200, status.text
+    assert status.json()["elevated"] is False
+    assert status.json()["enrolled"] is (caller != "listed_never_enrolled")
+
+    sessions = owner.execute("SELECT count(*) FROM admin_session WHERE revoked_at IS NULL").fetchone()
+    wrong = _admin_request(client, world, ADMIN_ENTRY_CALLS["admin.session.open"], headers)
+    expected = (409, "ADMIN_NOT_ENROLLED") if caller == "listed_never_enrolled" else (403, "SECOND_FACTOR_INVALID")
+    assert (wrong.status_code, wrong.json()["error"]["code"]) == expected
+    assert "set-cookie" not in wrong.headers
+    assert owner.execute("SELECT count(*) FROM admin_session WHERE revoked_at IS NULL").fetchone() == sessions
+    # And having knocked, they are still outside.
+    inside = _admin_request(client, world, ADMIN_CALLS["admin.shops.list"], headers)
+    assert inside.status_code == 404

@@ -22,6 +22,7 @@ from qarz.application.ports import OnlinePayment, Storage, TenantSession
 from qarz.application.shops import require_member
 from qarz.application.subscription import PRICE
 from qarz.domain import online_payment as rules
+from qarz.domain import platform_settings
 from qarz.domain.access import Capability
 from qarz.domain.online_payment import CANCELLED, CLICK, CREATED, PAID, PAYME, PENDING
 from qarz.domain.promise import tashkent_date
@@ -139,7 +140,7 @@ class OnlinePaymentService:
                 raise OnlinePayOff()
 
             async def apply() -> dict[str, Any]:
-                price = await session.platform_setting(PRICE)
+                price = platform_settings.effective(PRICE, await session.platform_setting(PRICE))
                 if not isinstance(price, int) or isinstance(price, bool) or price <= 0:
                     price = DEFAULT_PRICE_UZS
                 order = await session.create_online_payment(

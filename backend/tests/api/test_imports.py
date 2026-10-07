@@ -690,6 +690,7 @@ def test_an_undo_reverses_every_entry_and_archives_the_customers_the_import_crea
     assert response.status_code == 200, response.text
     body = response.json()
     assert (body["status"], body["undone"], body["undo_until"]) == ("undone", {"reversed": 4, "archived": 2}, None)
+    assert body["applied_at"] is not None, "when it was applied stays on record"
     assert body["applied"]["entries"] == 4
 
     # REQ-N07: nothing is deleted or changed; four reversals are added.
@@ -1017,3 +1018,60 @@ def test_two_thousand_rows_are_imported_and_undone_in_reasonable_time(
     assert timings["preview"] < 10
     assert timings["apply"] < 20
     assert timings["undo"] < 120
+
+
+# --- found by breaking the rules one at a time ----------------------------------------------------------
+
+
+def test_a_customer_whose_data_was_removed_is_never_matched_and_never_archived_by_an_undo(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    owner.execute(
+        "INSERT INTO customer (id, shop_id, display_name, name_norm, status) "
+        "VALUES (%s, %s, 'Anonim ABC123', 'karim', 'anonymized')",
+        (uuid.uuid4(), world.shop_a),
+    )
+    batch = uploaded(client, world, table("Karim,,250000,,", "Lola,,80000,,"))
+    seen = preview(client, world, batch).json()["preview"]
+    assert [row["action"] for row in seen["rows"]] == ["create", "create"]
+    assert apply(client, world, batch, seen["plan"]).status_code == 200
+
+    # Lola asks for her data to be removed; then the import is undone.
+    owner.execute(
+        "UPDATE customer SET status = 'anonymized', display_name = 'Anonim LOLA01' "
+        "WHERE shop_id = %s AND display_name = 'Lola'",
+        (world.shop_a,),
+    )
+    response = act(client, world, batch, "undo")
+    assert response.status_code == 200, response.text
+    assert response.json()["undone"] == {"reversed": 2, "archived": 1}
+    states = {name: status for name, _, _, status in customers(owner, world)}
+    assert (states["Karim"], states["Anonim LOLA01"]) == ("archived", "anonymized")
+
+
+def test_two_rows_for_one_customer_of_the_shop_count_that_customer_once(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    batch = uploaded(client, world, table("Ali,,1000,,", "ali,,2000,,", "Karim,,3000,,"))
+    seen = preview(client, world, batch).json()["preview"]
+    assert seen["counts"] == {"new_customers": 1, "existing_customers": 1, "entries": 3, "amount": 6000}
+    assert apply(client, world, batch, seen["plan"]).json()["applied"] == seen["counts"]
+    assert [row[:4] for row in entries(owner, world, batch)] == [
+        ("Ali", 2, "opening", 1000),
+        ("Ali", 3, "opening", 2000),
+        ("Karim", 1, "opening", 3000),
+    ]
+
+
+def test_a_stranger_learns_nothing_from_the_file_they_send(
+    client: TestClient, world: World, owner: psycopg.Connection, file_root: Path
+) -> None:
+    """Who may import is decided before the file is looked at: a bad file and a good one get the same answer."""
+    for data in (table("Karim,,250000,,"), b"\x89PNG not a table", b""):
+        for user, status in ((world.owner_b, 404), (world.seller_a, 403), (world.stranger, 404)):
+            assert upload(client, world, data, user).status_code == status
+        assert client.post(f"{shop(world)}/imports", content=data, headers=as_user(world.manager_a)).status_code == 422
+        missing_key = client.post(f"{shop(world)}/imports", content=data, headers=as_user(world.manager_a)).json()
+        assert "Idempotency-Key" in missing_key["error"]["fields"]
+    assert batches(owner, world) == []
+    assert stored_objects(file_root) == []

@@ -1,19 +1,19 @@
-"""Import: indexes for batches and matching, and import files in the retention job.
+"""The administrator's side: second factor, admin sessions, audit, cross-shop functions.
 
-Revision ID: 0023
-Revises: 0016
+Revision ID: 0016
+Revises: 0012
 """
 
 from pathlib import Path
 
 from alembic import op
 
-revision = "0023"
-down_revision = "0016"
+revision = "0016"
+down_revision = "0012"
 branch_labels = None
 depends_on = None
 
-_SQL = Path(__file__).resolve().parent.parent / "sql" / "0023_import.sql"
+_SQL = Path(__file__).resolve().parent.parent / "sql" / "0016_admin.sql"
 
 
 def upgrade() -> None:
