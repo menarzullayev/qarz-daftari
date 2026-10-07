@@ -166,7 +166,17 @@ check "16 KiB + 1 byte on /pay/ answers 413" status_is 413
 echo "# sign-in rate limit by address (burst $AUTH_BURST)"
 if [ "$AUTH_WAIT" != "0" ]; then sleep "$AUTH_WAIT"; fi
 let_through=0
-for _ in $(seq 1 $((AUTH_BURST + 1))); do
+# The first of them is the administrators' status route, which their page asks before anything else. It
+# is a proxied prefix without its last slash; nginx would answer that address itself, with a redirect
+# that names its inner port, and the page could never open. It shares the sign-in limit.
+probe "$HTTPS/api/admin/v1/auth"
+admin_status="$STATUS"
+check "the administrators' status route is answered by the API, not redirected by the proxy (got $admin_status)" \
+  bash -c '[ "$1" = 401 ] || [ "$1" = 404 ]' _ "$admin_status"
+check "its answer is JSON" header_has Content-Type "application/json"
+check "its answer names no other address" header_absent Location
+if [ -n "$admin_status" ] && [ "$admin_status" != "429" ]; then let_through=1; fi
+for _ in $(seq 1 "$AUTH_BURST"); do
   probe -X POST -H "Content-Type: application/json" --data '{}' "$HTTPS/api/v1/auth/telegram-webapp"
   if [ -n "$STATUS" ] && [ "$STATUS" != "429" ]; then let_through=$((let_through + 1)); fi
 done
