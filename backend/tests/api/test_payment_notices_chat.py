@@ -16,11 +16,12 @@ from psycopg.types.json import Jsonb
 from qarz.application.chat_texts import money, say
 from qarz.domain.files import MAX_FILE_BYTES
 
+from ..receipt_samples import EXIF, HTML, JPEG, PDF, jpeg
 from .conftest import FakeTelegramFiles, World, as_user, stored_objects
 from .test_chat import Chat, Said, _message_ids, _update_ids, chat_of
 from .test_customer_account import ME, link_of
 from .test_customers_ledger import _subscription, record, shop, today
-from .test_payment_notices import HTML, JPEG, PDF, files, notices, payments, seed_notice, sent_to_staff, told
+from .test_payment_notices import files, notices, payments, seed_notice, sent_to_staff, told
 
 pytestmark = pytest.mark.db
 
@@ -244,7 +245,9 @@ def test_a_file_that_is_not_a_receipt_is_refused_and_another_may_follow(
     client: TestClient, world: World, owner: psycopg.Connection, file_root: Path, telegram_files: FakeTelegramFiles
 ) -> None:
     customer = chat_of(client, owner, world.customer_of_a)
-    telegram_files.files.update({"lying": HTML, "huge": JPEG + bytes(MAX_FILE_BYTES), "fine": JPEG})
+    telegram_files.files.update(
+        {"lying": HTML, "huge": JPEG + bytes(MAX_FILE_BYTES), "cut": JPEG[:-2], "fine": jpeg(EXIF, trailing=b"tail")}
+    )
     customer.say("/toladim")
     customer.say("20000")
 
@@ -252,6 +255,7 @@ def test_a_file_that_is_not_a_receipt_is_refused_and_another_may_follow(
         photo("lying", len(HTML)),  # Telegram calls it a photo; its bytes say otherwise
         photo("huge", MAX_FILE_BYTES + len(JPEG)),  # larger than the service accepts
         photo("never-uploaded", 5000),  # Telegram does not have it
+        photo("cut", len(JPEG) - 2),  # a photo that is not whole
         {"document": {"file_id": "lying", "file_name": "chek.jpg", "mime_type": "image/jpeg"}},
     ):
         refused = send_file(customer, **message)

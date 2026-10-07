@@ -224,6 +224,52 @@ class SubscriptionToReview:
 
 
 @dataclass(frozen=True)
+class DateRequestRecord:
+    """A customer's request to move the promised date of one entry (DOM-015)."""
+
+    request_id: UUID
+    entry_id: UUID
+    customer_id: UUID
+    customer_name: str
+    amount: int  # of the entry
+    promised_date: date | None  # the entry's promised date now, whatever became of the request
+    requested_date: date
+    reason: str | None
+    status: str
+    decline_reason: str | None
+    created_at: datetime
+    closed_at: datetime | None
+
+
+@dataclass(frozen=True)
+class PromiseRecord:
+    """One row of an entry's promise history (INV-9). The newest row is the current promised date."""
+
+    promised_date: date
+    actor: str
+    reason: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class OnlinePayment:
+    """An order to pay the subscription online, and what the provider has done with it."""
+
+    id: UUID
+    prepare_id: int
+    months: int
+    amount: int
+    state: str
+    provider: str | None
+    provider_txn: str | None
+    provider_time: int | None
+    cancel_reason: int | None
+    started_at: datetime | None
+    paid_at: datetime | None
+    cancelled_at: datetime | None
+
+
+@dataclass(frozen=True)
 class ShopToErase:
     shop_id: UUID
     shop_name: str
@@ -429,7 +475,13 @@ class TenantSession(Protocol):
         created_at: datetime,
     ) -> None: ...
 
-    async def add_promise(self, *, entry_id: UUID, promised_date: date, actor: str, created_at: datetime) -> None: ...
+    async def add_promise(
+        self, *, entry_id: UUID, promised_date: date, actor: str, created_at: datetime, reason: str | None = None
+    ) -> None: ...
+
+    async def promises_of(self, entry_ids: list[UUID]) -> dict[UUID, list[PromiseRecord]]:
+        """The promise history of the given entries, oldest first. An entry without a promise is absent."""
+        ...
 
     async def record_measure(
         self, *, kind: str, entry_ref: UUID, amount: int, promised: date | None, handle_ms: int | None = None
@@ -570,6 +622,24 @@ class TenantSession(Protocol):
         """Open disputes of the shop, oldest first, each with the customer's name."""
         ...
 
+    async def get_date_request(self, request_id: UUID) -> DateRequestRecord | None: ...
+
+    async def date_requests_of_customer(self, customer_id: UUID) -> list[DateRequestRecord]:
+        """Every date request ever made on the customer's entries, oldest first."""
+        ...
+
+    async def open_date_request(
+        self, *, request_id: UUID, entry_id: UUID, requested_date: date, reason: str | None, now: datetime
+    ) -> DateRequestRecord: ...
+
+    async def close_date_request(
+        self, request_id: UUID, *, status: str, decline_reason: str | None, decided_by: UUID | None, now: datetime
+    ) -> DateRequestRecord: ...
+
+    async def open_date_requests(self) -> list[DateRequestRecord]:
+        """Open date requests of the shop, oldest first."""
+        ...
+
     async def add_stored_file(
         self,
         *,
@@ -676,6 +746,30 @@ class TenantSession(Protocol):
 
     async def record_system_activity(self, *, action: str, subject_id: UUID) -> None: ...
 
+    async def subscription_locked(self) -> tuple[str, date | None, date | None] | None:
+        """As `subscription`, holding the row until the transaction ends."""
+        ...
+
+    async def pay_subscription(self, paid_through: date, now: datetime) -> None:
+        """Set the paid-through date. The shop becomes active unless an administrator suspended it."""
+        ...
+
+    async def create_online_payment(self, *, order_id: UUID, months: int, amount: int) -> OnlinePayment: ...
+
+    async def online_payment(self, order_id: UUID, *, for_update: bool = False) -> OnlinePayment | None: ...
+
+    async def online_payment_by_txn(self, provider: str, txn: str) -> OnlinePayment | None:
+        """The order a provider's transaction belongs to, locked until the transaction ends."""
+        ...
+
+    async def start_online_payment(
+        self, order_id: UUID, *, provider: str, txn: str, provider_time: int | None, now: datetime
+    ) -> None: ...
+
+    async def finish_online_payment(self, order_id: UUID, now: datetime) -> None: ...
+
+    async def cancel_online_payment(self, order_id: UUID, *, reason: int | None, now: datetime) -> None: ...
+
     async def deletion_state(self, *, for_update: bool = False) -> tuple[str, datetime | None]:
         """The shop's status (active or deletion_pending) and when it is due to be erased."""
         ...
@@ -702,6 +796,10 @@ class PlatformSession(Protocol):
 
     async def shops_due_for_reminders(self, hour: int) -> list[UUID]: ...
 
+    async def shops_with_receipt_work(self, stale_before: datetime, now: datetime) -> list[UUID]:
+        """Shops with a waiting notice sent before `stale_before` or a receipt due for deletion at `now`."""
+        ...
+
     async def measure_between(self, start: datetime, end: datetime) -> dict[str, float | None]:
         """Identity-free totals of the measurement events in [start, end)."""
         ...
@@ -717,6 +815,16 @@ class PlatformSession(Protocol):
         ...
 
     async def subscriptions_to_review(self, today: date) -> list[SubscriptionToReview]: ...
+
+    async def online_payment_shop(self, order_id: UUID) -> UUID | None:
+        """The shop an order belongs to; nothing else about it."""
+        ...
+
+    async def online_payment_shop_by_txn(self, provider: str, txn: str) -> UUID | None: ...
+
+    async def payme_statement(self, from_ms: int, to_ms: int) -> list[OnlinePayment]:
+        """Payme's transactions whose time, as Payme gave it, lies in the period."""
+        ...
 
     async def job_done(self, job: str, period: str) -> bool: ...
 

@@ -88,6 +88,19 @@ def _reminders_due(owner: psycopg.Connection, world: World) -> None:
     )
 
 
+def _date_request_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-date-request:{world.entry_a}")
+
+
+def _open_date_request(owner: psycopg.Connection, world: World) -> None:
+    # entry_a is promised a week from the database's today; the request asks for a later day.
+    owner.execute(
+        "INSERT INTO date_change_request (id, shop_id, entry_id, requested_date, reason) "
+        "VALUES (%s, %s, %s, current_date + 30, 'Oylik kechikdi')",
+        (_date_request_id(world), world.shop_a, world.entry_a),
+    )
+
+
 def _deletion_pending(owner: psycopg.Connection, world: World) -> None:
     owner.execute(
         "UPDATE shop SET status = 'deletion_pending', deletion_due = now() + interval '30 days' WHERE id = %s",
@@ -237,6 +250,27 @@ CALLS: dict[str, Call] = {
     "payment_notices.receipt": Call(
         "GET", lambda w, shop: f"/api/v1/shops/{shop}/payment-notices/{_notice_id(w)}/receipt", prepare=_sent_notice
     ),
+    "date_requests.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/date-requests"),
+    "date_requests.accept": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/date-requests/{_date_request_id(w)}/accept",
+        None,
+        True,
+        prepare=_open_date_request,
+    ),
+    "date_requests.decline": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/date-requests/{_date_request_id(w)}/decline",
+        {"reason": "Muddat allaqachon uzaytirilgan"},
+        True,
+        prepare=_open_date_request,
+    ),
+    "ledger.entry.promise.change": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/entries/{w.entry_a}/promise",
+        None,  # the body is a date a few days from now; filled in by _body
+        True,
+    ),
     "ledger.entry.lines.add": Call(
         "POST",
         lambda w, shop: f"/api/v1/shops/{shop}/entries/{w.entry_a}/lines",
@@ -260,6 +294,16 @@ CALLS: dict[str, Call] = {
         "PATCH", lambda w, shop: f"/api/v1/shops/{shop}/credit-settings", {"sellers_may_exceed": False}, True
     ),
     "shop.subscription.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/subscription"),
+    # Online payment is switched off (ADR-019): the one caller whose role allows it is told so, and the
+    # suite checks that nothing was ordered. With the switch on: tests/api/test_online_payment.py.
+    "shop.subscription.online_order.create": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/subscription/online-orders",
+        {"months": 1},
+        True,
+        201,
+        refused=(("owner_a", 409, "ONLINE_PAY_OFF"),),
+    ),
     "shop.deletion.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/deletion"),
     "shop.deletion.request": Call(
         "POST", lambda w, shop: f"/api/v1/shops/{shop}/deletion", {"confirm_name": "Shop A"}, True, 201
@@ -344,6 +388,12 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "payment_notices.accept": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "payment_notices.decline": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "payment_notices.receipt": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    # Specification, resources table: date requests are listed and decided by "manager, owner", and
+    # `/shops/{id}/entries/{eid}/promise` is "Manager, owner" (REQ-067).
+    "date_requests.list": {Role.MANAGER, Role.OWNER},
+    "date_requests.accept": {Role.MANAGER, Role.OWNER},
+    "date_requests.decline": {Role.MANAGER, Role.OWNER},
+    "ledger.entry.promise.change": {Role.MANAGER, Role.OWNER},
     # Specification, resources table: "Author, manager, owner". Any staff member by role; within the
     # operation only the entry's author or a manager (REQ-038).
     "ledger.entry.lines.add": {Role.SELLER, Role.MANAGER, Role.OWNER},
@@ -357,6 +407,8 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "shop.credit.update": {Role.MANAGER, Role.OWNER},
     # Specification, authorization table: the subscription is the owner's.
     "shop.subscription.read": {Role.OWNER},
+    # Paying is the owner's, like the subscription it pays for.
+    "shop.subscription.online_order.create": {Role.OWNER},
     # Specification, resources table: request deletion, cancel deletion: owner.
     "shop.deletion.read": {Role.OWNER},
     "shop.deletion.request": {Role.OWNER},
@@ -416,6 +468,12 @@ SELF_CALLS: dict[str, PlainCall] = {
         {"amount": 20000},
         404,
     ),
+    "me.accounts.date_requests.open": PlainCall(
+        "POST",
+        "/api/v1/me/accounts/00000000-0000-4000-8000-000000000000/date-requests",
+        {"entry_id": "00000000-0000-4000-8000-000000000000", "requested_date": "2030-01-15"},
+        404,
+    ),
     # A shop nobody is a member of: for any signed-in user it does not exist.
     "me.active_shop.set": PlainCall(
         "PUT", "/api/v1/me/active-shop", {"shop_id": "00000000-0000-4000-8000-000000000000"}, 404
@@ -448,6 +506,8 @@ def _body(world: World, op_name: str, call: Call) -> dict[str, Any] | None:
         return {"customer_id": str(world.customer_a)}
     if op_name == "waiting.attach":
         return {"customer_id": str(world.settled_customer_a)}
+    if op_name == "ledger.entry.promise.change":
+        return {"promised_date": (datetime.now(UTC).date() + timedelta(days=3)).isoformat(), "reason": "Kelishildi"}
     if op_name == "ledger.entry.promise.choose":
         return {"promised_date": (datetime.now(UTC).date() + timedelta(days=3)).isoformat()}
     if op_name == "catalog.learned.merge":
@@ -512,6 +572,11 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
             "SELECT id, status, decline_reason FROM dispute WHERE shop_id = %s ORDER BY id", (shop,)
         ).fetchall(),
         owner.execute(
+            "SELECT id, entry_id, requested_date, reason, status, decline_reason, decided_by, closed_at "
+            "FROM date_change_request WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
+        owner.execute(
             "SELECT id, name, name_norm, unit, price, learned, status, merged_into FROM catalog_item "
             "WHERE shop_id = %s ORDER BY id",
             (shop,),
@@ -521,6 +586,14 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
             "WHERE shop_id = %s ORDER BY entry_id, line_no",
             (shop,),
         ).fetchall(),
+        owner.execute(
+            "SELECT id, state, provider, provider_txn, months, amount FROM online_payment "
+            "WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
+        owner.execute(
+            "SELECT state, trial_ends, paid_through FROM subscription WHERE shop_id = %s", (shop,)
+        ).fetchone(),
         # Measurement rows carry no shop identifier; tests run one at a time, so a total is enough.
         owner.execute("SELECT count(*) FROM measure.event").fetchone(),
         owner.execute(
@@ -647,6 +720,7 @@ def test_a_member_of_one_shop_cannot_reach_another(
         world.waiting_a,
         _dispute_id(world),
         _notice_id(world),
+        _date_request_id(world),
     )
     uses_foreign_resource = any(str(resource) in call.path(world, world.shop_b) for resource in foreign)
     if uses_foreign_resource:

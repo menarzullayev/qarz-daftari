@@ -18,6 +18,7 @@ _STATUS = {
     "NOT_TRANSFER_TARGET": 409,
     "SUBSCRIPTION_LIMITED": 402,
     "SHOP_SUSPENDED": 403,
+    "RATE_LIMITED": 429,
     "CUSTOMER_ARCHIVED": 409,
     "CUSTOMER_HAS_BALANCE": 409,
     "EXCEEDS_BALANCE": 409,
@@ -29,11 +30,15 @@ _STATUS = {
     "DISPUTE_NOT_ALLOWED": 409,
     "DELETION_ALREADY_REQUESTED": 409,
     "DELETION_NOT_REQUESTED": 409,
+    "ONLINE_PAY_OFF": 409,
     "LIMIT_REACHED": 409,
     "REMINDERS_OFF": 409,
     "REMINDER_NOT_DUE": 409,
     "REMINDER_LIMIT_REACHED": 409,
     "CUSTOMER_UNREACHABLE": 409,
+    "REQUEST_ALREADY_OPEN": 409,
+    "DATE_REQUEST_NOT_ALLOWED": 409,
+    "PROMISE_NOT_CHANGEABLE": 409,
     "CATALOG_NAME_TAKEN": 409,
     "CATALOG_ITEM_NOT_LEARNED": 409,
     "CATALOG_MERGE_TARGET_INVALID": 409,
@@ -71,6 +76,9 @@ _MESSAGES = {
         "CATALOG_MERGE_TARGET_INVALID": "Faqat katalogda ko'rinadigan, ko'rib chiqilgan mahsulotga birlashtiriladi.",
         "CUSTOMER_ALREADY_LINKED": "Bu mijoz allaqachon Telegram hisobiga ulangan.",
         "DISPUTE_NOT_ALLOWED": "Bu yozuv bo'yicha e'tiroz bildirib bo'lmaydi yoki u allaqachon ko'rib chiqilgan.",
+        "REQUEST_ALREADY_OPEN": "Bu yozuv bo'yicha muddatni ko'chirish so'rovi allaqachon ko'rib chiqilmoqda.",
+        "DATE_REQUEST_NOT_ALLOWED": "Bu yozuv muddatini ko'chirish so'rovini hozir qabul qilib bo'lmaydi.",
+        "PROMISE_NOT_CHANGEABLE": "Bu yozuvning to'lash muddati yo'q yoki yozuv bekor qilingan.",
         "LINES_ALREADY_ADDED": "Bu yozuvga mahsulotlar allaqachon qo'shilgan.",
         "LINES_SUM_MISMATCH": "Mahsulotlar yig'indisi yozuv summasiga teng emas.",
         "LINES_WINDOW_CLOSED": "Mahsulot qo'shish muddati o'tgan: bu faqat sotuvdan keyingi kun oxirigacha mumkin.",
@@ -84,6 +92,8 @@ _MESSAGES = {
         "PAYMENT_NOTICE_NOT_ALLOWED": "Ko'rib chiqilmagan to'lov xabarlaringiz juda ko'p. Do'kon javobini kuting.",
         "PAYMENT_NOTICE_NOT_OPEN": "Bu to'lov xabari allaqachon ko'rib chiqilgan yoki muddati o'tgan.",
         "FILE_STORE_UNAVAILABLE": "Fayllarni saqlash hozir ishlamayapti. Birozdan keyin qayta urinib ko'ring.",
+        "ONLINE_PAY_OFF": "Onlayn to'lov hozircha yoqilmagan. Karta orqali to'lash: /obuna",
+        "RATE_LIMITED": "So'rovlar juda ko'p. Biroz kutib, qayta urinib ko'ring.",
         "ERROR": "Xatolik yuz berdi.",
     },
     "ru": {
@@ -111,6 +121,9 @@ _MESSAGES = {
         "CATALOG_MERGE_TARGET_INVALID": "Объединить можно только с проверенным товаром, который виден в каталоге.",
         "CUSTOMER_ALREADY_LINKED": "Этот клиент уже подключён к аккаунту Telegram.",
         "DISPUTE_NOT_ALLOWED": "По этой записи нельзя подать возражение, или оно уже рассмотрено.",
+        "REQUEST_ALREADY_OPEN": "Просьба о переносе срока по этой записи уже рассматривается.",
+        "DATE_REQUEST_NOT_ALLOWED": "Просьбу о переносе срока по этой записи сейчас принять нельзя.",
+        "PROMISE_NOT_CHANGEABLE": "У этой записи нет срока оплаты, или она отменена.",
         "LINES_ALREADY_ADDED": "К этой записи товары уже добавлены.",
         "LINES_SUM_MISMATCH": "Сумма товаров не равна сумме записи.",
         "LINES_WINDOW_CLOSED": "Срок добавления товаров истёк: это возможно только до конца дня после продажи.",
@@ -124,6 +137,8 @@ _MESSAGES = {
         "PAYMENT_NOTICE_NOT_ALLOWED": "У вас слишком много нерассмотренных сообщений об оплате. Дождитесь ответа.",
         "PAYMENT_NOTICE_NOT_OPEN": "Это сообщение об оплате уже рассмотрено или его срок истёк.",
         "FILE_STORE_UNAVAILABLE": "Хранилище файлов сейчас недоступно. Попробуйте ещё раз чуть позже.",
+        "ONLINE_PAY_OFF": "Онлайн-оплата пока не включена. Оплата переводом на карту: /obuna",
+        "RATE_LIMITED": "Слишком много запросов. Подождите немного и повторите.",
         "ERROR": "Произошла ошибка.",
     },
 }
@@ -138,4 +153,8 @@ def error_response(code: str, lang: str, fields: dict[str, str] | None = None) -
 async def app_error_handler(request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, AppError)
     lang = getattr(request.state, "lang", "uz")
-    return error_response(exc.code, lang, exc.fields)
+    response = error_response(exc.code, lang, exc.fields)
+    retry_after = getattr(exc, "retry_after", None)
+    if retry_after is not None:
+        response.headers["Retry-After"] = str(retry_after)
+    return response

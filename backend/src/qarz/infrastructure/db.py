@@ -22,6 +22,7 @@ from qarz.application.ports import (
     CreditSettings,
     CustomerAccount,
     CustomerRecord,
+    DateRequestRecord,
     DayFigures,
     DebtFigures,
     DisputeRecord,
@@ -30,9 +31,11 @@ from qarz.application.ports import (
     MemberRecord,
     Membership,
     MyShop,
+    OnlinePayment,
     OutboxMessage,
     PaymentNoticeRecord,
     PeriodTotals,
+    PromiseRecord,
     ReminderCandidate,
     ReminderSettings,
     SessionInfo,
@@ -210,24 +213,14 @@ _DISPUTE_BY_ENTRY = f"{_DISPUTE_SELECT} WHERE d.entry_id = :id"
 _DISPUTES_OF_CUSTOMER = f"{_DISPUTE_SELECT} WHERE e.customer_id = :id"
 _OPEN_DISPUTES = f"{_DISPUTE_SELECT} WHERE d.status = 'open' ORDER BY d.created_at, d.id"
 
-_FILE_COLUMNS = "f.id, f.purpose, f.object_key, f.sha256, f.size_bytes, f.mime, f.delete_after"
-_FILE_BY_ID = f"SELECT {_FILE_COLUMNS} FROM stored_file f WHERE f.id = :id"
-_DUE_RECEIPT_FILES = (
-    f"SELECT {_FILE_COLUMNS} FROM stored_file f "
-    "WHERE f.purpose = 'payment_notice' AND f.delete_after <= :now ORDER BY f.delete_after, f.id LIMIT :limit"
+_DATE_REQUEST_SELECT = (
+    "SELECT r.id, r.entry_id, e.customer_id, e.amount, r.requested_date, r.reason, r.status, r.decline_reason, "
+    f"r.created_at, r.closed_at, c.display_name, {_PROMISED.format(entry='e')} AS promised_date "
+    "FROM date_change_request r JOIN ledger_entry e ON e.id = r.entry_id JOIN customer c ON c.id = e.customer_id "
 )
-_NOTICE_SELECT = (
-    "SELECT n.id, n.customer_id, n.amount, n.file_id, n.status, n.payment_entry, e.amount AS recorded_amount, "
-    "n.decline_reason, n.created_at, n.closed_at, c.display_name "
-    "FROM payment_notice n JOIN customer c ON c.id = n.customer_id LEFT JOIN ledger_entry e ON e.id = n.payment_entry "
-)
-_NOTICE_BY_ID = f"{_NOTICE_SELECT} WHERE n.id = :id"
-_NOTICES_OF_CUSTOMER = f"{_NOTICE_SELECT} WHERE n.customer_id = :id ORDER BY n.created_at DESC, n.id LIMIT :limit"
-# A customer whose data was removed is nobody a payment can be recorded for; their notices only expire.
-_OPEN_NOTICES = (
-    f"{_NOTICE_SELECT} WHERE n.status = 'sent' AND n.created_at >= :since AND c.status <> 'anonymized' "
-    "ORDER BY n.created_at, n.id"
-)
+_DATE_REQUEST_BY_ID = f"{_DATE_REQUEST_SELECT} WHERE r.id = :id"
+_DATE_REQUESTS_OF_CUSTOMER = f"{_DATE_REQUEST_SELECT} WHERE e.customer_id = :id ORDER BY r.created_at, r.id"
+_OPEN_DATE_REQUESTS = f"{_DATE_REQUEST_SELECT} WHERE r.status = 'open' ORDER BY r.created_at, r.id"
 
 
 _REMINDER_SETTINGS = (
@@ -259,6 +252,25 @@ _WEEK_FIGURES = (
     "FROM measure.event WHERE at >= :start AND at < :end"
 )
 
+_FILE_COLUMNS = "f.id, f.purpose, f.object_key, f.sha256, f.size_bytes, f.mime, f.delete_after"
+_FILE_BY_ID = f"SELECT {_FILE_COLUMNS} FROM stored_file f WHERE f.id = :id"
+_DUE_RECEIPT_FILES = (
+    f"SELECT {_FILE_COLUMNS} FROM stored_file f "
+    "WHERE f.purpose = 'payment_notice' AND f.delete_after <= :now ORDER BY f.delete_after, f.id LIMIT :limit"
+)
+_NOTICE_SELECT = (
+    "SELECT n.id, n.customer_id, n.amount, n.file_id, n.status, n.payment_entry, e.amount AS recorded_amount, "
+    "n.decline_reason, n.created_at, n.closed_at, c.display_name "
+    "FROM payment_notice n JOIN customer c ON c.id = n.customer_id LEFT JOIN ledger_entry e ON e.id = n.payment_entry "
+)
+_NOTICE_BY_ID = f"{_NOTICE_SELECT} WHERE n.id = :id"
+_NOTICES_OF_CUSTOMER = f"{_NOTICE_SELECT} WHERE n.customer_id = :id ORDER BY n.created_at DESC, n.id LIMIT :limit"
+# A customer whose data was removed is nobody a payment can be recorded for; their notices only expire.
+_OPEN_NOTICES = (
+    f"{_NOTICE_SELECT} WHERE n.status = 'sent' AND n.created_at >= :since AND c.status <> 'anonymized' "
+    "ORDER BY n.created_at, n.id"
+)
+
 
 def _like_pattern(part: str) -> str:
     escaped = part.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -271,6 +283,40 @@ def _async_url(url: str) -> str:
     return url
 
 
+_SUBSCRIPTION_LOCKED = "SELECT state, trial_ends, paid_through FROM subscription FOR UPDATE"
+_ONLINE_PAYMENT_COLUMNS = (
+    "id, prepare_id, months, amount, state, provider, provider_txn, provider_time, cancel_reason, "
+    "started_at, paid_at, cancelled_at"
+)
+_ONLINE_PAYMENT_INSERT = (
+    "INSERT INTO online_payment (id, shop_id, months, amount) VALUES (:id, :shop_id, :months, :amount) "
+    f"RETURNING {_ONLINE_PAYMENT_COLUMNS}"
+)
+_ONLINE_PAYMENT_BY_ID = f"SELECT {_ONLINE_PAYMENT_COLUMNS} FROM online_payment WHERE id = :id"
+_ONLINE_PAYMENT_LOCKED = f"{_ONLINE_PAYMENT_BY_ID} FOR UPDATE"
+_ONLINE_PAYMENT_BY_TXN = (
+    f"SELECT {_ONLINE_PAYMENT_COLUMNS} FROM online_payment "
+    "WHERE provider = :provider AND provider_txn = :txn FOR UPDATE"
+)
+
+
+def _online_payment(row: Any) -> OnlinePayment:
+    return OnlinePayment(
+        id=UUID(str(row.id)),
+        prepare_id=int(row.prepare_id),
+        months=int(row.months),
+        amount=int(row.amount),
+        state=str(row.state),
+        provider=row.provider,
+        provider_txn=row.provider_txn,
+        provider_time=None if row.provider_time is None else int(row.provider_time),
+        cancel_reason=None if row.cancel_reason is None else int(row.cancel_reason),
+        started_at=row.started_at,
+        paid_at=row.paid_at,
+        cancelled_at=row.cancelled_at,
+    )
+
+
 class PgTenantSession:
     def __init__(self, conn: AsyncConnection, shop_id: UUID) -> None:
         self._conn = conn
@@ -279,8 +325,13 @@ class PgTenantSession:
     async def active_membership(self, user_id: UUID) -> Membership | None:
         row = (
             await self._conn.execute(
-                text("SELECT id, role FROM membership WHERE user_id = :user_id AND status = 'active'"),
-                {"user_id": user_id},
+                # The shop is named here as well as by row-level security, so that a connection made
+                # with a role that bypasses it still finds nobody a member of a shop they are not in.
+                text(
+                    "SELECT id, role FROM membership "
+                    "WHERE user_id = :user_id AND shop_id = :shop_id AND status = 'active'"
+                ),
+                {"user_id": user_id, "shop_id": self._shop_id},
             )
         ).first()
         return None if row is None else Membership(row.id, Role(row.role))
@@ -739,21 +790,43 @@ class PgTenantSession:
             },
         )
 
-    async def add_promise(self, *, entry_id: UUID, promised_date: date, actor: str, created_at: datetime) -> None:
+    async def add_promise(
+        self, *, entry_id: UUID, promised_date: date, actor: str, created_at: datetime, reason: str | None = None
+    ) -> None:
         await self._conn.execute(
             text(
-                "INSERT INTO promise (id, shop_id, entry_id, promised_date, actor, created_at) "
-                "VALUES (:id, :shop_id, :entry_id, :promised_date, :actor, :at)"
+                "INSERT INTO promise (id, shop_id, entry_id, promised_date, reason, actor, created_at) "
+                "VALUES (:id, :shop_id, :entry_id, :promised_date, :reason, :actor, :at)"
             ),
             {
                 "id": uuid4(),
                 "shop_id": self._shop_id,
                 "entry_id": entry_id,
                 "promised_date": promised_date,
+                "reason": reason,
                 "actor": actor,
                 "at": created_at,
             },
         )
+
+    async def promises_of(self, entry_ids: list[UUID]) -> dict[UUID, list[PromiseRecord]]:
+        if not entry_ids:
+            return {}
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT entry_id, promised_date, actor, reason, created_at FROM promise "
+                    "WHERE entry_id = ANY(CAST(:ids AS uuid[])) ORDER BY created_at, id"
+                ),
+                {"ids": entry_ids},
+            )
+        ).all()
+        history: dict[UUID, list[PromiseRecord]] = {}
+        for row in rows:
+            history.setdefault(row.entry_id, []).append(
+                PromiseRecord(row.promised_date, str(row.actor), row.reason, row.created_at)
+            )
+        return history
 
     async def record_measure(
         self, *, kind: str, entry_ref: UUID, amount: int, promised: date | None, handle_ms: int | None = None
@@ -1305,6 +1378,74 @@ class PgTenantSession:
         rows = (await self._conn.execute(text(_OPEN_DISPUTES))).all()
         return [(self._dispute(row), str(row.display_name)) for row in rows]
 
+    @staticmethod
+    def _date_request(row: Any) -> DateRequestRecord:
+        return DateRequestRecord(
+            row.id,
+            row.entry_id,
+            row.customer_id,
+            str(row.display_name),
+            int(row.amount),
+            row.promised_date,
+            row.requested_date,
+            row.reason,
+            str(row.status),
+            row.decline_reason,
+            row.created_at,
+            row.closed_at,
+        )
+
+    async def get_date_request(self, request_id: UUID) -> DateRequestRecord | None:
+        row = (await self._conn.execute(text(_DATE_REQUEST_BY_ID), {"id": request_id})).first()
+        return None if row is None else self._date_request(row)
+
+    async def date_requests_of_customer(self, customer_id: UUID) -> list[DateRequestRecord]:
+        rows = (await self._conn.execute(text(_DATE_REQUESTS_OF_CUSTOMER), {"id": customer_id})).all()
+        return [self._date_request(row) for row in rows]
+
+    async def open_date_request(
+        self, *, request_id: UUID, entry_id: UUID, requested_date: date, reason: str | None, now: datetime
+    ) -> DateRequestRecord:
+        await self._conn.execute(
+            text(
+                "INSERT INTO date_change_request (id, shop_id, entry_id, requested_date, reason, status, created_at) "
+                "VALUES (:id, :shop_id, :entry_id, :requested_date, :reason, 'open', :now)"
+            ),
+            {
+                "id": request_id,
+                "shop_id": self._shop_id,
+                "entry_id": entry_id,
+                "requested_date": requested_date,
+                "reason": reason,
+                "now": now,
+            },
+        )
+        row = (await self._conn.execute(text(_DATE_REQUEST_BY_ID), {"id": request_id})).one()
+        return self._date_request(row)
+
+    async def close_date_request(
+        self, request_id: UUID, *, status: str, decline_reason: str | None, decided_by: UUID | None, now: datetime
+    ) -> DateRequestRecord:
+        await self._conn.execute(
+            text(
+                "UPDATE date_change_request SET status = :status, decline_reason = :decline_reason, "
+                "decided_by = :decided_by, closed_at = :now WHERE id = :id AND status = 'open'"
+            ),
+            {
+                "id": request_id,
+                "status": status,
+                "decline_reason": decline_reason,
+                "decided_by": decided_by,
+                "now": now,
+            },
+        )
+        row = (await self._conn.execute(text(_DATE_REQUEST_BY_ID), {"id": request_id})).one()
+        return self._date_request(row)
+
+    async def open_date_requests(self) -> list[DateRequestRecord]:
+        rows = (await self._conn.execute(text(_OPEN_DATE_REQUESTS))).all()
+        return [self._date_request(row) for row in rows]
+
     # --- stored files and payment notices -------------------------------------------------------------
 
     @staticmethod
@@ -1695,6 +1836,67 @@ class PgTenantSession:
         row = (await self._conn.execute(text(_DELETION_LOCKED if for_update else _DELETION_STATE))).one()
         return str(row.status), row.deletion_due
 
+    async def subscription_locked(self) -> tuple[str, date | None, date | None] | None:
+        row = (await self._conn.execute(text(_SUBSCRIPTION_LOCKED))).first()
+        return None if row is None else (str(row.state), row.trial_ends, row.paid_through)
+
+    async def pay_subscription(self, paid_through: date, now: datetime) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE subscription SET paid_through = :paid_through, updated_at = :now, "
+                "state = CASE WHEN state = 'suspended' THEN state ELSE 'active' END, "
+                "prior_state = CASE WHEN state = 'suspended' THEN 'active' ELSE NULL END"
+            ),
+            {"paid_through": paid_through, "now": now},
+        )
+
+    async def create_online_payment(self, *, order_id: UUID, months: int, amount: int) -> OnlinePayment:
+        row = (
+            await self._conn.execute(
+                text(_ONLINE_PAYMENT_INSERT),
+                {"id": order_id, "shop_id": self._shop_id, "months": months, "amount": amount},
+            )
+        ).one()
+        return _online_payment(row)
+
+    async def online_payment(self, order_id: UUID, *, for_update: bool = False) -> OnlinePayment | None:
+        row = (
+            await self._conn.execute(
+                text(_ONLINE_PAYMENT_LOCKED if for_update else _ONLINE_PAYMENT_BY_ID), {"id": order_id}
+            )
+        ).first()
+        return None if row is None else _online_payment(row)
+
+    async def online_payment_by_txn(self, provider: str, txn: str) -> OnlinePayment | None:
+        row = (await self._conn.execute(text(_ONLINE_PAYMENT_BY_TXN), {"provider": provider, "txn": txn})).first()
+        return None if row is None else _online_payment(row)
+
+    async def start_online_payment(
+        self, order_id: UUID, *, provider: str, txn: str, provider_time: int | None, now: datetime
+    ) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE online_payment SET state = 'pending', provider = :provider, provider_txn = :txn, "
+                "provider_time = :provider_time, started_at = :now WHERE id = :id AND state = 'created'"
+            ),
+            {"id": order_id, "provider": provider, "txn": txn, "provider_time": provider_time, "now": now},
+        )
+
+    async def finish_online_payment(self, order_id: UUID, now: datetime) -> None:
+        await self._conn.execute(
+            text("UPDATE online_payment SET state = 'paid', paid_at = :now WHERE id = :id AND state = 'pending'"),
+            {"id": order_id, "now": now},
+        )
+
+    async def cancel_online_payment(self, order_id: UUID, *, reason: int | None, now: datetime) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE online_payment SET state = 'cancelled', cancel_reason = :reason, cancelled_at = :now "
+                "WHERE id = :id AND state = 'pending'"
+            ),
+            {"id": order_id, "reason": reason, "now": now},
+        )
+
     async def set_deletion(self, *, status: str, due: datetime | None) -> None:
         await self._conn.execute(
             text("UPDATE shop SET status = :status, deletion_due = :due WHERE id = :shop_id"),
@@ -1774,6 +1976,32 @@ class PgPlatformSession:
             for row in rows
         ]
 
+    async def online_payment_shop(self, order_id: UUID) -> UUID | None:
+        row = (await self._conn.execute(text("SELECT online_payment_shop(:id) AS shop_id"), {"id": order_id})).one()
+        return None if row.shop_id is None else UUID(str(row.shop_id))
+
+    async def online_payment_shop_by_txn(self, provider: str, txn: str) -> UUID | None:
+        row = (
+            await self._conn.execute(
+                text("SELECT online_payment_shop_by_txn(:provider, :txn) AS shop_id"),
+                {"provider": provider, "txn": txn},
+            )
+        ).one()
+        return None if row.shop_id is None else UUID(str(row.shop_id))
+
+    async def payme_statement(self, from_ms: int, to_ms: int) -> list[OnlinePayment]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT id, 0 AS prepare_id, 0 AS months, amount, state, 'payme' AS provider, provider_txn, "
+                    "provider_time, cancel_reason, started_at, paid_at, cancelled_at "
+                    "FROM payme_statement(:from_ms, :to_ms)"
+                ),
+                {"from_ms": from_ms, "to_ms": to_ms},
+            )
+        ).all()
+        return [_online_payment(row) for row in rows]
+
     async def erase_shop(self, shop_id: UUID) -> bool:
         row = (await self._conn.execute(text("SELECT erase_shop(:shop_id) AS erased"), {"shop_id": shop_id})).one()
         return bool(row.erased)
@@ -1809,6 +2037,15 @@ class PgPlatformSession:
         rows = (
             await self._conn.execute(
                 text("SELECT shop_id FROM shops_due_for_reminders(CAST(:hour AS smallint))"), {"hour": hour}
+            )
+        ).all()
+        return [row.shop_id for row in rows]
+
+    async def shops_with_receipt_work(self, stale_before: datetime, now: datetime) -> list[UUID]:
+        rows = (
+            await self._conn.execute(
+                text("SELECT shop_id FROM shops_with_receipt_work(:stale_before, :now)"),
+                {"stale_before": stale_before, "now": now},
             )
         ).all()
         return [row.shop_id for row in rows]
@@ -2160,7 +2397,12 @@ class Database:
 
     def __init__(self, url: str, *, pool_size: int = 5, max_overflow: int = 5) -> None:
         self._engine: AsyncEngine = create_async_engine(
-            _async_url(url), pool_pre_ping=True, pool_size=pool_size, max_overflow=max_overflow
+            _async_url(url),
+            pool_pre_ping=True,
+            pool_size=pool_size,
+            max_overflow=max_overflow,
+            # Errors are logged with their text; without this it would hold names and phone numbers.
+            hide_parameters=True,
         )
 
     @asynccontextmanager

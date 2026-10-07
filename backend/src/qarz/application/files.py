@@ -18,7 +18,7 @@ from uuid import UUID, uuid4
 
 from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.ports import FileMissing, FileStore, FileStoreError, Storage, StoredFileRecord, TenantSession
-from qarz.domain.files import FileRefusal, check_receipt, object_key
+from qarz.domain.files import FileRefusal, clean_receipt, object_key
 
 PURGE_BATCH = 100
 
@@ -27,6 +27,14 @@ class FileStoreUnavailable(AppError):
     """No file store is configured, or it did not answer. Nothing was stored."""
 
     code = "FILE_STORE_UNAVAILABLE"
+
+
+@dataclass(frozen=True)
+class CheckedFile:
+    """Content that is a whole, well-formed file of an accepted type, already without its metadata."""
+
+    mime: str
+    content: bytes
 
 
 @dataclass(frozen=True)
@@ -51,20 +59,24 @@ class FileService:
         self._new_token = new_token or _new_token
 
     @staticmethod
-    def check(data: bytes) -> str:
-        """The type of an acceptable receipt. The declared type and the file name are never consulted."""
-        outcome = check_receipt(data)
+    def check(data: bytes) -> CheckedFile:
+        """An acceptable receipt, as it will be kept. The declared type and the file name are never consulted.
+
+        The whole file is read through, not only its first bytes; what comes back has no metadata and
+        nothing after the end of the image (security review, P36-1). Nothing is stored here.
+        """
+        outcome = clean_receipt(data)
         if isinstance(outcome, FileRefusal):
             raise ValidationFailed({"receipt": outcome.value})
-        return outcome
+        return CheckedFile(*outcome)
 
-    async def stage(self, data: bytes) -> StagedFile:
-        mime = self.check(data)
+    async def stage(self, checked: CheckedFile) -> StagedFile:
         if self._store is None:
             raise FileStoreUnavailable()
-        staged = StagedFile(object_key(self._new_token()), hashlib.sha256(data).digest(), len(data), mime)
+        data = checked.content
+        staged = StagedFile(object_key(self._new_token()), hashlib.sha256(data).digest(), len(data), checked.mime)
         try:
-            await self._store.put(staged.key, data, mime)
+            await self._store.put(staged.key, data, checked.mime)
         except FileStoreError:
             raise FileStoreUnavailable() from None
         return staged
@@ -92,11 +104,20 @@ class FileService:
         )
         return file_id
 
-    async def read_in(self, session: TenantSession, file_id: UUID) -> tuple[StoredFileRecord, bytes]:
-        """A file of the session's shop and its content. Another shop's file does not exist here."""
+    @staticmethod
+    async def record_of(session: TenantSession, file_id: UUID) -> StoredFileRecord:
+        """What the session's shop keeps under this identifier. Another shop's file does not exist here."""
         record = await session.get_stored_file(file_id)
         if record is None:
             raise NotFound()
+        return record
+
+    async def content(self, record: StoredFileRecord) -> bytes:
+        """The content of a file whose record was read in its shop's transaction.
+
+        Called after that transaction has ended: the file store is a network call, and no database
+        connection is held while it answers (security review, P36-2).
+        """
         if self._store is None:
             raise FileStoreUnavailable()
         try:
@@ -108,7 +129,7 @@ class FileService:
         # What was stored is what is served: content that no longer matches its record is not handed out.
         if hashlib.sha256(data).digest() != record.sha256:
             raise NotFound()
-        return record, data
+        return data
 
     async def purge_due_receipts(self, shop_id: UUID, now: datetime, limit: int = PURGE_BATCH) -> int:
         """Delete the shop's payment-notice receipts whose retention has run out. For the retention job.

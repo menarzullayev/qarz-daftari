@@ -33,3 +33,21 @@ CREATE UNIQUE INDEX payment_notice_file ON payment_notice (file_id) WHERE file_i
 -- What the retention cleanup looks for.
 CREATE INDEX stored_file_due ON stored_file (shop_id, delete_after) WHERE delete_after IS NOT NULL;
 -- No new grant or policy: the table-level grants to qd_app and the tenant policies of 0001 cover both tables.
+
+-- Which shops have notices to mark as expired or receipts whose retention has run out. The worker has no
+-- tenant of its own, so this is the one cross-shop read the hourly job needs; it returns identifiers only.
+CREATE FUNCTION shops_with_receipt_work(p_stale_before timestamptz, p_now timestamptz)
+RETURNS TABLE (shop_id uuid)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT n.shop_id FROM payment_notice n WHERE n.status = 'sent' AND n.created_at < p_stale_before
+  UNION
+  SELECT f.shop_id FROM stored_file f WHERE f.purpose = 'payment_notice' AND f.delete_after <= p_now
+  ORDER BY 1;
+$$;
+
+REVOKE ALL ON FUNCTION shops_with_receipt_work(timestamptz, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION shops_with_receipt_work(timestamptz, timestamptz) TO qd_app;

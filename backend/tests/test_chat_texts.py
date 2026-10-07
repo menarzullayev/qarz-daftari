@@ -34,6 +34,7 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
     """A domain refusal must reach the seller in words, not as the generic error."""
     spoken_elsewhere = {
         "UNAUTHENTICATED",  # the chat has no sign-in step
+        "RATE_LIMITED",  # the API's limit; the chat is not called through the API
         "NOT_FOUND",  # said as "not_found"
         "FORBIDDEN_ROLE",  # said as "forbidden"
         "VALIDATION",  # said with the field's own hint
@@ -47,6 +48,7 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
         "PROMISE_ALREADY_SET",  # said as "promise_closed"
         "DELETION_ALREADY_REQUESTED",  # deleting a shop is done in the Mini App or the panel
         "DELETION_NOT_REQUESTED",
+        "ONLINE_PAY_OFF",  # paying online starts in the Mini App or the panel
         "REMINDERS_OFF",  # reminders are managed in the Mini App, not in the chat
         "REMINDER_NOT_DUE",
         "REMINDER_LIMIT_REACHED",

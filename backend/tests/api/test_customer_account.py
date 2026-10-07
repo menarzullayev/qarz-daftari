@@ -108,6 +108,8 @@ def test_a_customer_reads_their_own_account_without_the_shops_private_fields(
         "disputed",
         "dispute",
         "lines",
+        "promises",
+        "date_request",
     }
     assert "ichki izoh" not in str(body)
     assert "777000" not in str(body)

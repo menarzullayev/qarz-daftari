@@ -60,7 +60,7 @@ def verify_webapp_init_data(init_data: str, bot_token: str, now: datetime, max_a
 
     secret = hmac.new(b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256).digest()
     expected = hmac.new(secret, _check_string(fields), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, given):
+    if not hmac.compare_digest(expected.encode(), given.encode("utf-8")):
         raise InvalidTelegramData("signature")
 
     auth_date = _auth_date(fields.get("auth_date"), now, max_age)
@@ -82,7 +82,7 @@ def verify_login_data(data: dict[str, object], bot_token: str, now: datetime, ma
 
     secret = hashlib.sha256(bot_token.encode("utf-8")).digest()
     expected = hmac.new(secret, _check_string(fields), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, given):
+    if not hmac.compare_digest(expected.encode(), given.encode("utf-8")):
         raise InvalidTelegramData("signature")
 
     auth_date = _auth_date(fields.get("auth_date"), now, max_age)

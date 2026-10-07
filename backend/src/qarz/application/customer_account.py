@@ -13,7 +13,12 @@ from uuid import UUID
 from qarz.application import removal
 from qarz.application.errors import NotFound
 from qarz.application.goods_lines import line_body
-from qarz.application.ledger_service import HISTORY_PAGE
+from qarz.application.ledger_service import (
+    HISTORY_PAGE,
+    date_request_body,
+    latest_date_requests,
+    promise_body,
+)
 from qarz.application.notice_view import NOTICES_SHOWN, notice_body
 from qarz.application.operations import self_operation
 from qarz.application.ports import DisputeRecord, Storage
@@ -91,6 +96,8 @@ class CustomerAccountService:
             newest_first = sorted(account, key=lambda row: row.entry.seq, reverse=True)
             shown = newest_first[:HISTORY_PAGE]
             lines = await session.goods_lines_of([row.entry.id for row in shown])
+            promises = await session.promises_of([row.entry.id for row in shown])
+            requests = latest_date_requests(await session.date_requests_of_customer(customer_id))
             # No note, no author and no payment indicator: those are the shop's own (REQ-045).
             return {
                 "link_id": str(link_id),
@@ -113,6 +120,11 @@ class CustomerAccountService:
                         "disputed": row.entry.disputed,
                         "dispute": _dispute(disputes.get(row.entry.id)),
                         "lines": [line_body(line) for line in lines.get(row.entry.id, [])],
+                        # Every promised date the entry has carried, oldest first (INV-9).
+                        "promises": [promise_body(promise) for promise in promises.get(row.entry.id, ())],
+                        "date_request": None
+                        if row.entry.id not in requests
+                        else date_request_body(requests[row.entry.id]),
                     }
                     for row in shown
                 ],

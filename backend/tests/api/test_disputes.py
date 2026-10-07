@@ -336,7 +336,10 @@ def test_only_a_credit_sales_message_offers_to_dispute_and_nothing_asks_to_confi
     payment = record(client, world, world.customer_a, "payment", 1000).json()["entry"]["id"]
     reversal = reverse(client, world, payment).json()["entry"]["id"]
     buttons = _notice(owner, sale)["reply_markup"]["inline_keyboard"]
-    assert buttons == [[{"text": "⚠️ E'tiroz bildirish", "callback_data": f"v2:dsp:{uuid.UUID(sale).hex}"}]]
+    assert buttons == [
+        [{"text": "⚠️ E'tiroz bildirish", "callback_data": f"v2:dsp:{uuid.UUID(sale).hex}"}],
+        [{"text": "📅 Muddatni ko'chirish", "callback_data": f"v2:dmv:{uuid.UUID(sale).hex}"}],
+    ]
     assert "reply_markup" not in _notice(owner, payment)
     assert "reply_markup" not in _notice(owner, reversal)
 

@@ -16,11 +16,11 @@ from qarz.application.chat_texts import money, say
 from qarz.application.customer_account import resolve_link
 from qarz.application.customers import require_viewable, require_writable
 from qarz.application.errors import AppError, NotFound, ValidationFailed
-from qarz.application.files import FileService, StagedFile
+from qarz.application.files import PURGE_BATCH, FileService, FileStoreUnavailable, StagedFile
 from qarz.application.ledger_service import LedgerRefused, append_entry_in, clean_entry
 from qarz.application.notice_view import notice_body
 from qarz.application.operations import operation, self_operation
-from qarz.application.ports import Membership, PaymentNoticeRecord, Storage, TenantSession
+from qarz.application.ports import CustomerRecord, Membership, PaymentNoticeRecord, Storage, TenantSession
 from qarz.application.shops import require_member
 from qarz.domain import ledger
 from qarz.domain.access import Capability
@@ -230,20 +230,36 @@ class PaymentNoticeService:
         await resolve_link(self._storage, user_id, link_id)
 
     async def send(
-        self, user_id: UUID, link_id: UUID, amount: Any, receipt: bytes | None, request_key: str | None = None
+        self,
+        user_id: UUID,
+        link_id: UUID,
+        amount: Any,
+        receipt: bytes | None,
+        request_key: str | None = None,
+        *,
+        update_key: str | None = None,
     ) -> dict[str, Any]:
         """Send a notice for one of the caller's own accounts.
 
         `request_key` is optional for a customer: with it, a repeat returns the first notice and stores
-        nothing new. The chat always passes one, derived from the Telegram update.
+        nothing new. The chat passes `update_key` instead, the key it derives from the Telegram update,
+        which has a form no API caller can send.
         """
         shop_id, customer_id = await resolve_link(self._storage, user_id, link_id)
-        key = None if request_key is None else idempotency.validate_key(request_key)
+        key = update_key if request_key is None else idempotency.validate_key(request_key)
         if not valid_amount(amount):
             raise ValidationFailed({"amount": _AMOUNT_HINT})
-        # The content is checked and stored before the shop's transaction opens: no network call is made
-        # while the customer's row is locked. It is removed again unless that transaction records it.
-        staged = None if receipt is None else await self._files.stage(receipt)
+        checked = None if receipt is None else self._files.check(receipt)
+        staged = None
+        if checked is not None:
+            # A notice that would be refused anyway is refused before its receipt is uploaded (security
+            # review, P36-3). The same is checked again under the lock, where it counts.
+            async with self._storage.tenant(shop_id) as session:
+                if key is None or await session.stored_response(key) is None:
+                    await self._require_sendable(session, customer_id, int(amount), lock=False)
+            # Stored before the writing transaction opens: no network call is made while the customer's
+            # row is locked. It is removed again unless that transaction records it.
+            staged = await self._files.stage(checked)
         recorded = False
 
         async def write(session: TenantSession) -> dict[str, Any]:
@@ -282,13 +298,12 @@ class PaymentNoticeService:
             await self._files.discard(staged)
         return body
 
-    async def _send_in(
-        self, session: TenantSession, customer_id: UUID, amount: int, staged: StagedFile | None
-    ) -> dict[str, Any]:
+    async def _require_sendable(
+        self, session: TenantSession, customer_id: UUID, amount: int, *, lock: bool
+    ) -> tuple[CustomerRecord, int]:
+        """The customer and what they owe, when they may send a notice for this amount; else the refusal."""
         now = self._now()
-        # The customer row is locked, as in every write to the account, so the balance and the number of
-        # open notices cannot change between being checked and the notice being stored.
-        customer = await session.get_customer(customer_id, for_update=True)
+        customer = await session.get_customer(customer_id, for_update=lock)
         link = await session.link_state(customer_id)
         if customer is None or link is None:
             # The link ended between being resolved and the account being locked: nothing is there for them.
@@ -303,7 +318,15 @@ class PaymentNoticeService:
             raise LedgerRefused("EXCEEDS_BALANCE")
         if refusal is not None:
             raise PaymentNoticeNotAllowed({"reason": refusal.value})
+        return customer, balance
 
+    async def _send_in(
+        self, session: TenantSession, customer_id: UUID, amount: int, staged: StagedFile | None
+    ) -> dict[str, Any]:
+        now = self._now()
+        # The customer row is locked, as in every write to the account, so the balance and the number of
+        # open notices cannot change between being checked and the notice being stored.
+        customer, balance = await self._require_sendable(session, customer_id, amount, lock=True)
         file_id = (
             None
             if staged is None
@@ -396,11 +419,33 @@ class PaymentNoticeService:
             if record is None or record.file_id is None:
                 # (The second test only narrows the type: no identifier would find no file below.)
                 raise NotFound()
-            stored, data = await self._files.read_in(session, record.file_id)
+            stored = await self._files.record_of(session, record.file_id)
+        # Fetched only now that the transaction has ended and its connection is back in the pool.
+        data = await self._files.content(stored)
         # The name carries part of the notice identifier and nothing about the person.
         return stored.mime, f"receipt-{notice_id.hex[:8]}.{EXTENSIONS[stored.mime]}", data
 
     # --- the worker -----------------------------------------------------------------------------------
+
+    async def run_hourly(self) -> tuple[int, int]:
+        """The hourly job: mark stale notices as expired and delete receipts whose retention has run out,
+        in every shop that has either. Returns how many of each. Safe to repeat."""
+        now = self._now()
+        async with self._storage.platform() as platform:
+            shops = await platform.shops_with_receipt_work(now - NOTICE_LIFETIME, now)
+        expired = deleted = 0
+        for shop_id in shops:
+            expired += await self.expire_due(shop_id)
+            try:
+                while True:
+                    removed = await self._files.purge_due_receipts(shop_id, now)
+                    deleted += removed
+                    if removed < PURGE_BATCH:
+                        break
+            except FileStoreUnavailable:
+                # Nothing can be deleted without the store; the rows stay due and the next hour tries again.
+                continue
+        return expired, deleted
 
     async def expire_due(self, shop_id: UUID) -> int:
         """Mark the shop's notices that nobody decided in time as expired. For the hourly job."""

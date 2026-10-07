@@ -24,6 +24,8 @@ from qarz.application.chat_texts import money, say
 from qarz.application.files import FileService, FileStoreUnavailable
 from qarz.application.payment_notices import PaymentNoticeService
 from qarz.application.ports import FileStoreError
+from qarz.application.reminders import ReminderService
+from qarz.application.scheduler import Scheduler
 from qarz.application.shop_deletion import ShopDeletionService
 from qarz.domain.files import MAX_FILE_BYTES
 from qarz.infrastructure.db import Database, PgTenantSession
@@ -31,18 +33,13 @@ from qarz.infrastructure.file_store import FilesystemFileStore
 from qarz.interface.http import create_app
 from qarz.interface.payment_notices_api import MAX_BODY_BYTES
 
+from ..receipt_samples import COMMENT, EXIF, HTML, JPEG, PDF, PNG, WEBP, jpeg
 from .conftest import TEST_BOT_TOKEN, HeaderAuthenticator, World, as_user, stored_objects
 from .test_customer_account import ME, attach_waiter, customer_row, link_of
 from .test_customers_ledger import _subscription, another_client, key, record, seed_entry, shop, today
 from .test_disputes import staff_notices, tg
 
 pytestmark = pytest.mark.db
-
-JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF" + bytes(range(256)) + b"\r\n--tail\r\n\r"
-PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + bytes(64)
-WEBP = b"RIFF\x24\x00\x00\x00WEBPVP8 " + bytes(32)
-PDF = b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n"
-HTML = b"<!doctype html><script>alert(1)</script>"
 
 
 def send(
@@ -286,10 +283,29 @@ def test_the_type_is_read_from_the_content_whatever_the_sender_declares(
         (b"RIFF\x24\x00\x00\x00WAVEfmt " + bytes(32), "type"),  # RIFF, but not WebP
         (b"\xff\xd8", "type"),  # too short to be a JPEG
         (b" " + JPEG, "type"),  # the signature must be the very first bytes
+        (b"\xff\xd8\xff" + HTML, "malformed"),  # starts like a JPEG and is something else (P36-1)
+        (JPEG[:-2], "malformed"),  # a JPEG cut off before its end
+        (PNG[:-4] + b"\x00\x00\x00\x00", "malformed"),  # a PNG whose last checksum is wrong
+        (WEBP[:-2], "malformed"),
+        (PDF.replace(b"%%EOF", b"%%EOG"), "malformed"),
         (b"", "empty"),
         (JPEG + bytes(MAX_FILE_BYTES + 1 - len(JPEG)), "too_large"),
     ],
-    ids=["html", "exe", "gif", "wav", "short", "shifted", "empty", "one-byte-too-large"],
+    ids=[
+        "html",
+        "exe",
+        "gif",
+        "wav",
+        "short",
+        "shifted",
+        "disguised",
+        "cut-jpeg",
+        "bad-png",
+        "cut-webp",
+        "bad-pdf",
+        "empty",
+        "one-byte-too-large",
+    ],
 )
 def test_a_receipt_that_is_not_an_image_or_pdf_of_allowed_size_is_refused_and_nothing_is_kept(
     client: TestClient, world: World, owner: psycopg.Connection, file_root: Path, content: bytes, why: str
@@ -305,7 +321,9 @@ def test_a_receipt_that_is_not_an_image_or_pdf_of_allowed_size_is_refused_and_no
 def test_a_receipt_of_exactly_the_limit_is_accepted(
     client: TestClient, world: World, owner: psycopg.Connection, file_root: Path
 ) -> None:
-    content = JPEG + bytes(MAX_FILE_BYTES - len(JPEG))
+    # A PDF is kept as it is, so its size in the store is the size that was sent.
+    content = PDF[:-6] + b"%" + bytes(MAX_FILE_BYTES - len(PDF) - 1) + b"%%EOF\n"
+    assert len(content) == MAX_FILE_BYTES
     sent = send(client, world.customer_of_a, link_of(owner, world.customer_a), 20000, content)
     assert sent.status_code == 201, sent.text
     assert [row[4] for row in files(owner, world.shop_a)] == [MAX_FILE_BYTES]
@@ -317,7 +335,7 @@ def test_a_body_longer_than_any_receipt_is_refused_before_it_is_parsed(
 ) -> None:
     link = link_of(owner, world.customer_a)
     refused = send(client, world.customer_of_a, link, 20000, JPEG + bytes(MAX_BODY_BYTES))
-    assert (refused.status_code, refused.json()["error"]["fields"]) == (422, {"receipt": "too_large"})
+    assert (refused.status_code, refused.json()["error"]["code"]) == (413, "BODY_TOO_LARGE")
 
     # The same without a Content-Length to announce it: the bytes are counted as they arrive.
     def chunks() -> Any:
@@ -329,7 +347,7 @@ def test_a_body_longer_than_any_receipt_is_refused_before_it_is_parsed(
         content=chunks(),
         headers={**as_user(world.customer_of_a), "Content-Type": "multipart/form-data; boundary=x"},
     )
-    assert (streamed.status_code, streamed.json()["error"]["fields"]) == (422, {"receipt": "too_large"})
+    assert (streamed.status_code, streamed.json()["error"]["code"]) == (413, "BODY_TOO_LARGE")
     assert notices(owner, world.shop_a) == [] and stored_objects(file_root) == []
 
 
@@ -1258,3 +1276,253 @@ def test_a_shop_without_files_is_erased_without_a_file_store(
     asyncio.run(run())
     assert owner.execute("SELECT status FROM shop WHERE id = %s", (world.shop_a,)).fetchone() == ("erased",)
     assert notices(owner, world.shop_a) == []
+
+
+# --- security review: P36-1, P36-2, P36-3 -------------------------------------------------------------------
+
+
+def test_what_is_kept_of_a_photo_has_no_metadata_and_nothing_after_its_end(
+    client: TestClient, world: World, owner: psycopg.Connection, file_root: Path
+) -> None:
+    """P36-1: the whole file is read through and put together again from the parts an image needs."""
+    sent = jpeg(EXIF, COMMENT, trailing=b"<script>alert(1)</script>PK\x03\x04 another file")
+    assert b"GPSLatitude" in sent and b"8600 1234" in sent
+    notice = send(client, world.customer_of_a, link_of(owner, world.customer_a), 20000, sent).json()["id"]
+
+    assert [path.read_bytes() for path in stored_objects(file_root)] == [JPEG]
+    stored = files(owner, world.shop_a)[0]
+    assert (stored[3], stored[4], stored[5]) == (hashlib.sha256(JPEG).digest(), len(JPEG), "image/jpeg")
+    served = client.get(f"{shop(world)}/payment-notices/{notice}/receipt", headers=as_user(world.owner_a)).content
+    assert served == JPEG
+    for removed in (b"GPSLatitude", b"8600 1234", b"script", b"PK\x03\x04"):
+        assert removed not in served
+
+
+class WatchedStore:
+    """A file store that counts its calls and notes how many shop transactions were open during each."""
+
+    def __init__(self, inner: FilesystemFileStore, open_transactions: Callable[[], int]) -> None:
+        self.inner, self.open_transactions = inner, open_transactions
+        self.calls: list[tuple[str, int]] = []
+
+    async def put(self, key: str, data: bytes, mime: str) -> None:
+        self.calls.append(("put", self.open_transactions()))
+        await self.inner.put(key, data, mime)
+
+    async def get(self, key: str) -> bytes:
+        self.calls.append(("get", self.open_transactions()))
+        return await self.inner.get(key)
+
+    async def delete(self, key: str) -> None:
+        self.calls.append(("delete", self.open_transactions()))
+        await self.inner.delete(key)
+
+
+class WatchedDatabase:
+    """The real database, counting the shop transactions that are open at any moment."""
+
+    def __init__(self, database: Database) -> None:
+        self._database = database
+        self.open = 0
+
+    def tenant(self, shop_id: uuid.UUID) -> Any:
+        watched, inner = self, self._database.tenant(shop_id)
+
+        class Counted:
+            async def __aenter__(self) -> Any:
+                session = await inner.__aenter__()
+                watched.open += 1
+                return session
+
+            async def __aexit__(self, *error: Any) -> Any:
+                watched.open -= 1
+                return await inner.__aexit__(*error)
+
+        return Counted()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._database, name)
+
+
+@contextmanager
+def watched_client(app_database_url: str, file_root: Path) -> Iterator[tuple[TestClient, WatchedStore]]:
+    database = WatchedDatabase(Database(app_database_url))
+    store = WatchedStore(FilesystemFileStore(file_root), lambda: database.open)
+    app = create_app(
+        database.reachable,
+        database,  # type: ignore[arg-type]
+        auth=AuthService(database, TEST_BOT_TOKEN),  # type: ignore[arg-type]
+        authenticator=HeaderAuthenticator(),
+        file_store=store,
+    )
+    with TestClient(app) as test_client:
+        yield test_client, store
+        test_client.portal.call(database.dispose)  # type: ignore[union-attr]
+
+
+def test_the_file_store_is_never_called_while_a_shop_transaction_is_open(
+    app_database_url: str, world: World, owner: psycopg.Connection, file_root: Path
+) -> None:
+    """P36-2: a slow store must not hold database connections. Reading, writing and discarding alike."""
+    link = link_of(owner, world.customer_a)
+    with watched_client(app_database_url, file_root) as (watched, store):
+        notice = send(watched, world.customer_of_a, link, 20000, JPEG).json()["id"]
+        path = f"{shop(world)}/payment-notices/{notice}/receipt"
+        assert watched.get(path, headers=as_user(world.seller_a)).content == JPEG
+        # A notice refused under the lock after its receipt was stored: the key is reused for another request.
+        request_key = key()
+        assert send(watched, world.customer_of_a, link, 1000, PNG, headers=request_key).status_code == 201
+        assert send(watched, world.customer_of_a, link, 2000, PDF, headers=request_key).status_code == 409
+        assert [name for name, _ in store.calls] == ["put", "get", "put", "put", "delete"]
+        assert [during for _, during in store.calls] == [0, 0, 0, 0, 0]
+
+
+def test_a_notice_that_will_be_refused_never_reaches_the_file_store(
+    app_database_url: str, world: World, owner: psycopg.Connection, file_root: Path
+) -> None:
+    """P36-3: the limits are checked before the upload, not only after it."""
+    link = link_of(owner, world.customer_a)
+    with watched_client(app_database_url, file_root) as (watched, store):
+        above = send(watched, world.customer_of_a, link, 50001, JPEG)
+        assert (above.status_code, above.json()["error"]["code"]) == (409, "EXCEEDS_BALANCE")
+        for amount in (1000, 2000, 3000):
+            assert send(watched, world.customer_of_a, link, amount).status_code == 201
+        for _ in range(5):
+            too_many = send(watched, world.customer_of_a, link, 4000, JPEG)
+            assert (too_many.status_code, too_many.json()["error"]["code"]) == (409, "PAYMENT_NOTICE_NOT_ALLOWED")
+        assert send(watched, world.customer_of_a, link, 4000, HTML).status_code == 422
+        assert send(watched, world.stranger, link, 4000, JPEG).status_code == 404
+        assert store.calls == [], "nothing was uploaded, so nothing had to be deleted either"
+    assert len(notices(owner, world.shop_a)) == 3 and files(owner, world.shop_a) == []
+
+
+# --- the body limit: one route may carry a receipt ---------------------------------------------------------
+
+
+def test_only_the_notice_route_may_carry_more_than_the_general_limit(
+    client: TestClient, world: World, owner: psycopg.Connection, file_root: Path
+) -> None:
+    link = link_of(owner, world.customer_a)
+    two_megabytes = PDF[:-6] + b"%" + bytes(2 * 1024 * 1024) + b"%%EOF\n"
+    sent = send(client, world.customer_of_a, link, 20000, two_megabytes)
+    assert sent.status_code == 201, sent.text
+    assert [path.stat().st_size for path in stored_objects(file_root)] == [len(two_megabytes)]
+
+    # The same bytes to any other route are refused before anything is read, whoever sends them.
+    notice = sent.json()["id"]
+    for method, path in (
+        ("POST", f"{shop(world)}/payment-notices/{notice}/accept"),
+        ("POST", f"{shop(world)}/payment-notices/{notice}/decline"),
+        ("POST", f"{ME}/{link}/disputes"),
+        ("POST", f"{ME}/{link}/payment-notices/"),
+        ("POST", f"{ME}/{link}/payment-notices/extra"),
+        ("POST", f"{ME}/not-a-link/payment-notices"),
+        ("PUT", f"{ME}/{link}/payment-notices"),
+        ("POST", "/tg/webhook"),
+    ):
+        refused = client.request(
+            method,
+            path,
+            content=two_megabytes,
+            headers={**as_user(world.owner_a), **key(), "Content-Type": "text/plain"},
+        )
+        assert (refused.status_code, refused.json()["error"]["code"]) == (413, "BODY_TOO_LARGE"), path
+    assert notices(owner, world.shop_a)[0][2] == "sent"
+
+
+# --- the hourly job ----------------------------------------------------------------------------------------
+
+
+def test_the_worker_expires_stale_notices_and_deletes_due_receipts_once_an_hour(
+    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+) -> None:
+    link = link_of(owner, world.customer_a)
+    # A receipt whose customer's data was removed: due for deletion at once (BR-32).
+    attach_waiter(client, world, world.settled_customer_a)
+    other_link = link_of(owner, world.settled_customer_a)
+    assert record(client, world, world.settled_customer_a, "credit", 1000).status_code == 201
+    removed_notice = send(client, world.waiter, other_link, 1000, PNG).json()["id"]
+    assert accept(client, world, world.owner_a, removed_notice).status_code == 200
+    assert client.post(f"{ME}/{other_link}/removal", headers=as_user(world.waiter)).json()["removed"] is True
+    # A receipt that is not due, and a notice that waited too long.
+    send(client, world.customer_of_a, link, 20000, JPEG)
+    stale = seed_notice(owner, world, 1000, days_ago=14.01)
+    assert len(stored_objects(file_root)) == 2
+
+    # Far in the future and at night in Tashkent: no other job of the scheduler has work then, and no
+    # earlier test has used the hour. The receipt that must survive is given a deadline beyond it.
+    moment = datetime(2083, 3, 3, 21, 30, tzinfo=UTC)
+    owner.execute(
+        "UPDATE stored_file SET delete_after = '2200-01-01' WHERE shop_id = %s AND mime = 'image/jpeg'", (world.shop_a,)
+    )
+
+    def tick(minutes: int) -> None:
+        clock = lambda: moment + timedelta(minutes=minutes)  # noqa: E731
+
+        async def run() -> None:
+            database = Database(app_database_url)
+            try:
+                service = PaymentNoticeService(database, FileService(database, FilesystemFileStore(file_root)), clock)
+                await Scheduler(database, ReminderService(database, clock), clock, notices=service).tick()
+            finally:
+                await database.dispose()
+
+        asyncio.run(run())
+
+    def status(notice: uuid.UUID) -> Any:
+        return owner.execute("SELECT status FROM payment_notice WHERE id = %s", (notice,)).fetchone()
+
+    tick(0)
+    assert status(stale) == ("expired",)
+    assert [path.read_bytes() for path in stored_objects(file_root)] == [JPEG], "only the receipt that was due is gone"
+    assert [row[5] for row in files(owner, world.shop_a)] == ["image/jpeg"]
+
+    # Later in the same hour nothing is done again; in the next hour it is.
+    later = seed_notice(owner, world, 2000, days_ago=14.01)
+    tick(2)
+    assert status(later) == ("sent",)
+    tick(61)
+    assert status(later) == ("expired",)
+    assert len(stored_objects(file_root)) == 1
+
+
+def test_the_hourly_job_looks_only_at_shops_that_have_work(
+    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str
+) -> None:
+    now = datetime.now(UTC)
+
+    def shops() -> set[uuid.UUID]:
+        async def run() -> list[uuid.UUID]:
+            database = Database(app_database_url)
+            try:
+                async with database.platform() as session:
+                    return await session.shops_with_receipt_work(now - timedelta(days=14), now)
+            finally:
+                await database.dispose()
+
+        return set(asyncio.run(run())) & {world.shop_a, world.shop_b}
+
+    send(client, world.customer_of_a, link_of(owner, world.customer_a), 20000, JPEG)
+    seed_notice(owner, world, 1000, days_ago=13.9)
+    assert shops() == set(), "a fresh notice and a receipt that is not due are no work"
+    stale = seed_notice(owner, world, 1000, days_ago=14.1)
+    assert shops() == {world.shop_a}
+    owner.execute("UPDATE payment_notice SET status = 'declined', closed_at = now() WHERE id = %s", (stale,))
+    assert shops() == set()
+    owner.execute("UPDATE stored_file SET delete_after = %s WHERE shop_id = %s", (now, world.shop_a))
+    assert shops() == {world.shop_a}
+
+
+def test_a_repeat_of_a_notice_already_sent_is_answered_from_the_record_even_when_a_new_one_would_be_refused(
+    client: TestClient, world: World, owner: psycopg.Connection, file_root: Path
+) -> None:
+    link = link_of(owner, world.customer_a)
+    request_key = key()
+    for amount in (1000, 2000):
+        assert send(client, world.customer_of_a, link, amount).status_code == 201
+    third = send(client, world.customer_of_a, link, 3000, JPEG, headers=request_key)
+    assert third.status_code == 201
+    # Three are waiting now, so a new notice would be refused; this is not a new one.
+    again = send(client, world.customer_of_a, link, 3000, JPEG, headers=request_key)
+    assert (again.status_code, again.json()) == (201, third.json())
+    assert len(notices(owner, world.shop_a)) == 3 and len(stored_objects(file_root)) == 1

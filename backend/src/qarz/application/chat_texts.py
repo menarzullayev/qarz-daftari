@@ -164,12 +164,40 @@ UZ = {
     "sub_price": "Narxi: oyiga {price}.",
     "sub_pay_to": "To'lov uchun karta: {card}. O'tkazmadan so'ng chekni shu yerga yuboring.",
     "sub_no_card": "To'lov rekvizitlari hali kiritilmagan.",
+    "sub_paid_online": "«{shop}»: {amount} to'lov qabul qilindi. Obuna {date} gacha to'langan.",
     "sub_trial_ending": "«{shop}»: sinov muddati {days} kundan keyin, {date} kuni tugaydi. Davom ettirish: /obuna",
     "sub_paid_ending": "«{shop}»: to'langan muddat {days} kundan keyin, {date} kuni tugaydi. Uzaytirish: /obuna",
     "sub_limited": (
         "«{shop}»: obuna muddati tugadi. Endi yangi nasiya yozilmaydi; to'lov qabul qilish, ko'rish va "
         "mijozlarga xabarlar ishlayveradi. To'lash: /obuna"
     ),
+    "move_date_button": "📅 Muddatni ko'chirish",
+    "ask_move_date": "To'lash muddati qaysi sanaga ko'chirilsin? kun.oy ko'rinishida yozing, masalan 25.10",
+    "move_date_invalid": "Sanani tushunmadim. kun.oy ko'rinishida yozing, masalan 25.10",
+    "date_request_sent": (
+        "So'rovingiz «{shop}» do'koniga yuborildi: to'lash muddatini {date} ga ko'chirish. Javobi shu yerga keladi."
+    ),
+    "REQUEST_ALREADY_OPEN": "Bu yozuv bo'yicha muddatni ko'chirish so'rovi allaqachon ko'rib chiqilmoqda.",
+    "DATE_REQUEST_NOT_ALLOWED": "Bu yozuv muddatini ko'chirish so'rovini hozir qabul qilib bo'lmaydi.",
+    "PROMISE_NOT_CHANGEABLE": "Bu yozuvning to'lash muddati yo'q yoki yozuv bekor qilingan.",
+    "date_not_later": "Yangi sana hozirgi to'lash muddatidan keyin bo'lishi kerak.",
+    "date_fully_paid": "Bu yozuv to'liq to'langan yoki bekor qilingan: muddatini ko'chirishga hojat yo'q.",
+    "date_declined_recently": (
+        "Bu yozuv bo'yicha so'rovingiz yaqinda rad etilgan. Rad etilganidan 7 kun o'tgach qayta so'rash mumkin."
+    ),
+    "date_request_closed": "Bu so'rov allaqachon ko'rib chiqilgan yoki o'z kuchini yo'qotgan.",
+    "s_date_request": (
+        "📅 {shop}\n{name} {amount} nasiyaning to'lash muddatini {old} dan {date} ga ko'chirishni so'rayapti."
+    ),
+    "accept_button": "✅ Qabul qilish",
+    "reason_line": "Sabab: {reason}",
+    "date_accepted_staff": "✅ {name}: {amount} nasiyaning to'lash muddati {date} ga ko'chirildi.",
+    "date_declined_staff": "So'rov rad etildi: {name}, {amount}. To'lash muddati o'zgarmadi.",
+    "n_date_accepted": (
+        "{shop}\n{amount} nasiya muddatini ko'chirish so'rovingiz qabul qilindi.\nYangi to'lash muddati: {date}"
+    ),
+    "n_date_declined": "{shop}\n{amount} nasiya muddatini {date} ga ko'chirish so'rovingiz rad etildi.",
+    "n_date_changed": "{shop}\n{name}, {amount} nasiyaning to'lash muddati o'zgartirildi: {old} → {date}",
     "shop_deletion_requested": (
         "«{shop}» do'konini o'chirish so'raldi. Ma'lumotlar {date} kuni butunlay o'chiriladi. Shu kungacha "
         "eksport qilishingiz yoki bekor qilishingiz mumkin."
@@ -376,12 +404,36 @@ RU = {
     "sub_price": "Цена: {price} в месяц.",
     "sub_pay_to": "Карта для оплаты: {card}. После перевода отправьте чек сюда.",
     "sub_no_card": "Реквизиты для оплаты пока не указаны.",
+    "sub_paid_online": "«{shop}»: оплата {amount} получена. Подписка оплачена до {date}.",
     "sub_trial_ending": "«{shop}»: пробный период закончится через {days} дн., {date}. Продолжить: /obuna",
     "sub_paid_ending": "«{shop}»: оплаченный период закончится через {days} дн., {date}. Продлить: /obuna",
     "sub_limited": (
         "«{shop}»: срок подписки истёк. Новые продажи в долг не записываются; приём оплат, просмотр и "
         "сообщения клиентам работают. Оплатить: /obuna"
     ),
+    "move_date_button": "📅 Перенести срок",
+    "ask_move_date": "На какую дату перенести срок оплаты? Напишите день.месяц, например 25.10",
+    "move_date_invalid": "Не понял дату. Напишите день.месяц, например 25.10",
+    "date_request_sent": (
+        "Ваша просьба отправлена в магазин «{shop}»: перенести срок оплаты на {date}. Ответ придёт сюда."
+    ),
+    "REQUEST_ALREADY_OPEN": "Просьба о переносе срока по этой записи уже рассматривается.",
+    "DATE_REQUEST_NOT_ALLOWED": "Просьбу о переносе срока по этой записи сейчас принять нельзя.",
+    "PROMISE_NOT_CHANGEABLE": "У этой записи нет срока оплаты, или она отменена.",
+    "date_not_later": "Новая дата должна быть позже нынешнего срока оплаты.",
+    "date_fully_paid": "Эта запись полностью оплачена или отменена: переносить срок не нужно.",
+    "date_declined_recently": (
+        "Вашу просьбу по этой записи недавно отклонили. Попросить снова можно через 7 дней после отказа."
+    ),
+    "date_request_closed": "Эта просьба уже рассмотрена или утратила силу.",
+    "s_date_request": "📅 {shop}\n{name} просит перенести срок оплаты долга {amount} с {old} на {date}.",
+    "accept_button": "✅ Принять",
+    "reason_line": "Причина: {reason}",
+    "date_accepted_staff": "✅ {name}: срок оплаты долга {amount} перенесён на {date}.",
+    "date_declined_staff": "Просьба отклонена: {name}, {amount}. Срок оплаты не изменился.",
+    "n_date_accepted": "{shop}\nВаша просьба перенести срок оплаты долга {amount} принята.\nНовый срок оплаты: {date}",
+    "n_date_declined": "{shop}\nВаша просьба перенести срок оплаты долга {amount} на {date} отклонена.",
+    "n_date_changed": "{shop}\n{name}, срок оплаты долга {amount} изменён: {old} → {date}",
     "shop_deletion_requested": (
         "Запрошено удаление магазина «{shop}». Данные будут полностью удалены {date}. До этого дня можно "
         "выгрузить данные или отменить удаление."

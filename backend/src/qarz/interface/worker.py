@@ -11,7 +11,9 @@ import signal
 from aiogram import Bot
 
 from qarz.application.dispatch import Dispatcher
+from qarz.application.files import FileService
 from qarz.application.measurement import MeasurementService
+from qarz.application.payment_notices import PaymentNoticeService
 from qarz.application.reminders import ReminderService
 from qarz.application.scheduler import Scheduler
 from qarz.application.shop_deletion import ShopDeletionService
@@ -35,12 +37,15 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
     bot = Bot(settings.bot_token)
     # No SMS provider is chosen yet: the SMS path exists, is switched off, and refuses to send.
     dispatcher = Dispatcher(database, ChannelSender(telegram=TelegramSender(bot), sms=NoSmsProvider()))
+    file_store = build_file_store(settings, max_object_bytes=MAX_FILE_BYTES)
     scheduler = Scheduler(
         database,
         ReminderService(database),
         subscriptions=SubscriptionService(database),
         # Erasing a shop deletes its receipts from the file store too.
-        deletion=ShopDeletionService(database, files=build_file_store(settings, max_object_bytes=MAX_FILE_BYTES)),
+        deletion=ShopDeletionService(database, files=file_store),
+        # Stale payment notices are marked expired and receipts past their retention are deleted.
+        notices=PaymentNoticeService(database, FileService(database, file_store)),
         measurement=MeasurementService(database),
     )
     next_schedule = 0.0

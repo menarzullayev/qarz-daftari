@@ -6,6 +6,7 @@ been checked, so nobody can make the service hold more than one receipt's worth 
 """
 
 import json
+import re
 from collections.abc import Awaitable, Callable
 from email import policy
 from email.parser import BytesParser
@@ -25,6 +26,7 @@ from qarz.application.payment_notices import (
     PaymentNoticeService,
 )
 from qarz.domain.files import MAX_FILE_BYTES
+from qarz.interface.body_limit import Allowance
 from qarz.interface.shops_api import IdempotencyKey
 
 CurrentUser = Callable[..., Awaitable[UUID]]
@@ -32,6 +34,12 @@ CurrentUser = Callable[..., Awaitable[UUID]]
 # The receipt plus room for the form's own boundaries and the amount field.
 MAX_BODY_BYTES = MAX_FILE_BYTES + 16 * 1024
 _FIELDS = {"amount", "receipt"}
+# The one route whose body may exceed the general limit: sending a notice, which may carry a receipt.
+RECEIPT_UPLOAD = Allowance(
+    "POST",
+    re.compile(r"/api/v1/me/accounts/[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}/payment-notices"),
+    MAX_BODY_BYTES,
+)
 
 
 class Accept(BaseModel):
