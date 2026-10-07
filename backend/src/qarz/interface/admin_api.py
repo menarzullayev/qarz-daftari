@@ -38,6 +38,13 @@ from qarz.application.admin_access import (
     SecondFactorInvalid,
     SecondFactorLocked,
 )
+from qarz.application.admin_receipts import (
+    APPROVE_RECEIPT,
+    LIST_RECEIPTS,
+    READ_RECEIPT,
+    REJECT_RECEIPT,
+    AdminReceiptService,
+)
 from qarz.application.errors import NotFound, Unauthenticated, ValidationFailed
 from qarz.interface.observability import SECURITY_BAD_SECOND_FACTOR
 from qarz.interface.shops_api import IdempotencyKey
@@ -72,6 +79,12 @@ class PaidThroughBody(ReasonBody):
     paid_through: date
 
 
+class ApproveBody(_Strict):
+    # Absent or null approves the months the owner stated; a number corrects them (BR-27).
+    months: int | None = None
+    reason: str | None = Field(default=None, max_length=2000)
+
+
 class SettingsPatch(_Strict):
     changes: dict[str, Any] = Field(max_length=16)
     code: str | None = Field(default=None, pattern=r"^[0-9]{6}$")
@@ -93,6 +106,7 @@ def add_admin_routes(
     user_of: UserOf,
     language_of: LanguageOf,
     count: Callable[[UUID], None] | None = None,
+    receipts: AdminReceiptService | None = None,
 ) -> Callable[[Request], Awaitable[UUID]]:
     """Adds the routes and returns the dependency that lets only a full administrator through, for
     other modules that add routes to the administrator's side."""
@@ -215,6 +229,36 @@ def add_admin_routes(
     ) -> dict[str, Any]:
         body = await _read(request, ReasonBody)
         return await service.unsuspend(user_id, shop_id, body.reason, idempotency_key)
+
+    # --- subscription receipts --------------------------------------------------------------------------
+
+    if receipts is not None:
+        held = receipts
+
+        @app.get(BASE + "/receipts", name=LIST_RECEIPTS.name)
+        async def list_receipts(
+            user_id: admin, status: str | None = None, cursor: str | None = None, limit: int = 50
+        ) -> dict[str, Any]:
+            return await held.list_receipts(user_id, status=status, cursor=cursor, limit=limit)
+
+        @app.get(BASE + "/receipts/{receipt_id}", name=READ_RECEIPT.name)
+        async def read_receipt(receipt_id: UUID, user_id: admin) -> dict[str, Any]:
+            return await held.read_receipt(user_id, receipt_id)
+
+        @app.post(BASE + "/receipts/{receipt_id}/approve", name=APPROVE_RECEIPT.name)
+        async def approve_receipt(
+            receipt_id: UUID, request: Request, user_id: admin, idempotency_key: IdempotencyKey = None
+        ) -> dict[str, Any]:
+            raw = await request.body()
+            body = ApproveBody() if not raw.strip() else await _read(request, ApproveBody)
+            return await held.approve(user_id, receipt_id, body.months, body.reason, idempotency_key)
+
+        @app.post(BASE + "/receipts/{receipt_id}/reject", name=REJECT_RECEIPT.name)
+        async def reject_receipt(
+            receipt_id: UUID, request: Request, user_id: admin, idempotency_key: IdempotencyKey = None
+        ) -> dict[str, Any]:
+            body = await _read(request, ReasonBody)
+            return await held.reject(user_id, receipt_id, body.reason, idempotency_key)
 
     # --- platform settings and the audit ----------------------------------------------------------------
 

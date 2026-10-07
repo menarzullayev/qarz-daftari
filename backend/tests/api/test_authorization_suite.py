@@ -35,6 +35,7 @@ from qarz.application.operations import all_operations
 from qarz.domain.access import Role, lowest_role_with
 from qarz.domain.promise import tashkent_date
 
+from ..receipt_samples import JPEG
 from .conftest import (
     ADMIN_API,
     AdminEnv,
@@ -60,6 +61,8 @@ class Call:
     json: dict[str, Any] | None = None
     changes_data: bool = False
     ok_status: int = 200
+    # Sent as `multipart/form-data` instead of JSON: the fields, and the one file part.
+    form: tuple[dict[str, str], dict[str, tuple[str, bytes, str]]] | None = None
     # Puts shop A into the state the call needs (for example a pending transfer). Runs as the owner role.
     prepare: Callable[[psycopg.Connection, World], None] | None = None
     # Callers whose role is allowed but who are refused for another stated reason: caller -> (status, code).
@@ -374,6 +377,15 @@ CALLS: dict[str, Call] = {
     "shop.deletion.cancel": Call(
         "DELETE", lambda w, shop: f"/api/v1/shops/{shop}/deletion", None, True, prepare=_deletion_pending
     ),
+    "shop.subscription.receipts.submit": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/subscription/receipts",
+        None,
+        True,
+        201,
+        form=({"amount": "100000", "months": "1"}, {"receipt": ("chek.jpg", JPEG, "image/jpeg")}),
+    ),
+    "shop.subscription.receipts.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/subscription/receipts"),
     "overview.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview"),
     "overview.debtors": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/overview/debtors"),
     "reports.period": Call("GET", lambda w, shop: _last_week(shop)),
@@ -484,6 +496,9 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "shop.deletion.read": {Role.OWNER},
     "shop.deletion.request": {Role.OWNER},
     "shop.deletion.cancel": {Role.OWNER},
+    # Specification, resources table: the subscription, its receipts and their outcomes are the owner's.
+    "shop.subscription.receipts.submit": {Role.OWNER},
+    "shop.subscription.receipts.list": {Role.OWNER},
     "overview.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "overview.debtors": {Role.SELLER, Role.MANAGER, Role.OWNER},
     # Specification, resources table: "reports and exports: manager, owner" (REQ-046).
@@ -590,6 +605,10 @@ def _invoke(client: TestClient, world: World, call: Call, shop: uuid.UUID, heade
     if call.changes_data:
         headers = {**headers, **_key()}
     op_name = next(name for name, candidate in CALLS.items() if candidate is call)
+    if call.form is not None:
+        return client.request(
+            call.method, call.path(world, shop), data=call.form[0], files=call.form[1], headers=headers
+        )
     return client.request(call.method, call.path(world, shop), json=_body(world, op_name, call), headers=headers)
 
 
@@ -598,8 +617,12 @@ def _prepare(owner: psycopg.Connection, world: World, call: Call) -> None:
         call.prepare(owner, world)
 
 
-def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
-    """Everything a refused call could have changed in a shop."""
+def _snapshot(owner: psycopg.Connection, shop: uuid.UUID, *, shared: bool = True) -> tuple[Any, ...]:
+    """Everything a refused call could have changed in a shop.
+
+    Two of the things looked at belong to no shop: the total of measurement rows and the objects of the
+    file store. `shared=False` leaves them out, for a call that rightly went through in another shop.
+    """
     return (
         owner.execute(
             "SELECT name, lang, default_promise_days, status, deletion_due FROM shop WHERE id = %s", (shop,)
@@ -666,7 +689,7 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
             "SELECT state, trial_ends, paid_through FROM subscription WHERE shop_id = %s", (shop,)
         ).fetchone(),
         # Measurement rows carry no shop identifier; tests run one at a time, so a total is enough.
-        owner.execute("SELECT count(*) FROM measure.event").fetchone(),
+        owner.execute("SELECT count(*) FROM measure.event").fetchone() if shared else None,
         owner.execute(
             "SELECT id, admin_id, reason, starts_at, ends_at, closed_at, closed_by FROM support_access "
             "WHERE shop_id = %s ORDER BY id",
@@ -686,8 +709,15 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
             "SELECT id, requested_by, status, file_id, error, attempts FROM export_job WHERE shop_id = %s ORDER BY id",
             (shop,),
         ).fetchall(),
+        owner.execute(
+            "SELECT id, file_id, stated_amount, stated_months, status, months, reject_reason, decided_by "
+            "FROM subscription_receipt WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
         # The objects of the file store itself: a refused call writes and removes none.
-        sorted(str(path.relative_to(current_file_root())) for path in current_file_root().rglob("*") if path.is_file()),
+        sorted(str(path.relative_to(current_file_root())) for path in current_file_root().rglob("*") if path.is_file())
+        if shared
+        else None,
     )
 
 
@@ -780,9 +810,11 @@ def test_a_member_of_one_shop_cannot_reach_another(
     call = CALLS[op_name]
     _prepare(owner, world, call)
     before_a, before_b = _snapshot(owner, world.shop_a), _snapshot(owner, world.shop_b)
+    rows_of_a = _snapshot(owner, world.shop_a, shared=False)
 
     into_a = _invoke(client, world, call, world.shop_a, as_user(world.owner_b))
     assert into_a.status_code == 404, into_a.text
+    assert _snapshot(owner, world.shop_a) == before_a, "the call into shop A changed nothing anywhere"
 
     # Through their own shop, naming a member, invitation, customer or entry that belongs to shop A.
     through_b = _invoke(client, world, call, world.shop_b, as_user(world.owner_b))
@@ -807,7 +839,12 @@ def test_a_member_of_one_shop_cannot_reach_another(
     if uses_foreign_resource:
         assert through_b.status_code == 404, through_b.text
         assert _snapshot(owner, world.shop_b)[:3] == before_b[:3], "shop B's own data must be untouched"
-    assert _snapshot(owner, world.shop_a) == before_a, "shop A must be untouched either way"
+    # A call that needs nothing of shop A goes through in shop B, as it should. What it adds to the things
+    # no shop owns (a measurement row, a stored object) is not a change to shop A.
+    own_shop_only = not uses_foreign_resource and through_b.status_code < 300
+    assert _snapshot(owner, world.shop_a, shared=not own_shop_only) == (rows_of_a if own_shop_only else before_a), (
+        "shop A must be untouched either way"
+    )
 
 
 @pytest.mark.parametrize("op_name", SHOP_OPS)
@@ -938,6 +975,29 @@ def _suspended(owner: psycopg.Connection, world: World) -> None:
     )
 
 
+def _receipt_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-subscription-receipt:{world.entry_a}")
+
+
+def _waiting_receipt(owner: psycopg.Connection, world: World) -> None:
+    """Shop A's owner sent a receipt for one month, and it awaits a decision."""
+    file_id = uuid.uuid5(uuid.NAMESPACE_URL, f"suite-subscription-file:{world.entry_a}")
+    owner.execute(
+        "INSERT INTO stored_file (id, shop_id, purpose, object_key, sha256, size_bytes, mime, delete_after) "
+        "VALUES (%s, %s, 'subscription_receipt', %s, %s, 20, 'application/pdf', now() + interval '3 years') "
+        "ON CONFLICT (id) DO NOTHING",
+        (file_id, world.shop_a, f"{file_id.hex[:2]}/{file_id.hex * 2}", hashlib.sha256(file_id.bytes).digest()),
+    )
+    owner.execute(
+        "INSERT INTO subscription_receipt (id, shop_id, file_id, stated_amount, stated_months) "
+        "VALUES (%s, %s, %s, 100000, 1) "
+        # Waiting again when a test runs several decisions on the same world.
+        "ON CONFLICT (id) DO UPDATE SET status = 'submitted', months = NULL, reject_reason = NULL, "
+        "decided_by = NULL, decided_at = NULL",
+        (_receipt_id(world), world.shop_a, file_id),
+    )
+
+
 ADMIN_CALLS: dict[str, AdminCall] = {
     "admin.support.open": AdminCall(
         "POST",
@@ -956,6 +1016,24 @@ ADMIN_CALLS: dict[str, AdminCall] = {
     ),
     "admin.support.customers.read": AdminCall(
         "GET", lambda w: f"{ADMIN_API}/shops/{w.shop_a}/customers/{w.customer_a}", prepare=_open_support
+    ),
+    "admin.receipts.list": AdminCall("GET", lambda w: f"{ADMIN_API}/receipts?status=submitted"),
+    "admin.receipts.read": AdminCall(
+        "GET", lambda w: f"{ADMIN_API}/receipts/{_receipt_id(w)}", prepare=_waiting_receipt
+    ),
+    "admin.receipts.approve": AdminCall(
+        "POST",
+        lambda w: f"{ADMIN_API}/receipts/{_receipt_id(w)}/approve",
+        lambda w: {"months": 1},
+        True,
+        prepare=_waiting_receipt,
+    ),
+    "admin.receipts.reject": AdminCall(
+        "POST",
+        lambda w: f"{ADMIN_API}/receipts/{_receipt_id(w)}/reject",
+        lambda w: {"reason": "Pul kelib tushmagan"},
+        True,
+        prepare=_waiting_receipt,
     ),
     "admin.session.close": AdminCall("DELETE", lambda w: f"{ADMIN_API}/auth/session", ok_status=204),
     "admin.shops.list": AdminCall("GET", lambda w: f"{ADMIN_API}/shops?q=Shop"),

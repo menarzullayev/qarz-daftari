@@ -93,6 +93,17 @@ class SubscriptionService:
                 raise NotFound()
             return subscription_text(lang, settings.name, await subscription_body(session, self._today()))
 
+    async def chat_offer(self, user_id: UUID, shop_id: UUID, lang: str) -> tuple[str, str, int | None]:
+        """What `/obuna` says, the shop's name, and the monthly price when there is a card to pay to."""
+        async with self._storage.tenant(shop_id) as session:
+            await require_member(session, user_id, READ_SUBSCRIPTION)
+            settings = await session.shop_settings()
+            if settings is None:
+                raise NotFound()
+            body = await subscription_body(session, self._today())
+        price = None if body["card_number"] is None else int(body["price_uzs"])
+        return subscription_text(lang, settings.name, body), settings.name, price
+
     async def run_daily(self) -> int:
         """Warn owners and move ended periods to limited. Safe to repeat on the same day."""
         today = self._today()

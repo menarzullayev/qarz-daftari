@@ -20,6 +20,7 @@ from qarz.application.ports import (
     ActivityRow,
     AdminAccount,
     AdminAuditRow,
+    AdminReceipt,
     AdminReceiptRow,
     AdminShopRow,
     CatalogItemRecord,
@@ -45,6 +46,7 @@ from qarz.application.ports import (
     PaymentNoticeRecord,
     PeriodTotals,
     PromiseRecord,
+    ReceiptCopy,
     ReminderCandidate,
     ReminderSettings,
     SessionInfo,
@@ -54,6 +56,7 @@ from qarz.application.ports import (
     StaffFigures,
     StaffInvitation,
     StoredFileRecord,
+    SubscriptionReceiptRecord,
     SubscriptionToReview,
     SupportAccessRow,
     SupportChange,
@@ -289,8 +292,19 @@ _FILE_COLUMNS = "f.id, f.purpose, f.object_key, f.sha256, f.size_bytes, f.mime, 
 _FILE_BY_ID = f"SELECT {_FILE_COLUMNS} FROM stored_file f WHERE f.id = :id"
 _DUE_RECEIPT_FILES = (
     f"SELECT {_FILE_COLUMNS} FROM stored_file f "
-    "WHERE f.purpose IN ('payment_notice', 'export') AND f.delete_after <= :now "
+    "WHERE f.purpose IN ('payment_notice', 'export', 'subscription_receipt') AND f.delete_after <= :now "
     "ORDER BY f.delete_after, f.id LIMIT :limit"
+)
+_RECEIPT_COLUMNS = (
+    "r.id, r.stated_amount, r.stated_months, r.status, r.months, r.reject_reason, r.created_at, r.decided_at, r.file_id"
+)
+_RECEIPT_BY_ID = f"SELECT {_RECEIPT_COLUMNS} FROM subscription_receipt r WHERE r.id = :id"
+_RECEIPTS_OF_SHOP = (
+    f"SELECT {_RECEIPT_COLUMNS} FROM subscription_receipt r ORDER BY r.created_at DESC, r.id DESC LIMIT :limit"
+)
+_ADMIN_RECEIPT_COLUMNS = (
+    "receipt_id, shop_id, shop_name, stated_amount, stated_months, status, months, reject_reason, created_at, "
+    "decided_at, decided_by"
 )
 _NOTICE_SELECT = (
     "SELECT n.id, n.customer_id, n.amount, n.file_id, n.status, n.payment_entry, e.amount AS recorded_amount, "
@@ -1597,9 +1611,74 @@ class PgTenantSession:
         await self._conn.execute(text("UPDATE payment_notice SET file_id = NULL WHERE file_id = :id"), {"id": file_id})
         await self._conn.execute(text("UPDATE export_job SET file_id = NULL WHERE file_id = :id"), {"id": file_id})
         await self._conn.execute(
-            text("DELETE FROM stored_file WHERE id = :id AND purpose IN ('payment_notice', 'export')"),
+            # A subscription receipt that pointed to the file is left without one by its foreign key.
+            text(
+                "DELETE FROM stored_file WHERE id = :id "
+                "AND purpose IN ('payment_notice', 'export', 'subscription_receipt')"
+            ),
             {"id": file_id},
         )
+
+    @staticmethod
+    def _receipt(row: Any) -> SubscriptionReceiptRecord:
+        return SubscriptionReceiptRecord(
+            row.id,
+            int(row.stated_amount),
+            None if row.stated_months is None else int(row.stated_months),
+            str(row.status),
+            None if row.months is None else int(row.months),
+            row.reject_reason,
+            row.created_at,
+            row.decided_at,
+            row.file_id,
+        )
+
+    async def add_subscription_receipt(
+        self, *, receipt_id: UUID, stated_amount: int, stated_months: int, file_id: UUID, now: datetime
+    ) -> SubscriptionReceiptRecord:
+        await self._conn.execute(
+            text(
+                "INSERT INTO subscription_receipt (id, shop_id, file_id, stated_amount, stated_months, created_at) "
+                "VALUES (:id, :shop_id, :file_id, :amount, :months, :now)"
+            ),
+            {
+                "id": receipt_id,
+                "shop_id": self._shop_id,
+                "file_id": file_id,
+                "amount": stated_amount,
+                "months": stated_months,
+                "now": now,
+            },
+        )
+        return self._receipt((await self._conn.execute(text(_RECEIPT_BY_ID), {"id": receipt_id})).one())
+
+    async def subscription_receipts(self, limit: int) -> list[SubscriptionReceiptRecord]:
+        rows = (await self._conn.execute(text(_RECEIPTS_OF_SHOP), {"limit": limit})).all()
+        return [self._receipt(row) for row in rows]
+
+    async def count_waiting_receipts(self) -> int:
+        row = (
+            await self._conn.execute(text("SELECT count(*) AS n FROM subscription_receipt WHERE status = 'submitted'"))
+        ).one()
+        return int(row.n)
+
+    async def subscription_receipt_copies(self, file_id: UUID) -> int:
+        row = (
+            await self._conn.execute(text("SELECT subscription_receipt_copies(:file) AS n"), {"file": file_id})
+        ).one()
+        return int(row.n)
+
+    async def admin_recipients(self) -> list[tuple[int, str]]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT u.tg_id, u.lang FROM admin_account a JOIN app_user u ON u.id = a.user_id "
+                    "WHERE a.status = 'active' AND a.confirmed_at IS NOT NULL AND u.tg_id IS NOT NULL "
+                    "ORDER BY u.tg_id"
+                )
+            )
+        ).all()
+        return [(int(row.tg_id), str(row.lang)) for row in rows]
 
     async def stored_object_keys(self) -> list[str]:
         rows = (await self._conn.execute(text("SELECT object_key FROM stored_file ORDER BY created_at, id"))).all()
@@ -2134,14 +2213,13 @@ class PgTenantSession:
         row = (await self._conn.execute(text(_SUBSCRIPTION_LOCKED))).first()
         return None if row is None else (str(row.state), row.trial_ends, row.paid_through)
 
-    async def pay_subscription(self, paid_through: date, now: datetime) -> None:
+    async def pay_subscription(self, *, state: str, paid_through: date, prior_state: str | None, now: datetime) -> None:
         await self._conn.execute(
             text(
-                "UPDATE subscription SET paid_through = :paid_through, updated_at = :now, "
-                "state = CASE WHEN state = 'suspended' THEN state ELSE 'active' END, "
-                "prior_state = CASE WHEN state = 'suspended' THEN 'active' ELSE NULL END"
+                "UPDATE subscription SET state = :state, paid_through = :paid_through, "
+                "prior_state = CAST(:prior_state AS text), updated_at = :now"
             ),
-            {"paid_through": paid_through, "now": now},
+            {"state": state, "paid_through": paid_through, "prior_state": prior_state, "now": now},
         )
 
     async def create_online_payment(self, *, order_id: UUID, months: int, amount: int) -> OnlinePayment:
@@ -2251,9 +2329,16 @@ class PgPlatformSession:
                 text("SELECT job, extract(epoch FROM now() - max(finished_at)) AS seconds FROM job_run GROUP BY job")
             )
         ).all()
+        receipt = (
+            await self._conn.execute(text("SELECT extract(epoch FROM now() - oldest_waiting_receipt()) AS seconds"))
+        ).one()
         return {
             "qd_outbox_oldest_due_seconds": {str(row.channel): float(row.seconds) for row in waiting},
             "qd_job_last_finished_seconds": {str(row.job): float(row.seconds) for row in jobs},
+            # Absent when no receipt waits: there is then nothing to be late with.
+            "qd_receipts_oldest_waiting_seconds": {}
+            if receipt.seconds is None
+            else {"submitted": max(0.0, float(receipt.seconds))},
         }
 
     async def subscriptions_to_review(self, today: date) -> list[SubscriptionToReview]:
@@ -2835,6 +2920,148 @@ class PgPlatformSession:
             )
             for row in rows
         ]
+
+    @staticmethod
+    def _admin_receipt(
+        row: Any, *, copies: int = 0, has_file: bool, file: StoredFileRecord | None = None
+    ) -> AdminReceipt:
+        return AdminReceipt(
+            receipt_id=row.receipt_id,
+            shop_id=row.shop_id,
+            shop_name=str(row.shop_name),
+            stated_amount=int(row.stated_amount),
+            stated_months=None if row.stated_months is None else int(row.stated_months),
+            status=str(row.status),
+            months=None if row.months is None else int(row.months),
+            reject_reason=row.reject_reason,
+            created_at=row.created_at,
+            decided_at=row.decided_at,
+            decided_by=row.decided_by,
+            has_file=has_file,
+            copies=copies,
+            file=file,
+        )
+
+    async def admin_has_live_session(self, user_id: UUID, now: datetime) -> bool:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT 1 FROM admin_session WHERE user_id = :user_id AND revoked_at IS NULL "
+                    "AND expires_at > :now LIMIT 1"
+                ),
+                {"user_id": user_id, "now": now},
+            )
+        ).first()
+        return row is not None
+
+    async def admin_receipts(
+        self, admin_id: UUID, *, status: str, after: tuple[datetime, UUID] | None, limit: int
+    ) -> list[AdminReceipt]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    f"SELECT {_ADMIN_RECEIPT_COLUMNS}, has_file, copies FROM admin_receipts(:admin, :status, "
+                    "CAST(:after_created AS timestamptz), CAST(:after_id AS uuid), :limit)"
+                ),
+                {
+                    "admin": admin_id,
+                    "status": status,
+                    "after_created": after[0] if after else None,
+                    "after_id": after[1] if after else None,
+                    "limit": limit,
+                },
+            )
+        ).all()
+        return [self._admin_receipt(row, copies=int(row.copies), has_file=bool(row.has_file)) for row in rows]
+
+    async def admin_receipt(self, admin_id: UUID, receipt_id: UUID, *, lock: bool) -> AdminReceipt | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    f"SELECT {_ADMIN_RECEIPT_COLUMNS}, file_id, object_key, sha256, size_bytes, mime, delete_after "
+                    "FROM admin_receipt(:admin, :receipt, :lock)"
+                ),
+                {"admin": admin_id, "receipt": receipt_id, "lock": lock},
+            )
+        ).first()
+        if row is None:
+            return None
+        file = (
+            None
+            if row.file_id is None
+            else StoredFileRecord(
+                row.file_id,
+                "subscription_receipt",
+                str(row.object_key),
+                bytes(row.sha256),
+                int(row.size_bytes),
+                str(row.mime),
+                row.delete_after,
+            )
+        )
+        return self._admin_receipt(row, has_file=file is not None, file=file)
+
+    async def admin_receipt_copies(self, admin_id: UUID, receipt_id: UUID) -> list[ReceiptCopy]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT receipt_id, shop_id, shop_name, stated_amount, status, created_at "
+                    "FROM admin_receipt_copies(:admin, :receipt)"
+                ),
+                {"admin": admin_id, "receipt": receipt_id},
+            )
+        ).all()
+        return [
+            ReceiptCopy(
+                row.receipt_id, row.shop_id, str(row.shop_name), int(row.stated_amount), str(row.status), row.created_at
+            )
+            for row in rows
+        ]
+
+    async def admin_decide_receipt(
+        self, admin_id: UUID, receipt_id: UUID, *, status: str, months: int | None, reason: str | None, now: datetime
+    ) -> bool:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT admin_decide_receipt(:admin, :receipt, :status, CAST(:months AS smallint), "
+                    "CAST(:reason AS text), :now) AS changed"
+                ),
+                {
+                    "admin": admin_id,
+                    "receipt": receipt_id,
+                    "status": status,
+                    "months": months,
+                    "reason": reason,
+                    "now": now,
+                },
+            )
+        ).one()
+        return bool(row.changed)
+
+    async def admin_shop_activity(self, admin_id: UUID, shop_id: UUID, *, action: str, subject_id: UUID) -> bool:
+        row = (
+            await self._conn.execute(
+                text("SELECT admin_shop_activity(:admin, :shop, :action, :subject) AS written"),
+                {"admin": admin_id, "shop": shop_id, "action": action, "subject": subject_id},
+            )
+        ).one()
+        return bool(row.written)
+
+    async def record_shop_measure(self, shop_id: UUID, *, kind: str, entry_ref: UUID, amount: int) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO measure.event (id, shop_ref, entry_ref, kind, amount) "
+                "VALUES (:id, :shop_ref, :entry_ref, :kind, :amount)"
+            ),
+            {
+                "id": uuid4(),
+                "shop_ref": uuid5(_MEASURE_NAMESPACE, str(shop_id)),
+                "entry_ref": uuid5(_MEASURE_NAMESPACE, str(entry_ref)),
+                "kind": kind,
+                "amount": amount,
+            },
+        )
 
     async def admin_lock_subscription(self, admin_id: UUID, shop_id: UUID) -> LockedSubscription | None:
         row = (

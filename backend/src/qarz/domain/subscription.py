@@ -53,3 +53,16 @@ def extend_paid_through(paid_through: date | None, today: date, months: int) -> 
     if paid_through is not None and paid_through >= today:
         return add_months(paid_through, months)
     return add_months(today, months) - timedelta(days=1)
+
+
+def after_payment(state: str, paid_through: date | None, today: date, months: int) -> tuple[str, date, str | None]:
+    """The state, paid-through date and remembered state of a subscription once `months` are paid for.
+
+    One rule for every way of paying: a transfer an administrator approves and an online payment. The
+    period is extended by BR-27 and the shop is active again, except that a shop an administrator
+    suspended stays suspended (BR-30) and will be active when the suspension is lifted.
+    """
+    until = extend_paid_through(paid_through, today, months)
+    if state == SUSPENDED:
+        return SUSPENDED, until, ACTIVE
+    return ACTIVE, until, None

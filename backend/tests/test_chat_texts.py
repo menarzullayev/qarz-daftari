@@ -68,6 +68,7 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
         "SUPPORT_ACCESS_REQUIRED",
         "SUPPORT_ACCESS_ALREADY_OPEN",
         "SUPPORT_ACCESS_NOT_OPEN",  # the owner ends it in the panel
+        "RECEIPT_ALREADY_DECIDED",  # receipts are decided in the administrator's panel
     }
     assert set(_STATUS) - spoken_elsewhere <= set(UZ)
 

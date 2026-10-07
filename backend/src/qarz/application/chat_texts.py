@@ -178,6 +178,31 @@ UZ = {
     "sub_pay_to": "To'lov uchun karta: {card}. O'tkazmadan so'ng chekni shu yerga yuboring.",
     "sub_no_card": "To'lov rekvizitlari hali kiritilmagan.",
     "sub_paid_online": "«{shop}»: {amount} to'lov qabul qilindi. Obuna {date} gacha to'langan.",
+    "sub_choose_months": "To'lovdan so'ng necha oy uchun to'laganingizni tanlang va chekni yuboring.",
+    "sub_months_button": "{months} oy — {amount}",
+    "ask_sub_receipt": (
+        "«{shop}»: {months} oy uchun {amount}. Endi chekning rasmini yoki PDF faylini shu yerga yuboring."
+    ),
+    "sub_receipt_invalid": (
+        "Bu faylni qabul qila olmadim. Chek JPEG, PNG yoki WebP rasm yoki PDF bo'lishi va 5 MB dan oshmasligi "
+        "kerak. Qaytadan yuboring yoki bekor qiling."
+    ),
+    "sub_receipt_sent": (
+        "✅ «{shop}»: chek qabul qilindi ({months} oy, {amount}). Administrator ko'rib chiqqach, sizga xabar beramiz."
+    ),
+    "sub_receipt_approved": "✅ «{shop}»: to'lov tasdiqlandi ({months} oy). Obuna {date} gacha to'langan.",
+    "sub_receipt_rejected": "«{shop}»: {amount} to'lov cheki rad etildi. Sabab: {reason}",
+    "a_receipt_new": "Yangi obuna cheki: «{shop}», {amount}, {months} oy. Admin panelda ko'rib chiqing.",
+    "a_receipt_copies": "⚠️ Aynan shu fayl avval ham yuborilgan: {count} ta chekda.",
+    "receipt_approve_button": "✅ Tasdiqlash",
+    "receipt_reject_button": "Rad etish",
+    "a_sign_in_first": "Avval admin panelga kirib, kodingizni tasdiqlang. Shundan keyin bu tugmalar ishlaydi.",
+    "a_receipt_approved": "✅ «{shop}»: chek tasdiqlandi ({months} oy). Obuna {date} gacha to'langan.",
+    "a_receipt_rejected": "«{shop}»: chek rad etildi. Sabab: {reason}",
+    "a_receipt_decided": "Bu chek bo'yicha qaror allaqachon qabul qilingan.",
+    "a_receipt_use_panel": "Bu chekni admin panelda ko'rib chiqing: oylar sonini kiritish kerak.",
+    "ask_receipt_reject_reason": "Rad etish sababini yozing (3–500 belgi). U do'kon egasiga yuboriladi.",
+    "a_reason_invalid": "Sabab 3 tadan 500 tagacha belgi bo'lishi kerak. Qaytadan yozing yoki bekor qiling.",
     "sub_trial_ending": "«{shop}»: sinov muddati {days} kundan keyin, {date} kuni tugaydi. Davom ettirish: /obuna",
     "sub_paid_ending": "«{shop}»: to'langan muddat {days} kundan keyin, {date} kuni tugaydi. Uzaytirish: /obuna",
     "sub_limited": (
@@ -266,6 +291,7 @@ UZ = {
     "export_failed": "«{shop}» do'konining eksportini tayyorlab bo'lmadi. Birozdan keyin qaytadan so'rang.",
     "EXPORT_NOT_ALLOWED": "Eksport allaqachon tayyorlanmoqda yoki bugungi eksportlar soni tugagan.",
     "EXPORT_NOT_READY": "Bu eksport fayli hali tayyor emas yoki muddati o'tgan.",
+    "SUBSCRIPTION_RECEIPT_NOT_ALLOWED": ("Ko'rib chiqilmagan cheklaringiz juda ko'p. Administrator javobini kuting."),
     "currency": "so'm",
 }
 
@@ -438,6 +464,29 @@ RU = {
     "sub_pay_to": "Карта для оплаты: {card}. После перевода отправьте чек сюда.",
     "sub_no_card": "Реквизиты для оплаты пока не указаны.",
     "sub_paid_online": "«{shop}»: оплата {amount} получена. Подписка оплачена до {date}.",
+    "sub_choose_months": "После перевода выберите, за сколько месяцев вы заплатили, и пришлите чек.",
+    "sub_months_button": "{months} мес. — {amount}",
+    "ask_sub_receipt": "«{shop}»: {amount} за {months} мес. Теперь пришлите сюда фото чека или PDF-файл.",
+    "sub_receipt_invalid": (
+        "Не удалось принять этот файл. Чек должен быть изображением JPEG, PNG или WebP либо PDF и не больше "
+        "5 МБ. Пришлите ещё раз или отмените."
+    ),
+    "sub_receipt_sent": (
+        "✅ «{shop}»: чек принят ({months} мес., {amount}). Администратор проверит его, и мы вам сообщим."
+    ),
+    "sub_receipt_approved": "✅ «{shop}»: оплата подтверждена ({months} мес.). Подписка оплачена до {date}.",
+    "sub_receipt_rejected": "«{shop}»: чек на {amount} отклонён. Причина: {reason}",
+    "a_receipt_new": "Новый чек за подписку: «{shop}», {amount}, {months} мес. Проверьте в панели администратора.",
+    "a_receipt_copies": "⚠️ Точно такой же файл уже присылали: в {count} чек.",
+    "receipt_approve_button": "✅ Подтвердить",
+    "receipt_reject_button": "Отклонить",
+    "a_sign_in_first": "Сначала войдите в панель администратора и подтвердите код. После этого кнопки заработают.",
+    "a_receipt_approved": "✅ «{shop}»: чек подтверждён ({months} мес.). Подписка оплачена до {date}.",
+    "a_receipt_rejected": "«{shop}»: чек отклонён. Причина: {reason}",
+    "a_receipt_decided": "По этому чеку решение уже принято.",
+    "a_receipt_use_panel": "Рассмотрите этот чек в панели администратора: нужно указать число месяцев.",
+    "ask_receipt_reject_reason": "Напишите причину отказа (3–500 символов). Она будет отправлена владельцу магазина.",
+    "a_reason_invalid": "Причина должна быть от 3 до 500 символов. Напишите ещё раз или отмените.",
     "sub_trial_ending": "«{shop}»: пробный период закончится через {days} дн., {date}. Продолжить: /obuna",
     "sub_paid_ending": "«{shop}»: оплаченный период закончится через {days} дн., {date}. Продлить: /obuna",
     "sub_limited": (
@@ -521,6 +570,7 @@ RU = {
     "export_failed": "Не удалось подготовить выгрузку магазина «{shop}». Запросите её ещё раз чуть позже.",
     "EXPORT_NOT_ALLOWED": "Выгрузка уже готовится, или на сегодня выгрузок больше нет.",
     "EXPORT_NOT_READY": "Файл этой выгрузки ещё не готов или срок его хранения истёк.",
+    "SUBSCRIPTION_RECEIPT_NOT_ALLOWED": ("У вас слишком много нерассмотренных чеков. Дождитесь ответа администратора."),
     "currency": "сум",
 }
 

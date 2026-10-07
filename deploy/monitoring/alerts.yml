@@ -59,6 +59,16 @@ groups:
         labels: {severity: day, channel: operator-telegram}
         annotations: {summary: "The reminder job has not finished for over an hour"}
 
+  - name: qarz-subscription
+    rules:
+      - alert: ReceiptsWaiting
+        # A subscription receipt has awaited an administrator's decision for more than 24 hours
+        # (runbook 8). The owner paid and is still limited, or is about to be.
+        expr: qd_receipts_oldest_waiting_seconds > 86400
+        for: 10m
+        labels: {severity: day, channel: operator-telegram}
+        annotations: {summary: "A subscription receipt has waited more than a day for a decision"}
+
   - name: qarz-security
     rules:
       - alert: CrossTenantAttempt

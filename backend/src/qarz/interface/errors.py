@@ -59,6 +59,8 @@ _STATUS = {
     "EXPORT_NOT_ALLOWED": 409,
     "EXPORT_NOT_READY": 409,
     "FILE_STORE_UNAVAILABLE": 503,
+    "SUBSCRIPTION_RECEIPT_NOT_ALLOWED": 409,
+    "RECEIPT_ALREADY_DECIDED": 409,
 }
 
 _MESSAGES = {
@@ -113,6 +115,8 @@ _MESSAGES = {
         "EXPORT_NOT_ALLOWED": "Eksport allaqachon tayyorlanmoqda yoki bugungi eksportlar soni tugagan.",
         "EXPORT_NOT_READY": "Bu eksport fayli hali tayyor emas yoki muddati o'tgan.",
         "FILE_STORE_UNAVAILABLE": "Fayllarni saqlash hozir ishlamayapti. Birozdan keyin qayta urinib ko'ring.",
+        "SUBSCRIPTION_RECEIPT_NOT_ALLOWED": "Ko'rib chiqilmagan cheklaringiz juda ko'p. Administrator javobini kuting.",
+        "RECEIPT_ALREADY_DECIDED": "Bu chek bo'yicha qaror allaqachon qabul qilingan.",
         "ONLINE_PAY_OFF": "Onlayn to'lov hozircha yoqilmagan. Karta orqali to'lash: /obuna",
         "RATE_LIMITED": "So'rovlar juda ko'p. Biroz kutib, qayta urinib ko'ring.",
         "TIMEOUT": "So'rov juda uzoq davom etdi va to'xtatildi. Hech narsa saqlanmadi. Qayta urinib ko'ring.",
@@ -169,6 +173,10 @@ _MESSAGES = {
         "EXPORT_NOT_ALLOWED": "Выгрузка уже готовится, или на сегодня выгрузок больше нет.",
         "EXPORT_NOT_READY": "Файл этой выгрузки ещё не готов или срок его хранения истёк.",
         "FILE_STORE_UNAVAILABLE": "Хранилище файлов сейчас недоступно. Попробуйте ещё раз чуть позже.",
+        "SUBSCRIPTION_RECEIPT_NOT_ALLOWED": (
+            "У вас слишком много нерассмотренных чеков. Дождитесь ответа администратора."
+        ),
+        "RECEIPT_ALREADY_DECIDED": "По этому чеку решение уже принято.",
         "ONLINE_PAY_OFF": "Онлайн-оплата пока не включена. Оплата переводом на карту: /obuna",
         "RATE_LIMITED": "Слишком много запросов. Подождите немного и повторите.",
         "TIMEOUT": "Запрос выполнялся слишком долго и был остановлен. Ничего не сохранено. Повторите попытку.",
