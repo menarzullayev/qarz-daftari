@@ -32,8 +32,8 @@ class ReceiptRefusal(StrEnum):
 
 
 def valid_amount(amount: object) -> bool:
-    # bool is an int in Python; true is not an amount.
-    return isinstance(amount, int) and not isinstance(amount, bool) and MIN_AMOUNT <= amount <= MAX_AMOUNT
+    # (bool is an int in Python, but true is 1 and so below the minimum.)
+    return isinstance(amount, int) and MIN_AMOUNT <= amount <= MAX_AMOUNT
 
 
 def valid_months(months: object) -> bool:

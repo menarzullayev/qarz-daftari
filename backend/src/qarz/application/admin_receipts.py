@@ -224,7 +224,9 @@ class AdminReceiptService:
                 if locked is None:
                     raise NotFound()
                 state, paid_through, prior_state = after_payment(locked.state, locked.paid_through, today, paid_for)
-                stored = await session.admin_store_subscription(
+                # Should the account have been disabled since the lock, this changes nothing and the decision
+                # below, which then changes nothing either, ends the request.
+                await session.admin_store_subscription(
                     admin_id,
                     row.shop_id,
                     state=state,
@@ -233,8 +235,6 @@ class AdminReceiptService:
                     prior_state=prior_state,
                     now=now,
                 )
-                if not stored:
-                    raise NotFound()
                 after = await self._record(
                     session,
                     admin_id,

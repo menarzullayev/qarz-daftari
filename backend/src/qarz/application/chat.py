@@ -938,11 +938,8 @@ class ChatService:
             await session.drop_pending(incoming.user_id, "sub_receipt")
             await replies.send(say(lang, "expired"))
             return
-        if content is None:
-            # It could not be had or is too large. The question stays open: another file may follow.
-            await replies.send(say(lang, "sub_receipt_invalid"), cancel)
-            return
         try:
+            # A file that could not be had, or is too large, is refused like any other that is no receipt.
             await self._receipts.submit(incoming.user_id, shop_id, amount, months, content, update_key=incoming.key)
         except AppError as error:
             if isinstance(error, ValidationFailed) and "receipt" in error.fields:

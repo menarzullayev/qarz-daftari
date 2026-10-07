@@ -149,7 +149,8 @@ def test_a_shop_learns_how_many_copies_of_its_own_receipt_exist_and_nothing_else
 def test_the_administrators_functions_do_nothing_for_anyone_else(
     owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
 ) -> None:
-    receipt = _receipt(owner, shop_a, uuid.uuid4().bytes)
+    content = uuid.uuid4().bytes
+    receipt, copy = _receipt(owner, shop_a, content), _receipt(owner, shop_a, content)
     admin, disabled, nobody = _admin(owner), _admin(owner, "disabled"), uuid.uuid4()
     for caller in (disabled, nobody, shop_a.user_id):
         for tenant in (None, shop_a.shop_id):
@@ -179,6 +180,8 @@ def test_the_administrators_functions_do_nothing_for_anyone_else(
     ).fetchone() == (0,)
 
     with as_app(None) as conn:
+        copies = conn.execute("SELECT receipt_id FROM admin_receipt_copies(%s, %s)", (admin, receipt)).fetchall()
+        assert copies == [(copy,)]
         seen = conn.execute(
             "SELECT receipt_id, shop_name, has_file FROM admin_receipts(%s, 'submitted', NULL, NULL, 100)", (admin,)
         ).fetchall()
