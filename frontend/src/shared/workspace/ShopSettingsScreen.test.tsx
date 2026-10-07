@@ -63,7 +63,7 @@ describe("shop settings for the owner (REQ-049)", () => {
     await open(server);
     change();
     fireEvent.click(save());
-    expect((await screen.findByRole("status")).textContent).toBe("Sozlamalar saqlandi.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Sozlamalar saqlandi."));
     expect(server.writes()).toHaveLength(1);
     expect(server.writes()[0]).toMatchObject({ method: "PATCH", path: SHOP_BASE });
     expect(server.writes()[0]?.body).toEqual(body);

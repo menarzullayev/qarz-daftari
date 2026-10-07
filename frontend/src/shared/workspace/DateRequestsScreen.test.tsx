@@ -112,7 +112,7 @@ describe("accepting", () => {
     click(aliRow(), "Qabul qilish");
     server.held.items = [OTHER];
     click(aliRow(), "Ha, ko'chirilsin");
-    expect((await screen.findByRole("status")).textContent).toBe("So'rov qabul qilindi: muddat ko'chirildi.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("So'rov qabul qilindi: muddat ko'chirildi."));
     expect(server.writes()).toHaveLength(1);
     expect(server.writes()[0]).toMatchObject({ method: "POST", path: `${PATH}/${DATE_REQUEST_ID}/accept` });
     expect(server.writes()[0]?.body).toBeUndefined();
@@ -185,7 +185,7 @@ describe("declining", () => {
     click(await waitFor(aliRow), "Rad etish");
     fireEvent.change(screen.getByLabelText(REASON), { target: { value: "   " } });
     click(aliRow(), "Ha, rad etilsin");
-    expect((await screen.findByRole("status")).textContent).toBe("So'rov rad etildi.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("So'rov rad etildi."));
     expect(server.writes()).toHaveLength(1);
     expect(server.writes()[0]).toMatchObject({ method: "POST", path: `${PATH}/${DATE_REQUEST_ID}/decline`, body: {} });
     expect(server.writes()[0]?.headers["Idempotency-Key"]).toBeTruthy();

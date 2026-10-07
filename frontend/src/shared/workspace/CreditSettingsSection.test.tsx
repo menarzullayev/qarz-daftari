@@ -70,7 +70,7 @@ describe("the shop's credit settings for a manager and an owner (REQ-044)", () =
     await open(server);
     change();
     fireEvent.click(save());
-    expect((await screen.findByRole("status")).textContent).toBe("Nasiya sozlamalari saqlandi.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Nasiya sozlamalari saqlandi."));
     expect(server.writes()).toHaveLength(1);
     expect(server.writes()[0]).toMatchObject({ method: "PATCH", path: `${SHOP_BASE}/credit-settings` });
     expect(server.writes()[0]?.body).toEqual(body);

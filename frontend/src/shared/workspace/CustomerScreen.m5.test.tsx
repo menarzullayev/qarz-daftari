@@ -68,7 +68,7 @@ describe("sending a reminder by hand (REQ-025)", () => {
     const server = shop({ onWrite: () => ok({ sent: true, channel, amount: 45000 }, 201) });
     await open(server);
     fireEvent.click(remind());
-    expect((await screen.findByRole("status")).textContent).toBe(message);
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe(message));
     expect(reminders(server)).toHaveLength(1);
     expect(reminders(server)[0]).toMatchObject({ method: "POST", path: `${SHOP_BASE}/reminders/manual` });
     expect(reminders(server)[0]?.body).toEqual({ customer_id: CUSTOMER_ID });

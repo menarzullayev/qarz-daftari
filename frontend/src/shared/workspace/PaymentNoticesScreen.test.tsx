@@ -182,7 +182,7 @@ describe("accepting", () => {
     click(await waitFor(ali), "Qabul qilish");
     server.held.items = [OTHER];
     click(ali(), "Ha, to'lov yozilsin");
-    expect((await screen.findByRole("status")).textContent).toBe("To'lov yozildi: 50 000 so'm.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("To'lov yozildi: 50 000 so'm."));
     expect(server.writes()).toHaveLength(1);
     expect(server.writes()[0]).toMatchObject({ method: "POST", path: `${PATH}/${NOTICE_ID}/accept` });
     // No amount: the stated one is the server's to record. An amount here would be a correction.
@@ -197,7 +197,7 @@ describe("accepting", () => {
     click(await waitFor(ali), "Qabul qilish");
     fireEvent.change(screen.getByLabelText(AMOUNT), { target: { value: "45 000" } });
     click(ali(), "Ha, to'lov yozilsin");
-    expect((await screen.findByRole("status")).textContent).toBe("To'lov yozildi: 45 000 so'm.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("To'lov yozildi: 45 000 so'm."));
     expect(server.writes()[0]?.body).toEqual({ amount: 45000 });
   });
 
@@ -299,7 +299,7 @@ describe("declining", () => {
     click(await waitFor(ali), "Rad etish");
     fireEvent.change(screen.getByLabelText(REASON), { target: { value: "  Pul   kelmadi " } });
     click(ali(), "Rad etib, mijozga yuborish");
-    expect((await screen.findByRole("status")).textContent).toBe("Xabar rad etildi. Sabab mijozga yuborildi.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Xabar rad etildi. Sabab mijozga yuborildi."));
     expect(server.writes()).toHaveLength(1);
     expect(server.writes()[0]).toMatchObject({ method: "POST", path: `${PATH}/${NOTICE_ID}/decline`, body: { reason: "Pul kelmadi" } });
     expect(server.writes()[0]?.headers["Idempotency-Key"]).toBeTruthy();

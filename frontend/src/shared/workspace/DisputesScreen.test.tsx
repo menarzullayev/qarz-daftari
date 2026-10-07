@@ -104,7 +104,7 @@ describe("reversing a disputed entry", () => {
     expect(row("Ali Valiyev").textContent).toContain("Bu yozuv (45 000 so'm) bekor qilinsinmi?");
 
     fireEvent.click(screen.getByRole("button", { name: "Ha, bekor qilinsin" }));
-    expect((await screen.findByRole("status")).textContent).toBe("Yozuv bekor qilindi, e'tiroz yopildi.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Yozuv bekor qilindi, e'tiroz yopildi."));
     expect(server.writes()).toHaveLength(1);
     expect(server.writes()[0]).toMatchObject({ method: "POST", path: `${SHOP_BASE}/entries/${ENTRY_ID}/reversal` });
     expect(server.writes()[0]?.headers["Idempotency-Key"]).toMatch(/^[A-Za-z0-9_-]{8,128}$/);
@@ -159,7 +159,7 @@ describe("declining a dispute", () => {
     fireEvent.change(reasonField(), { target: { value: "  Tovar berilgan,\n imzo   bor " } });
     fireEvent.click(screen.getByRole("button", { name: "Rad etib, mijozga yuborish" }));
 
-    expect((await screen.findByRole("status")).textContent).toBe("E'tiroz rad etildi. Sabab mijozga yuborildi.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("E'tiroz rad etildi. Sabab mijozga yuborildi."));
     expect(server.writes()).toHaveLength(1);
     expect(server.writes()[0]).toMatchObject({
       method: "POST",

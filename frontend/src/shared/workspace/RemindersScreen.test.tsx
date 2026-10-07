@@ -161,7 +161,7 @@ describe("reminder settings (REQ-042)", () => {
     await open(server);
     change();
     fireEvent.click(save());
-    expect((await screen.findByRole("status")).textContent).toBe("Eslatma sozlamalari saqlandi.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Eslatma sozlamalari saqlandi."));
     expect(server.writes()).toHaveLength(1);
     expect(server.writes()[0]).toMatchObject({ method: "PATCH", path: `${SHOP_BASE}/reminders` });
     expect(server.writes()[0]?.body).toEqual(body);

@@ -105,7 +105,7 @@ describe("attaching a waiting person to a customer", () => {
     expect(document.body.textContent).toContain("«Vali T.» «Vali Toshev» mijoziga biriktirilsinmi?");
 
     fireEvent.click(screen.getByRole("button", { name: "Ha, biriktirilsin" }));
-    expect((await screen.findByRole("status")).textContent).toBe("«Vali T.» «Vali Toshev» mijoziga biriktirildi.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("«Vali T.» «Vali Toshev» mijoziga biriktirildi."));
     expect(server.writes()).toHaveLength(1);
     expect(server.writes()[0]).toMatchObject({
       method: "POST",
@@ -172,7 +172,7 @@ describe("dismissing a waiting person", () => {
     );
     await open(server);
     fireEvent.click(within(row("Salim")).getByRole("button", { name: "So'rovni rad etish" }));
-    expect((await screen.findByRole("status")).textContent).toBe("«Salim» so'rovi rad etildi.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("«Salim» so'rovi rad etildi."));
     expect(server.writes()).toHaveLength(1);
     expect(server.writes()[0]).toMatchObject({ method: "POST", path: `${SHOP_BASE}/waiting/${SALIM.id}/dismiss` });
     expect(server.writes()[0]?.headers["Idempotency-Key"]).toMatch(/^[A-Za-z0-9_-]{8,128}$/);
