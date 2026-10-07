@@ -103,7 +103,7 @@ M3 exit condition: an itemized sale of five catalog goods can be entered in the 
 | S19.1 Load test | Tooling done; first measurement recorded; the slow overview cured by stored open debts | EVID-063, EVID-070; pull requests 43 and 56; `docs/10-operations/load-test.md` | A developer machine, not the servers. With open debts stored the overview's totals for a shop of 200 298 entries went from 361 ms to 2.3 ms in single statements; the 30-minute run was not repeated |
 | S19.2 Security review | Agent's review done; a person's review still needed | EVID-059, EVID-061; pull requests 41 and 45 | No critical or high finding in what was read. Findings 1 to 8, 10 and 12 fixed; 9, 11 and 13 fixed in part, what is left of each is in the table at the top of the review. Deployment, the administrator's side and most of the storage module were not read |
 | S19.3 Failover and restore rehearsals, timed | Rehearsed locally only | EVID-044 | Real servers are blocked on the founder |
-| S19.4 Runbooks, alerts, usability sessions, copy review | Partly: logs, metrics, alert rules and the thirteen runbooks are written | EVID-062; pull request 47; `docs/10-operations/runbooks.md` | No runbook was executed and no alert ever triggered: there are no servers and no monitoring system. Usability sessions and copy review need people |
+| S19.4 Runbooks, alerts, usability sessions, copy review | Partly: logs, metrics, alert rules, the thirteen runbooks, deployment files and the backup schedule are written | EVID-062, EVID-072; pull requests 47, 60 and 61; `docs/10-operations/runbooks.md`, `deploy/production/`, `deploy/backup/` | Proven only in containers on one machine. No runbook was executed and no alert ever triggered. Usability sessions and copy review need people |
 
 API rate limits per user and per shop, listed before as not implemented, are in place (EVID-059; pull request 39).
 
@@ -147,8 +147,13 @@ Each is implemented. If one is rejected, the named story must be revisited.
 | DEC-055 | Exports: one workbook for the whole shop; limits and retention; `stored_file.purpose` gained `export` | S13.2 |
 | DEC-056 | Subscription receipts: stated months; duplicates looked for across shops; three years' retention; `stated_months` column | S17.2 |
 | DEC-057 | Import: formats and limits; ambiguous rows block; undo is all or nothing | S14.1 |
+| DEC-059 | Proxy and deployment: rate and body limits, headers, images built on the host | Deployment |
+| DEC-060 | Backups: where timers run; how each retention figure is met; what is not covered | Deployment |
+| DEC-061 | At most five shops and one trial a person; later shops start limited; narrowed database rights | S19.2 |
+| DEC-062 | Reassigning a shop's owner; the former owner becomes a suspended manager; rotating the server secret | S18.1 |
+| DEC-063 | Mini App session token in sessionStorage; panel sign-in by redirect, accepted only from our own site | S15.1, S19.2 |
 
-Decided by the founder on 2026-10-07, and so not awaiting review: DEC-051 (buttons in the review group, honoured for platform administrators only, as the agent understood him), DEC-052 (no fresh code to decide a receipt), DEC-053 (store open debts).
+Decided by the founder on 2026-10-07, and so not awaiting review: DEC-058 (nginx and Docker Compose, where the architecture document names Caddy; what to prepare before production); DEC-051 (buttons in the review group, honoured for platform administrators only, as the agent understood him), DEC-052 (no fresh code to decide a receipt), DEC-053 (store open debts).
 
 ## Deviations from the approved documents
 
@@ -171,7 +176,6 @@ Decided by the founder on 2026-10-07, and so not awaiting review: DEC-051 (butto
 - The failover and restore rehearsal ran in containers on one machine. It proves the script, not the servers.
 - No customer has been notified of anything through Telegram: notifications are queued and tested, never sent.
 - The overview queries have been run on tens of accounts, not on a shop with thousands of customers.
-- The front end and the back end have never been run together. Every screen was tested against a fake server.
 - The main branch was red for one commit (pull request 21) between 19:00 and 24:00 UTC because a test used the server's date instead of the Tashkent date. The application was right; the test was fixed in the next commit (EVID-049).
 - Whether removal may wait for a debt to be settled (BR-32), and the consent texts, have had no legal review.
 - The Payme and Click adapters have never been run against either provider's test environment. They are switched off.
@@ -180,9 +184,12 @@ Decided by the founder on 2026-10-07, and so not awaiting review: DEC-051 (butto
 - The load test ran on a developer machine only. The two targets missed there for a very large shop were cured by storing open debts, measured in single statements; the full run was not repeated. It is not launch criterion 6.
 - Subscription receipts were never sent to a real bot or decided in a real group; exports and imports were never opened in or produced by the spreadsheet programs shop owners use, beyond one copy of Excel for the export.
 - No runbook has been executed.
+- The front end and the back end run together only in the end-to-end suite, with signed stand-in data: no real Telegram client and no real Login widget has been used (EVID-076).
+- Deployment and backups were proven in containers on one machine with a self-signed certificate. Nothing ran on a server, under systemd, or between two hosts; whether the proxy sees clients' real addresses is unknown until then (EVID-072).
+- There is no monitoring system: the logs, metrics and alert rules exist, and no alert was ever triggered or received.
+- One database role still serves the API, the administrators' side and the worker, so security findings 9, 11 and 13 are settled only in part (EVID-074).
 - The file store's S3 adapter never ran against a real bucket; receipts were sanitized on hand-built samples, not on photographs from real phones.
 - No administrator has signed in with a real authenticator application.
-- There is no monitoring system and no proxy configuration: the logs, metrics and alert rules exist, and no alert was ever triggered or received.
 
 ## Launch criteria (docs/10-operations/OUTPUT.md)
 
@@ -191,11 +198,11 @@ Decided by the founder on 2026-10-07, and so not awaiting review: DEC-051 (butto
 | 1 | Interviews and pDaftar test | Open; founder |
 | 2 | Legal review | Open; founder |
 | 3 | Registration if required | Open; founder |
-| 4 | M1 to M8 complete, acceptance criteria pass in CI | 42 of 49 stories done in code and CI; S1.5, S16.1, S19.1, S19.2, S19.3 and S19.4 are partly done and each waits on something only people or real servers can give; S2.2's generated API client was never built. Every story's screens exist and were exercised against a fake server only; the front end and the back end have still never been run together |
+| 4 | M1 to M8 complete, acceptance criteria pass in CI | 42 of 49 stories done in code and CI; S1.5, S16.1, S19.1, S19.2, S19.3 and S19.4 are partly done and each waits on something only people or real servers can give; S2.2's generated API client was never built. Every story's screens exist; fourteen end-to-end tests run the front end and back end together with signed stand-in data (EVID-076) |
 | 5 | Authorization and tenant suite covers every operation | In place and blocking; grows with each story |
 | 6 | Load test | Not met: measured on a developer machine only; the slow overview was cured and re-measured in single statements, not in a full run (EVID-063, EVID-070) |
-| 7 | Security review | An agent's review is done and most findings fixed (EVID-059, EVID-061); a person's review and the open findings remain |
-| 8 | Failover and restore rehearsals | Rehearsed locally in containers (EVID-044); not on real servers |
+| 7 | Security review | An agent's review is done; findings 1 to 8, 10 and 12 are fixed and 9, 11 and 13 in part (EVID-059, EVID-061, EVID-074); a person's review remains |
+| 8 | Failover and restore rehearsals | Rehearsed locally in containers (EVID-044); a weekly automatic restore test is written and proven in containers (EVID-072); not on real servers |
 | 9 | Alerts triggered and received | Not started: rules are written (EVID-062), no monitoring system exists |
 | 10 | Runbooks executed | Not started: the thirteen runbooks are written (`docs/10-operations/runbooks.md`), none was executed |
 | 11 | Usability sessions | Not started; needs real sellers |

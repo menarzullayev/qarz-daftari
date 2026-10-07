@@ -1,0 +1,15 @@
+{
+  "event_id": "d3fe0bcf4b23",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-07T18:32:35+00:00",
+  "path": "docs\\evidence\\EVID-075.md",
+  "stage": "09-development-plan",
+  "title": "Reassigning a shop's owner and rotating the server secret pass CI on main",
+  "claim": "An audited administrator operation that reassigns a shop's owner with a reason and a fresh second-factor code, and support for a previous server secret with a command that re-encrypts administrators' second-factor secrets (pull request 64), passed CI on main in the run for commit 142830b. Neither was used on a server",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/64 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37655848106",
+  "date": "2026-10-07",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-075"
+}
