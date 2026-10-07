@@ -1,0 +1,84 @@
+# Alert rules in the Prometheus format, written against what the application exposes at /metrics.
+# Thresholds are those of docs/10-operations/OUTPUT.md, "Monitoring". Not yet loaded into any
+# monitoring system: there are no servers. See README.md in this directory for what is missing.
+groups:
+  - name: qarz-api
+    rules:
+      - alert: ErrorRateHigh
+        # Above 2% of answers are server errors for 5 minutes.
+        expr: |
+          sum(rate(qd_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(qd_requests_total[5m])), 0.001) > 0.02
+        for: 5m
+        labels: {severity: day, channel: operator-telegram}
+        annotations: {summary: "More than 2% of requests fail"}
+
+      - alert: RecordingSlow
+        # 95th percentile of recording an entry above 400 ms (NFR-009) for 15 minutes.
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(
+            qd_request_duration_ms_bucket{method="POST",route="/api/v1/shops/{shop_id}/customers/{customer_id}/entries"}[5m]
+          ))) > 400
+        for: 15m
+        labels: {severity: day, channel: operator-telegram}
+        annotations: {summary: "Recording an entry is slower than its target"}
+
+      - alert: ChatSlow
+        # 95th percentile of handling a Telegram update above 500 ms (NFR-001) for 15 minutes.
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(
+            qd_request_duration_ms_bucket{route="/tg/webhook"}[5m]
+          ))) > 500
+        for: 15m
+        labels: {severity: day, channel: operator-telegram}
+        annotations: {summary: "The bot answers slower than its target"}
+
+      - alert: OverviewSlow
+        # 95th percentile of the overview and the debtors list above 300 ms (NFR-005) for 15 minutes.
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(
+            qd_request_duration_ms_bucket{route=~"/api/v1/shops/[{]shop_id[}]/overview.*"}[5m]
+          ))) > 300
+        for: 15m
+        labels: {severity: day, channel: operator-telegram}
+        annotations: {summary: "The overview is slower than its target"}
+
+  - name: qarz-messaging
+    rules:
+      - alert: OutboxOld
+        # A message that is due has waited more than 10 minutes.
+        expr: qd_outbox_oldest_due_seconds > 600
+        for: 2m
+        labels: {severity: day, channel: operator-telegram}
+        annotations: {summary: "Messages on {{ $labels.channel }} are not being sent"}
+
+      - alert: RemindersNotRunning
+        # No reminder run recorded in an hour during sending hours (08:00 to 20:00 Tashkent, UTC+5).
+        expr: qd_job_last_finished_seconds{job="reminders"} > 3900 and on() (hour() >= 3 and hour() < 15)
+        for: 5m
+        labels: {severity: day, channel: operator-telegram}
+        annotations: {summary: "The reminder job has not finished for over an hour"}
+
+  - name: qarz-security
+    rules:
+      - alert: CrossTenantAttempt
+        # Any signed-in session asking about a shop it is not a member of. Seen on sight.
+        expr: increase(qd_security_events_total{kind="shop_not_member"}[10m]) > 0
+        labels: {severity: sight, channel: operator-telegram}
+        annotations: {summary: "A signed-in user asked about a shop that is not theirs"}
+
+      - alert: InvalidSignaturesRepeated
+        expr: |
+          increase(qd_security_events_total{kind=~"bad_sign_in|bad_webhook_secret"}[10m]) > 10
+        labels: {severity: sight, channel: operator-telegram}
+        annotations: {summary: "Repeated invalid signatures ({{ $labels.kind }})"}
+
+  - name: qarz-up
+    rules:
+      - alert: MetricsMissing
+        # The application stopped answering the monitoring system. The external check of /healthz, from
+        # outside both servers, is separate and is the one that reaches the operator's phone.
+        expr: absent(qd_requests_total)
+        for: 3m
+        labels: {severity: phone, channel: external}
+        annotations: {summary: "The application exposes no metrics"}
