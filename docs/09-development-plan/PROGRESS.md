@@ -61,8 +61,8 @@ M3 exit condition: an itemized sale of five catalog goods can be entered in the 
 | S9.2 Customer notifications for entries, payments, reversals | Done | EVID-049; pull request 21 | Queued, never sent through the real Telegram API |
 | S9.3 Customer debt page; isolation; disconnect; removal and anonymization | Done | EVID-049, EVID-053; pull requests 22 and 31 | The customer's page was tested against a fake server only |
 | S10.1 Disputes | Done | EVID-050, EVID-053; pull requests 25 and 31 | |
-| S10.2 Payment notices with receipt upload | In review | Pull request 36, not merged | Brings the file store. Differs from ADR-020: receipts are streamed through the API instead of a signed link; the security review has three low findings on it |
-| S10.3 Date change requests; promise history | Done in the API and chat | EVID-058; pull request 38 | No screen yet; concurrent requests not tested as races |
+| S10.2 Payment notices with receipt upload | Done in the API and chat | EVID-065; pull request 36 | Brings the file store; receipts are served through five-minute signed links. The S3 adapter never ran against a real bucket, nor the Telegram file download against the real Bot API. Screens in review |
+| S10.3 Date change requests; promise history | Done | EVID-058, EVID-064; pull requests 38 and 48 | Screens tested against a fake server only; concurrent requests not tested as races |
 
 ## Milestone M5: Reminders and credit control
 
@@ -78,9 +78,9 @@ M3 exit condition: an itemized sale of five catalog goods can be entered in the 
 
 | Story | State | Evidence | Notes |
 |---|---|---|---|
-| S13.1 Period report and overdue debt by age | Done in the API | EVID-057; pull request 37 | No screen yet. A past period's report can change when one of its sales is reversed later (DEC-040) |
-| S13.2 Exports as jobs with signed downloads | Not started | - | Needs the file store of S10.2 |
-| S14.1 Import | Not started | - | Needs the file store of S10.2 |
+| S13.1 Period report and overdue debt by age | Done | EVID-057, EVID-064; pull requests 37 and 48 | A past period's report can change when one of its sales is reversed later (DEC-040) |
+| S13.2 Exports as jobs with signed downloads | In progress | - | |
+| S14.1 Import | In progress | - | |
 | S15.1 Web panel | Done | EVID-059; pull request 40 | Tested against a fake server and a stub of the Telegram widget. The widget needs the bot's domain set with BotFather, which is the founder's to do |
 | S16.1 Russian catalogs, reviewed by a native speaker | Catalogs written; review blocked on the founder | - | Every Russian text is an agent's draft |
 
@@ -89,21 +89,21 @@ M3 exit condition: an itemized sale of five catalog goods can be entered in the 
 | Story | State | Evidence | Notes |
 |---|---|---|---|
 | S17.1 Subscription states, warnings, limited mode | Done | EVID-054, EVID-056; pull requests 32 and 34 | |
-| S17.2 Pay by card transfer with receipts | Not started | - | Needs the file store of S10.2 and the administrator's side of S18.1 |
+| S17.2 Pay by card transfer with receipts | In progress | - | |
 | S17.3 Click and Payme adapters behind the switch | Done, switched off | EVID-060; pull request 44 | Never run against either provider's test environment; must be checked against the providers' current documentation before the switch is ever turned on |
-| S18.1 Administrator sign-in and panel API | In review | Pull request 42, not merged | |
-| S18.2 Support access; admin audit | Not started | - | After S18.1 |
+| S18.1 Administrator sign-in and panel API | Done in the API | EVID-066; pull request 42 | Never used with a real authenticator application. Screens in progress |
+| S18.2 Support access; admin audit | In progress | - | |
 | S18.3 Measurement | Done | EVID-056; pull request 35 | Figures are totals over all shops; the export is an operator's command |
-| S18.4 Shop deletion | Done | EVID-055, EVID-059; pull requests 33 and 40 | Stored file objects are not deleted yet (comes with S10.2) |
+| S18.4 Shop deletion | Done | EVID-055, EVID-059, EVID-065; pull requests 33, 40 and 36 | Stored file objects are deleted before the shop's rows |
 
 ## Milestone M8: Hardening
 
 | Story | State | Evidence | Notes |
 |---|---|---|---|
-| S19.1 Load test | In review | Pull request 43, not merged | Run on a developer machine. The overview and debtors list of a shop with 200 000 entries miss the 300 ms target |
+| S19.1 Load test | Tooling done; first measurement recorded; targets not all met | EVID-063; pull request 43; `docs/10-operations/load-test.md` | A developer machine, not the servers. The overview and debtors list of a shop with 200 000 entries miss the 300 ms target; curing that is the founder's choice under launch criterion 6 (DEC-047) |
 | S19.2 Security review | Agent's review done; a person's review still needed | EVID-059, EVID-061; pull requests 41 and 45 | No critical or high finding in what was read. Findings 1 to 8 and 10 fixed; 9, 11, 12, 13 open. Deployment, the administrator's side and most of the storage module were not read |
 | S19.3 Failover and restore rehearsals, timed | Rehearsed locally only | EVID-044 | Real servers are blocked on the founder |
-| S19.4 Runbooks, alerts, usability sessions, copy review | Not started | - | Structured logs, metrics and alert rules are not built; usability sessions and copy review need people |
+| S19.4 Runbooks, alerts, usability sessions, copy review | Partly: logs, metrics and alert rules built | EVID-062; pull request 47 | No monitoring system exists and no alert was ever triggered. Runbooks not written. Usability sessions and copy review need people |
 
 API rate limits per user and per shop, listed before as not implemented, are in place (EVID-059; pull request 39).
 
@@ -138,6 +138,11 @@ Each is implemented. If one is rejected, the named story must be revisited.
 | DEC-043 | Web panel: new screens in the panel only; CSRF token in memory, so a reload signs out | S15.1 |
 | DEC-044 | Online payment: `online_payment` table; an order first; no cancelling a performed payment through Payme | S17.3 |
 | DEC-045 | Security fixes: one mebibyte body limit; five minutes of clock allowance; deletion still allowed in a suspended shop | S19.2 |
+| DEC-046 | Monitoring: what counts as a cross-tenant attempt; metrics behind a token; exception text never logged | S19.4 |
+| DEC-047 | Load test and statement timeout: traffic mix; 5 and 60 second limits; the large shop's overview left to the founder | S19.1 |
+| DEC-048 | Payment notices and files: 14 days; three open notices; how a receipt is judged safe; where a duplicate is looked for | S10.2 |
+| DEC-049 | Administrator access: allow-list and account; lock-out; recovery by an operator; new tables and a new dependency | S18.1 |
+| DEC-050 | Screens for date requests and reports: arrangement choices | S10.3, S13.1 |
 
 ## Deviations from the approved documents
 
@@ -146,7 +151,7 @@ Each is implemented. If one is rejected, the named story must be revisited.
 | Creation of role `qd_app` | `LOGIN PASSWORD 'set-at-deploy'` in `schema.sql` | Created `NOLOGIN`; login and password set at deploy | No password literal in the repository (DEC-021) |
 | Layer order for the import contract | Layers named without ordering infrastructure | interface, infrastructure, application, domain | A single order is needed for an automatic check |
 | Dependency lock | "Pinned with hashes" | Hash-pinned Linux lock generated with uv | pip-tools did not finish |
-| Tables, columns and functions beyond `schema.sql` | Not present | Tables `user_session`, `ownership_transfer`, `chat_pending`; `job_run`, `measure.weekly`, `online_payment`; columns `catalog_item.merged_into`, `customer_link.waiting_name`, `date_change_request.decline_reason`; functions `mark_recipient_unreachable`, `accept_staff_invitation`, `my_memberships`, `customer_token_info`, `link_customer`, `my_accounts`, `my_link`, `end_my_link`, `mark_recipient_reachable`, `forget_user_if_unused`, `shops_due_for_reminders`, `subscriptions_to_review`, `shops_to_erase`, `erase_shop`, `online_payment_shop`, `online_payment_shop_by_txn`, `payme_statement`; trigger `shop_deletion_guard` | DEC-021, DEC-022, DEC-025, DEC-029, DEC-030, DEC-032, DEC-033, DEC-035, DEC-038, DEC-039, DEC-041, DEC-044, DEC-045 |
+| Tables, columns and functions beyond `schema.sql` | Not present | Tables `user_session`, `ownership_transfer`, `chat_pending`; `job_run`, `measure.weekly`, `online_payment`, `admin_audit`, `admin_session`, `admin_request_key`; columns `catalog_item.merged_into`, `customer_link.waiting_name`, `date_change_request.decline_reason`; functions `mark_recipient_unreachable`, `accept_staff_invitation`, `my_memberships`, `customer_token_info`, `link_customer`, `my_accounts`, `my_link`, `end_my_link`, `mark_recipient_reachable`, `forget_user_if_unused`, `shops_due_for_reminders`, `subscriptions_to_review`, `shops_to_erase`, `erase_shop`, `online_payment_shop`, `online_payment_shop_by_txn`, `payme_statement`, `shops_with_receipt_work`, `admin_shop_search`, `admin_shop_receipts`, `admin_lock_subscription`, `admin_store_subscription`; trigger `shop_deletion_guard`; indexes `ledger_reversal_shop`, `ledger_shop_customer` | DEC-021, DEC-022, DEC-025, DEC-029, DEC-030, DEC-032, DEC-033, DEC-035, DEC-038, DEC-039, DEC-041, DEC-044, DEC-045, DEC-047, DEC-048, DEC-049 |
 | Order of consent and the waiting entry | BR-16 allows the waiting entry before consent | Consent first; a constraint refuses a waiting entry without it | Stricter, and simpler to explain to a customer (DEC-032) |
 | Ruff rule S608 in the storage module | All security rules on | Off for `infrastructure/db.py`, replaced by a stricter project test | The rule cannot tell a constant SQL fragment from user input (DEC-027) |
 | Rate limits on sign-in | Specified | The API limits signed-in callers per user and per shop; requests that are not signed in are left to the proxy, which does not exist yet | Limits by network address belong in front of the application (DEC-042) |
@@ -166,8 +171,10 @@ Each is implemented. If one is rejected, the named story must be revisited.
 - The Payme and Click adapters have never been run against either provider's test environment. They are switched off.
 - The web panel has never used the real Telegram sign-in widget.
 - The security review was done by an agent, not a person, and lists what it did not read.
-- The first load test, on a developer machine, is in review; it is not launch criterion 6.
-- There are no structured logs, metrics, alert rules or proxy configuration yet.
+- The load test ran on a developer machine only, and two targets were missed there for a very large shop; it is not launch criterion 6.
+- The file store's S3 adapter never ran against a real bucket; receipts were sanitized on hand-built samples, not on photographs from real phones.
+- No administrator has signed in with a real authenticator application.
+- There is no monitoring system and no proxy configuration: the logs, metrics and alert rules exist, and no alert was ever triggered or received.
 
 ## Launch criteria (docs/10-operations/OUTPUT.md)
 
@@ -176,12 +183,12 @@ Each is implemented. If one is rejected, the named story must be revisited.
 | 1 | Interviews and pDaftar test | Open; founder |
 | 2 | Legal review | Open; founder |
 | 3 | Registration if required | Open; founder |
-| 4 | M1 to M8 complete, acceptance criteria pass in CI | In progress: 36 of 49 stories done; S1.5, S16.1, S19.2 and S19.3 partly; S10.2, S18.1 and S19.1 in review; S13.2, S14.1, S17.2, S18.2 and S19.4 not started |
+| 4 | M1 to M8 complete, acceptance criteria pass in CI | In progress: 38 of 49 stories done; S1.5, S16.1, S19.1, S19.2, S19.3 and S19.4 partly; S13.2, S14.1, S17.2 and S18.2 in progress |
 | 5 | Authorization and tenant suite covers every operation | In place and blocking; grows with each story |
-| 6 | Load test | A first run on a developer machine is in review (pull request 43); not met |
+| 6 | Load test | Not met: measured on a developer machine only, and the overview of a very large shop missed its target (EVID-063) |
 | 7 | Security review | An agent's review is done and most findings fixed (EVID-059, EVID-061); a person's review and the open findings remain |
 | 8 | Failover and restore rehearsals | Rehearsed locally in containers (EVID-044); not on real servers |
-| 9 | Alerts triggered and received | Not started |
+| 9 | Alerts triggered and received | Not started: rules are written (EVID-062), no monitoring system exists |
 | 10 | Runbooks executed | Not started |
 | 11 | Usability sessions | Not started; needs real sellers |
 | 12 | Two servers in use | Open; founder |
