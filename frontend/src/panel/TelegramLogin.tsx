@@ -7,28 +7,33 @@ import "./messages";
 /** Telegram's Login Widget. It is the panel's only third-party script and is added on this screen only. */
 export const WIDGET_SRC = "https://telegram.org/js/telegram-widget.js?22";
 
-/** The global function the widget calls with the signed data; it exists only while the widget is shown. */
-export const WIDGET_CALLBACK = "qarzDaftariTelegramAuth";
-
 export type LoginWidgetProps = {
   botUsername: string;
   language: Language;
-  /** Receives whatever the widget hands over; the caller checks its shape. */
-  onAuth: (data: unknown) => void;
 };
 
-type WidgetWindow = Window & { [WIDGET_CALLBACK]?: (data: unknown) => void };
+/**
+ * Where Telegram sends the browser once the person has confirmed: this very page, without its query
+ * string and fragment. Telegram's script adds the signed fields as a query string; a fragment would
+ * end up in front of them and swallow them.
+ */
+export function authUrl(location: Pick<Location, "origin" | "pathname"> = window.location): string {
+  return location.origin + location.pathname;
+}
 
 /**
  * The "Log in with Telegram" button (ADR-017). Telegram's script replaces itself with a frame served by
- * Telegram; the person confirms there, and the script calls back with their signed data. Nothing about
- * the session is known to this component: it only passes the data on.
+ * Telegram; the person confirms there, and the script sends the browser to `data-auth-url` with their
+ * signed data in the query string (the widget's redirect mode). The page that loads then takes it from
+ * there: see `loginReturn.ts`.
+ *
+ * The widget's other mode, a callback named in `data-onauth`, is not used on purpose: Telegram's script
+ * turns that attribute into a function with `eval()`, which the page's Content-Security-Policy would
+ * then have to allow for every script (`'unsafe-eval'`).
  */
-export function TelegramLogin({ botUsername, language, onAuth }: LoginWidgetProps) {
+export function TelegramLogin({ botUsername, language }: LoginWidgetProps) {
   const { t } = useI18n();
   const host = useRef<HTMLDivElement>(null);
-  const latest = useRef(onAuth);
-  latest.current = onAuth;
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -37,21 +42,16 @@ export function TelegramLogin({ botUsername, language, onAuth }: LoginWidgetProp
       return;
     }
     setFailed(false);
-    const page: WidgetWindow = window;
-    page[WIDGET_CALLBACK] = (data) => latest.current(data);
     const script = document.createElement("script");
     script.async = true;
     script.src = WIDGET_SRC;
     script.setAttribute("data-telegram-login", botUsername);
     script.setAttribute("data-size", "large");
     script.setAttribute("data-lang", language);
-    script.setAttribute("data-onauth", `${WIDGET_CALLBACK}(user)`);
+    script.setAttribute("data-auth-url", authUrl());
     script.addEventListener("error", () => setFailed(true));
     container.append(script);
-    return () => {
-      Reflect.deleteProperty(page, WIDGET_CALLBACK);
-      container.replaceChildren();
-    };
+    return () => container.replaceChildren();
   }, [botUsername, language]);
 
   return (

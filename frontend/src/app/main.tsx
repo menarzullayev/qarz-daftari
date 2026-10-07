@@ -2,11 +2,11 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { detectLanguage, readStoredLanguage } from "../i18n/detect";
-import { type ApiAuth, signInWebApp } from "../shared/api";
 import { previewStaffSession } from "../shared/session";
 import { StaffApp } from "../shared/StaffApp";
 import { StaffRoot } from "../shared/StaffRoot";
 import { initTelegram } from "../shared/telegram";
+import { webAppConnector, webViewStore } from "../shared/webAppSession";
 
 const root = document.getElementById("root");
 if (!root) {
@@ -21,15 +21,9 @@ const initialLanguage = detectLanguage({
 });
 const preview = import.meta.env.DEV ? previewStaffSession(window.location.search) : null;
 
-// The signed launch string is exchanged once for a session token, which lives in memory only: it is
-// never written to storage or to a URL. Outside Telegram there is nothing to sign in with.
-const connect = async (): Promise<ApiAuth | null> => {
-  if (launch.initData === null) {
-    return null;
-  }
-  const token = await signInWebApp((input, init) => window.fetch(input, init), launch.initData);
-  return { kind: "bearer", token };
-};
+// The signed launch string is exchanged once for a session token. The token is kept for the life of this
+// web view (see webAppSession.ts) and never put in a URL. Outside Telegram there is nothing to sign in with.
+const connect = webAppConnector((input, init) => window.fetch(input, init), launch.initData, webViewStore());
 
 createRoot(root).render(
   <StrictMode>

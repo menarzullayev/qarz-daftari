@@ -9,14 +9,17 @@
 #
 # Everything generated lives in deploy/production/.local/ (ignored by git). The images are built from the
 # COMMIT, not from the working tree: commit first.
-# Environment: LOCAL_HTTP_PORT (18480), LOCAL_HTTPS_PORT (18443), DEPLOY_PROJECT (qd-deploy-proof).
+# Environment: LOCAL_HTTP_PORT (18480), LOCAL_HTTPS_PORT (18443), DEPLOY_PROJECT (qd-deploy-proof),
+# LOCAL_DIR (where the generated files go), LOCAL_ADMIN_TG_IDS (the administrators' allow-list, default 1), DEPLOY_COMPOSE_OVERLAY_EXTRA (one more compose file; the
+# end-to-end suite adds compose.e2e.yml through it, see e2e/stack.sh).
 set -euo pipefail
 
-LOCAL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/.local"
+PROOF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOCAL_DIR="${LOCAL_DIR:-$PROOF_DIR/.local}"
 export DEPLOY_ENV_FILE="$LOCAL_DIR/local.env"
 export DEPLOY_PROJECT="${DEPLOY_PROJECT:-qd-deploy-proof}"
 export DEPLOY_STATE_DIR="$LOCAL_DIR/state"
-export DEPLOY_COMPOSE_OVERLAY="$LOCAL_DIR/../compose.local.yml"
+export DEPLOY_COMPOSE_OVERLAY="$PROOF_DIR/compose.local.yml"
 # shellcheck source=lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -53,7 +56,7 @@ QD_DATABASE_URL=postgresql://qd_app:$app@db:5432/qarz
 QD_BOT_TOKEN=1000000000:$(openssl rand -hex 18)
 QD_WEBHOOK_SECRET=$(openssl rand -hex 24)
 QD_SECRETS_KEY=$(openssl rand -base64 32)
-QD_ADMIN_TG_IDS=1
+QD_ADMIN_TG_IDS=${LOCAL_ADMIN_TG_IDS:-1}
 QD_METRICS_TOKEN=$(openssl rand -hex 16)
 QD_FILE_STORE=filesystem
 QD_FILE_ROOT=/var/lib/qarz/files

@@ -19,6 +19,7 @@ a real certificate, a real bot or a real database host. See "Not proven" at the 
 | `nginx/nginx.conf`, `nginx/conf.d/qarz.conf`, `nginx/snippets/` | TLS, redirect, headers, limits, routing, the access log. |
 | `compose.yml` | `proxy`, `api`, `worker`, `migrate`. Only the proxy publishes ports. |
 | `compose.local.yml` | Overlay for the local proof only: PostgreSQL and a volume for files. |
+| `compose.e2e.yml` | Overlay for the end-to-end suite only: closes the API's and the worker's way out. |
 | `.env.example` | Every name the services read, by service, without values. |
 | `scripts/deploy.sh`, `rollback.sh`, `smoke.sh` | See below. `local.sh` runs the local proof; `lib.sh` is shared. |
 
@@ -126,7 +127,7 @@ three are open.
 | TLS | 1.2 and 1.3, the Mozilla "intermediate" suites, no session tickets | The specification says "TLS 1.2 or later". |
 | HSTS | `max-age=31536000`, no `includeSubDomains`, no `preload` | The other host names under the founder's domain are not known. |
 | CSP, Mini App | scripts from itself and `https://telegram.org`; styles, fonts, connections from itself; images from itself and `blob:`; framed only by `web.telegram.org`, `webk.telegram.org`, `webz.telegram.org` | What `frontend/app/index.html` loads. Inside Telegram's web client the bridge script adds a `<style>` element for scroll bars, which `style-src 'self'` refuses; nothing else is affected. |
-| CSP, panel and admin | the same, plus `frame-src https://oauth.telegram.org`, `frame-ancestors 'none'`, `X-Frame-Options: DENY`, and **`'unsafe-eval'` in `script-src`** | The pages pass the Login widget its callback as `data-onauth`, and Telegram's `telegram-widget.js` builds that callback with `eval()`. Without `'unsafe-eval'` the widget throws and shows no button (seen in a browser). To remove it, the front end must stop using `data-onauth` (for example the widget's redirect mode); that is a change to the application, not to this configuration. |
+| CSP, panel and admin | the same, plus `frame-src https://oauth.telegram.org`, `frame-ancestors 'none'`, `X-Frame-Options: DENY`. **No `'unsafe-eval'`** | The pages use the Login widget's redirect mode (`data-auth-url`): Telegram's script sends the browser back to the page with the signed fields in the query string, and the page takes them out of the address before anything else (`frontend/src/panel/loginReturn.ts`). The widget's callback mode (`data-onauth`) is what needed `eval()`. `smoke.sh` fails if any policy allows it. See "Signing in without eval" below. |
 | Referrer | `strict-origin-when-cross-origin` | Another site learns the origin at most; `no-referrer` was not chosen because whether Telegram's sign-in frame needs the origin was not tested. |
 | Permissions | everything off except `clipboard-write` for the page itself | The pages copy a code and a card number; they use no camera, location or sensors. |
 | Caching | `no-store` for HTML, the API and files; one year `immutable` for `/assets/` | Asset names carry a content hash. |
@@ -140,6 +141,31 @@ three are open.
 | Images | Tagged with the full commit hash; built on the host because there is no registry | `DEPLOY_PULL=1` and the two image names switch to pulling. Base images are pinned by tag, not by digest. |
 | Local ports | 18480 and 18443 on 127.0.0.1, project `qd-deploy-proof` | 80, 443, 8000 and 54329 are taken or reserved on the developer machine. |
 
+## Signing in without eval
+
+The panel and the administrators' entry give Telegram's Login widget `data-auth-url` (the page's own
+address) instead of a callback. After the person confirms in Telegram, Telegram's script on our page sets
+`location.href` to that address with `id`, `first_name`, `auth_date`, `hash` and the other signed fields
+as a query string. What happens to them:
+
+- **Address bar and history.** The page's script, before it draws or requests anything, reads the fields
+  and replaces the address in the same history entry with one that has no query string. No step back or
+  forward leads to an address with the fields. The browser's own list of visited addresses may still
+  hold the address it loaded; the server accepts each set of signed fields once, so that address opens
+  nothing afterwards.
+- **Logs.** The proxy's access log has the path without the query string and no referrer (`local.sh
+  smoke` checks the first). The application's request log has the route template only. The page's own
+  scripts and style sheet are requested while the address still carries the fields, so those few
+  requests, to this proxy only, carry them in `Referer`; nothing logs that header.
+- **Other sites.** `Referrer-Policy: strict-origin-when-cross-origin` gives another site the origin at
+  most, and the page requests nothing from another site before the address is replaced.
+- **Somebody else's fields in a link.** A link to the page with another person's valid fields would sign
+  the reader in to that person's account. The page therefore takes fields only when the browser says the
+  navigation came from this same site (`document.referrer`), which is true when Telegram's script on our
+  page navigates and false for a link in a message or on another site. Nothing is kept in browser
+  storage for this. The cost: a browser set to send no referrer at all cannot sign in to the panel.
+- **CSRF token.** Unchanged: answered by the sign-in call, kept in memory only.
+
 ## The local proof
 
 ```sh
@@ -150,7 +176,37 @@ deploy/production/scripts/local.sh down        # containers, networks, volumes, 
 ```
 
 Everything generated is under `deploy/production/.local/`, which git ignores. CI builds both images, checks
-the compose files and runs this same proof on every pull request.
+the compose files and runs this same proof on every pull request, and runs the end-to-end suite (below)
+against the same images.
+
+## The end-to-end suite
+
+`e2e/` drives the built front end in Chromium (Playwright) against this stack: the real API, worker and
+PostgreSQL behind the proxy, so the policy, the limits and the headers above are in force. It is a
+package of its own, so that `frontend/` installs and bundles nothing of it.
+
+```sh
+git commit …                       # the images are built from the commit, as for the local proof
+e2e/stack.sh up                    # project qd-e2e on https://127.0.0.1:28443 (http: 28480)
+cd e2e && npm ci && npx playwright install chromium
+npm test                           # about a minute and a half; npx playwright test tests/04 for one file
+e2e/stack.sh down                  # containers, networks, volumes, images, generated files
+```
+
+- **Nothing leaves the machine.** `compose.e2e.yml` makes the network of the API and the worker
+  internal, so the worker's calls to Telegram fail at once; what it would have sent is read from the
+  `outbox_message` table. The browser's requests for Telegram's two scripts are answered by stand-ins
+  (`e2e/support/fixtures.ts`), and a request to anywhere else fails the test.
+- **Signing in** is done the way Telegram would do it: launch data and Login-widget fields signed with
+  the stack's made-up bot token (`e2e/support/telegram.ts`), and chat updates posted to `/tg/webhook`
+  with the stack's webhook secret. The application has no test entrance.
+- **The database** is read with `psql` as its owner, in read-only transactions.
+- **Every journey** fails on a Content-Security-Policy violation reported by the browser and on an API
+  answer without `X-Request-Id`.
+- An administrator's second factor is enrolled once, so the stack's allow-list holds eight made-up
+  identifiers and each run uses the next one; after eight runs, `down` and `up` again.
+- `down` removes every `qarz-daftari/backend` and `qarz-daftari/proxy` image on the machine, the local
+  proof's included. Generated files are in `deploy/production/.local-e2e/`, which git ignores.
 
 ## Not covered here
 
@@ -174,8 +230,14 @@ the compose files and runs this same proof on every pull request.
 - A certificate from a real authority, and its renewal through the proxy.
 - The Mini App inside Telegram, on any client: the frame rules for Telegram's web client are written from
   Telegram's script, not observed.
-- Signing in with the Telegram Login widget: it needs a real bot whose domain is set in BotFather. Only
-  that the widget's frame is created under this policy was seen.
+- Signing in with the real Telegram Login widget: it needs a real bot whose domain is set in BotFather.
+  What was proven is the page's half: the end-to-end suite (`e2e/`) signs in to `/panel/` and `/admin/`
+  under the policy above with a stand-in for Telegram's script that does what the script's redirect mode
+  does, and no policy violation is reported. What was only read, not run: `telegram-widget.js?22` reaches
+  `eval()` solely through `data-onauth` and `data-onunauth`, and in redirect mode navigates with
+  `location.href` from our page. Not proven: that Telegram's own script draws its button and completes a
+  sign-in under this policy, and that Telegram accepts the page's address as `data-auth-url` for the
+  bot's domain.
 - That the proxy sees callers' real addresses. On Docker Desktop every caller appears as the bridge's
   gateway; on a Linux host with published ports the real address is expected, and the limits by address
   mean nothing until that is checked in the access log.

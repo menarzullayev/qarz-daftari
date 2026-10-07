@@ -50,6 +50,10 @@ status_is() { [ "$STATUS" = "$1" ]; }
 status_is_not() { [ -n "$STATUS" ] && [ "$STATUS" != "$1" ]; }
 contains() { printf '%s' "$1" | grep -qF -- "$2"; }
 zeros() { head -c "$1" /dev/zero; }
+# A policy that is present and allows no eval(). No page needs it: the Login widget runs in its redirect
+# mode, so Telegram's script never builds a callback from text.
+no_eval() { [ -n "$1" ] && ! printf '%s' "$1" | grep -qF "unsafe-eval"; }
+refuses() { ! "$@"; }
 
 security_headers() { # the headers every answer must carry, each exactly once
   local what="$1" name
@@ -59,6 +63,7 @@ security_headers() { # the headers every answer must carry, each exactly once
   done
   check "$what: HSTS has a max-age of a year" header_has Strict-Transport-Security "max-age=31536000"
   check "$what: X-Content-Type-Options is nosniff" header_has X-Content-Type-Options "nosniff"
+  check "$what: the policy allows no eval" no_eval "$(header Content-Security-Policy)"
 }
 
 echo "smoke test of $HTTPS"
@@ -76,6 +81,8 @@ probe "$HTTP/api/v1/me"
 check "HTTP serves no API (301)" status_is 301
 
 echo "# security headers"
+check "the eval check refuses a policy that allows eval" refuses no_eval "script-src 'self' 'unsafe-eval'"
+check "the eval check refuses an answer without a policy" refuses no_eval ""
 probe "$HTTPS/api/v1/me"
 security_headers "API"
 check "API: nothing may frame it" header_has Content-Security-Policy "frame-ancestors 'none'"
@@ -94,7 +101,6 @@ probe "$HTTPS/app/"
 security_headers "/app/"
 check "/app/: Telegram's web client may frame it" header_has Content-Security-Policy "frame-ancestors https://web.telegram.org"
 check "/app/: no X-Frame-Options (frame-ancestors decides)" header_absent X-Frame-Options
-check "/app/: no eval" bash -c '! printf "%s" "$1" | grep -q unsafe-eval' _ "$(header Content-Security-Policy)"
 check "/app/: HTML is not cached" header_has Cache-Control "no-store"
 
 echo "# front-end entries"
@@ -108,6 +114,7 @@ for entry in app panel admin; do
   probe "$HTTPS${asset:-/assets/none}"
   check "/$entry/ script ${asset:-(none found)} answers 200" status_is 200
   check "/$entry/ script is cached as immutable" header_has Cache-Control "immutable"
+  check "/$entry/ script: the policy allows no eval" no_eval "$(header Content-Security-Policy)"
   probe "$HTTPS/$entry/no/such/page"
   check "/$entry/ falls back to its page for an unknown path" status_is 200
 done
@@ -143,6 +150,18 @@ probe "${big[@]}" "$HTTPS/api/v1/me" < <(zeros $((MIB + 1)))
 check "1 MiB + 1 byte on an ordinary route answers 413" status_is 413
 check "the 413 carries X-Request-Id" header_once X-Request-Id
 check "the 413 is the API's error shape" contains "$(zeros $((MIB + 1)) | body "${big[@]}" "$HTTPS/api/v1/me")" '"BODY_TOO_LARGE"'
+# The same over HTTP/2 with the size announced and no Expect, which is how a browser sends it. nginx then
+# checks the size a second time inside its own error location; unless that location allows any size the
+# answer is its stock HTML page. Skipped, and said so, where curl has no HTTP/2.
+if curl --version | grep -qw HTTP2; then
+  big2=(--http2 -X POST -H "Content-Type: application/json" -H "Expect:" --data-binary @-)
+  probe "${big2[@]}" "$HTTPS/api/v1/me" < <(zeros $((MIB + 1)))
+  check "HTTP/2: 1 MiB + 1 byte answers 413" status_is 413
+  check "HTTP/2: the 413 is JSON, not the proxy's own page" header_has Content-Type "application/json"
+  check "HTTP/2: the 413 is the API's error shape" contains "$(zeros $((MIB + 1)) | body "${big2[@]}" "$HTTPS/api/v1/me")" '"BODY_TOO_LARGE"'
+else
+  printf 'skip  %s\n' "HTTP/2: the 413's shape (this curl has no HTTP/2; the end-to-end suite checks it in a browser)"
+fi
 probe "${big[@]}" "$HTTPS/api/v1/me" < <(zeros "$MIB")
 check "exactly 1 MiB is not refused for its size" status_is_not 413
 probe "${big[@]}" "$HTTPS/api/v1/shops/$UUID/imports" < <(zeros $((MIB + 1)))
@@ -159,7 +178,17 @@ check "16 KiB + 1 byte on /pay/ answers 413" status_is 413
 echo "# sign-in rate limit by address (burst $AUTH_BURST)"
 if [ "$AUTH_WAIT" != "0" ]; then sleep "$AUTH_WAIT"; fi
 let_through=0
-for _ in $(seq 1 $((AUTH_BURST + 1))); do
+# The first of them is the administrators' status route, which their page asks before anything else. It
+# is a proxied prefix without its last slash; nginx would answer that address itself, with a redirect
+# that names its inner port, and the page could never open. It shares the sign-in limit.
+probe "$HTTPS/api/admin/v1/auth"
+admin_status="$STATUS"
+check "the administrators' status route is answered by the API, not redirected by the proxy (got $admin_status)" \
+  bash -c '[ "$1" = 401 ] || [ "$1" = 404 ]' _ "$admin_status"
+check "its answer is JSON" header_has Content-Type "application/json"
+check "its answer names no other address" header_absent Location
+if [ -n "$admin_status" ] && [ "$admin_status" != "429" ]; then let_through=1; fi
+for _ in $(seq 1 "$AUTH_BURST"); do
   probe -X POST -H "Content-Type: application/json" --data '{}' "$HTTPS/api/v1/auth/telegram-webapp"
   if [ -n "$STATUS" ] && [ "$STATUS" != "429" ]; then let_through=$((let_through + 1)); fi
 done

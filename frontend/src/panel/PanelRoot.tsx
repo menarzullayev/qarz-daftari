@@ -1,4 +1,4 @@
-import { type ComponentType, useCallback, useMemo, useRef, useState } from "react";
+import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { I18nProvider, useI18n } from "../i18n/I18nProvider";
 import type { Language } from "../i18n/types";
@@ -17,7 +17,8 @@ import { OfficeProvider, useOffice } from "./office";
 import { OfficeBanner } from "./OfficeBanner";
 import { OwnerTotals } from "./OwnerTotals";
 import "./panel.css";
-import { readLoginData, signInPanel, signOutPanel } from "./signIn";
+import { type LoginReturn, NO_RETURN } from "./loginReturn";
+import { signInPanel, signOutPanel } from "./signIn";
 import { StaffScreen } from "./StaffScreen";
 import { DesktopLayout } from "./tables";
 import { type LoginWidgetProps, TelegramLogin } from "./TelegramLogin";
@@ -53,6 +54,8 @@ type PanelRootProps = {
   botUsername?: string | null;
   /** The sign-in button; tests and previews replace Telegram's with one that loads nothing. */
   LoginWidget?: ComponentType<LoginWidgetProps>;
+  /** What Telegram sent the browser back with, taken from the address when the page loaded. */
+  loginReturn?: LoginReturn;
 };
 
 /** Why the sign-in screen is shown again, when it is not the first time. */
@@ -182,19 +185,22 @@ function SignedIn({
 type Attempt = { status: "idle" } | { status: "pending" } | { status: "failed"; error: ApiError | null };
 
 /**
- * The panel's first screen: "Log in with Telegram" (ADR-017). The widget's data goes to the server once;
- * its answer is the session cookie and the CSRF token that the caller keeps in memory.
+ * The panel's first screen: "Log in with Telegram" (ADR-017). The widget sends the browser away and back;
+ * what it came back with goes to the server once, whose answer is the session cookie and the CSRF token
+ * that the caller keeps in memory.
  */
 function SignIn({
   fetch,
   botUsername,
   LoginWidget,
+  takeReturn,
   ended,
   onSignedIn,
 }: {
   fetch: Fetch;
   botUsername: string | null;
   LoginWidget: ComponentType<LoginWidgetProps>;
+  takeReturn: () => LoginReturn;
   ended: Ended | null;
   onSignedIn: (auth: ApiAuth) => void;
 }) {
@@ -203,18 +209,20 @@ function SignIn({
   const [attempt, setAttempt] = useState<Attempt>({ status: "idle" });
   const busy = useRef(false);
 
-  const onAuth = (raw: unknown) => {
-    if (busy.current) {
+  // Runs once, when the screen appears: what Telegram sent this page back with, if it did, goes to the
+  // server. The fields are taken, so showing the screen again (after signing out) sends nothing.
+  useEffect(() => {
+    const returned = takeReturn();
+    if (returned.status === "none" || busy.current) {
       return;
     }
-    const data = readLoginData(raw);
-    if (data === null) {
+    if (returned.status === "refused") {
       setAttempt({ status: "failed", error: null });
       return;
     }
     busy.current = true;
     setAttempt({ status: "pending" });
-    signInPanel(fetch, data).then(
+    signInPanel(fetch, returned.data).then(
       (auth) => {
         busy.current = false;
         onSignedIn(auth);
@@ -224,7 +232,8 @@ function SignIn({
         setAttempt({ status: "failed", error: toApiError(error) });
       },
     );
-  };
+    // `fetch` and the two callbacks are fixed for the life of the page.
+  }, []);
 
   // The server's 401 and data that is not Telegram's both mean the same to the person: press again.
   const refused = attempt.status === "failed" && (attempt.error === null || attempt.error.status === 401);
@@ -259,7 +268,7 @@ function SignIn({
               {t("panel.signIn.pending")}
             </p>
           ) : null}
-          <LoginWidget botUsername={botUsername} language={language} onAuth={onAuth} />
+          {attempt.status === "pending" ? null : <LoginWidget botUsername={botUsername} language={language} />}
           <p className="hint">{t("panel.signIn.reload")}</p>
         </>
       )}
@@ -272,6 +281,7 @@ function Panel({
   now,
   botUsername = BOT_USERNAME,
   LoginWidget = TelegramLogin,
+  loginReturn = NO_RETURN,
 }: Omit<PanelRootProps, "initialLanguage">) {
   // How later calls prove the session: the cookie the browser holds, and this CSRF token. It lives here,
   // in memory, and nowhere else: a reload of the page starts at the sign-in screen again.
@@ -281,9 +291,18 @@ function Panel({
     setAuth(null);
     setEnded(why);
   }, []);
+  // Used once: the server accepts signed fields a single time, and they must not outlive this load.
+  const returned = useRef(loginReturn);
+  const takeReturn = useCallback(() => {
+    const taken = returned.current;
+    returned.current = NO_RETURN;
+    return taken;
+  }, []);
 
   if (auth === null) {
-    return <SignIn fetch={fetch} botUsername={botUsername} LoginWidget={LoginWidget} ended={ended} onSignedIn={setAuth} />;
+    return (
+      <SignIn fetch={fetch} botUsername={botUsername} LoginWidget={LoginWidget} takeReturn={takeReturn} ended={ended} onSignedIn={setAuth} />
+    );
   }
   return <SignedIn auth={auth} fetch={fetch} now={now} botUsername={botUsername} onEnded={onEnded} />;
 }
