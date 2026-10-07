@@ -24,6 +24,7 @@ from qarz.interface.http import create_app
 TEST_USER_HEADER = "X-Test-User"
 WEBHOOK_SECRET = "test-webhook-secret-0123456789"
 TEST_BOT_TOKEN = "1234567890:TEST-ONLY-token-not-a-real-bot"
+TEST_SECRETS_KEY = "test-only-server-secret-0123456789"
 
 
 class HeaderAuthenticator:
@@ -88,6 +89,7 @@ def client(app_database_url: str, file_root: Path, telegram_files: FakeTelegramF
         webhook_secret=WEBHOOK_SECRET,
         file_store=FilesystemFileStore(file_root),
         telegram_files=telegram_files,
+        secrets_key=TEST_SECRETS_KEY,
     )
     with TestClient(app) as test_client:
         yield test_client

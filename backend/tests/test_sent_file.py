@@ -71,8 +71,8 @@ def test_the_deployed_application_serves_the_notice_routes_with_or_without_a_sto
             "/api/v1/shops/{shop_id}/payment-notices/{notice_id}/decline",
             "/api/v1/shops/{shop_id}/payment-notices/{notice_id}/receipt",
         } <= paths
-    # No route serves a stored object by its key.
-    assert not [path for path in paths if "file" in path or "object" in path]
+    # A stored object is reachable in one way only: through a signed link (ADR-020). No route takes a key.
+    assert [path for path in paths if "file" in path or "object" in path] == ["/files/{token}"]
 
 
 @pytest.mark.parametrize("extra", [{"file_store": "filesystem"}, {"file_store": "s3"}, {"file_store": "elsewhere"}])

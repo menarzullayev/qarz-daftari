@@ -234,6 +234,7 @@ UZ = {
         "💵 {shop}\n{name} {amount} to'laganini bildirdi.\nHozirgi qarzi: {balance}\n"
         "📎 Chek ilova qilingan: uni ilovada ko'rishingiz mumkin."
     ),
+    "s_receipt_seen_before": "⚠️ Aynan shu chek bu do'konga avval ham yuborilgan.",
     "notice_accept_button": "✅ Qabul qilish",
     "notice_accepted_staff": "✅ {shop}\n{name}: to'lov {amount} qabul qilindi.\nQolgan qarzi: {balance}",
     "notice_declined_staff": "To'lov xabari rad etildi. Mijozga sababi bilan xabar yuborildi.",
@@ -470,6 +471,7 @@ RU = {
         "💵 {shop}\n{name} сообщает об оплате {amount}.\nТекущий долг: {balance}\n"
         "📎 Приложен чек: его можно посмотреть в приложении."
     ),
+    "s_receipt_seen_before": "⚠️ Точно такой же чек уже присылали в этот магазин.",
     "notice_accept_button": "✅ Принять",
     "notice_accepted_staff": "✅ {shop}\n{name}: оплата {amount} принята.\nОстаток долга: {balance}",
     "notice_declined_staff": "Сообщение об оплате отклонено. Клиенту отправлено сообщение с причиной.",

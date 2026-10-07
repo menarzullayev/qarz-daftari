@@ -18,7 +18,8 @@ from uuid import UUID, uuid4
 
 from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.ports import FileMissing, FileStore, FileStoreError, Storage, StoredFileRecord, TenantSession
-from qarz.domain.files import FileRefusal, clean_receipt, object_key
+from qarz.domain.file_links import derive_key, expiry, sign, verify
+from qarz.domain.files import EXTENSIONS, FileRefusal, clean_receipt, object_key
 
 PURGE_BATCH = 100
 
@@ -52,11 +53,25 @@ def _new_token() -> str:
     return secrets.token_hex(32)
 
 
+def _due(record: StoredFileRecord, now: datetime) -> bool:
+    """Marked for deletion: its retention has run out, or its customer's data was removed."""
+    return record.delete_after is not None and record.delete_after <= now
+
+
 class FileService:
-    def __init__(self, storage: Storage, store: FileStore | None, new_token: Callable[[], str] | None = None) -> None:
+    def __init__(
+        self,
+        storage: Storage,
+        store: FileStore | None,
+        new_token: Callable[[], str] | None = None,
+        *,
+        link_secret: str | None = None,
+    ) -> None:
         self._storage = storage
         self._store = store
         self._new_token = new_token or _new_token
+        # Without the server secret no link can be signed or believed: no file is served at all.
+        self._link_key = None if link_secret is None else derive_key(link_secret)
 
     @staticmethod
     def check(data: bytes) -> CheckedFile:
@@ -111,6 +126,35 @@ class FileService:
         if record is None:
             raise NotFound()
         return record
+
+    def link(self, shop_id: UUID, record: StoredFileRecord, now: datetime) -> tuple[str, datetime]:
+        """A link to the file for someone who has just been authorized to see it, and when it stops working.
+
+        Called with a record read in the shop's own transaction. A file that is due for deletion gets none.
+        """
+        if self._link_key is None or self._store is None:
+            raise FileStoreUnavailable()
+        if _due(record, now):
+            raise NotFound()
+        expires_at = expiry(now)
+        return sign(self._link_key, shop_id, record.file_id, expires_at), expires_at
+
+    async def serve(self, token: str, now: datetime) -> tuple[str, str, bytes]:
+        """Type, file name and content behind a link, for whoever holds it while it is valid.
+
+        Anything else is simply not found: a link that was changed, signed with another key or expired,
+        and a file that has been deleted or marked for deletion since the link was given.
+        """
+        named = None if self._link_key is None else verify(self._link_key, token, now)
+        if named is None:
+            raise NotFound()
+        shop_id, file_id = named
+        async with self._storage.tenant(shop_id) as session:
+            record = await session.get_stored_file(file_id)
+        if record is None or _due(record, now):
+            raise NotFound()
+        # The name carries part of the file's identifier and nothing about the person.
+        return record.mime, f"receipt-{file_id.hex[:8]}.{EXTENSIONS[record.mime]}", await self.content(record)
 
     async def content(self, record: StoredFileRecord) -> bytes:
         """The content of a file whose record was read in its shop's transaction.

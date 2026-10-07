@@ -3,7 +3,7 @@
 import hmac
 import time
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -49,7 +49,7 @@ from qarz.interface.links_api import add_link_routes
 from qarz.interface.me_api import add_me_routes
 from qarz.interface.observability import Metrics, Observe
 from qarz.interface.online_payment_api import add_online_order_routes, add_provider_routes
-from qarz.interface.payment_notices_api import RECEIPT_UPLOAD, add_payment_notice_routes
+from qarz.interface.payment_notices_api import RECEIPT_UPLOAD, add_file_route, add_payment_notice_routes
 from qarz.interface.rate_limit import RateLimiter, RateLimits
 from qarz.interface.reminders_api import add_reminder_routes
 from qarz.interface.reports_api import add_report_routes
@@ -94,6 +94,7 @@ def create_app(
     rate_limits: RateLimits | None = None,
     monotonic: Callable[[], float] = time.monotonic,
     metrics_token: str | None = None,
+    secrets_key: str | None = None,
 ) -> FastAPI:
     """Build the application.
 
@@ -136,7 +137,10 @@ def create_app(
         response.status_code = 404 if code == "NOT_FOUND" else exc.status_code
         return response
 
-    files = None if storage is None else FileService(storage, file_store)
+    files = None if storage is None else FileService(storage, file_store, link_secret=secrets_key)
+    if files is not None:
+        # Served whoever asks: a link is given only after authorization and works for five minutes.
+        add_file_route(app, files, now or (lambda: datetime.now(UTC)))
     payments = None if storage is None else OnlinePaymentService(storage, payment_keys or PaymentKeys(), now)
     if payments is not None:
         # Served whatever the configuration, so that a provider is always answered: "disabled" until

@@ -34,7 +34,7 @@ from qarz.interface.http import create_app
 from qarz.interface.payment_notices_api import MAX_BODY_BYTES
 
 from ..receipt_samples import COMMENT, EXIF, HTML, JPEG, PDF, PNG, WEBP, jpeg
-from .conftest import TEST_BOT_TOKEN, HeaderAuthenticator, World, as_user, stored_objects
+from .conftest import TEST_BOT_TOKEN, TEST_SECRETS_KEY, HeaderAuthenticator, World, as_user, stored_objects
 from .test_customer_account import ME, attach_waiter, customer_row, link_of
 from .test_customers_ledger import _subscription, another_client, key, record, seed_entry, shop, today
 from .test_disputes import staff_notices, tg
@@ -58,6 +58,20 @@ def send(
     if receipt is None:
         return client.post(path, json={"amount": amount}, headers=sent)
     return client.post(path, data={"amount": str(amount)}, files={"receipt": (name, receipt, declared)}, headers=sent)
+
+
+def receipt(client: TestClient, path: str, headers: dict[str, str] | None = None) -> Any:
+    """Open a receipt the way a front end does: ask for a link as a staff member, then follow it.
+
+    The link is followed with no credentials at all: it is the authorization. When no link is given,
+    the refusal is returned instead.
+    """
+    link = client.get(path, headers=headers or {})
+    if link.status_code != 200:
+        return link
+    assert set(link.json()) == {"url", "expires_at"}
+    assert link.json()["url"].startswith("/files/")
+    return client.get(link.json()["url"])
 
 
 def accept(client: TestClient, world: World, user: uuid.UUID, notice: Any, amount: Any = None, **headers: str) -> Any:
@@ -806,7 +820,9 @@ def test_staff_list_the_open_notices_of_their_own_shop_only(
             json={"reason": "Begona do'kon"},
             headers={**as_user(world.owner_b), **key()},
         ),
-        client.get(f"/api/v1/shops/{world.shop_b}/payment-notices/{second}/receipt", headers=as_user(world.owner_b)),
+        receipt(
+            client, f"/api/v1/shops/{world.shop_b}/payment-notices/{second}/receipt", headers=as_user(world.owner_b)
+        ),
         accept(client, world, world.owner_a, uuid.uuid4()),
         decline(client, world, world.owner_a, uuid.uuid4()),
     ):
@@ -827,23 +843,22 @@ def test_staff_download_the_receipt_as_an_attachment(
     link = link_of(owner, world.customer_a)
     notice = send(client, world.customer_of_a, link, 20000, JPEG, name="evil.html", declared="text/html").json()["id"]
     for user in (world.seller_a, world.manager_a, world.owner_a):
-        response = client.get(f"{shop(world)}/payment-notices/{notice}/receipt", headers=as_user(user))
+        response = receipt(client, f"{shop(world)}/payment-notices/{notice}/receipt", headers=as_user(user))
         assert response.status_code == 200, response.text
         assert response.content == JPEG
         assert response.headers["content-type"] == "image/jpeg"
-        assert (
-            response.headers["content-disposition"] == f'attachment; filename="receipt-{uuid.UUID(notice).hex[:8]}.jpg"'
-        )
+        name = f"receipt-{files(owner, world.shop_a)[0][0].hex[:8]}.jpg"
+        assert response.headers["content-disposition"] == f'attachment; filename="{name}"'
         assert response.headers["x-content-type-options"] == "nosniff"
         assert response.headers["cache-control"] == "private, no-store"
 
     plain = send(client, world.customer_of_a, link, 5000).json()["id"]
-    missing = client.get(f"{shop(world)}/payment-notices/{plain}/receipt", headers=as_user(world.owner_a))
+    missing = receipt(client, f"{shop(world)}/payment-notices/{plain}/receipt", headers=as_user(world.owner_a))
     assert (missing.status_code, missing.json()["error"]["code"]) == (404, "NOT_FOUND")
     # Not for the customer through the staff route, not for anyone without a session, and at no other address.
     for headers in (as_user(world.customer_of_a), as_user(world.stranger), as_user(world.owner_b)):
-        assert client.get(f"{shop(world)}/payment-notices/{notice}/receipt", headers=headers).status_code == 404
-    assert client.get(f"{shop(world)}/payment-notices/{notice}/receipt").status_code == 401
+        assert receipt(client, f"{shop(world)}/payment-notices/{notice}/receipt", headers=headers).status_code == 404
+    assert receipt(client, f"{shop(world)}/payment-notices/{notice}/receipt").status_code == 401
     object_key = files(owner, world.shop_a)[0][2]
     for path in (f"/{object_key}", f"/files/{object_key}", f"/api/v1/files/{object_key}"):
         assert client.get(path, headers=as_user(world.owner_a)).status_code == 404
@@ -868,8 +883,8 @@ def test_a_file_of_one_shop_cannot_be_read_through_another(
     owner.execute("UPDATE payment_notice SET file_id = NULL WHERE shop_id = %s", (world.shop_a,))
     owner.execute("UPDATE payment_notice SET file_id = %s WHERE id = %s", (file_of_a, forged))
 
-    response = client.get(
-        f"/api/v1/shops/{world.shop_b}/payment-notices/{forged}/receipt", headers=as_user(world.owner_b)
+    response = receipt(
+        client, f"/api/v1/shops/{world.shop_b}/payment-notices/{forged}/receipt", headers=as_user(world.owner_b)
     )
     assert (response.status_code, response.json()["error"]["code"]) == (404, "NOT_FOUND")
     assert JPEG not in response.content
@@ -881,9 +896,9 @@ def test_a_receipt_whose_object_is_gone_or_changed_is_not_served(
     notice = send(client, world.customer_of_a, link_of(owner, world.customer_a), 20000, JPEG).json()["id"]
     path = f"{shop(world)}/payment-notices/{notice}/receipt"
     stored_objects(file_root)[0].write_bytes(HTML)  # something replaced the object behind the service's back
-    assert client.get(path, headers=as_user(world.owner_a)).status_code == 404
+    assert receipt(client, path, headers=as_user(world.owner_a)).status_code == 404
     stored_objects(file_root)[0].unlink()
-    assert client.get(path, headers=as_user(world.owner_a)).status_code == 404
+    assert receipt(client, path, headers=as_user(world.owner_a)).status_code == 404
 
 
 # --- expiry (domain model: "Sent -> Expired after 14 days") --------------------------------------------
@@ -1022,7 +1037,7 @@ def test_removal_makes_the_customers_receipts_unreachable_and_the_cleanup_delete
     due = [row for row in files(owner, world.shop_a) if row[6] <= datetime.now(UTC)]
     assert sorted(row[5] for row in due) == ["application/pdf", "image/jpeg"]
     for notice in (declined, accepted):
-        response = client.get(f"{shop(world)}/payment-notices/{notice}/receipt", headers=as_user(world.owner_a))
+        response = receipt(client, f"{shop(world)}/payment-notices/{notice}/receipt", headers=as_user(world.owner_a))
         assert response.status_code == 404
     # The amounts and the decisions stay, without the person.
     assert [row[1:3] for row in notices(owner, world.shop_a) if row[0] == customer] == [
@@ -1039,7 +1054,9 @@ def test_removal_makes_the_customers_receipts_unreachable_and_the_cleanup_delete
     assert removed == 2
     assert [path.read_bytes() for path in stored_objects(file_root)] == [PNG]
     assert [row[5] for row in files(owner, world.shop_a)] == ["image/png"]
-    assert client.get(f"{shop(world)}/payment-notices/{kept}/receipt", headers=as_user(world.owner_a)).content == PNG
+    assert (
+        receipt(client, f"{shop(world)}/payment-notices/{kept}/receipt", headers=as_user(world.owner_a)).content == PNG
+    )
     again = with_services(
         app_database_url,
         file_root,
@@ -1067,7 +1084,8 @@ def test_the_payment_that_settles_the_debt_of_someone_who_asked_for_removal_take
     # Due at once, not 90 days from now: the removal outranks the retention period.
     assert files(owner, world.shop_a)[0][6] <= datetime.now(UTC)
     assert (
-        client.get(f"{shop(world)}/payment-notices/{notice}/receipt", headers=as_user(world.owner_a)).status_code == 404
+        receipt(client, f"{shop(world)}/payment-notices/{notice}/receipt", headers=as_user(world.owner_a)).status_code
+        == 404
     )
     # They were still told what became of their notice.
     assert [recipient for recipient, _ in told(owner, f"notice:{notice}:accepted")] == [customer_chat]
@@ -1105,7 +1123,8 @@ def test_the_cleanup_leaves_what_is_not_due_and_other_shops_alone(
     assert stored_objects(file_root) == [] and files(owner, world.shop_a) == []
     assert notices(owner, world.shop_a)[0][3] is False, "the notice stays, without its receipt"
     assert (
-        client.get(f"{shop(world)}/payment-notices/{notice}/receipt", headers=as_user(world.owner_a)).status_code == 404
+        receipt(client, f"{shop(world)}/payment-notices/{notice}/receipt", headers=as_user(world.owner_a)).status_code
+        == 404
     )
 
 
@@ -1143,6 +1162,7 @@ def client_with_store(app_database_url: str, store: Any) -> Iterator[TestClient]
         auth=AuthService(database, TEST_BOT_TOKEN),
         authenticator=HeaderAuthenticator(),
         file_store=store,
+        secrets_key=TEST_SECRETS_KEY,
     )
     with TestClient(app) as test_client:
         yield test_client
@@ -1165,7 +1185,9 @@ def test_a_store_that_cannot_be_written_to_refuses_the_notice_and_one_that_canno
 
     with client_with_store(app_database_url, FailingStore(FilesystemFileStore(file_root), "get")) as unreadable:
         notice = send(unreadable, world.customer_of_a, link, 20000, JPEG).json()["id"]
-        response = unreadable.get(f"{shop(world)}/payment-notices/{notice}/receipt", headers=as_user(world.owner_a))
+        response = receipt(
+            unreadable, f"{shop(world)}/payment-notices/{notice}/receipt", headers=as_user(world.owner_a)
+        )
         assert (response.status_code, response.json()["error"]["code"]) == (503, "FILE_STORE_UNAVAILABLE")
         assert JPEG not in response.content
 
@@ -1294,7 +1316,7 @@ def test_what_is_kept_of_a_photo_has_no_metadata_and_nothing_after_its_end(
     assert [path.read_bytes() for path in stored_objects(file_root)] == [JPEG]
     stored = files(owner, world.shop_a)[0]
     assert (stored[3], stored[4], stored[5]) == (hashlib.sha256(JPEG).digest(), len(JPEG), "image/jpeg")
-    served = client.get(f"{shop(world)}/payment-notices/{notice}/receipt", headers=as_user(world.owner_a)).content
+    served = receipt(client, f"{shop(world)}/payment-notices/{notice}/receipt", headers=as_user(world.owner_a)).content
     assert served == JPEG
     for removed in (b"GPSLatitude", b"8600 1234", b"script", b"PK\x03\x04"):
         assert removed not in served
@@ -1356,6 +1378,7 @@ def watched_client(app_database_url: str, file_root: Path) -> Iterator[tuple[Tes
         auth=AuthService(database, TEST_BOT_TOKEN),  # type: ignore[arg-type]
         authenticator=HeaderAuthenticator(),
         file_store=store,
+        secrets_key=TEST_SECRETS_KEY,
     )
     with TestClient(app) as test_client:
         yield test_client, store
@@ -1370,7 +1393,7 @@ def test_the_file_store_is_never_called_while_a_shop_transaction_is_open(
     with watched_client(app_database_url, file_root) as (watched, store):
         notice = send(watched, world.customer_of_a, link, 20000, JPEG).json()["id"]
         path = f"{shop(world)}/payment-notices/{notice}/receipt"
-        assert watched.get(path, headers=as_user(world.seller_a)).content == JPEG
+        assert receipt(watched, path, headers=as_user(world.seller_a)).content == JPEG
         # A notice refused under the lock after its receipt was stored: the key is reused for another request.
         request_key = key()
         assert send(watched, world.customer_of_a, link, 1000, PNG, headers=request_key).status_code == 201

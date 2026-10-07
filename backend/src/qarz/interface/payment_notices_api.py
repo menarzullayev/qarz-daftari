@@ -8,6 +8,7 @@ been checked, so nobody can make the service hold more than one receipt's worth 
 import json
 import re
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from email import policy
 from email.parser import BytesParser
 from typing import Annotated, Any
@@ -17,9 +18,11 @@ from fastapi import Depends, FastAPI, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from qarz.application.errors import ValidationFailed
+from qarz.application.files import FileService
 from qarz.application.payment_notices import (
     ACCEPT_NOTICE,
     DECLINE_NOTICE,
+    FILE_LINK_PATH,
     LIST_NOTICES,
     READ_RECEIPT,
     SEND_NOTICE,
@@ -154,8 +157,17 @@ def add_payment_notice_routes(app: FastAPI, service: PaymentNoticeService, curre
         return await service.decline(user_id, shop_id, notice_id, body.reason, idempotency_key)
 
     @app.get("/api/v1/shops/{shop_id}/payment-notices/{notice_id}/receipt", name=READ_RECEIPT.name)
-    async def read_receipt(shop_id: UUID, notice_id: UUID, user_id: user) -> Response:
-        mime, name, content = await service.receipt(user_id, shop_id, notice_id)
+    async def read_receipt(shop_id: UUID, notice_id: UUID, user_id: user) -> dict[str, Any]:
+        return await service.receipt(user_id, shop_id, notice_id)
+
+
+def add_file_route(app: FastAPI, files: FileService, now: Callable[[], datetime]) -> None:
+    """Where a signed link leads (ADR-020). Not an operation of the API: the link is the authorization,
+    given a moment ago to someone who was allowed to see the file."""
+
+    @app.get(FILE_LINK_PATH + "/{token}", include_in_schema=False)
+    async def serve_file(token: str) -> Response:
+        mime, name, content = await files.serve(token, now())
         return Response(
             content,
             media_type=mime,

@@ -27,7 +27,12 @@ def notice_body(record: PaymentNoticeRecord, now: datetime) -> dict[str, Any]:
     }
 
 
+def staff_notice_body(record: PaymentNoticeRecord, now: datetime) -> dict[str, Any]:
+    """What staff see of a notice: also whether the same receipt was sent to their shop before."""
+    return {**notice_body(record, now), "receipt_seen_before": record.receipt_seen_before}
+
+
 async def open_notices_of(session: TenantSession, customer_id: UUID, now: datetime) -> list[dict[str, Any]]:
     """The customer's notices still waiting for the shop, oldest first."""
     waiting = await session.open_payment_notices(now - NOTICE_LIFETIME)
-    return [notice_body(record, now) for record, _ in waiting if record.customer_id == customer_id]
+    return [staff_notice_body(record, now) for record, _ in waiting if record.customer_id == customer_id]

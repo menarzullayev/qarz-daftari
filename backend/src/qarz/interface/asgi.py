@@ -30,6 +30,7 @@ def build(settings: Settings | None = None) -> FastAPI:
         webhook_secret=settings.webhook_secret or None,
         # A store that is named but misconfigured stops the start; none at all only refuses receipts.
         file_store=build_file_store(settings, max_object_bytes=MAX_FILE_BYTES),
+        secrets_key=settings.secrets_key or None,
         telegram_files=TelegramFileFetcher.for_token(settings.bot_token) if settings.bot_token else None,
         metrics_token=settings.metrics_token or None,
         payment_keys=PaymentKeys(

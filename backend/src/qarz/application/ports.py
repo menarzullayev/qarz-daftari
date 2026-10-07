@@ -302,6 +302,8 @@ class PaymentNoticeRecord:
     decline_reason: str | None
     created_at: datetime
     closed_at: datetime | None
+    # An earlier file of the same shop has the same content. For staff only.
+    receipt_seen_before: bool = False
 
 
 @dataclass(frozen=True)

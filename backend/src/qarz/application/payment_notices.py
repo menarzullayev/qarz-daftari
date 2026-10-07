@@ -18,14 +18,14 @@ from qarz.application.customers import require_viewable, require_writable
 from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.files import PURGE_BATCH, FileService, FileStoreUnavailable, StagedFile
 from qarz.application.ledger_service import LedgerRefused, append_entry_in, clean_entry
-from qarz.application.notice_view import notice_body
+from qarz.application.notice_view import notice_body, staff_notice_body
 from qarz.application.operations import operation, self_operation
 from qarz.application.ports import CustomerRecord, Membership, PaymentNoticeRecord, Storage, TenantSession
 from qarz.application.shops import require_member
 from qarz.domain import ledger
 from qarz.domain.access import Capability
 from qarz.domain.disputes import clean_reason
-from qarz.domain.files import EXTENSIONS, receipt_delete_after
+from qarz.domain.files import receipt_delete_after
 from qarz.domain.ledger import EntryKind
 from qarz.domain.payment_notices import (
     ACCEPTED,
@@ -51,6 +51,8 @@ READ_RECEIPT = operation("payment_notices.receipt", Capability.DECIDE_PAYMENT_NO
 # Every staff member handles payment notices (specification, resources table).
 STAFF = ("seller", "manager", "owner")
 FILE_PURPOSE = "payment_notice"
+# Where a signed link points; served outside the API, to whoever holds a valid link.
+FILE_LINK_PATH = "/files"
 _AMOUNT_HINT = f"a whole amount between {MIN_AMOUNT} and {MAX_AMOUNT} UZS"
 
 
@@ -77,10 +79,12 @@ async def _tell_staff(session: TenantSession, record: PaymentNoticeRecord, name:
     shop = "" if settings is None else settings.name
     key = "s_notice" if record.file_id is None else "s_notice_receipt"
     for tg_id, lang in await session.staff_recipients(list(STAFF)):
+        text = say(lang, key, shop=shop, name=name, amount=money(lang, record.amount), balance=money(lang, balance))
+        if record.receipt_seen_before:
+            # The same file was sent to this shop before: staff are told, the customer is not.
+            text += "\n" + say(lang, "s_receipt_seen_before")
         payload = {
-            "text": say(
-                lang, key, shop=shop, name=name, amount=money(lang, record.amount), balance=money(lang, balance)
-            ),
+            "text": text,
             "reply_markup": {
                 "inline_keyboard": [
                     [
@@ -356,7 +360,7 @@ class PaymentNoticeService:
             return {
                 "items": [
                     {
-                        **notice_body(record, now),
+                        **staff_notice_body(record, now),
                         "customer_id": str(record.customer_id),
                         "customer_name": name,
                         "customer_balance": balances.get(record.customer_id, 0),
@@ -410,8 +414,11 @@ class PaymentNoticeService:
                 action=apply,
             )
 
-    async def receipt(self, user_id: UUID, shop_id: UUID, notice_id: UUID) -> tuple[str, str, bytes]:
-        """Type, file name and content of a notice's receipt, for a staff member of the shop."""
+    async def receipt(self, user_id: UUID, shop_id: UUID, notice_id: UUID) -> dict[str, Any]:
+        """A link to a notice's receipt, valid five minutes, for a staff member of the shop (ADR-020).
+
+        The file itself is served by the link, not here: nothing is read from the file store.
+        """
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, READ_RECEIPT)
             await require_viewable(session, actor, self._today())
@@ -420,10 +427,8 @@ class PaymentNoticeService:
                 # (The second test only narrows the type: no identifier would find no file below.)
                 raise NotFound()
             stored = await self._files.record_of(session, record.file_id)
-        # Fetched only now that the transaction has ended and its connection is back in the pool.
-        data = await self._files.content(stored)
-        # The name carries part of the notice identifier and nothing about the person.
-        return stored.mime, f"receipt-{notice_id.hex[:8]}.{EXTENSIONS[stored.mime]}", data
+        token, expires_at = self._files.link(shop_id, stored, self._now())
+        return {"url": f"{FILE_LINK_PATH}/{token}", "expires_at": expires_at.isoformat()}
 
     # --- the worker -----------------------------------------------------------------------------------
 

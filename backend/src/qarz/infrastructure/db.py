@@ -274,7 +274,10 @@ _DUE_RECEIPT_FILES = (
 )
 _NOTICE_SELECT = (
     "SELECT n.id, n.customer_id, n.amount, n.file_id, n.status, n.payment_entry, e.amount AS recorded_amount, "
-    "n.decline_reason, n.created_at, n.closed_at, c.display_name "
+    "n.decline_reason, n.created_at, n.closed_at, c.display_name, "
+    # Row-level security keeps this inside the shop: another shop's file with the same content is not seen.
+    "EXISTS (SELECT 1 FROM stored_file f JOIN stored_file g ON g.sha256 = f.sha256 "
+    "AND (g.created_at, g.id) < (f.created_at, f.id) WHERE f.id = n.file_id) AS receipt_seen_before "
     "FROM payment_notice n JOIN customer c ON c.id = n.customer_id LEFT JOIN ledger_entry e ON e.id = n.payment_entry "
 )
 _NOTICE_BY_ID = f"{_NOTICE_SELECT} WHERE n.id = :id"
@@ -1563,6 +1566,7 @@ class PgTenantSession:
             row.decline_reason,
             row.created_at,
             row.closed_at,
+            bool(row.receipt_seen_before),
         )
 
     async def add_payment_notice(

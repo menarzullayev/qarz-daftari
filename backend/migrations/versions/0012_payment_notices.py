@@ -1,7 +1,7 @@
 """Chat questions for payment notices, and indexes for notices and stored files.
 
 Revision ID: 0012
-Revises: 0021
+Revises: 0020
 """
 
 from pathlib import Path
@@ -9,7 +9,7 @@ from pathlib import Path
 from alembic import op
 
 revision = "0012"
-down_revision = "0021"
+down_revision = "0020"
 branch_labels = None
 depends_on = None
 

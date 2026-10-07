@@ -32,6 +32,8 @@ CREATE INDEX payment_notice_customer ON payment_notice (customer_id, created_at 
 CREATE UNIQUE INDEX payment_notice_file ON payment_notice (file_id) WHERE file_id IS NOT NULL;
 -- What the retention cleanup looks for.
 CREATE INDEX stored_file_due ON stored_file (shop_id, delete_after) WHERE delete_after IS NOT NULL;
+-- Whether the same receipt was sent to the shop before (duplicate detection by hash).
+CREATE INDEX stored_file_hash ON stored_file (shop_id, sha256);
 -- No new grant or policy: the table-level grants to qd_app and the tenant policies of 0001 cover both tables.
 
 -- Which shops have notices to mark as expired or receipts whose retention has run out. The worker has no

@@ -517,5 +517,5 @@ def test_every_setting_is_named_in_the_example_environment_file_without_a_secret
     lines = {line.split("=", 1)[0]: line.split("=", 1)[1] for line in example.splitlines() if "=" in line[:40]}
     for field in Settings.model_fields:
         assert f"QD_{field.upper()}" in lines, f"add QD_{field.upper()} to .env.example"
-    for secret in ("QD_S3_ACCESS_KEY", "QD_S3_SECRET_KEY", "QD_BOT_TOKEN", "QD_WEBHOOK_SECRET"):
+    for secret in ("QD_S3_ACCESS_KEY", "QD_S3_SECRET_KEY", "QD_BOT_TOKEN", "QD_WEBHOOK_SECRET", "QD_SECRETS_KEY"):
         assert lines[secret] == "", f"{secret} must have no value in the example file"
