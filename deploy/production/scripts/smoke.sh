@@ -150,6 +150,18 @@ probe "${big[@]}" "$HTTPS/api/v1/me" < <(zeros $((MIB + 1)))
 check "1 MiB + 1 byte on an ordinary route answers 413" status_is 413
 check "the 413 carries X-Request-Id" header_once X-Request-Id
 check "the 413 is the API's error shape" contains "$(zeros $((MIB + 1)) | body "${big[@]}" "$HTTPS/api/v1/me")" '"BODY_TOO_LARGE"'
+# The same over HTTP/2 with the size announced and no Expect, which is how a browser sends it. nginx then
+# checks the size a second time inside its own error location; unless that location allows any size the
+# answer is its stock HTML page. Skipped, and said so, where curl has no HTTP/2.
+if curl --version | grep -qw HTTP2; then
+  big2=(--http2 -X POST -H "Content-Type: application/json" -H "Expect:" --data-binary @-)
+  probe "${big2[@]}" "$HTTPS/api/v1/me" < <(zeros $((MIB + 1)))
+  check "HTTP/2: 1 MiB + 1 byte answers 413" status_is 413
+  check "HTTP/2: the 413 is JSON, not the proxy's own page" header_has Content-Type "application/json"
+  check "HTTP/2: the 413 is the API's error shape" contains "$(zeros $((MIB + 1)) | body "${big2[@]}" "$HTTPS/api/v1/me")" '"BODY_TOO_LARGE"'
+else
+  printf 'skip  %s\n' "HTTP/2: the 413's shape (this curl has no HTTP/2; the end-to-end suite checks it in a browser)"
+fi
 probe "${big[@]}" "$HTTPS/api/v1/me" < <(zeros "$MIB")
 check "exactly 1 MiB is not refused for its size" status_is_not 413
 probe "${big[@]}" "$HTTPS/api/v1/shops/$UUID/imports" < <(zeros $((MIB + 1)))
