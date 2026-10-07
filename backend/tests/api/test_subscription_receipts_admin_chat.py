@@ -4,7 +4,7 @@ buttons"; REQ-055; ADR-017).
 
 A press counts only for someone on the allow-list, with an active and confirmed administrator account,
 who holds an admin session that is still valid: the proof that they passed the second factor. The review
-group gets the text and no buttons.
+group's copy has them too, and there as well only such an administrator's press decides.
 """
 
 import threading
@@ -87,18 +87,15 @@ def receipt(client: TestClient, world: World, reviewer: Chat) -> str:
     return sent_ok(client, world.owner_a, world.shop_a, 300_000, 3, unique_image()[0])
 
 
-def test_an_administrators_copy_has_the_two_buttons_and_the_groups_has_none(
+def test_every_copy_of_the_announcement_has_the_two_buttons(
     client: TestClient, world: World, owner: psycopg.Connection, reviewer: Chat
 ) -> None:
-    group = -1_000_000_000_000 - uuid.uuid4().int % 10**9
-    setting(owner, world.admin, "review_group", group)
+    """In each administrator's private chat and in the review group (the founder's decision of 2026-10-07)."""
+    group = review_group(owner, world)
     receipt = sent_ok(client, world.owner_a, world.shop_a, 300_000, 3, unique_image()[0])
-    assert buttons_of(owner, receipt, tg(owner, world.admin)) == {
-        "✅ Tasdiqlash": press_of(receipt, "sra"),
-        "Rad etish": press_of(receipt, "srj"),
-    }
-    # Whether a member of the group may decide is an open question of the specification: visibility only.
-    assert buttons_of(owner, receipt, str(group)) == {}
+    expected = {"✅ Tasdiqlash": press_of(receipt, "sra"), "Rad etish": press_of(receipt, "srj")}
+    assert buttons_of(owner, receipt, tg(owner, world.admin)) == expected
+    assert buttons_of(owner, receipt, str(group)) == expected
 
 
 def test_approve_from_the_chat_does_what_the_panel_does_and_says_where_it_came_from(
@@ -275,11 +272,16 @@ def test_for_anyone_else_the_buttons_are_no_buttons_and_tell_nothing(
     assert state(owner, world, receipt) == before
 
 
-def test_a_press_in_the_review_group_is_not_served_even_from_an_administrator(
-    client: TestClient, world: World, owner: psycopg.Connection, reviewer: Chat, receipt: str
-) -> None:
+def review_group(owner: psycopg.Connection, world: World) -> int:
     group = -1_000_000_000_000 - uuid.uuid4().int % 10**9
-    before = state(owner, world, receipt)
+    setting(owner, world.admin, "review_group", group)
+    return group
+
+
+def press_in_group(
+    client: TestClient, owner: psycopg.Connection, tg_id: int, group: int, data: str, kind: str = "supergroup"
+) -> list[tuple[str, dict[str, Any]]]:
+    """Someone presses a button under message 7 of a group. Returns what the bot then sends: recipient, payload."""
     update_id = next(_update_ids)
     response = client.post(
         "/tg/webhook",
@@ -287,18 +289,129 @@ def test_a_press_in_the_review_group_is_not_served_even_from_an_administrator(
             "update_id": update_id,
             "callback_query": {
                 "id": f"cb-{uuid.uuid4().hex}",
-                "from": {"id": reviewer.tg_id, "language_code": "uz"},
-                "message": {"message_id": 7, "chat": {"id": group, "type": "supergroup"}},
-                "data": press_of(receipt, "sra"),
+                "from": {"id": tg_id, "language_code": "uz"},
+                "message": {"message_id": 7, "chat": {"id": group, "type": kind}},
+                "data": data,
             },
         },
         headers=SECRET,
     )
     assert response.status_code == 200, response.text
+    rows = owner.execute(
+        "SELECT recipient, payload FROM outbox_message WHERE dedupe_key LIKE %s ORDER BY dedupe_key",
+        (f"update:{update_id}:%",),
+    ).fetchall()
+    return [(str(recipient), payload) for recipient, payload in rows]
+
+
+def test_an_administrator_approves_from_the_review_group(
+    client: TestClient, world: World, owner: psycopg.Connection, admin_env: AdminEnv, reviewer: Chat
+) -> None:
+    group = review_group(owner, world)
+    receipt = sent_ok(client, world.owner_a, world.shop_a, 300_000, 3, unique_image()[0])
+    sent = press_in_group(client, owner, reviewer.tg_id, group, press_of(receipt, "sra"))
+
+    until = add_months(today(admin_env), 3) - timedelta(days=1)
+    outcome = say("uz", "a_receipt_approved", shop="Shop A", months=3, date=day(until))
+    # The group's announcement is replaced by the outcome, without buttons; the administrator is told in
+    # their own chat with a new message, because the pressed message is not there.
+    assert sorted(sent, key=lambda pair: pair[0] != str(group)) == [
+        (
+            str(group),
+            {"method": "editMessageText", "message_id": 7, "text": outcome, "reply_markup": {"inline_keyboard": []}},
+        ),
+        (str(reviewer.tg_id), {"text": outcome}),
+    ]
+    assert rows(owner, world.shop_a) == [(300_000, 3, "approved", 3, None, world.admin, True)]
+    ((action, who, _, shop, _, detail),) = audit(owner, receipt)
+    assert (action, who, shop, detail["via"]) == ("subscription.receipt_approved", world.admin, world.shop_a, "chat")
+
+    # A second press there changes nothing and says so in both places.
+    before = state(owner, world, receipt)
+    again = press_in_group(client, owner, reviewer.tg_id, group, press_of(receipt, "sra"))
+    decided = say("uz", "a_receipt_decided")
+    assert {recipient: payload["text"] for recipient, payload in again} == {
+        str(group): decided,
+        str(reviewer.tg_id): decided,
+    }
     assert state(owner, world, receipt) == before
-    assert owner.execute(
-        "SELECT count(*) FROM outbox_message WHERE dedupe_key LIKE %s", (f"update:{update_id}:%",)
-    ).fetchone() == (0,)
+
+
+def test_an_administrator_rejects_from_the_review_group_and_gives_the_reason_in_their_own_chat(
+    client: TestClient, world: World, owner: psycopg.Connection, reviewer: Chat
+) -> None:
+    group = review_group(owner, world)
+    receipt = sent_ok(client, world.owner_a, world.shop_a, 300_000, 3, unique_image()[0])
+    asked = press_in_group(client, owner, reviewer.tg_id, group, press_of(receipt, "srj"))
+    # The question goes to the administrator alone; the group sees nothing until there is a decision.
+    assert [(recipient, payload["text"]) for recipient, payload in asked] == [
+        (str(reviewer.tg_id), say("uz", "ask_receipt_reject_reason"))
+    ]
+    assert rows(owner, world.shop_a) == [(300_000, 3, "submitted", None, None, None, True)], "nothing is decided yet"
+
+    said = reviewer.say(REASON)
+    assert said.text == say("uz", "a_receipt_rejected", shop="Shop A", reason=REASON)
+    assert rows(owner, world.shop_a) == [(300_000, 3, "rejected", None, REASON, world.admin, True)]
+    closed = owner.execute(
+        "SELECT payload FROM outbox_message WHERE recipient = %s AND payload->>'method' = 'editMessageText'",
+        (str(group),),
+    ).fetchall()
+    assert [row[0] for row in closed] == [
+        {
+            "method": "editMessageText",
+            "message_id": 7,
+            "text": say("uz", "a_receipt_rejected", shop="Shop A", reason=REASON),
+            "reply_markup": {"inline_keyboard": []},
+        }
+    ]
+
+
+def test_in_the_group_only_an_administrator_who_passed_the_second_factor_decides(
+    client: TestClient, world: World, owner: psycopg.Connection, admin_env: AdminEnv, reviewer: Chat
+) -> None:
+    """ADR-017 holds in the group as in a private chat: a press by anyone else changes nothing at all."""
+    group = review_group(owner, world)
+    receipt = sent_ok(client, world.owner_a, world.shop_a, 300_000, 3, unique_image()[0])
+    before = state(owner, world, receipt)
+    users = owner.execute("SELECT count(*) FROM app_user").fetchone()
+    questions = owner.execute("SELECT count(*) FROM chat_pending WHERE kind = 'receipt_reject'").fetchone()
+
+    # On the allow-list and confirmed, but with no administrator session: told, in private, to sign in.
+    no_session = world.stranger
+    make_admin(owner, admin_env, no_session)
+    sent = press_in_group(client, owner, int(tg(owner, no_session)), group, press_of(receipt, "sra"))
+    assert [(recipient, payload["text"]) for recipient, payload in sent] == [
+        (tg(owner, no_session), say("uz", "a_sign_in_first"))
+    ]
+    # A disabled administrator, a shop owner in the group, and a member the service has never seen:
+    # nothing is said to anyone, and nobody becomes a user by pressing.
+    disabled = world.manager_a
+    make_admin(owner, admin_env, disabled)
+    owner.execute("UPDATE admin_account SET status = 'disabled' WHERE user_id = %s", (disabled,))
+    for presser in (int(tg(owner, disabled)), int(tg(owner, world.owner_b)), 7_000_000_000 + uuid.uuid4().int % 10**9):
+        for action in ("sra", "srj"):
+            assert press_in_group(client, owner, presser, group, press_of(receipt, action)) == []
+    assert state(owner, world, receipt) == before
+    assert owner.execute("SELECT count(*) FROM app_user").fetchone() == users
+    assert owner.execute("SELECT count(*) FROM chat_pending WHERE kind = 'receipt_reject'").fetchone() == questions
+
+
+def test_the_buttons_work_in_the_review_group_and_in_no_other_group(
+    client: TestClient, world: World, owner: psycopg.Connection, reviewer: Chat
+) -> None:
+    group = review_group(owner, world)
+    receipt = sent_ok(client, world.owner_a, world.shop_a, 300_000, 3, unique_image()[0])
+    before = state(owner, world, receipt)
+    for elsewhere, kind in ((group - 1, "supergroup"), (group, "channel"), (-group, "supergroup")):
+        assert press_in_group(client, owner, reviewer.tg_id, elsewhere, press_of(receipt, "sra"), kind) == []
+    # Other buttons of the bot are not served in the review group either, even from an administrator.
+    for data in ("v2:lang:ru", "v2:srn", "v2:newshop", "v1:sra:" + uuid.UUID(receipt).hex):
+        assert press_in_group(client, owner, reviewer.tg_id, group, data) == []
+    assert state(owner, world, receipt) == before
+    # Without a review group configured there is no group to press in.
+    owner.execute("DELETE FROM platform_setting WHERE key = 'review_group'")
+    assert press_in_group(client, owner, reviewer.tg_id, group, press_of(receipt, "sra")) == []
+    assert state(owner, world, receipt) == before
 
 
 def test_a_second_press_and_a_press_after_the_panel_decided_change_nothing(

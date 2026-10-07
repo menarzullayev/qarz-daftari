@@ -49,7 +49,8 @@ from qarz.application.ports import CustomerAccount, Membership, MyShop, Platform
 from qarz.application.shops import ShopService, require_member
 from qarz.application.staff import StaffService, token_hash
 from qarz.application.subscription import SubscriptionService
-from qarz.application.subscription_receipts import SubscriptionReceiptService
+from qarz.application.subscription_receipts import REVIEW_GROUP, SubscriptionReceiptService
+from qarz.domain import platform_settings
 from qarz.domain.access import Capability, allows
 from qarz.domain.chat_entry import ParsedEntry, ParseError, ParseErrorCode, parse_amount, parse_entry
 from qarz.domain.disputes import clean_reason
@@ -111,6 +112,9 @@ def _uuid(hex_text: str) -> UUID | None:
         return None
 
 
+GROUP_LANG = "uz"  # the review group is answered in the language its announcement was written in
+
+
 @dataclass(frozen=True)
 class Incoming:
     update_id: int
@@ -120,6 +124,10 @@ class Incoming:
     message_id: int | None = None  # the message a pressed button belongs to
     profile_name: str | None = None  # the name in the person's Telegram profile
     received: float | None = None  # time.perf_counter() when the update arrived; for the handling time
+    # Set when a button of the receipt announcement was pressed in the review group: that chat and
+    # the announcement's message. `chat_id` is then the presser's own private chat, where they are
+    # answered; the group only sees the announcement change once a decision is made.
+    group: tuple[int, int] | None = None
 
     @property
     def key(self) -> str:
@@ -174,6 +182,20 @@ class Replies:
     async def strip(self, message_id: int) -> None:
         """Take the buttons off an earlier message of this chat."""
         await self._queue({"method": "editMessageReplyMarkup", "message_id": message_id, "reply_markup": _markup(None)})
+
+    async def close_in_group(self, chat_id: int, message_id: int, text: str) -> None:
+        """Replace the announcement in the review group: it says what was decided and has no buttons."""
+        await self._session.enqueue(
+            channel="telegram",
+            recipient=str(chat_id),
+            payload={
+                "method": "editMessageText",
+                "message_id": message_id,
+                "text": text,
+                "reply_markup": _markup(None),
+            },
+            dedupe_key=f"update:{self._incoming.update_id}:group",
+        )
 
     async def buttons(self, keyboard: Keyboard | None) -> None:
         if self._incoming.message_id is not None:
@@ -976,6 +998,15 @@ class ChatService:
 
     # --- an administrator decides a subscription receipt from their private chat (REQ-055) -------------
 
+    def on_allow_list(self, tg_id: int) -> bool:
+        """Whether a press in the review group is looked at at all: nobody else becomes a user by it."""
+        return tg_id in self._reviewers
+
+    @staticmethod
+    async def is_review_group(session: PlatformSession, chat_id: int) -> bool:
+        group = platform_settings.effective(REVIEW_GROUP, await session.platform_setting(REVIEW_GROUP))
+        return isinstance(group, int) and not isinstance(group, bool) and group == chat_id
+
     async def _reviewer(self, session: PlatformSession, incoming: Incoming) -> bool | None:
         """Whether the person may decide receipts here (ADR-017).
 
@@ -1013,7 +1044,11 @@ class ChatService:
                     user_id=incoming.user_id,
                     kind="receipt_reject",
                     # The message the button was on: its buttons go once the receipt is rejected.
-                    payload={"receipt": receipt_id.hex, "message": incoming.message_id},
+                    payload={
+                        "receipt": receipt_id.hex,
+                        "message": incoming.message_id,
+                        "group": None if incoming.group is None else list(incoming.group),
+                    },
                     now=self._now(),
                     expires_at=self._now() + PENDING_LIFETIME,
                 )
@@ -1025,6 +1060,8 @@ class ChatService:
             )
         except ReceiptAlreadyDecided:
             await replies.show(say(lang, "a_receipt_decided"))
+            if incoming.group is not None:
+                await replies.close_in_group(*incoming.group, say(GROUP_LANG, "a_receipt_decided"))
             return
         except ValidationFailed:
             await replies.send(say(lang, "a_receipt_use_panel"))
@@ -1033,15 +1070,15 @@ class ChatService:
             await replies.show(self._error_text(lang, error))
             return
         # The message with the buttons is replaced: this administrator's copy has none any more.
+        paid_through = day(date.fromisoformat(body["subscription"]["paid_through"]))
         await replies.show(
-            say(
-                lang,
-                "a_receipt_approved",
-                shop=body["shop_name"],
-                months=body["months"],
-                date=day(date.fromisoformat(body["subscription"]["paid_through"])),
-            )
+            say(lang, "a_receipt_approved", shop=body["shop_name"], months=body["months"], date=paid_through)
         )
+        if incoming.group is not None:
+            await replies.close_in_group(
+                *incoming.group,
+                say(GROUP_LANG, "a_receipt_approved", shop=body["shop_name"], months=body["months"], date=paid_through),
+            )
 
     async def _receipt_reject_reason(
         self, session: PlatformSession, incoming: Incoming, replies: Replies, payload: dict[str, Any], text: str
@@ -1074,6 +1111,11 @@ class ChatService:
             await replies.send(self._error_text(lang, error))
             return
         await replies.send(say(lang, "a_receipt_rejected", shop=body["shop_name"], reason=reason))
+        group = payload.get("group")
+        if isinstance(group, list) and len(group) == 2 and all(isinstance(part, int) for part in group):
+            await replies.close_in_group(
+                group[0], group[1], say(GROUP_LANG, "a_receipt_rejected", shop=body["shop_name"], reason=reason)
+            )
         announced = payload.get("message")
         if isinstance(announced, int) and not isinstance(announced, bool):
             await replies.strip(announced)

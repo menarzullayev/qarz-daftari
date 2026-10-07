@@ -111,11 +111,12 @@ class SubscriptionReceiptService:
         if group_chat is not None:
             recipients.append((group_chat, "uz"))
         for recipient, lang in recipients:
-            payload: dict[str, Any] = {}
-            if recipient != group_chat:
-                # An administrator's private chat: the two decisions as buttons. Who presses one is
-                # checked again when it is pressed (qarz.application.chat). The group gets none.
-                payload["reply_markup"] = {
+            # The two decisions as buttons, in each administrator's private chat and in the review group
+            # (the founder's decision of 2026-10-07: the group's message has them too). Who presses one
+            # is checked when it is pressed (qarz.application.chat): only an administrator on the
+            # allow-list who passed the second factor decides; for any other member nothing happens.
+            payload: dict[str, Any] = {
+                "reply_markup": {
                     "inline_keyboard": [
                         [
                             {
@@ -129,6 +130,7 @@ class SubscriptionReceiptService:
                         ]
                     ]
                 }
+            }
             text = say(
                 lang,
                 "a_receipt_new",
