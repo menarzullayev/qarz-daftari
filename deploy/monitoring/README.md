@@ -14,7 +14,8 @@ into a real monitoring system: there are no servers yet, so no alert has been tr
   a JSON body that repeats it. An identifier sent by the proxy (8 to 64 characters of `A-Z a-z 0-9 _ -`)
   is kept, so the proxy's log and the application's can be joined.
 - **Metrics.** `GET /metrics` in the Prometheus text format, served only when `QD_METRICS_TOKEN` is set
-  and only to a request that sends it as a bearer token. The proxy must not publish this path.
+  and only to a request that sends it as a bearer token. The proxy must not publish this path, and the one in
+  `deploy/production/` answers 404 for it; a monitoring system reads it inside the compose network.
   - `qd_requests_total{method,route,status}` and `qd_request_duration_ms` (histogram) by route template.
   - `qd_security_events_total{kind}`: `shop_not_member`, `bad_sign_in`, `bad_webhook_secret`, `bad_second_factor`,
     `support_access_opened`, `admin_without_support_access`.
@@ -38,4 +39,4 @@ Counters live in the memory of the process that served the requests and start fr
 | Receipts awaiting decision | `qd_receipts_oldest_waiting_seconds` with the rule `ReceiptsWaiting` (older than 24 hours); nothing delivers the alert yet, like every rule here |
 | Daily digest and dashboards | Not built |
 | Delivery of alerts to the operator's Telegram chat and phone | Not configured |
-| Logs from the proxy, 30-day retention | No proxy and no hosts yet |
+| Logs from the proxy, 30-day retention | The proxy of `deploy/production/` writes JSON lines with the request identifier and no query string; rotation is by size, nothing keeps 30 days, and there are no hosts yet |

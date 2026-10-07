@@ -1,0 +1,7 @@
+# Context of the proxy image (deploy/production/nginx/Dockerfile), built from the repository root.
+# The backend image has its own context and ignore file under backend/.
+*
+!frontend
+frontend/node_modules
+frontend/dist
+!deploy/production/nginx

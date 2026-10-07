@@ -1,0 +1,10 @@
+*
+!requirements.lock
+!pyproject.toml
+!alembic.ini
+!scripts/runtime_requirements.py
+!migrations
+!src
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
