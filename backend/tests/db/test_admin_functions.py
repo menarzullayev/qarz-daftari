@@ -634,9 +634,18 @@ def test_reassigning_is_refused_to_anyone_but_an_elevated_administrator_and_for_
     unconfirmed = _admin(owner)
     no_session = _admin(owner)
     owner.execute("UPDATE admin_account SET confirmed_at = now() WHERE user_id = %s", (no_session,))
+    # A session that ran out, and one that was closed: neither is "open now".
+    expired, signed_out = _elevated(owner), _elevated(owner)
+    owner.execute(
+        "UPDATE admin_session SET created_at = now() - interval '2 hours', expires_at = now() - interval '1 second' "
+        "WHERE user_id = %s",
+        (expired,),
+    )
+    owner.execute("UPDATE admin_session SET revoked_at = now() WHERE user_id = %s", (signed_out,))
     owner.execute("UPDATE shop SET status = 'erased' WHERE id = %s", (shop_b.shop_id,))
     with as_app(None) as conn:
-        for caller in (_user(owner), shop_a.user_id, _admin(owner, "disabled"), unconfirmed, no_session):
+        outsiders = (_user(owner), shop_a.user_id, _admin(owner, "disabled"), unconfirmed, no_session)
+        for caller in (*outsiders, expired, signed_out):
             assert conn.execute(REASSIGN, (caller, shop_a.shop_id, tg, "Lost account")).fetchall() == [("refused",)]
         assert conn.execute(REASSIGN, (admin, shop_a.shop_id, tg, None)).fetchall() == [("refused",)]
         assert conn.execute(REASSIGN, (admin, shop_b.shop_id, tg, "Lost account")).fetchall() == [("no_shop",)]

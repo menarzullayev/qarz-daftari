@@ -154,6 +154,9 @@ A wrong value in `QD_SECRETS_KEY_PREVIOUS` changes nothing: the command reports 
 under neither key and leaves them as they were, so it can be run again with the right value. A secret
 shorter than 16 characters in either setting refuses to start, the API and the command alike.
 
+These steps are exercised by the test suite against a test database (`backend/tests/api/test_secret_rotation.py`);
+they have never been carried out on a server.
+
 **The backup key.** pgBackRest cannot change the passphrase of an existing repository. Where the key
 lives and what it protects: `deploy/backup/README.md`, "The key".
 
@@ -233,6 +236,9 @@ Always a reversal through the product; never a change in the database.
    account that says only that the service's administration changed the shop's ownership. The operator
    gets the alert `ShopOwnerReassigned` and matches it to the founder's decision.
 6. A mistake is corrected by the same action, back to the earlier account, with its own reason.
+
+The action is covered by tests (`backend/tests/api/test_admin_owner.py`); it has never been used for a real
+shop.
 
 **An administrator.** A lost device means a lost second factor; it cannot be replaced through the API.
 
