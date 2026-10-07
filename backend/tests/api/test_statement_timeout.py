@@ -25,7 +25,9 @@ from .conftest import TEST_BOT_TOKEN, WEBHOOK_SECRET, HeaderAuthenticator, World
 
 pytestmark = pytest.mark.db
 
-TIMEOUT_MS = 300
+# Long enough that an ordinary statement on a slow CI runner never reaches it (300 ms did, once, on the
+# main branch: the retry after the lock was released was itself cancelled), short enough to wait for.
+TIMEOUT_MS = 900
 
 
 def _client(app_database_url: str, statement_timeout_ms: int) -> Iterator[TestClient]:

@@ -283,6 +283,33 @@ Two more things a reader should know:
   account. In the large shop, where the longest account has 1,153 entries, it was 40 ms at p95. Accounts of
   many thousands of entries were not generated.
 
+## Afterwards: open debts are stored (migration 0026)
+
+The founder chose, on 2026-10-07, to cure the slow overview by storing what it needs rather than by
+changing the target. A stored balance alone was measured first and does not help: the total owed and the
+number of debtors come from it at once, but the overdue and due-today figures still need the oldest-first
+allocation over every debtor's entries, and restricting that to customers who owe took as long as before
+(400 ms against 361 ms; 1 324 of the large shop's 2 000 customers owe). So each debt that is not yet fully
+paid is stored with what is left of it and its promised date (table `open_debt`), rewritten by the
+database for a customer whenever an entry or a promise of theirs is added.
+
+Measured on the same generated database (`qd_load_merged`, 3.69 million entries) with the migration applied
+by hand, single statements timed in `psql`, no other load:
+
+| What | Before | After |
+|---|---|---|
+| The overview's totals for the shop with 200 298 entries | 361 ms | 2.3 ms |
+| Rows read for it | every entry of the shop | 3 993 stored rows |
+| Filling the table for the whole database, once, in the migration | - | 52 s |
+| Size of the table and its indexes | - | 122 MB (739 789 rows) |
+| Stored rows that differ from the ledger, checked for the large shop | - | 0 |
+| Rewriting one customer's rows, paid on every entry or promise of theirs: the busiest customer, 1 153 entries | - | about 31 ms |
+
+What this does not show: the 30-minute run was **not repeated** with the table in place, so the percentiles
+of run B and run C stand as measured before it, and the cost added to each write under load is known only
+from the single-statement figure above. A customer with a very long account pays the most for each entry.
+Launch criterion 6 is as open as it was.
+
 ## Decisions taken where the documents are silent
 
 | Question | Decision | Reason |
