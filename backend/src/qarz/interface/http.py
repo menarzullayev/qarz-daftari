@@ -24,6 +24,7 @@ from qarz.application.customers import CustomerService
 from qarz.application.date_requests import DateRequestService
 from qarz.application.disputes import DisputeService
 from qarz.application.errors import AppError, Unauthenticated
+from qarz.application.exports import ExportService
 from qarz.application.files import FileService
 from qarz.application.imports import ImportService
 from qarz.application.ledger_service import LedgerService
@@ -50,6 +51,7 @@ from qarz.interface.customers_api import add_customer_routes
 from qarz.interface.date_requests_api import add_date_request_routes
 from qarz.interface.disputes_api import add_dispute_routes
 from qarz.interface.errors import app_error_handler, error_response
+from qarz.interface.exports_api import add_export_routes
 from qarz.interface.imports_api import IMPORT_UPLOAD, add_import_routes
 from qarz.interface.links_api import add_link_routes
 from qarz.interface.me_api import add_me_routes
@@ -204,6 +206,7 @@ def create_app(
         add_report_routes(app, ReportService(storage, now), current_user)
         add_dispute_routes(app, DisputeService(storage, now), current_user)
         add_payment_notice_routes(app, PaymentNoticeService(storage, files, now), current_user)
+        add_export_routes(app, ExportService(storage, files, now), current_user)
         add_date_request_routes(app, DateRequestService(storage, now), current_user)
         add_import_routes(app, ImportService(storage, files, now), current_user)
         add_customer_routes(app, CustomerService(storage, now), LedgerService(storage, now), current_user)

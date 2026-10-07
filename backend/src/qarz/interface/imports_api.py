@@ -2,7 +2,10 @@
 
 The file is sent as the request body itself, an `.xlsx` workbook or UTF-8 CSV: what it is, is decided
 from its bytes, never from a name or a declared type. The body is read with a hard limit; nothing of it is
-parsed or kept before the caller has been found to be a manager or owner of the shop who may import now.
+kept before the caller has been found to be a manager or owner of the shop who may import now.
+
+No request does the work: an upload, an apply and an undo record what is asked and answer at once (201,
+202, 202); the worker does the step, and the batch is read again to see how it went.
 """
 
 import re
@@ -87,13 +90,13 @@ def add_import_routes(app: FastAPI, service: ImportService, current_user: Curren
     async def read_import(shop_id: UUID, import_id: UUID, user_id: user) -> dict[str, Any]:
         return await service.read(user_id, shop_id, import_id)
 
-    @app.post(base + "/{import_id}/apply", name=APPLY_IMPORT.name)
+    @app.post(base + "/{import_id}/apply", name=APPLY_IMPORT.name, status_code=202)
     async def apply_import(
         shop_id: UUID, import_id: UUID, body: Apply, user_id: user, idempotency_key: IdempotencyKey = None
     ) -> dict[str, Any]:
         return await service.apply(user_id, shop_id, import_id, body.plan, idempotency_key)
 
-    @app.post(base + "/{import_id}/undo", name=UNDO_IMPORT.name)
+    @app.post(base + "/{import_id}/undo", name=UNDO_IMPORT.name, status_code=202)
     async def undo_import(
         shop_id: UUID, import_id: UUID, user_id: user, idempotency_key: IdempotencyKey = None
     ) -> dict[str, Any]:

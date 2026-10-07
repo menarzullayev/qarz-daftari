@@ -1,19 +1,19 @@
-"""Import: the states and claim of worker steps, indexes, and import files in the retention job.
+"""Export jobs, the export purpose of stored files, and their place in erasure and cleanup.
 
-Revision ID: 0023
-Revises: 0022
+Revision ID: 0022
+Revises: 0025
 """
 
 from pathlib import Path
 
 from alembic import op
 
-revision = "0023"
-down_revision = "0022"
+revision = "0022"
+down_revision = "0025"
 branch_labels = None
 depends_on = None
 
-_SQL = Path(__file__).resolve().parent.parent / "sql" / "0023_import.sql"
+_SQL = Path(__file__).resolve().parent.parent / "sql" / "0022_exports.sql"
 
 
 def upgrade() -> None:

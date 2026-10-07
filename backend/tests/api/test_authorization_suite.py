@@ -32,7 +32,6 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from qarz.application.operations import all_operations
-from qarz.domain import imports
 from qarz.domain.access import Role, lowest_role_with
 from qarz.domain.promise import tashkent_date
 
@@ -132,6 +131,26 @@ def _notice_id(world: World) -> uuid.UUID:
     return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-notice:{world.entry_a}")
 
 
+def _export_job_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-export:{world.entry_a}")
+
+
+def _finished_export(owner: psycopg.Connection, world: World) -> None:
+    """An export of shop A that the worker has finished: a workbook kept for a week."""
+    file_id = uuid.uuid5(uuid.NAMESPACE_URL, f"suite-export-file:{world.entry_a}")
+    owner.execute(
+        "INSERT INTO stored_file (id, shop_id, purpose, object_key, sha256, size_bytes, mime, delete_after) "
+        "VALUES (%s, %s, 'export', 'ee/suite-export', %s, 4, "
+        "'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', now() + interval '7 days')",
+        (file_id, world.shop_a, hashlib.sha256(b"xlsx").digest()),
+    )
+    owner.execute(
+        "INSERT INTO export_job (id, shop_id, requested_by, status, file_id, attempts, row_count, started_at, "
+        "finished_at) VALUES (%s, %s, %s, 'done', %s, 1, 1, now(), now())",
+        (_export_job_id(world), world.shop_a, world.owner_a_membership, file_id),
+    )
+
+
 def _sent_notice(owner: psycopg.Connection, world: World) -> None:
     """Ali says he paid 20 000 of the 50 000 he owes, and sent a receipt with it."""
     content = b"%PDF-1.4 suite receipt"
@@ -164,11 +183,7 @@ def _import_id(world: World) -> uuid.UUID:
     return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-import:{world.shop_a}")
 
 
-def _import_plan() -> str:
-    """The plan of SUITE_IMPORT in a shop that has no customer of that name: one new customer."""
-    parsed = imports.parse(SUITE_IMPORT, tashkent_date(datetime.now(UTC)))
-    assert isinstance(parsed, imports.ParsedFile)
-    return imports.plan_token(imports.plan(parsed.rows, [])[0])
+SUITE_PLAN = "5u1te0000000000000000000000p1an"
 
 
 def _stored_import(owner: psycopg.Connection, world: World, status: str) -> None:
@@ -183,8 +198,9 @@ def _stored_import(owner: psycopg.Connection, world: World, status: str) -> None
         (file_id, world.shop_a, f"{token[:2]}/{token}", hashlib.sha256(SUITE_IMPORT).digest(), len(SUITE_IMPORT)),
     )
     owner.execute(
-        "INSERT INTO import_batch (id, shop_id, status, file_id, summary, author_id, applied_at) "
-        "VALUES (%s, %s, %s, %s, %s, %s, CASE WHEN %s = 'applied' THEN now() END)",
+        "INSERT INTO import_batch (id, shop_id, status, file_id, summary, author_id, applied_at, plan, preview) "
+        "VALUES (%s, %s, %s, %s, %s, %s, CASE WHEN %s = 'applied' THEN now() END, "
+        "CASE WHEN %s = 'validated' THEN %s END, CASE WHEN %s = 'validated' THEN '{\"rows\": []}'::jsonb END)",
         (
             _import_id(world),
             world.shop_a,
@@ -192,6 +208,9 @@ def _stored_import(owner: psycopg.Connection, world: World, status: str) -> None
             file_id,
             '{"format": "csv", "rows": 1, "errors": [], "created_customers": []}',
             world.owner_a_membership,
+            status,
+            status,
+            SUITE_PLAN,
             status,
         ),
     )
@@ -321,6 +340,11 @@ CALLS: dict[str, Call] = {
         True,
         prepare=_open_dispute,
     ),
+    "exports.request": Call("POST", lambda w, shop: f"/api/v1/shops/{shop}/exports", None, True, 201),
+    "exports.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/exports"),
+    "exports.download": Call(
+        "GET", lambda w, shop: f"/api/v1/shops/{shop}/exports/{_export_job_id(w)}/download", prepare=_finished_export
+    ),
     "payment_notices.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/payment-notices"),
     "payment_notices.accept": Call(
         "POST",
@@ -350,8 +374,9 @@ CALLS: dict[str, Call] = {
     "imports.apply": Call(
         "POST",
         lambda w, shop: f"/api/v1/shops/{shop}/imports/{_import_id(w)}/apply",
-        None,  # the body names the plan of the file; filled in by _body
+        {"plan": SUITE_PLAN},  # the plan of the preview the batch was given
         True,
+        202,  # the worker applies; the request only records that it is asked
         prepare=_validated_import,
     ),
     "imports.undo": Call(
@@ -359,6 +384,7 @@ CALLS: dict[str, Call] = {
         lambda w, shop: f"/api/v1/shops/{shop}/imports/{_import_id(w)}/undo",
         None,
         True,
+        202,
         prepare=_applied_import,
     ),
     "imports.discard": Call(
@@ -505,6 +531,11 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "disputes.decline": {Role.MANAGER, Role.OWNER},
     # Specification, resources table: "payment notices: all staff"; role matrix, "Accept or decline a
     # payment notice": seller, manager, owner. The receipt is what they decide on.
+    # REQ-028 "an owner or manager can export"; specification, resources table: "reports and exports:
+    # manager, owner"; role matrix: exports in the manager's row.
+    "exports.request": {Role.MANAGER, Role.OWNER},
+    "exports.list": {Role.MANAGER, Role.OWNER},
+    "exports.download": {Role.MANAGER, Role.OWNER},
     "payment_notices.list": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "payment_notices.accept": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "payment_notices.decline": {Role.SELLER, Role.MANAGER, Role.OWNER},
@@ -642,8 +673,6 @@ def _body(world: World, op_name: str, call: Call) -> dict[str, Any] | None:
         return {"promised_date": (datetime.now(UTC).date() + timedelta(days=3)).isoformat()}
     if op_name == "catalog.learned.merge":
         return {"into": str(world.catalog_item_a)}
-    if op_name == "imports.apply":
-        return {"plan": _import_plan()}
     return call.json
 
 
@@ -746,8 +775,12 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
             (shop,),
         ).fetchall(),
         owner.execute(
-            "SELECT id, status, file_id, summary::text, author_id, applied_at FROM import_batch "
-            "WHERE shop_id = %s ORDER BY id",
+            "SELECT id, status, file_id, summary::text, author_id, applied_at, plan, preview::text, step_by, "
+            "queued_at, started_at, attempts FROM import_batch WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
+        owner.execute(
+            "SELECT id, requested_by, status, file_id, error, attempts FROM export_job WHERE shop_id = %s ORDER BY id",
             (shop,),
         ).fetchall(),
         # The objects of the file store itself: a refused call writes and removes none. A file that another
@@ -872,6 +905,7 @@ def test_a_member_of_one_shop_cannot_reach_another(
         world.waiting_a,
         _dispute_id(world),
         _notice_id(world),
+        _export_job_id(world),
         _date_request_id(world),
         _import_id(world),
     )

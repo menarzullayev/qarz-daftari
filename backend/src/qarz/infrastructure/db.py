@@ -7,7 +7,7 @@ next use of a pooled connection, and the row-level security policies hide every 
 import json
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4, uuid5
 
@@ -31,6 +31,10 @@ from qarz.application.ports import (
     DebtFigures,
     DisputeRecord,
     EntryRow,
+    ExportCustomer,
+    ExportEntry,
+    ExportJobRecord,
+    ExportPromise,
     GoodsLineRecord,
     ImportBatchRecord,
     ImportCandidate,
@@ -40,6 +44,7 @@ from qarz.application.ports import (
     MyShop,
     NewImportCustomer,
     NewImportEntry,
+    NewReversal,
     OnlinePayment,
     OutboxMessage,
     PaymentNoticeRecord,
@@ -289,13 +294,27 @@ _FILE_COLUMNS = "f.id, f.purpose, f.object_key, f.sha256, f.size_bytes, f.mime, 
 _FILE_BY_ID = f"SELECT {_FILE_COLUMNS} FROM stored_file f WHERE f.id = :id"
 _DUE_RECEIPT_FILES = (
     f"SELECT {_FILE_COLUMNS} FROM stored_file f "
-    "WHERE f.purpose IN ('payment_notice', 'import') AND f.delete_after <= :now "
+    "WHERE f.purpose IN ('payment_notice', 'export', 'import') AND f.delete_after <= :now "
     "ORDER BY f.delete_after, f.id LIMIT :limit"
 )
-_IMPORT_COLUMNS = "b.id, b.status, b.file_id, b.summary, b.author_id, b.created_at, b.applied_at"
+_IMPORT_COLUMNS = (
+    "b.id, b.status, b.file_id, b.summary, b.author_id, b.created_at, b.applied_at, b.plan, b.step_by, b.queued_at"
+)
 _IMPORT_BY_ID = f"SELECT {_IMPORT_COLUMNS} FROM import_batch b WHERE b.id = :id"
 _IMPORT_LOCKED = f"{_IMPORT_BY_ID} FOR UPDATE"
 _IMPORTS_NEWEST = f"SELECT {_IMPORT_COLUMNS} FROM import_batch b ORDER BY b.created_at DESC, b.id LIMIT :limit"
+_WITH_OPEN_DATE_REQUESTS = (
+    "SELECT DISTINCT e.customer_id FROM date_change_request r JOIN ledger_entry e ON e.id = r.entry_id "
+    "WHERE r.status = 'open' AND e.customer_id = ANY(CAST(:ids AS uuid[])) ORDER BY 1"
+)
+_WAITING_REMOVAL = (
+    "SELECT DISTINCT q.customer_id FROM removal_request q "
+    "WHERE q.status = 'waiting' AND q.customer_id = ANY(CAST(:ids AS uuid[])) ORDER BY 1"
+)
+_LINKED_CUSTOMERS = (
+    "SELECT DISTINCT l.customer_id FROM customer_link l JOIN app_user u ON u.id = l.user_id "
+    "WHERE l.status = 'active' AND u.tg_id IS NOT NULL AND l.customer_id = ANY(CAST(:ids AS uuid[])) ORDER BY 1"
+)
 # Rows of one bulk statement: small enough that no statement comes near the timeout.
 _BULK_ROWS = 500
 _NOTICE_SELECT = (
@@ -313,6 +332,36 @@ _OPEN_NOTICES = (
     f"{_NOTICE_SELECT} WHERE n.status = 'sent' AND n.created_at >= :since AND c.status <> 'anonymized' "
     "ORDER BY n.created_at, n.id"
 )
+
+_EXPORT_JOB_SELECT = (
+    "SELECT j.id, j.requested_by, j.status, j.file_id, j.error, j.attempts, j.row_count, j.created_at, "
+    "j.started_at, j.finished_at, f.delete_after FROM export_job j LEFT JOIN stored_file f ON f.id = j.file_id "
+)
+_EXPORT_JOB_BY_ID = f"{_EXPORT_JOB_SELECT} WHERE j.id = :id"
+_EXPORT_JOBS = f"{_EXPORT_JOB_SELECT} ORDER BY j.created_at DESC, j.id LIMIT :limit"
+# One page of the ledger for the export, by the (shop_id, created_at) index. A reversal recorded after
+# the export's own instant is not in the file, so the entry it reverses is not shown as reversed either:
+# the sheet agrees with itself.
+_EXPORT_ENTRIES = (
+    "SELECT e.id, e.customer_id, c.display_name, e.seq, e.kind, e.amount, e.note, e.reverses_id, "
+    "t.kind AS reversed_kind, e.author_id, m.role AS author_role, e.created_at, "
+    f"{_PROMISED.format(entry='e')} AS promised_date, "
+    "EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id AND r.created_at <= :until) AS is_reversed "
+    "FROM ledger_entry e JOIN customer c ON c.id = e.customer_id JOIN membership m ON m.id = e.author_id "
+    "LEFT JOIN ledger_entry t ON t.id = e.reverses_id "
+    "WHERE e.created_at <= :until AND (e.created_at, e.id) > (:after_at, :after_id) "
+    "ORDER BY e.created_at, e.id LIMIT :limit"
+)
+_EXPORT_PROMISES = (
+    "SELECT p.entry_id, p.promised_date, p.reason, p.actor, p.created_at FROM promise p "
+    "WHERE p.entry_id = ANY(CAST(:ids AS uuid[])) ORDER BY p.entry_id, p.created_at, p.id"
+)
+_EXPORT_CUSTOMERS = (
+    "SELECT c.id, c.display_name, c.name_norm, c.phone, c.status, c.credit_limit, c.created_at FROM customer c "
+    "WHERE c.id > :after ORDER BY c.id LIMIT :limit"
+)
+_FIRST_UUID = UUID(int=0)
+_BEFORE_EVERYTHING = datetime(1, 1, 1, tzinfo=UTC)
 
 
 def _like_pattern(part: str) -> str:
@@ -1573,9 +1622,14 @@ class PgTenantSession:
 
     async def remove_stored_file(self, file_id: UUID) -> None:
         await self._conn.execute(text("UPDATE payment_notice SET file_id = NULL WHERE file_id = :id"), {"id": file_id})
-        await self._conn.execute(text("UPDATE import_batch SET file_id = NULL WHERE file_id = :id"), {"id": file_id})
+        # With its file an import batch loses the rows the worker read from it.
         await self._conn.execute(
-            text("DELETE FROM stored_file WHERE id = :id AND purpose IN ('payment_notice', 'import')"), {"id": file_id}
+            text("UPDATE import_batch SET file_id = NULL, preview = NULL WHERE file_id = :id"), {"id": file_id}
+        )
+        await self._conn.execute(text("UPDATE export_job SET file_id = NULL WHERE file_id = :id"), {"id": file_id})
+        await self._conn.execute(
+            text("DELETE FROM stored_file WHERE id = :id AND purpose IN ('payment_notice', 'export', 'import')"),
+            {"id": file_id},
         )
 
     # --- imports (REQ-062, REQ-063) -----------------------------------------------------------------------
@@ -1591,13 +1645,15 @@ class PgTenantSession:
             row.author_id,
             row.created_at,
             row.applied_at,
+            row.plan,
+            row.step_by,
+            row.queued_at,
         )
 
     async def create_import_batch(
         self,
         *,
         batch_id: UUID,
-        status: str,
         file_id: UUID,
         summary: dict[str, Any],
         author_id: UUID,
@@ -1605,13 +1661,14 @@ class PgTenantSession:
     ) -> None:
         await self._conn.execute(
             text(
-                "INSERT INTO import_batch (id, shop_id, status, file_id, summary, author_id, created_at) "
-                "VALUES (:id, :shop_id, :status, :file_id, CAST(:summary AS jsonb), :author_id, :now)"
+                "INSERT INTO import_batch "
+                "(id, shop_id, status, file_id, summary, author_id, created_at, step_by, queued_at) "
+                "VALUES (:id, :shop_id, 'uploaded', :file_id, CAST(:summary AS jsonb), :author_id, :now, "
+                ":author_id, :now)"
             ),
             {
                 "id": batch_id,
                 "shop_id": self._shop_id,
-                "status": status,
                 "file_id": file_id,
                 "summary": json.dumps(summary, ensure_ascii=False),
                 "author_id": author_id,
@@ -1626,20 +1683,45 @@ class PgTenantSession:
         return None if row is None else self._import(row)
 
     async def set_import_batch(
-        self, batch_id: UUID, *, status: str, summary: dict[str, Any], applied_at: datetime | None
+        self,
+        batch_id: UUID,
+        *,
+        status: str,
+        summary: dict[str, Any],
+        plan: str | None,
+        applied_at: datetime | None = None,
+        queued: tuple[UUID, datetime] | None = None,
     ) -> None:
         await self._conn.execute(
             text(
-                "UPDATE import_batch SET status = :status, summary = CAST(:summary AS jsonb), "
-                "applied_at = coalesce(:applied_at, applied_at) WHERE id = :id"
+                "UPDATE import_batch SET status = :status, summary = CAST(:summary AS jsonb), plan = :plan, "
+                "applied_at = coalesce(:applied_at, applied_at), step_by = coalesce(:step_by, step_by), "
+                "queued_at = coalesce(:queued_at, queued_at), started_at = NULL, attempts = 0 WHERE id = :id"
             ),
             {
                 "id": batch_id,
                 "status": status,
                 "summary": json.dumps(summary, ensure_ascii=False),
+                "plan": plan,
                 "applied_at": applied_at,
+                "step_by": None if queued is None else queued[0],
+                "queued_at": None if queued is None else queued[1],
             },
         )
+
+    async def set_import_preview(self, batch_id: UUID, preview: dict[str, Any] | None) -> None:
+        await self._conn.execute(
+            text("UPDATE import_batch SET preview = CAST(:preview AS jsonb) WHERE id = :id"),
+            {"id": batch_id, "preview": None if preview is None else json.dumps(preview, ensure_ascii=False)},
+        )
+
+    async def import_preview(self, batch_id: UUID) -> dict[str, Any] | None:
+        row = (
+            await self._conn.execute(text("SELECT b.preview FROM import_batch b WHERE b.id = :id"), {"id": batch_id})
+        ).first()
+        if row is None or row.preview is None:
+            return None
+        return json.loads(row.preview) if isinstance(row.preview, str) else dict(row.preview)
 
     async def list_import_batches(self, limit: int) -> list[ImportBatchRecord]:
         rows = (await self._conn.execute(text(_IMPORTS_NEWEST), {"limit": limit})).all()
@@ -1759,17 +1841,111 @@ class PgTenantSession:
                 ],
             )
 
-    async def entries_of_import(self, batch_id: UUID) -> list[tuple[UUID, UUID, bool]]:
+    async def customers_of_import(self, batch_id: UUID) -> list[UUID]:
+        rows = (
+            await self._conn.execute(
+                text("SELECT DISTINCT e.customer_id FROM ledger_entry e WHERE e.import_batch_id = :id ORDER BY 1"),
+                {"id": batch_id},
+            )
+        ).all()
+        return [row.customer_id for row in rows]
+
+    async def standing_entries_of_import(self, batch_id: UUID) -> list[tuple[UUID, UUID, int]]:
         rows = (
             await self._conn.execute(
                 text(
-                    "SELECT e.id, e.customer_id, EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id) "
-                    "AS reversed FROM ledger_entry e WHERE e.import_batch_id = :id ORDER BY e.customer_id, e.seq"
+                    "SELECT e.id, e.customer_id, e.amount FROM ledger_entry e WHERE e.import_batch_id = :id "
+                    "AND NOT EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id) "
+                    "ORDER BY e.customer_id, e.seq"
                 ),
                 {"id": batch_id},
             )
         ).all()
-        return [(row.id, row.customer_id, bool(row.reversed)) for row in rows]
+        return [(row.id, row.customer_id, int(row.amount)) for row in rows]
+
+    async def add_reversals(self, author_id: UUID, now: datetime, reversals: list[NewReversal]) -> None:
+        shop_ref = uuid5(_MEASURE_NAMESPACE, str(self._shop_id))
+        for start in range(0, len(reversals), _BULK_ROWS):
+            chunk = reversals[start : start + _BULK_ROWS]
+            await self._conn.execute(
+                text(
+                    "INSERT INTO ledger_entry "
+                    "(id, shop_id, customer_id, seq, kind, amount, reverses_id, author_id, created_at) "
+                    "VALUES (:id, :shop_id, :customer_id, :seq, 'reversal', :amount, :reverses_id, :author_id, :now)"
+                ),
+                [
+                    {
+                        "id": reversal.reversal_id,
+                        "shop_id": self._shop_id,
+                        "customer_id": reversal.customer_id,
+                        "seq": reversal.seq,
+                        "amount": reversal.amount,
+                        "reverses_id": reversal.entry_id,
+                        "author_id": author_id,
+                        "now": now,
+                    }
+                    for reversal in chunk
+                ],
+            )
+            await self._conn.execute(
+                text(
+                    "INSERT INTO activity (id, shop_id, actor_kind, actor_id, action, subject_type, subject_id) "
+                    "VALUES (:id, :shop_id, 'staff', :actor_id, 'ledger.entry_reversed', 'customer', :subject_id)"
+                ),
+                [
+                    {"id": uuid4(), "shop_id": self._shop_id, "actor_id": author_id, "subject_id": reversal.customer_id}
+                    for reversal in chunk
+                ],
+            )
+            await self._conn.execute(
+                text(
+                    "INSERT INTO measure.event (id, shop_ref, entry_ref, kind, amount) "
+                    "VALUES (:id, :shop_ref, :entry_ref, 'reversal', :amount)"
+                ),
+                [
+                    {
+                        "id": uuid4(),
+                        "shop_ref": shop_ref,
+                        "entry_ref": uuid5(_MEASURE_NAMESPACE, str(reversal.reversal_id)),
+                        "amount": reversal.amount,
+                    }
+                    for reversal in chunk
+                ],
+            )
+
+    async def close_disputes_of(self, entry_ids: list[UUID], decided_by: UUID, now: datetime) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE dispute SET status = 'reversed', decided_by = :decided_by, closed_at = :now "
+                "WHERE entry_id = ANY(CAST(:ids AS uuid[])) AND status = 'open'"
+            ),
+            {"ids": entry_ids, "decided_by": decided_by, "now": now},
+        )
+
+    async def _customers_where(self, sql: str, customer_ids: list[UUID]) -> list[UUID]:
+        rows = (await self._conn.execute(text(sql), {"ids": customer_ids})).all()
+        return [row.customer_id for row in rows]
+
+    async def customers_with_open_date_requests(self, customer_ids: list[UUID]) -> list[UUID]:
+        return await self._customers_where(_WITH_OPEN_DATE_REQUESTS, customer_ids)
+
+    async def customers_waiting_removal(self, customer_ids: list[UUID]) -> list[UUID]:
+        return await self._customers_where(_WAITING_REMOVAL, customer_ids)
+
+    async def linked_customers(self, customer_ids: list[UUID]) -> list[UUID]:
+        return await self._customers_where(_LINKED_CUSTOMERS, customer_ids)
+
+    async def archive_customers(self, customer_ids: list[UUID]) -> int:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "UPDATE customer SET status = 'archived' WHERE id = ANY(CAST(:ids AS uuid[])) "
+                    "AND status = 'active' RETURNING id"
+                ),
+                {"ids": customer_ids},
+            )
+        ).all()
+        return len(rows)
 
     async def stored_object_keys(self) -> list[str]:
         rows = (await self._conn.execute(text("SELECT object_key FROM stored_file ORDER BY created_at, id"))).all()
@@ -1877,6 +2053,147 @@ class PgTenantSession:
         for file_id in [row.file_id for row in rows if row.file_id is not None]:
             await self.shorten_file_retention(file_id, files_delete_after)
         return len(rows)
+
+    # --- exports -------------------------------------------------------------------------------------
+
+    @staticmethod
+    def _export_job(row: Any) -> ExportJobRecord:
+        return ExportJobRecord(
+            row.id,
+            row.requested_by,
+            str(row.status),
+            row.file_id,
+            row.error,
+            int(row.attempts),
+            None if row.row_count is None else int(row.row_count),
+            row.created_at,
+            row.started_at,
+            row.finished_at,
+            row.delete_after,
+        )
+
+    async def lock_exports(self) -> None:
+        await self._conn.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:scope, 0))"),
+            {"scope": "exports:" + str(self._shop_id)},
+        )
+
+    async def add_export_job(self, *, job_id: UUID, requested_by: UUID, now: datetime) -> ExportJobRecord:
+        await self._conn.execute(
+            text(
+                "INSERT INTO export_job (id, shop_id, requested_by, status, created_at) "
+                "VALUES (:id, :shop_id, :requested_by, 'queued', :now)"
+            ),
+            {"id": job_id, "shop_id": self._shop_id, "requested_by": requested_by, "now": now},
+        )
+        row = (await self._conn.execute(text(_EXPORT_JOB_BY_ID), {"id": job_id})).one()
+        return self._export_job(row)
+
+    async def get_export_job(self, job_id: UUID) -> ExportJobRecord | None:
+        row = (await self._conn.execute(text(_EXPORT_JOB_BY_ID), {"id": job_id})).first()
+        return None if row is None else self._export_job(row)
+
+    async def export_jobs(self, limit: int) -> list[ExportJobRecord]:
+        rows = (await self._conn.execute(text(_EXPORT_JOBS), {"limit": limit})).all()
+        return [self._export_job(row) for row in rows]
+
+    async def export_in_progress(self) -> bool:
+        row = (
+            await self._conn.execute(text("SELECT 1 FROM export_job WHERE status IN ('queued', 'running') LIMIT 1"))
+        ).first()
+        return row is not None
+
+    async def exports_since(self, start: datetime) -> int:
+        row = (
+            await self._conn.execute(
+                text("SELECT count(*) AS asked FROM export_job WHERE created_at >= :start AND status <> 'failed'"),
+                {"start": start},
+            )
+        ).one()
+        return int(row.asked)
+
+    async def finish_export_job(
+        self,
+        job_id: UUID,
+        *,
+        status: str,
+        file_id: UUID | None,
+        error: str | None,
+        row_count: int | None,
+        now: datetime,
+    ) -> bool:
+        result = await self._conn.execute(
+            text(
+                "UPDATE export_job SET status = :status, file_id = :file_id, error = :error, row_count = :row_count, "
+                "finished_at = :now WHERE id = :id AND status = 'running'"
+            ),
+            {"id": job_id, "status": status, "file_id": file_id, "error": error, "row_count": row_count, "now": now},
+        )
+        return int(result.rowcount) == 1
+
+    async def member_recipient(self, membership_id: UUID) -> tuple[int, str] | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT u.tg_id, u.lang FROM membership m JOIN app_user u ON u.id = m.user_id "
+                    "WHERE m.id = :id AND m.status = 'active' AND u.tg_id IS NOT NULL"
+                ),
+                {"id": membership_id},
+            )
+        ).first()
+        return None if row is None else (int(row.tg_id), str(row.lang))
+
+    async def export_entries(
+        self, *, until: datetime, after: tuple[datetime, UUID] | None, limit: int
+    ) -> list[ExportEntry]:
+        after_at, after_id = after or (_BEFORE_EVERYTHING, _FIRST_UUID)
+        rows = (
+            await self._conn.execute(
+                text(_EXPORT_ENTRIES), {"until": until, "after_at": after_at, "after_id": after_id, "limit": limit}
+            )
+        ).all()
+        return [
+            ExportEntry(
+                row.id,
+                row.customer_id,
+                str(row.display_name),
+                int(row.seq),
+                str(row.kind),
+                int(row.amount),
+                row.note,
+                row.reverses_id,
+                row.reversed_kind,
+                bool(row.is_reversed),
+                row.promised_date,
+                row.author_id,
+                str(row.author_role),
+                row.created_at,
+            )
+            for row in rows
+        ]
+
+    async def export_promises(self, entry_ids: list[UUID]) -> list[ExportPromise]:
+        rows = (await self._conn.execute(text(_EXPORT_PROMISES), {"ids": entry_ids})).all()
+        return [
+            ExportPromise(row.entry_id, row.promised_date, row.reason, str(row.actor), row.created_at) for row in rows
+        ]
+
+    async def export_customers(self, *, after: UUID | None, limit: int) -> list[ExportCustomer]:
+        rows = (
+            await self._conn.execute(text(_EXPORT_CUSTOMERS), {"after": after or _FIRST_UUID, "limit": limit})
+        ).all()
+        return [
+            ExportCustomer(
+                row.id,
+                str(row.display_name),
+                str(row.name_norm),
+                row.phone,
+                str(row.status),
+                None if row.credit_limit is None else int(row.credit_limit),
+                row.created_at,
+            )
+            for row in rows
+        ]
 
     async def staff_recipients(self, roles: list[str]) -> list[tuple[int, str]]:
         rows = (
@@ -2382,6 +2699,24 @@ class PgPlatformSession:
             )
         ).all()
         return [row.shop_id for row in rows]
+
+    async def claim_import_batch(self, now: datetime, stale_before: datetime) -> tuple[UUID, UUID, str, int] | None:
+        row = (
+            await self._conn.execute(
+                text("SELECT batch_id, shop_id, step, attempts FROM claim_import_batch(:now, :stale_before)"),
+                {"now": now, "stale_before": stale_before},
+            )
+        ).first()
+        return None if row is None else (row.batch_id, row.shop_id, str(row.step), int(row.attempts))
+
+    async def claim_export_job(self, now: datetime, stale_before: datetime) -> tuple[UUID, UUID, int] | None:
+        row = (
+            await self._conn.execute(
+                text("SELECT job_id, shop_id, attempts FROM claim_export_job(:now, :stale_before)"),
+                {"now": now, "stale_before": stale_before},
+            )
+        ).first()
+        return None if row is None else (row.job_id, row.shop_id, int(row.attempts))
 
     async def shops_with_receipt_work(self, stale_before: datetime, now: datetime) -> list[UUID]:
         rows = (

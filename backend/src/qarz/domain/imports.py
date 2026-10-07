@@ -41,9 +41,13 @@ PROMISE_PAST_DAYS = 365
 PROMISE_FUTURE_DAYS = 365
 # BR-24: a whole import can be undone for this long after it was applied.
 UNDO_WINDOW = timedelta(hours=24)
+# A step whose worker has been silent this long is taken by another; one started this often is given up.
+STALE_AFTER = timedelta(minutes=15)
+MAX_ATTEMPTS = 3
 
 XLSX, CSV = "xlsx", "csv"
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+FILE_GONE = "file_gone"  # the batch's file is no longer in the store: said like a file problem
 CSV_MIME = "text/csv"
 MIMES = {XLSX: XLSX_MIME, CSV: CSV_MIME}
 
@@ -338,8 +342,6 @@ def read_xlsx(data: bytes) -> Table:
 def read_csv(data: bytes) -> Table:
     """The non-empty records of a UTF-8 text file. The delimiter is the comma, semicolon or tab its
     first line uses most."""
-    if b"\x00" in data:
-        raise _Refused(FileProblem.TYPE)
     try:
         text = data.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -472,18 +474,30 @@ def _row(number: int, cells: Sequence[str], header: dict[str, int], today: date)
     return ImportRow(number, name, normalize_name(name), phone, amount, promised, note)
 
 
+def sniff(data: bytes) -> str | FileProblem:
+    """What a file is by its own bytes, XLSX or CSV, or why it is refused without being read.
+
+    This is all that is decided when a file is uploaded; everything else needs the sheet to be read.
+    """
+    if not data:
+        return FileProblem.EMPTY
+    if len(data) > MAX_FILE_BYTES:
+        return FileProblem.TOO_LARGE
+    if data[:4] == b"PK\x03\x04":
+        return XLSX
+    return FileProblem.TYPE if b"\x00" in data else CSV
+
+
 def parse(data: bytes, today: date) -> ParsedFile | FileProblem:
     """Read an uploaded file. `today` is the Tashkent calendar date, against which promised dates are bound.
 
     A file that cannot be read as an import at all gives a `FileProblem`. Otherwise every data row is
     either among the rows or has at least one error, so nothing is dropped without being reported.
     """
-    if not data:
-        return FileProblem.EMPTY
-    if len(data) > MAX_FILE_BYTES:
-        return FileProblem.TOO_LARGE
+    kind = sniff(data)
+    if isinstance(kind, FileProblem):
+        return kind
     try:
-        kind = XLSX if data[:4] == b"PK\x03\x04" else CSV
         table = read_xlsx(data) if kind == XLSX else read_csv(data)
         header = _header(table)
     except _Refused as refused:
@@ -610,6 +624,15 @@ class UndoRefusal(StrEnum):
     TOO_LATE = "too_late"
 
 
+def stale_before(now: datetime) -> datetime:
+    return now - STALE_AFTER
+
+
+def gives_up(attempts: int) -> bool:
+    """`attempts` counts the start just made. The third start is still made; a fourth is not."""
+    return attempts > MAX_ATTEMPTS
+
+
 def may_undo(status: str, applied_at: datetime | None, now: datetime) -> UndoRefusal | None:
     """BR-24: only an applied import, and for 24 hours. The last moment of the twenty-fourth hour is in time."""
     if status != "applied" or applied_at is None:
@@ -617,122 +640,3 @@ def may_undo(status: str, applied_at: datetime | None, now: datetime) -> UndoRef
     if now - applied_at > UNDO_WINDOW:
         return UndoRefusal.TOO_LATE
     return None
-
-
-# --- writing a workbook: the published template ----------------------------------------------------------
-
-_ZIP_TIME = (2026, 1, 1, 0, 0, 0)
-_CONTENT_TYPES = (
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
-    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
-    '<Default Extension="xml" ContentType="application/xml"/>'
-    '<Override PartName="/xl/workbook.xml" '
-    'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
-    '<Override PartName="/xl/worksheets/sheet1.xml" '
-    'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-    '<Override PartName="/xl/styles.xml" '
-    'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
-    "</Types>"
-)
-_ROOT_RELS = (
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-    '<Relationship Id="rId1" '
-    'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
-    'Target="xl/workbook.xml"/>'
-    "</Relationships>"
-)
-_WORKBOOK = (
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
-    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-    '<sheets><sheet name="Import" sheetId="1" r:id="rId1"/></sheets>'
-    "</workbook>"
-)
-_WORKBOOK_RELS = (
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-    '<Relationship Id="rId1" '
-    'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
-    'Target="worksheets/sheet1.xml"/>'
-    '<Relationship Id="rId2" '
-    'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" '
-    'Target="styles.xml"/>'
-    "</Relationships>"
-)
-# Two cell formats: 0 is the general one; 1 is text ("@"), so a phone number keeps its plus sign and a
-# date stays as it was typed.
-_STYLES = (
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-    '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>'
-    '<fills count="2"><fill><patternFill patternType="none"/></fill>'
-    '<fill><patternFill patternType="gray125"/></fill></fills>'
-    '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
-    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-    '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
-    '<xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>'
-    "</styleSheet>"
-)
-_XML_ESCAPES = str.maketrans({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})
-
-
-def _letters(index: int) -> str:
-    letters = ""
-    index += 1
-    while index:
-        index, rest = divmod(index - 1, 26)
-        letters = chr(ord("A") + rest) + letters
-    return letters
-
-
-def write_xlsx(rows: Sequence[Sequence[str]], text_columns: Sequence[int] = ()) -> bytes:
-    """A one-sheet workbook of text cells. The same bytes for the same rows.
-
-    `text_columns` are formatted as text for their whole length, so what is typed there is kept as typed.
-    """
-    width = max((len(row) for row in rows), default=0)
-    columns = "".join(
-        f'<col min="{index + 1}" max="{index + 1}" width="22" customWidth="1"'
-        + (' style="1"' if index in text_columns else "")
-        + "/>"
-        for index in range(width)
-    )
-    body = "".join(
-        f'<row r="{number}">'
-        + "".join(
-            f'<c r="{_letters(index)}{number}" t="inlineStr"'
-            + (' s="1"' if index in text_columns else "")
-            + f'><is><t xml:space="preserve">{cell.translate(_XML_ESCAPES)}</t></is></c>'
-            for index, cell in enumerate(row)
-            if cell
-        )
-        + "</row>"
-        for number, row in enumerate(rows, start=1)
-    )
-    sheet = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-        + (f"<cols>{columns}</cols>" if columns else "")
-        + f"<sheetData>{body}</sheetData></worksheet>"
-    )
-    parts = {
-        "[Content_Types].xml": _CONTENT_TYPES,
-        "_rels/.rels": _ROOT_RELS,
-        "xl/workbook.xml": _WORKBOOK,
-        "xl/_rels/workbook.xml.rels": _WORKBOOK_RELS,
-        "xl/styles.xml": _STYLES,
-        "xl/worksheets/sheet1.xml": sheet,
-    }
-    out = io.BytesIO()
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
-        for name, content in parts.items():
-            archive.writestr(zipfile.ZipInfo(name, _ZIP_TIME), content.encode("utf-8"), zipfile.ZIP_DEFLATED)
-    return out.getvalue()
-
-
-def template(lang: str) -> bytes:
-    """The published template (REQ-062): the five column titles, in the caller's language."""
-    headers = TEMPLATE_HEADERS.get(lang, TEMPLATE_HEADERS["uz"])
-    return write_xlsx([list(headers)], text_columns=(COLUMNS.index(PHONE), COLUMNS.index(PROMISED)))

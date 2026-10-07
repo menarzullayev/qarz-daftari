@@ -220,6 +220,23 @@ UZ = {
         "24 soat ichida butunlay bekor qilish mumkin."
     ),
     "s_import_undone": "↩️ {shop}\nImport bekor qilindi: {entries} ta yozuv qaytarildi. Import summasi: {amount}.",
+    "import_checked": (
+        "📥 {shop}\nImport fayli tekshirildi: {rows} ta qator, xatosiz. Ilovada ko'rib chiqib, qo'llashingiz mumkin."
+    ),
+    "import_rejected": (
+        "📥 {shop}\nImport faylining {errors} ta qatorida xato topildi. Ilovada ro'yxatini ko'rib, "
+        "tuzatilgan faylni qayta yuklang."
+    ),
+    "import_unreadable": "📥 {shop}\nImport faylini jadval sifatida o'qib bo'lmadi. Sababi ilovada ko'rsatilgan.",
+    "import_refused": (
+        "📥 {shop}\nImport qo'llanmadi: tekshiruvdan keyin ma'lumotlar o'zgargan. Ilovada qayta ko'rib chiqing."
+    ),
+    "import_undo_refused": (
+        "↩️ {shop}\nImportni bekor qilib bo'lmadi: uning yozuvlariga to'lov qilingan. Hech narsa o'zgarmadi."
+    ),
+    "import_failed": (
+        "📥 {shop}\nImport bo'yicha so'ralgan amal bajarilmadi. Hech narsa o'zgarmadi; qayta urinib ko'ring."
+    ),
     "shop_deletion_requested": (
         "«{shop}» do'konini o'chirish so'raldi. Ma'lumotlar {date} kuni butunlay o'chiriladi. Shu kungacha "
         "eksport qilishingiz yoki bekor qilishingiz mumkin."
@@ -269,6 +286,12 @@ UZ = {
     ),
     "PAYMENT_NOTICE_NOT_OPEN": "Bu to'lov xabari allaqachon ko'rib chiqilgan yoki muddati o'tgan.",
     "FILE_STORE_UNAVAILABLE": "Fayllarni saqlash hozir ishlamayapti. Birozdan keyin qayta urinib ko'ring.",
+    "export_ready": (
+        "✅ «{shop}» do'konining eksporti tayyor. Uni ilovaning eksport bo'limidan yuklab oling; fayl 7 kun saqlanadi."
+    ),
+    "export_failed": "«{shop}» do'konining eksportini tayyorlab bo'lmadi. Birozdan keyin qaytadan so'rang.",
+    "EXPORT_NOT_ALLOWED": "Eksport allaqachon tayyorlanmoqda yoki bugungi eksportlar soni tugagan.",
+    "EXPORT_NOT_READY": "Bu eksport fayli hali tayyor emas yoki muddati o'tgan.",
     "currency": "so'm",
 }
 
@@ -478,6 +501,20 @@ RU = {
         "В течение 24 часов его можно отменить целиком."
     ),
     "s_import_undone": "↩️ {shop}\nИмпорт отменён: отменено записей — {entries}. Сумма импорта: {amount}.",
+    "import_checked": (
+        "📥 {shop}\nФайл импорта проверен: строк — {rows}, ошибок нет. Просмотрите его в приложении и примените."
+    ),
+    "import_rejected": (
+        "📥 {shop}\nВ файле импорта ошибки в строках: {errors}. Список — в приложении; загрузите исправленный файл."
+    ),
+    "import_unreadable": "📥 {shop}\nФайл импорта не удалось прочитать как таблицу. Причина указана в приложении.",
+    "import_refused": (
+        "📥 {shop}\nИмпорт не применён: после проверки данные изменились. Просмотрите его в приложении ещё раз."
+    ),
+    "import_undo_refused": (
+        "↩️ {shop}\nИмпорт отменить не удалось: по его записям уже есть оплаты. Ничего не изменено."
+    ),
+    "import_failed": "📥 {shop}\nЗапрошенное действие с импортом не выполнено. Ничего не изменено; попробуйте ещё раз.",
     "shop_deletion_requested": (
         "Запрошено удаление магазина «{shop}». Данные будут полностью удалены {date}. До этого дня можно "
         "выгрузить данные или отменить удаление."
@@ -526,6 +563,12 @@ RU = {
     ),
     "PAYMENT_NOTICE_NOT_OPEN": "Это сообщение об оплате уже рассмотрено или его срок истёк.",
     "FILE_STORE_UNAVAILABLE": "Хранилище файлов сейчас недоступно. Попробуйте ещё раз чуть позже.",
+    "export_ready": (
+        "✅ Выгрузка магазина «{shop}» готова. Скачайте её в разделе выгрузок приложения; файл хранится 7 дней."
+    ),
+    "export_failed": "Не удалось подготовить выгрузку магазина «{shop}». Запросите её ещё раз чуть позже.",
+    "EXPORT_NOT_ALLOWED": "Выгрузка уже готовится, или на сегодня выгрузок больше нет.",
+    "EXPORT_NOT_READY": "Файл этой выгрузки ещё не готов или срок его хранения истёк.",
     "currency": "сум",
 }
 

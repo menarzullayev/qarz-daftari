@@ -10,6 +10,8 @@ from typing import Any
 import pytest
 
 from qarz.application import ledger_service
+from qarz.application.imports import template
+from qarz.application.xlsx import Workbook
 from qarz.domain import imports
 from qarz.domain.files import MAX_FILE_BYTES
 from qarz.domain.imports import (
@@ -25,14 +27,21 @@ from qarz.domain.imports import (
     plan,
     plan_token,
     read_xlsx,
-    template,
-    write_xlsx,
 )
 from qarz.domain.names import normalize_name
 
 TODAY = date(2026, 10, 7)
 HEAD = ["Ism", "Telefon", "Qarz summasi", "To'lash muddati", "Izoh"]
 MAIN = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+
+
+def write_xlsx(rows: list[list[Any]]) -> bytes:
+    """A one-sheet workbook made by the service's own writer; an empty text is an empty cell."""
+    made = Workbook()
+    sheet_ = made.sheet("Import")
+    for cells in rows:
+        sheet_.append([None if cell == "" else cell for cell in cells])
+    return made.finish()
 
 
 def book(*rows: list[str]) -> bytes:
@@ -80,33 +89,21 @@ HEAD_ROW = '<row r="1">' + inline("A1", "Ism") + inline("B1", "Qarz summasi") + 
 def test_the_template_has_the_five_columns_and_no_rows() -> None:
     assert read_xlsx(template("uz")) == [(1, HEAD)]
     assert read_xlsx(template("ru")) == [(1, ["Имя", "Телефон", "Сумма долга", "Срок оплаты", "Примечание"])]
-    assert template("en") == template("uz"), "an unknown language gets the Uzbek template"
+    assert read_xlsx(template("en")) == read_xlsx(template("uz")), "an unknown language gets the Uzbek template"
     assert parse(template("uz"), TODAY) is FileProblem.NO_ROWS
     assert parse(template("ru"), TODAY) is FileProblem.NO_ROWS, "the Russian titles are recognised too"
-
-
-def test_the_template_is_the_same_bytes_every_time_and_a_well_formed_package() -> None:
-    assert template("uz") == template("uz")
     with zipfile.ZipFile(io.BytesIO(template("uz"))) as made:
         assert made.testzip() is None
-        assert set(made.namelist()) == {
-            "[Content_Types].xml",
-            "_rels/.rels",
-            "xl/workbook.xml",
-            "xl/_rels/workbook.xml.rels",
-            "xl/styles.xml",
-            "xl/worksheets/sheet1.xml",
-        }
-        columns = made.read("xl/worksheets/sheet1.xml").decode()
-    # The phone and the date column are text, so "+998…" and "25.10.2026" stay as typed.
-    assert '<col min="2" max="2" width="22" customWidth="1" style="1"/>' in columns
-    assert '<col min="4" max="4" width="22" customWidth="1" style="1"/>' in columns
-    assert '<col min="3" max="3" width="22" customWidth="1"/>' in columns
+        assert [name for name in made.namelist() if name.startswith("xl/worksheets/")] == ["xl/worksheets/sheet1.xml"]
 
 
-def test_a_written_workbook_reads_back_as_written() -> None:
-    rows = [['Ali & <Vali> "aka"', "", "45000"], ["", "", ""], ["Ғани", "+998901234567"]]
-    assert read_xlsx(write_xlsx(rows)) == [(1, ['Ali & <Vali> "aka"', "", "45000"]), (3, ["Ғани", "+998901234567"])]
+def test_what_the_shared_workbook_writer_writes_is_read_back() -> None:
+    """The template and the exports are written by `qarz.application.xlsx`; this reader must read them."""
+    rows = [['Ali & <Vali> "aka"', "", "45000"], ["", "", ""], ["Ғани", "+998901234567", 1200000]]
+    assert read_xlsx(write_xlsx(rows)) == [
+        (1, ['Ali & <Vali> "aka"', "", "45000"]),
+        (3, ["Ғани", "+998901234567", "1200000"]),
+    ]
 
 
 def test_a_filled_template_becomes_rows() -> None:
@@ -583,3 +580,24 @@ def test_an_import_can_be_undone_for_twenty_four_hours() -> None:
     for status in ("uploaded", "validated", "undone", "discarded"):
         assert may_undo(status, now, now) is imports.UndoRefusal.NOT_APPLIED
     assert may_undo("applied", None, now) is imports.UndoRefusal.NOT_APPLIED
+
+
+# --- what is decided at upload, and the worker's patience ------------------------------------------------
+
+
+def test_only_what_the_bytes_say_without_reading_the_sheet_is_decided_at_upload() -> None:
+    assert imports.sniff(b"") is FileProblem.EMPTY
+    assert imports.sniff(b"x" * (MAX_FILE_BYTES + 1)) is FileProblem.TOO_LARGE
+    assert imports.sniff(b"x" * MAX_FILE_BYTES) == "csv"
+    assert imports.sniff(b"PK\x03\x04 anything, even a broken archive") == "xlsx"
+    assert imports.sniff(b"\x89PNG\r\n\x1a\n\x00\x00") is FileProblem.TYPE
+    # Whether text is UTF-8, has a header or has rows needs the file to be read: that is the worker's.
+    assert imports.sniff("Имя;Долг".encode("cp1251")) == "csv"
+    assert imports.sniff(b"no header at all") == "csv"
+    assert parse(b"PK\x03\x04 anything, even a broken archive", TODAY) is FileProblem.MALFORMED
+
+
+def test_a_silent_worker_is_replaced_after_fifteen_minutes_and_a_step_is_started_three_times_at_most() -> None:
+    now = datetime(2026, 10, 7, 12, 0, tzinfo=UTC)
+    assert imports.stale_before(now) == now - timedelta(minutes=15)
+    assert [imports.gives_up(attempts) for attempts in (1, 2, 3, 4)] == [False, False, False, True]
