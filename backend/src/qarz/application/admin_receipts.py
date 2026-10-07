@@ -41,6 +41,8 @@ APPROVE_RECEIPT = admin_operation("admin.receipts.approve")
 REJECT_RECEIPT = admin_operation("admin.receipts.reject")
 
 FILE_LINK_PATH = "/files"
+# Where a decision was made: the administrator's panel, or a button in their private chat with the bot.
+PANEL, CHAT = "panel", "chat"
 _REASON_HINT = f"length must be between {MIN_REASON} and {MAX_REASON}"
 
 
@@ -201,11 +203,32 @@ class AdminReceiptService:
             raise NotFound()
         return after
 
+    async def require_waiting(self, admin_id: UUID, receipt_id: UUID) -> None:
+        """Refuse at once a receipt that does not exist or was decided, before a reason is asked for."""
+        async with self._storage.platform() as session:
+            row = await session.admin_receipt(admin_id, receipt_id, lock=False)
+        if row is None:
+            raise NotFound()
+        if row.status != SUBMITTED:
+            raise ReceiptAlreadyDecided({"status": row.status})
+
     async def approve(
-        self, admin_id: UUID, receipt_id: UUID, months: int | None, reason: str | None, request_key: str | None
+        self,
+        admin_id: UUID,
+        receipt_id: UUID,
+        months: int | None,
+        reason: str | None,
+        request_key: str | None,
+        *,
+        update_key: str | None = None,
+        via: str = PANEL,
     ) -> dict[str, Any]:
-        """Approve a waiting receipt for the months stated, or for `months` when the administrator corrects them."""
-        key = idempotency.validate_key(request_key)
+        """Approve a waiting receipt for the months stated, or for `months` when the administrator corrects them.
+
+        The chat passes `update_key`, the key it derives from the Telegram update, and `via=CHAT`; the
+        audit row says where the decision came from.
+        """
+        key = update_key if update_key is not None else idempotency.validate_key(request_key)
         why = None
         if reason is not None and " ".join(reason.split()):
             why = clean_reason(reason)
@@ -243,6 +266,7 @@ class AdminReceiptService:
                     months=paid_for,
                     reason=why,
                     detail={
+                        "via": via,
                         "months": paid_for,
                         "before": {"state": locked.state, "paid_through": _iso(locked.paid_through)},
                         "after": {"state": state, "paid_through": paid_through.isoformat()},
@@ -277,10 +301,17 @@ class AdminReceiptService:
             )
 
     async def reject(
-        self, admin_id: UUID, receipt_id: UUID, reason: str | None, request_key: str | None
+        self,
+        admin_id: UUID,
+        receipt_id: UUID,
+        reason: str | None,
+        request_key: str | None,
+        *,
+        update_key: str | None = None,
+        via: str = PANEL,
     ) -> dict[str, Any]:
         """Reject a waiting receipt. The reason is required and is told to the owner as written."""
-        key = idempotency.validate_key(request_key)
+        key = update_key if update_key is not None else idempotency.validate_key(request_key)
         why = clean_reason(reason)
         if why is None:
             raise ValidationFailed({"reason": _REASON_HINT})
@@ -293,7 +324,7 @@ class AdminReceiptService:
                 # Read for where to reach the owner; the subscription itself is not changed.
                 locked = await session.admin_lock_subscription(admin_id, row.shop_id)
                 after = await self._record(
-                    session, admin_id, row, status=REJECTED, months=None, reason=why, detail={}, now=now
+                    session, admin_id, row, status=REJECTED, months=None, reason=why, detail={"via": via}, now=now
                 )
                 if locked is not None and locked.owner_tg is not None:
                     lang = locked.owner_lang or "uz"

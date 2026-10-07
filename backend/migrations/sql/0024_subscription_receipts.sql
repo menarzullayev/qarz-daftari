@@ -26,8 +26,9 @@ ALTER TABLE admin_audit DROP CONSTRAINT admin_audit_target_type_check;
 ALTER TABLE admin_audit
   ADD CONSTRAINT admin_audit_target_type_check CHECK (target_type IN ('admin', 'shop', 'setting', 'receipt'));
 
--- One more kind of chat question: an owner who chose how many months they are paying for and is about
--- to send the receipt. The list of kinds is extended, not restated, as in 0012.
+-- Two more kinds of chat question: an owner who chose how many months they are paying for and is about
+-- to send the receipt, and an administrator writing the reason for rejecting one. The list of kinds is
+-- extended, not restated, as in 0012.
 DO $$
 DECLARE
   kinds text[];
@@ -40,7 +41,7 @@ BEGIN
     RAISE EXCEPTION 'chat_pending_kind_check was not found';
   END IF;
   SELECT array_agg(DISTINCT kind ORDER BY kind) INTO kinds
-  FROM unnest(kinds || ARRAY['sub_receipt']) AS kind;
+  FROM unnest(kinds || ARRAY['sub_receipt', 'receipt_reject']) AS kind;
   ALTER TABLE chat_pending DROP CONSTRAINT chat_pending_kind_check;
   EXECUTE format(
     'ALTER TABLE chat_pending ADD CONSTRAINT chat_pending_kind_check CHECK (kind IN (%s))',

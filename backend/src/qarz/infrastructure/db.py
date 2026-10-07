@@ -2942,6 +2942,18 @@ class PgPlatformSession:
             file=file,
         )
 
+    async def admin_has_live_session(self, user_id: UUID, now: datetime) -> bool:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT 1 FROM admin_session WHERE user_id = :user_id AND revoked_at IS NULL "
+                    "AND expires_at > :now LIMIT 1"
+                ),
+                {"user_id": user_id, "now": now},
+            )
+        ).first()
+        return row is not None
+
     async def admin_receipts(
         self, admin_id: UUID, *, status: str, after: tuple[datetime, UUID] | None, limit: int
     ) -> list[AdminReceipt]:

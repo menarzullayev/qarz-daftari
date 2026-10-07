@@ -49,6 +49,11 @@ class SubscriptionReceiptNotAllowed(AppError):
     code = "SUBSCRIPTION_RECEIPT_NOT_ALLOWED"
 
 
+def callback_data(action: str, identifier: UUID) -> str:
+    # The same format as qarz.application.chat.callback; kept here so that this module does not import the chat.
+    return f"v2:{action}:{identifier.hex}"
+
+
 def receipt_body(record: SubscriptionReceiptRecord) -> dict[str, Any]:
     return {
         "id": str(record.receipt_id),
@@ -102,9 +107,28 @@ class SubscriptionReceiptService:
         shop = "" if settings is None else settings.name
         recipients = [(str(tg_id), lang) for tg_id, lang in await session.admin_recipients() if tg_id in self._admins]
         group = platform_settings.effective(REVIEW_GROUP, await session.platform_setting(REVIEW_GROUP))
-        if isinstance(group, int) and not isinstance(group, bool):
-            recipients.append((str(group), "uz"))
+        group_chat = str(group) if isinstance(group, int) and not isinstance(group, bool) else None
+        if group_chat is not None:
+            recipients.append((group_chat, "uz"))
         for recipient, lang in recipients:
+            payload: dict[str, Any] = {}
+            if recipient != group_chat:
+                # An administrator's private chat: the two decisions as buttons. Who presses one is
+                # checked again when it is pressed (qarz.application.chat). The group gets none.
+                payload["reply_markup"] = {
+                    "inline_keyboard": [
+                        [
+                            {
+                                "text": say(lang, "receipt_approve_button"),
+                                "callback_data": callback_data("sra", record.receipt_id),
+                            },
+                            {
+                                "text": say(lang, "receipt_reject_button"),
+                                "callback_data": callback_data("srj", record.receipt_id),
+                            },
+                        ]
+                    ]
+                }
             text = say(
                 lang,
                 "a_receipt_new",
@@ -116,7 +140,7 @@ class SubscriptionReceiptService:
                 text += "\n" + say(lang, "a_receipt_copies", count=copies)
             await session.enqueue(
                 recipient=recipient,
-                payload={"text": text},
+                payload={"text": text, **payload},
                 dedupe_key=f"subreceipt:{record.receipt_id}:new:{recipient}",
             )
 

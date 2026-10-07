@@ -269,11 +269,16 @@ def test_administrators_on_the_allow_list_and_the_review_group_are_told_without_
     assert uzbek == "Yangi obuna cheki: «Shop A», 300\xa0000\xa0so'm, 3 oy. Admin panelda ko'rib chiqing."
     for text in told.values():
         assert CARD not in text and CARD[-4:] not in text
-    # Text only: the image is not forwarded anywhere.
+    # Text, and for an administrator the two buttons: the image is not forwarded anywhere, and the group
+    # gets no buttons (tests/api/test_subscription_receipts_admin_chat.py).
     payloads = owner.execute(
-        "SELECT payload FROM outbox_message WHERE dedupe_key LIKE %s", (f"subreceipt:{receipt}:new:%",)
+        "SELECT recipient, payload FROM outbox_message WHERE dedupe_key LIKE %s", (f"subreceipt:{receipt}:new:%",)
     ).fetchall()
-    assert all(set(payload[0]) == {"text"} for payload in payloads)
+    assert {recipient: set(payload) for recipient, payload in payloads} == {
+        tg(owner, world.admin): {"text", "reply_markup"},
+        tg(owner, russian): {"text", "reply_markup"},
+        str(group): {"text"},
+    }
     # The shop's own people are told nothing new by this.
     assert tg(owner, world.owner_a) not in told
 
@@ -695,6 +700,7 @@ def test_approval_extends_the_paid_period_and_tells_the_owner(
         None,
     )
     assert detail == {
+        "via": "panel",
         "stated_amount": 100_000,
         "stated_months": 1,
         "months": 1,
@@ -822,7 +828,11 @@ def test_rejection_tells_the_owner_why_and_changes_no_subscription(
     assert subscription(owner, world.shop_a) == was
     assert rows(owner, world.shop_a) == [(300_000, 3, "rejected", None, "Pul kelib tushmagan", world.admin, True)]
     assert [(row[0], row[4], row[5]) for row in audit(owner, receipt)] == [
-        ("subscription.receipt_rejected", "Pul kelib tushmagan", {"stated_amount": 300_000, "stated_months": 3})
+        (
+            "subscription.receipt_rejected",
+            "Pul kelib tushmagan",
+            {"stated_amount": 300_000, "stated_months": 3, "via": "panel"},
+        )
     ]
     after = counts(owner, world.shop_a)
     assert (after[0][0], after[1][0]) == (before[0][0] + 1, before[1][0] + 1)

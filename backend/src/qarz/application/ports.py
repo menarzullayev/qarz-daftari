@@ -1256,6 +1256,11 @@ class PlatformSession(Protocol):
 
     async def admin_shop_receipts(self, admin_id: UUID, shop_id: UUID) -> list[AdminReceiptRow]: ...
 
+    async def admin_has_live_session(self, user_id: UUID, now: datetime) -> bool:
+        """Whether the user holds an admin session that is neither revoked nor expired: the proof that
+        they passed the second factor within its lifetime. No token is involved."""
+        ...
+
     async def admin_receipts(
         self, admin_id: UUID, *, status: str, after: tuple[datetime, UUID] | None, limit: int
     ) -> list[AdminReceipt]:
