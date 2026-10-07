@@ -9,6 +9,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from qarz.application.exports import ExportService
+from qarz.application.imports import ImportService
 from qarz.application.measurement import MeasurementService
 from qarz.application.payment_notices import PaymentNoticeService
 from qarz.application.ports import Storage
@@ -37,6 +38,7 @@ class Scheduler:
         measurement: MeasurementService | None = None,
         notices: PaymentNoticeService | None = None,
         exports: ExportService | None = None,
+        imports: ImportService | None = None,
     ) -> None:
         self._storage = storage
         self._reminders = reminders
@@ -45,6 +47,7 @@ class Scheduler:
         self._measurement = measurement
         self._notices = notices
         self._exports = exports
+        self._imports = imports
         self._now = now or (lambda: datetime.now(UTC))
 
     async def tick(self) -> int:
@@ -56,6 +59,9 @@ class Scheduler:
             # what makes this safe to repeat. First, so that someone waiting for a file is not kept
             # behind the hourly work.
             await self._exports.run_pending()
+        if self._imports is not None:
+            # Likewise at every tick: a file waiting to be checked, a batch waiting to be applied or undone.
+            await self._imports.run_pending()
         for hour in hours_to_run(local.hour):
             period = f"{local.date().isoformat()}T{hour:02d}"
             async with self._storage.platform() as session:

@@ -87,6 +87,67 @@ class EntryRow:
     entry: Entry
     note: str | None
     author_id: UUID
+    # Set on an opening balance that came from an import (REQ-063).
+    import_batch_id: UUID | None = None
+
+
+@dataclass(frozen=True)
+class ImportBatchRecord:
+    """One spreadsheet import (DOM-017). The summary holds counts, codes and identifiers, never a row's content."""
+
+    batch_id: UUID
+    status: str
+    file_id: UUID | None
+    summary: dict[str, Any]
+    author_id: UUID
+    created_at: datetime
+    applied_at: datetime | None
+    plan: str | None  # the fingerprint of the preview the worker made; applying must name it
+    step_by: UUID | None  # who asked for the step the batch waits for, or for the last one done
+    queued_at: datetime | None
+
+
+@dataclass(frozen=True)
+class NewReversal:
+    """The reversal of one entry of an import, written in bulk when the import is undone."""
+
+    reversal_id: UUID
+    entry_id: UUID
+    customer_id: UUID
+    seq: int
+    amount: int
+
+
+@dataclass(frozen=True)
+class ImportCandidate:
+    """A customer of the shop that a row of an import could mean."""
+
+    customer_id: UUID
+    display_name: str
+    name_norm: str
+    phone: str | None
+    status: str
+
+
+@dataclass(frozen=True)
+class NewImportCustomer:
+    customer_id: UUID
+    display_name: str
+    name_norm: str
+    phone: str | None
+
+
+@dataclass(frozen=True)
+class NewImportEntry:
+    """One opening balance of an import, with the promise it starts with."""
+
+    entry_id: UUID
+    customer_id: UUID
+    seq: int
+    amount: int
+    note: str | None
+    promised_date: date
+    promise_actor: str
 
 
 @dataclass(frozen=True)
@@ -885,6 +946,95 @@ class TenantSession(Protocol):
         """Telegram chat and language of every administrator whose account is active and confirmed."""
         ...
 
+    async def create_import_batch(
+        self,
+        *,
+        batch_id: UUID,
+        file_id: UUID,
+        summary: dict[str, Any],
+        author_id: UUID,
+        now: datetime,
+    ) -> None:
+        """A batch that waits for the worker to check its file."""
+        ...
+
+    async def get_import_batch(self, batch_id: UUID, *, for_update: bool) -> ImportBatchRecord | None:
+        """With `for_update` the batch stays locked until the transaction ends: a step is done once."""
+        ...
+
+    async def set_import_batch(
+        self,
+        batch_id: UUID,
+        *,
+        status: str,
+        summary: dict[str, Any],
+        plan: str | None,
+        applied_at: datetime | None = None,
+        queued: tuple[UUID, datetime] | None = None,
+    ) -> None:
+        """Move the batch on. Any move ends the worker's claim on it.
+
+        `applied_at` is set only when given and never cleared. `queued` (who asked, and when) is given
+        when the new state is one the worker is to take.
+        """
+        ...
+
+    async def set_import_preview(self, batch_id: UUID, preview: dict[str, Any] | None) -> None: ...
+
+    async def import_preview(self, batch_id: UUID) -> dict[str, Any] | None: ...
+
+    async def list_import_batches(self, limit: int) -> list[ImportBatchRecord]:
+        """The shop's imports, newest first."""
+        ...
+
+    async def import_candidates(self, name_norms: list[str], phones: list[str]) -> list[ImportCandidate]:
+        """Customers, archived ones included, with one of these normalized names or phones. Oldest first."""
+        ...
+
+    async def lock_customers(self, customer_ids: list[UUID]) -> None:
+        """Lock these customer rows, always in the same order, until the transaction ends."""
+        ...
+
+    async def last_seqs(self, customer_ids: list[UUID]) -> dict[UUID, int]:
+        """The highest entry number of each account that has entries."""
+        ...
+
+    async def add_import_customers(self, customers: list[NewImportCustomer]) -> None: ...
+
+    async def add_import_entries(
+        self, batch_id: UUID, author_id: UUID, now: datetime, entries: list[NewImportEntry]
+    ) -> None:
+        """Store the opening balances of an import with their promises and one measurement row each."""
+        ...
+
+    async def customers_of_import(self, batch_id: UUID) -> list[UUID]:
+        """The customers that have an entry of the import, in identifier order."""
+        ...
+
+    async def standing_entries_of_import(self, batch_id: UUID) -> list[tuple[UUID, UUID, int]]:
+        """Entry, customer and amount of the import's entries that are not reversed, by customer and number."""
+        ...
+
+    async def add_reversals(self, author_id: UUID, now: datetime, reversals: list[NewReversal]) -> None:
+        """Store reversals in bulk, each with its activity row and its measurement row, as one by one."""
+        ...
+
+    async def close_disputes_of(self, entry_ids: list[UUID], decided_by: UUID, now: datetime) -> None:
+        """Reversing a disputed entry ends its open dispute as reversed (BR-12)."""
+        ...
+
+    async def customers_with_open_date_requests(self, customer_ids: list[UUID]) -> list[UUID]: ...
+
+    async def customers_waiting_removal(self, customer_ids: list[UUID]) -> list[UUID]: ...
+
+    async def linked_customers(self, customer_ids: list[UUID]) -> list[UUID]:
+        """Those of the customers who have an active link, and so are told of what happens on their account."""
+        ...
+
+    async def archive_customers(self, customer_ids: list[UUID]) -> int:
+        """Archive those of the customers that are active. Returns how many were."""
+        ...
+
     async def stored_object_keys(self) -> list[str]:
         """The key of every file kept for the shop, whatever its purpose."""
         ...
@@ -1076,6 +1226,11 @@ class PlatformSession(Protocol):
     async def update_seen(self, update_id: int) -> bool: ...
 
     async def shops_due_for_reminders(self, hour: int) -> list[UUID]: ...
+
+    async def claim_import_batch(self, now: datetime, stale_before: datetime) -> tuple[UUID, UUID, str, int] | None:
+        """Take one import batch that waits for the worker: the batch, its shop, the state it waits in,
+        and how many times that step has now been started."""
+        ...
 
     async def claim_export_job(self, now: datetime, stale_before: datetime) -> tuple[UUID, UUID, int] | None:
         """Take one export job to write: the job, its shop, and how many times it has now been started."""

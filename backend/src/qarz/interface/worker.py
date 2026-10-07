@@ -13,6 +13,7 @@ from aiogram import Bot
 from qarz.application.dispatch import Dispatcher
 from qarz.application.exports import ExportService
 from qarz.application.files import FileService
+from qarz.application.imports import ImportService
 from qarz.application.measurement import MeasurementService
 from qarz.application.payment_notices import PaymentNoticeService
 from qarz.application.reminders import ReminderService
@@ -51,6 +52,8 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
         notices=PaymentNoticeService(database, files),
         # Exports that were asked for are written, a few at each tick.
         exports=ExportService(database, files),
+        # Import files are checked, and confirmed imports applied and undone, a few steps at each tick.
+        imports=ImportService(database, files),
         measurement=MeasurementService(database),
     )
     next_schedule = 0.0

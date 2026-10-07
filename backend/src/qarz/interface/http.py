@@ -27,6 +27,7 @@ from qarz.application.disputes import DisputeService
 from qarz.application.errors import AppError, Unauthenticated
 from qarz.application.exports import ExportService
 from qarz.application.files import FileService
+from qarz.application.imports import ImportService
 from qarz.application.ledger_service import LedgerService
 from qarz.application.links import LinkService
 from qarz.application.online_payment import OnlinePaymentService, PaymentKeys
@@ -53,6 +54,7 @@ from qarz.interface.date_requests_api import add_date_request_routes
 from qarz.interface.disputes_api import add_dispute_routes
 from qarz.interface.errors import app_error_handler, error_response
 from qarz.interface.exports_api import add_export_routes
+from qarz.interface.imports_api import IMPORT_UPLOAD, add_import_routes
 from qarz.interface.links_api import add_link_routes
 from qarz.interface.me_api import add_me_routes
 from qarz.interface.observability import Metrics, Observe
@@ -132,7 +134,7 @@ def create_app(
         return {"status": "ok"}
 
     # An oversized body is refused before any route, handler or sign-in sees it.
-    app.add_middleware(BodyLimit, allowances=(RECEIPT_UPLOAD, SUBSCRIPTION_RECEIPT_UPLOAD))
+    app.add_middleware(BodyLimit, allowances=(RECEIPT_UPLOAD, IMPORT_UPLOAD, SUBSCRIPTION_RECEIPT_UPLOAD))
     app.add_exception_handler(AppError, app_error_handler)
 
     @app.exception_handler(RequestValidationError)
@@ -214,6 +216,7 @@ def create_app(
         add_payment_notice_routes(app, PaymentNoticeService(storage, files, now), current_user)
         add_export_routes(app, ExportService(storage, files, now), current_user)
         add_date_request_routes(app, DateRequestService(storage, now), current_user)
+        add_import_routes(app, ImportService(storage, files, now), current_user)
         add_customer_routes(app, CustomerService(storage, now), LedgerService(storage, now), current_user)
         add_catalog_routes(app, CatalogService(storage, now), current_user)
         add_account_routes(

@@ -184,3 +184,30 @@ async def date_request_decided(
         amount=amount,
         date=requested,
     )
+
+
+async def opening_imported(
+    session: TenantSession,
+    customer_id: UUID,
+    *,
+    entry_id: UUID,
+    name: str,
+    amount: int,
+    balance: int,
+    promised: date,
+) -> None:
+    """An opening balance was added to the account of a customer who is linked (REQ-063).
+
+    It can be objected to and its date moved like a credit sale's, so the message carries both buttons.
+    """
+    await _send(
+        session,
+        customer_id,
+        f"entry:{entry_id}:notify",
+        "n_opening",
+        name=name,
+        amount=amount,
+        balance=balance,
+        promised=promised,
+        dispute_entry=str(entry_id),
+    )

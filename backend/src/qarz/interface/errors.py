@@ -59,6 +59,8 @@ _STATUS = {
     "EXPORT_NOT_ALLOWED": 409,
     "EXPORT_NOT_READY": 409,
     "FILE_STORE_UNAVAILABLE": 503,
+    "IMPORT_NOT_APPLICABLE": 409,
+    "IMPORT_UNDO_REFUSED": 409,
     "SUBSCRIPTION_RECEIPT_NOT_ALLOWED": 409,
     "RECEIPT_ALREADY_DECIDED": 409,
 }
@@ -115,6 +117,8 @@ _MESSAGES = {
         "EXPORT_NOT_ALLOWED": "Eksport allaqachon tayyorlanmoqda yoki bugungi eksportlar soni tugagan.",
         "EXPORT_NOT_READY": "Bu eksport fayli hali tayyor emas yoki muddati o'tgan.",
         "FILE_STORE_UNAVAILABLE": "Fayllarni saqlash hozir ishlamayapti. Birozdan keyin qayta urinib ko'ring.",
+        "IMPORT_NOT_APPLICABLE": "Bu importni hozirgi holatida qo'llab bo'lmaydi. Ko'rib chiqishni yangilang.",
+        "IMPORT_UNDO_REFUSED": "Bu importni bekor qilib bo'lmaydi: muddat o'tgan yoki yozuvlarga to'lov qilingan.",
         "SUBSCRIPTION_RECEIPT_NOT_ALLOWED": "Ko'rib chiqilmagan cheklaringiz juda ko'p. Administrator javobini kuting.",
         "RECEIPT_ALREADY_DECIDED": "Bu chek bo'yicha qaror allaqachon qabul qilingan.",
         "ONLINE_PAY_OFF": "Onlayn to'lov hozircha yoqilmagan. Karta orqali to'lash: /obuna",
@@ -173,6 +177,8 @@ _MESSAGES = {
         "EXPORT_NOT_ALLOWED": "Выгрузка уже готовится, или на сегодня выгрузок больше нет.",
         "EXPORT_NOT_READY": "Файл этой выгрузки ещё не готов или срок его хранения истёк.",
         "FILE_STORE_UNAVAILABLE": "Хранилище файлов сейчас недоступно. Попробуйте ещё раз чуть позже.",
+        "IMPORT_NOT_APPLICABLE": "Этот импорт в его нынешнем состоянии применить нельзя. Обновите просмотр.",
+        "IMPORT_UNDO_REFUSED": "Этот импорт отменить нельзя: срок истёк или по записям уже есть оплаты.",
         "SUBSCRIPTION_RECEIPT_NOT_ALLOWED": (
             "У вас слишком много нерассмотренных чеков. Дождитесь ответа администратора."
         ),
