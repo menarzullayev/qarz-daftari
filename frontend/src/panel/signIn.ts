@@ -3,13 +3,14 @@ import { type ApiAuth, call, type Fetch, reading } from "../shared/api";
 /**
  * The web panel's session (ADR-017, backend/src/qarz/interface/auth_api.py).
  *
- * Telegram's Login Widget hands the page the person's signed data. `POST /api/v1/auth/telegram-login`
- * verifies it, sets the session as an HTTP-only cookie the page cannot read, and answers a CSRF token
+ * Telegram's Login Widget sends the browser back to the page with the person's signed data in the query
+ * string, which the page takes out of the address at once (`loginReturn.ts`).
+ * `POST /api/v1/auth/telegram-login` verifies it, sets the session as an HTTP-only cookie the page cannot read, and answers a CSRF token
  * in the body. Every later request that changes something must carry that token in `X-CSRF-Token`;
  * a cookie alone is refused. The token is kept in memory only: never in storage, never in an address.
  */
 
-/** What the widget gives its callback: the fields Telegram signed, and the signature in `hash`. */
+/** What the widget returns: the fields Telegram signed, and the signature in `hash`. */
 export type TelegramLoginData = Readonly<Record<string, string | number>>;
 
 /**

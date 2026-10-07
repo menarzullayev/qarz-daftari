@@ -2,7 +2,8 @@ import { type ComponentType, type FormEvent, type ReactNode, useCallback, useEff
 
 import { I18nProvider, useI18n } from "../i18n/I18nProvider";
 import type { Language } from "../i18n/types";
-import { readLoginData, signInPanel, signOutPanel } from "../panel/signIn";
+import { type LoginReturn, NO_RETURN } from "../panel/loginReturn";
+import { signInPanel, signOutPanel } from "../panel/signIn";
 import { type LoginWidgetProps, TelegramLogin } from "../panel/TelegramLogin";
 import { type ApiAuth, type ApiError, type Fetch, toApiError } from "../shared/api";
 import { useSubmit } from "../shared/hooks";
@@ -26,6 +27,8 @@ type AdminRootProps = {
   botUsername?: string | null;
   /** The sign-in button; tests and previews replace Telegram's with one that loads nothing. */
   LoginWidget?: ComponentType<LoginWidgetProps>;
+  /** What Telegram sent the browser back with, taken from the address when the page loaded. */
+  loginReturn?: LoginReturn;
 };
 
 const browserFetch: Fetch = (input, init) => window.fetch(input, init);
@@ -64,12 +67,14 @@ function SignIn({
   fetch,
   botUsername,
   LoginWidget,
+  takeReturn,
   expired,
   onSignedIn,
 }: {
   fetch: Fetch;
   botUsername: string | null;
   LoginWidget: ComponentType<LoginWidgetProps>;
+  takeReturn: () => LoginReturn;
   expired: boolean;
   onSignedIn: (auth: ApiAuth) => void;
 }) {
@@ -77,18 +82,20 @@ function SignIn({
   const [attempt, setAttempt] = useState<Attempt>({ status: "idle" });
   const busy = useRef(false);
 
-  const onAuth = (raw: unknown) => {
-    if (busy.current) {
+  // Runs once, when the screen appears: what Telegram sent this page back with, if it did, goes to the
+  // server. The fields are taken, so showing the screen again (after signing out) sends nothing.
+  useEffect(() => {
+    const returned = takeReturn();
+    if (returned.status === "none" || busy.current) {
       return;
     }
-    const data = readLoginData(raw);
-    if (data === null) {
+    if (returned.status === "refused") {
       setAttempt({ status: "failed", error: null });
       return;
     }
     busy.current = true;
     setAttempt({ status: "pending" });
-    signInPanel(fetch, data).then(
+    signInPanel(fetch, returned.data).then(
       (auth) => {
         busy.current = false;
         onSignedIn(auth);
@@ -98,7 +105,8 @@ function SignIn({
         setAttempt({ status: "failed", error: toApiError(error) });
       },
     );
-  };
+    // `fetch` and the two callbacks are fixed for the life of the page.
+  }, []);
 
   const refused = attempt.status === "failed" && (attempt.error === null || attempt.error.status === 401);
   return (
@@ -119,8 +127,7 @@ function SignIn({
               {refused ? <p>{t("door.signIn.refused")}</p> : null}
             </div>
           ) : null}
-          {attempt.status === "pending" ? <Loading /> : null}
-          <LoginWidget botUsername={botUsername} language={language} onAuth={onAuth} />
+          {attempt.status === "pending" ? <Loading /> : <LoginWidget botUsername={botUsername} language={language} />}
         </>
       )}
     </Door>
@@ -316,7 +323,13 @@ type Phase =
   | { kind: "door"; auth: ApiAuth; status: AuthStatus }
   | { kind: "in"; auth: ApiAuth; status: AuthStatus };
 
-function Root({ fetch = browserFetch, now = systemClock, botUsername = BOT_USERNAME, LoginWidget = TelegramLogin }: Omit<AdminRootProps, "initialLanguage">) {
+function Root({
+  fetch = browserFetch,
+  now = systemClock,
+  botUsername = BOT_USERNAME,
+  LoginWidget = TelegramLogin,
+  loginReturn = NO_RETURN,
+}: Omit<AdminRootProps, "initialLanguage">) {
   const { t } = useI18n();
   // How calls prove the session: the cookie the browser holds, and the CSRF token, which lives here in
   // memory and nowhere else. A page that is loaded again starts at sign-in.
@@ -324,6 +337,13 @@ function Root({ fetch = browserFetch, now = systemClock, botUsername = BOT_USERN
   const [checks, setChecks] = useState(0);
   const auth = "auth" in phase ? phase.auth : null;
   const recheck = useCallback(() => setChecks((count) => count + 1), []);
+  // Used once: the server accepts signed fields a single time, and they must not outlive this load.
+  const returned = useRef(loginReturn);
+  const takeReturn = useCallback(() => {
+    const taken = returned.current;
+    returned.current = NO_RETURN;
+    return taken;
+  }, []);
 
   const api = useMemo(
     () =>
@@ -392,6 +412,7 @@ function Root({ fetch = browserFetch, now = systemClock, botUsername = BOT_USERN
           fetch={fetch}
           botUsername={botUsername}
           LoginWidget={LoginWidget}
+          takeReturn={takeReturn}
           expired={phase.expired}
           onSignedIn={(signedIn) => setPhase({ kind: "checking", auth: signedIn })}
         />

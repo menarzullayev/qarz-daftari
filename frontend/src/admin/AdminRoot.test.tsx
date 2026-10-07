@@ -5,17 +5,20 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fakeServer, type Reply, type Sent } from "../testing/fakeServer";
 import { go } from "../testing/renderScreen";
 import { AdminRoot } from "./AdminRoot";
+import { type LoginReturn, NO_RETURN } from "../panel/loginReturn";
 import type { LoginWidgetProps } from "../panel/TelegramLogin";
 import { ADMIN, authBody, CSRF, LOGIN, NOW, ok, OTPAUTH, platformBody, refusal, shopBody, shopDetailBody } from "./testing";
 
-/** Stands in for Telegram's widget: one button that hands over what Telegram would. Loads nothing. */
-function StubWidget({ onAuth }: LoginWidgetProps) {
+/** Stands in for Telegram's widget: a button in its place. Loads nothing and leads nowhere. */
+function StubWidget({ botUsername }: LoginWidgetProps) {
   return (
-    <button type="button" onClick={() => onAuth(LOGIN)}>
+    <button type="button" data-bot={botUsername}>
       telegram
     </button>
   );
 }
+
+const RETURNED: LoginReturn = { status: "returned", data: LOGIN };
 
 beforeEach(() => {
   window.location.hash = "";
@@ -87,12 +90,27 @@ function backend({ auth, extra = () => null }: Options = {}) {
   return { ...server, held };
 }
 
-function start(server: ReturnType<typeof backend>, botUsername: string | null = "qarz_daftari_bot") {
-  return render(<AdminRoot initialLanguage="uz" fetch={server.fetch} botUsername={botUsername} LoginWidget={StubWidget} now={() => NOW} />);
+let loaded: { server: ReturnType<typeof backend>; botUsername: string | null } | null = null;
+
+function start(server: ReturnType<typeof backend>, botUsername: string | null = "qarz_daftari_bot", loginReturn: LoginReturn = NO_RETURN) {
+  loaded = { server, botUsername };
+  return render(
+    <AdminRoot initialLanguage="uz" fetch={server.fetch} botUsername={botUsername} LoginWidget={StubWidget} loginReturn={loginReturn} now={() => NOW} />,
+  );
 }
 
 const heading = () => screen.getByRole("heading", { level: 1 }).textContent;
-const signIn = () => fireEvent.click(screen.getByRole("button", { name: "telegram" }));
+/**
+ * The person presses the button and confirms in Telegram, and Telegram sends the browser back: the page
+ * is loaded again, this time with the signed fields taken from its address.
+ */
+function signIn() {
+  if (loaded === null) {
+    throw new Error("the page was never opened");
+  }
+  cleanup();
+  return start(loaded.server, loaded.botUsername, RETURNED);
+}
 const paths = (server: ReturnType<typeof backend>) => server.sent.map((sent) => `${sent.method} ${sent.path}`);
 const typeCode = (code: string) => {
   fireEvent.change(screen.getByLabelText("6 xonali kod"), { target: { value: code } });

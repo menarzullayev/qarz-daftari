@@ -7,7 +7,8 @@ import { createApi } from "../shared/api";
 import { fakeServer, ok, refusal, SHOP_ID } from "../testing/fakeServer";
 import { backoffice } from "./backoffice";
 import { readLoginData, signInPanel, signOutPanel } from "./signIn";
-import { TelegramLogin, WIDGET_CALLBACK, WIDGET_SRC } from "./TelegramLogin";
+import { takeLoginReturn } from "./loginReturn";
+import { authUrl, TelegramLogin, WIDGET_SRC } from "./TelegramLogin";
 import { CSRF, MANAGER_ID } from "./testing";
 
 afterEach(cleanup);
@@ -132,14 +133,13 @@ describe("the CSRF token on the panel's calls", () => {
 });
 
 describe("Telegram's sign-in button", () => {
-  const widget = (onAuth: (data: unknown) => void = () => undefined) =>
+  const widget = () =>
     render(
       <I18nProvider initialLanguage="ru">
-        <TelegramLogin botUsername="qarz_daftari_bot" language="ru" onAuth={onAuth} />
+        <TelegramLogin botUsername="qarz_daftari_bot" language="ru" />
       </I18nProvider>,
     );
   const scripts = () => [...document.querySelectorAll("script")];
-  const callback = () => (window as unknown as Record<string, ((data: unknown) => void) | undefined>)[WIDGET_CALLBACK];
 
   it("adds Telegram's own script, from telegram.org over HTTPS, for the build's bot", () => {
     widget();
@@ -151,36 +151,112 @@ describe("Telegram's sign-in button", () => {
     expect(script.async).toBe(true);
     expect(script.getAttribute("data-telegram-login")).toBe("qarz_daftari_bot");
     expect(script.getAttribute("data-lang")).toBe("ru");
-    expect(script.getAttribute("data-onauth")).toBe(`${WIDGET_CALLBACK}(user)`);
+    // Redirect mode. A callback in `data-onauth` is what Telegram's script would build with eval().
+    expect(script.getAttribute("data-auth-url")).toBe(authUrl());
+    expect(script.hasAttribute("data-onauth")).toBe(false);
+    expect(script.hasAttribute("data-onunauth")).toBe(false);
     // The widget is asked for nothing beyond identity: no permission to write to the person.
     expect(script.hasAttribute("data-request-access")).toBe(false);
     expect(screen.getByRole("group", { name: "Вход через Telegram" }).contains(script)).toBe(true);
   });
 
-  it("hands the widget's data to the caller, and takes script and callback away when the screen is left", () => {
-    const got: unknown[] = [];
-    const view = widget((data) => got.push(data));
-    callback()?.(LOGIN);
-    expect(got).toEqual([LOGIN]);
+  it("sends Telegram back to this page without its query string and fragment, and leaves no function on the page", () => {
+    expect(authUrl({ origin: "https://qarz.example.uz", pathname: "/panel/" })).toBe("https://qarz.example.uz/panel/");
+    const before = Object.keys(window);
+    const view = widget();
+    expect(Object.keys(window)).toEqual(before);
     view.unmount();
     expect(scripts()).toHaveLength(0);
-    expect(callback()).toBeUndefined();
   });
 
   it("replaces the button, not adds a second one, when the language changes", () => {
     const view = widget();
     view.rerender(
       <I18nProvider initialLanguage="ru">
-        <TelegramLogin botUsername="qarz_daftari_bot" language="uz" onAuth={() => undefined} />
+        <TelegramLogin botUsername="qarz_daftari_bot" language="uz" />
       </I18nProvider>,
     );
     expect(scripts().map((script) => script.getAttribute("data-lang"))).toEqual(["uz"]);
-    expect(callback()).toBeTypeOf("function");
   });
 
   it("says so when the script cannot be loaded", async () => {
     widget();
     scripts()[0]?.dispatchEvent(new Event("error"));
     expect((await screen.findByRole("alert")).textContent).toBe("Кнопка входа Telegram не загрузилась. Проверьте интернет и обновите страницу.");
+  });
+});
+
+describe("coming back from Telegram", () => {
+  const SITE = "https://qarz.example.uz";
+  const SIGNED = "id=123456789&first_name=Ali&username=ali&auth_date=1791270000&hash=ab12";
+
+  function page(search: string, referrer: string, hash = "") {
+    const replaced: unknown[][] = [];
+    return {
+      replaced,
+      location: { origin: SITE, pathname: "/panel/", search, hash },
+      history: { state: null, replaceState: (...args: unknown[]) => void replaced.push(args) },
+      document: { referrer },
+    };
+  }
+
+  it("takes the signed fields, every one as text, and removes them from the address in the same history entry", () => {
+    const loaded = page(`?${SIGNED}`, `${SITE}/panel/`);
+    expect(takeLoginReturn(loaded)).toEqual({
+      status: "returned",
+      data: { id: "123456789", first_name: "Ali", username: "ali", auth_date: "1791270000", hash: "ab12" },
+    });
+    expect(loaded.replaced).toEqual([[null, "", "/panel/"]]);
+  });
+
+  it("keeps a fragment that is a route, and decodes what Telegram encoded", () => {
+    const loaded = page("?id=1&first_name=Ali%20Vali&photo_url=https%3A%2F%2Ft.me%2Fi%2F1.jpg&auth_date=2&hash=ab", `${SITE}/admin/`, "#/shops");
+    expect(takeLoginReturn(loaded)).toMatchObject({ data: { first_name: "Ali Vali", photo_url: "https://t.me/i/1.jpg" } });
+    expect(loaded.replaced).toEqual([[null, "", "/panel/#/shops"]]);
+  });
+
+  it("leaves an ordinary address alone", () => {
+    for (const search of ["", "?shop=1", "?id=1&auth_date=2"]) {
+      const loaded = page(search, `${SITE}/panel/`);
+      expect(takeLoginReturn(loaded)).toEqual({ status: "none" });
+      expect(loaded.replaced).toEqual([]);
+    }
+  });
+
+  it.each([
+    ["another site", "https://evil.example/"],
+    ["a look-alike of this site", `${SITE}.evil.example/panel/`],
+    ["this site without TLS", "http://qarz.example.uz/panel/"],
+    ["nowhere: a link in a message, a typed address", ""],
+    ["something that is no address", "not a url"],
+  ])("refuses fields that arrive from %s, and still removes them from the address", (_name, referrer) => {
+    const loaded = page(`?${SIGNED}`, referrer);
+    expect(takeLoginReturn(loaded)).toEqual({ status: "refused" });
+    expect(loaded.replaced).toEqual([[null, "", "/panel/"]]);
+  });
+
+  it.each([
+    ["no identifier", "auth_date=2&hash=ab"],
+    ["no date", "id=1&hash=ab"],
+    ["an empty signature", "id=1&auth_date=2&hash="],
+    ["a field given twice", "id=1&id=2&auth_date=2&hash=ab"],
+  ])("refuses fields with %s", (_name, query) => {
+    const loaded = page(`?${query}`, `${SITE}/panel/`);
+    expect(takeLoginReturn(loaded)).toEqual({ status: "refused" });
+    expect(loaded.replaced).toHaveLength(1);
+  });
+
+  it("works on the real window: the address bar loses the query string and history gains no entry", () => {
+    const entries = window.history.length;
+    window.history.pushState(null, "", `/panel/?${SIGNED}#/reports`);
+    const pushed = window.history.length;
+    // jsdom's referrer is empty, which is a link from nowhere.
+    expect(takeLoginReturn()).toEqual({ status: "refused" });
+    expect(window.location.search).toBe("");
+    expect(window.location.href).not.toContain("hash=");
+    expect(window.location.hash).toBe("#/reports");
+    expect(window.history.length).toBe(pushed);
+    expect(pushed).toBe(entries + 1);
+    window.history.replaceState(null, "", "/");
   });
 });

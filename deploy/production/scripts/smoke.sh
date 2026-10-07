@@ -50,6 +50,10 @@ status_is() { [ "$STATUS" = "$1" ]; }
 status_is_not() { [ -n "$STATUS" ] && [ "$STATUS" != "$1" ]; }
 contains() { printf '%s' "$1" | grep -qF -- "$2"; }
 zeros() { head -c "$1" /dev/zero; }
+# A policy that is present and allows no eval(). No page needs it: the Login widget runs in its redirect
+# mode, so Telegram's script never builds a callback from text.
+no_eval() { [ -n "$1" ] && ! printf '%s' "$1" | grep -qF "unsafe-eval"; }
+refuses() { ! "$@"; }
 
 security_headers() { # the headers every answer must carry, each exactly once
   local what="$1" name
@@ -59,6 +63,7 @@ security_headers() { # the headers every answer must carry, each exactly once
   done
   check "$what: HSTS has a max-age of a year" header_has Strict-Transport-Security "max-age=31536000"
   check "$what: X-Content-Type-Options is nosniff" header_has X-Content-Type-Options "nosniff"
+  check "$what: the policy allows no eval" no_eval "$(header Content-Security-Policy)"
 }
 
 echo "smoke test of $HTTPS"
@@ -76,6 +81,8 @@ probe "$HTTP/api/v1/me"
 check "HTTP serves no API (301)" status_is 301
 
 echo "# security headers"
+check "the eval check refuses a policy that allows eval" refuses no_eval "script-src 'self' 'unsafe-eval'"
+check "the eval check refuses an answer without a policy" refuses no_eval ""
 probe "$HTTPS/api/v1/me"
 security_headers "API"
 check "API: nothing may frame it" header_has Content-Security-Policy "frame-ancestors 'none'"
@@ -94,7 +101,6 @@ probe "$HTTPS/app/"
 security_headers "/app/"
 check "/app/: Telegram's web client may frame it" header_has Content-Security-Policy "frame-ancestors https://web.telegram.org"
 check "/app/: no X-Frame-Options (frame-ancestors decides)" header_absent X-Frame-Options
-check "/app/: no eval" bash -c '! printf "%s" "$1" | grep -q unsafe-eval' _ "$(header Content-Security-Policy)"
 check "/app/: HTML is not cached" header_has Cache-Control "no-store"
 
 echo "# front-end entries"
@@ -108,6 +114,7 @@ for entry in app panel admin; do
   probe "$HTTPS${asset:-/assets/none}"
   check "/$entry/ script ${asset:-(none found)} answers 200" status_is 200
   check "/$entry/ script is cached as immutable" header_has Cache-Control "immutable"
+  check "/$entry/ script: the policy allows no eval" no_eval "$(header Content-Security-Policy)"
   probe "$HTTPS/$entry/no/such/page"
   check "/$entry/ falls back to its page for an unknown path" status_is 200
 done

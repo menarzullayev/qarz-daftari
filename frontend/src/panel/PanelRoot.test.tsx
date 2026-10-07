@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { Role } from "../shared/navigation";
@@ -23,9 +24,9 @@ import {
   subscriptionBody,
 } from "../testing/fakeServer";
 import { go } from "../testing/renderScreen";
+import { type LoginReturn, NO_RETURN } from "./loginReturn";
 import { PanelRoot } from "./PanelRoot";
 import type { LoginWidgetProps } from "./TelegramLogin";
-import { WIDGET_CALLBACK } from "./TelegramLogin";
 import { CSRF, MANAGER_ID, NO_DELETION, OTHER_SHOP, OWNER_ID, PENDING_DELETION, setWidth, STAFF, transferBody } from "./testing";
 
 const WIDE = 1280;
@@ -41,14 +42,16 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-/** Stands in for Telegram's widget: one button that hands over what Telegram would. Loads nothing. */
-function StubWidget({ botUsername, onAuth }: LoginWidgetProps) {
+/** Stands in for Telegram's widget: a button in its place. Loads nothing and leads nowhere. */
+function StubWidget({ botUsername }: LoginWidgetProps) {
   return (
-    <button type="button" data-bot={botUsername} onClick={() => onAuth(LOGIN)}>
+    <button type="button" data-bot={botUsername}>
       telegram
     </button>
   );
 }
+
+const RETURNED: LoginReturn = { status: "returned", data: LOGIN };
 
 type Options = {
   role?: Role;
@@ -147,22 +150,42 @@ function backend({ role = "owner", shops = 1, transfer = null, deletion = NO_DEL
   return { ...server, held };
 }
 
-function start(server: ReturnType<typeof backend>, botUsername: string | null = "qarz_daftari_bot") {
+let loaded: { server: ReturnType<typeof backend>; botUsername: string | null } | null = null;
+
+function start(server: ReturnType<typeof backend>, botUsername: string | null = "qarz_daftari_bot", loginReturn: LoginReturn = NO_RETURN) {
+  loaded = { server, botUsername };
   return render(
-    <PanelRoot initialLanguage="uz" fetch={server.fetch} botUsername={botUsername} LoginWidget={StubWidget} now={() => NOON} />,
+    <PanelRoot
+      initialLanguage="uz"
+      fetch={server.fetch}
+      botUsername={botUsername}
+      LoginWidget={StubWidget}
+      loginReturn={loginReturn}
+      now={() => NOON}
+    />,
   );
 }
 
 const heading = () => screen.getByRole("heading", { level: 1 }).textContent;
-const signIn = () => fireEvent.click(screen.getByRole("button", { name: "telegram" }));
+/**
+ * The person presses the button and confirms in Telegram, and Telegram sends the browser back: the page
+ * is loaded again, this time with the signed fields taken from its address.
+ */
+function signIn(loginReturn: LoginReturn = RETURNED) {
+  if (loaded === null) {
+    throw new Error("the page was never opened");
+  }
+  cleanup();
+  return start(loaded.server, loaded.botUsername, loginReturn);
+}
 const mainNav = () => screen.getByRole("navigation", { name: "Asosiy menyu" });
 const navLinks = () => within(mainNav()).getAllByRole("link").map((link) => link.textContent);
 const paths = (server: ReturnType<typeof backend>) => server.sent.map((sent) => sent.path);
 
 /** Signs in and waits for the overview of the active shop. */
 async function open(server: ReturnType<typeof backend>) {
-  const view = start(server);
-  signIn();
+  start(server);
+  const view = signIn();
   await screen.findAllByText("Jami qarz");
   return view;
 }
@@ -195,11 +218,15 @@ describe("the sign-in screen", () => {
     const script = document.querySelector("script");
     expect(script?.src.startsWith("https://telegram.org/js/telegram-widget.js")).toBe(true);
     expect(script?.getAttribute("data-telegram-login")).toBe("qarz_daftari_bot");
-    const callback = (window as unknown as Record<string, (data: unknown) => void>)[WIDGET_CALLBACK];
-    callback?.(LOGIN);
+    // Redirect mode: no callback for Telegram's script to build with eval(), and none left on the page.
+    expect(script?.getAttribute("data-auth-url")).toBe(window.location.origin + window.location.pathname);
+    expect(script?.hasAttribute("data-onauth")).toBe(false);
+    cleanup();
+    render(<PanelRoot initialLanguage="uz" fetch={server.fetch} botUsername="qarz_daftari_bot" loginReturn={RETURNED} now={() => NOON} />);
+    // While the returned fields are with the server, and after, Telegram's script is not on the page.
+    expect(document.querySelector("script")).toBeNull();
     await screen.findByText("Jami qarz");
     expect(document.querySelector("script")).toBeNull();
-    expect((window as unknown as Record<string, unknown>)[WIDGET_CALLBACK]).toBeUndefined();
   });
 
   it("posts the widget's data once, then loads the workspace with the cookie alone", async () => {
@@ -237,15 +264,7 @@ describe("the sign-in screen", () => {
 
   it("sends nothing when what arrives is not Telegram's data, and says to press again", async () => {
     const server = backend();
-    function Broken({ onAuth }: LoginWidgetProps) {
-      return (
-        <button type="button" onClick={() => onAuth({ id: 1 })}>
-          telegram
-        </button>
-      );
-    }
-    render(<PanelRoot initialLanguage="uz" fetch={server.fetch} botUsername="qarz_daftari_bot" LoginWidget={Broken} />);
-    signIn();
+    start(server, "qarz_daftari_bot", { status: "refused" });
     expect((await screen.findByRole("alert")).textContent).toBe("Telegram ma'lumotlari qabul qilinmadi. Kirish tugmasini qayta bosing.");
     expect(server.sent).toHaveLength(0);
     expect(heading()).toBe("Panelga kirish");
@@ -278,12 +297,24 @@ describe("the sign-in screen", () => {
     expect(alert.textContent).not.toContain("qabul qilinmadi");
   });
 
-  it("signs in once when the widget calls back twice", async () => {
+  it("posts the returned fields once, although React's strict mode runs every effect twice", async () => {
     const server = backend();
-    start(server);
-    signIn();
-    signIn();
-    await screen.findByText("Jami qarz");
+    render(
+      <StrictMode>
+        <PanelRoot initialLanguage="uz" fetch={server.fetch} botUsername="qarz_daftari_bot" LoginWidget={StubWidget} loginReturn={RETURNED} now={() => NOON} />
+      </StrictMode>,
+    );
+    await screen.findAllByText("Jami qarz");
+    expect(paths(server).filter((path) => path === "/api/v1/auth/telegram-login")).toHaveLength(1);
+  });
+
+  it("does not send the fields again when the sign-in screen comes back after signing out", async () => {
+    const server = backend();
+    await open(server);
+    fireEvent.click(screen.getAllByRole("button", { name: "Chiqish" })[0] as HTMLElement);
+    expect(await screen.findByRole("heading", { level: 1, name: "Panelga kirish" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "telegram" })).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 20));
     expect(paths(server).filter((path) => path === "/api/v1/auth/telegram-login")).toHaveLength(1);
   });
 });
