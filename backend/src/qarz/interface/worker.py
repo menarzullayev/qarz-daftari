@@ -55,6 +55,8 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
         # Import files are checked, and confirmed imports applied and undone, a few steps at each tick.
         imports=ImportService(database, files),
         measurement=MeasurementService(database),
+        # Used sign-in data past its expiry and sessions that expired or were revoked are deleted.
+        sign_in_cleanup=True,
     )
     next_schedule = 0.0
     try:

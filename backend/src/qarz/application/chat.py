@@ -46,7 +46,7 @@ from qarz.application.payment_notices import ACCEPT_NOTICE, DECLINE_NOTICE, Paym
 from qarz.application.payment_notices import accept_in as accept_notice_in
 from qarz.application.payment_notices import decline_in as decline_notice_in
 from qarz.application.ports import CustomerAccount, Membership, MyShop, PlatformSession, Storage, TenantSession
-from qarz.application.shops import ShopService, require_member
+from qarz.application.shops import ShopLimitReached, ShopService, require_member
 from qarz.application.staff import StaffService, token_hash
 from qarz.application.subscription import SubscriptionService
 from qarz.application.subscription_receipts import REVIEW_GROUP, SubscriptionReceiptService
@@ -1323,9 +1323,17 @@ class ChatService:
         except ValidationFailed:
             await replies.send(say(incoming.lang, "shop_name_invalid"))
             return
+        except ShopLimitReached:
+            # Nothing to wait for any more: the name was not the problem.
+            await session.drop_pending(incoming.user_id, "shop_name")
+            await replies.send(say(incoming.lang, "shop_limit_reached"))
+            return
         await session.drop_pending(incoming.user_id, "shop_name")
         await session.set_active_shop(incoming.user_id, UUID(body["id"]))
-        await replies.send(say(incoming.lang, "shop_created", shop=body["name"]))
+        # A person's later shops start without a trial, and a shop without one cannot record credit yet:
+        # saying "you can write debts now" would be untrue.
+        opened = "shop_created_limited" if body.get("subscription_state") == "limited" else "shop_created"
+        await replies.send(say(incoming.lang, opened, shop=body["name"]))
 
     async def _join(self, session: PlatformSession, incoming: Incoming, replies: Replies, token: str) -> None:
         try:

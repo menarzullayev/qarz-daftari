@@ -629,6 +629,11 @@ class TenantSession(Protocol):
         self, *, membership_id: UUID, action: str, subject_type: str, subject_id: UUID
     ) -> None: ...
 
+    async def claim_owned_shop(self, user_id: UUID, *, wants_trial: bool) -> str:
+        """Count the person's shops under a lock held to the end of the transaction, and use up their
+        one trial if it is asked for and still unused. 'refused', 'trial' or 'limited'."""
+        ...
+
     async def create_shop(self, *, name: str, lang: str) -> ShopSettings: ...
 
     async def add_member(self, *, user_id: UUID, role: Role) -> UUID: ...
@@ -1276,6 +1281,15 @@ class PlatformSession(Protocol):
 
     async def finish_job(self, job: str, period: str) -> None: ...
 
+    async def use_signed_data(self, payload_hash: bytes, expires_at: datetime) -> bool:
+        """Remember that this signed sign-in payload was accepted. False when it already had been."""
+        ...
+
+    async def purge_expired_sign_ins(self) -> int:
+        """Delete sign-in records past their expiry, sessions and administrator sessions that expired
+        or were revoked, and old administrator request keys. Returns how many rows went."""
+        ...
+
     async def language_of_telegram_user(self, tg_id: int) -> str | None: ...
 
     async def ensure_user(self, tg_id: int, lang: str) -> UUID:
@@ -1460,7 +1474,12 @@ class PlatformSession(Protocol):
         """Every stored setting: key -> (value, who changed it last, when)."""
         ...
 
-    async def set_platform_setting(self, key: str, value: Any, *, updated_by: str, now: datetime) -> None: ...
+    async def set_platform_setting(
+        self, key: str, value: Any, *, admin_id: UUID, reason: str | None, detail: dict[str, Any], now: datetime
+    ) -> bool:
+        """Store a setting and its audit row together. False, and nothing written, when the database
+        does not find an active, confirmed administrator with an open session."""
+        ...
 
     async def set_active_shop(self, user_id: UUID, shop_id: UUID) -> None: ...
 

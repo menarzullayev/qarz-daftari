@@ -42,6 +42,7 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
         "VALIDATION",  # said with the field's own hint
         "IDEMPOTENCY_KEY_REUSED",  # keys come from update identifiers, never from a person
         "ALREADY_MEMBER",  # said as "already_member"
+        "SHOP_LIMIT_REACHED",  # said as "shop_limit_reached" where a shop is opened
         "OWNER_MEMBERSHIP_FIXED",
         "TRANSFER_PENDING",
         "TRANSFER_TARGET_INVALID",

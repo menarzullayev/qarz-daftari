@@ -30,6 +30,14 @@ UZ = {
     "open_shop": "🏪 Do'kon ochish",
     "ask_shop_name": "Do'koningiz nomini yozing (80 belgigacha).",
     "shop_name_invalid": "Do'kon nomi 1 dan 80 belgigacha bo'lishi kerak. Qaytadan yozing.",
+    "shop_created_limited": (
+        "✅ «{shop}» do'koni ochildi.\n\nBepul sinov muddati faqat birinchi do'konga beriladi. "
+        "Bu do'konda nasiya yozish uchun obuna to'lovini qiling."
+    ),
+    "shop_limit_reached": (
+        "Sizda allaqachon 5 ta do'kon bor. Bir kishi ko'pi bilan 5 ta do'kon ocha oladi. "
+        "Yangisini ochish uchun avval keraksiz do'konni o'chiring."
+    ),
     "shop_created": "✅ «{shop}» do'koni ochildi.\n\nEndi nasiya yozishingiz mumkin, masalan: Ali 45000",
     "lang_prompt": "Tilni tanlang:",
     "lang_set": "Til o'zgartirildi: o'zbekcha.",
@@ -345,6 +353,14 @@ RU = {
     "open_shop": "🏪 Открыть магазин",
     "ask_shop_name": "Напишите название вашего магазина (до 80 символов).",
     "shop_name_invalid": "Название магазина должно быть от 1 до 80 символов. Напишите ещё раз.",
+    "shop_created_limited": (
+        "✅ Магазин «{shop}» открыт.\n\nБесплатный пробный период даётся только первому магазину. "
+        "Чтобы записывать долги в этом магазине, оплатите подписку."
+    ),
+    "shop_limit_reached": (
+        "У вас уже 5 магазинов. Один человек может открыть не больше 5 магазинов. "
+        "Чтобы открыть новый, сначала удалите ненужный."
+    ),
     "shop_created": "✅ Магазин «{shop}» открыт.\n\nТеперь можно записывать долги, например: Али 45000",
     "lang_prompt": "Выберите язык:",
     "lang_set": "Язык изменён: русский.",

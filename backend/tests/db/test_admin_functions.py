@@ -38,6 +38,8 @@ FUNCTIONS = [
     "admin_receipt_copies(uuid, uuid)",
     "admin_decide_receipt(uuid, uuid, text, smallint, text, timestamptz)",
     "admin_shop_activity(uuid, uuid, text, uuid)",
+    # Settings (migration 0027); what it does is tested in test_security_review_db.py.
+    "admin_set_platform_setting(uuid, text, jsonb, text, jsonb, timestamptz)",
 ]
 SEARCH = "SELECT * FROM admin_shop_search(%s, %s, %s, %s, %s, %s, %s, %s)"
 SEARCH_COLUMNS = [
@@ -456,8 +458,10 @@ def test_the_grants_on_the_new_tables_are_exactly_these(owner: psycopg.Connectio
         granted.setdefault(table, set()).add(privilege)
     assert granted == {
         "admin_audit": {"SELECT", "INSERT"},
-        "admin_session": {"SELECT", "INSERT", "UPDATE"},
-        "admin_request_key": {"SELECT", "INSERT", "DELETE"},
+        # Narrowed by migration 0027: only revoked_at of a session may be updated (a column right, not
+        # listed here), and old request keys are removed by purge_expired_sign_ins.
+        "admin_session": {"SELECT", "INSERT"},
+        "admin_request_key": {"SELECT", "INSERT"},
     }
 
 

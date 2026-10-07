@@ -25,6 +25,7 @@ SUBSCRIPTION_HOUR = 9
 ERASURE = "erasure"
 MEASURE_WEEK = "measure_week"
 RECEIPTS = "receipts"
+SIGN_IN_CLEANUP = "sign_in_cleanup"
 
 
 class Scheduler:
@@ -39,6 +40,7 @@ class Scheduler:
         notices: PaymentNoticeService | None = None,
         exports: ExportService | None = None,
         imports: ImportService | None = None,
+        sign_in_cleanup: bool = False,
     ) -> None:
         self._storage = storage
         self._reminders = reminders
@@ -48,6 +50,7 @@ class Scheduler:
         self._notices = notices
         self._exports = exports
         self._imports = imports
+        self._sign_in_cleanup = sign_in_cleanup
         self._now = now or (lambda: datetime.now(UTC))
 
     async def tick(self) -> int:
@@ -78,6 +81,14 @@ class Scheduler:
                 await self._deletion.erase_due()
                 async with self._storage.platform() as session:
                     await session.finish_job(ERASURE, period)
+        # Sign-in records past their expiry, sessions that expired or were revoked, the administrator's
+        # too (security review, finding 9). Once an hour; deleting what is already gone is safe to repeat.
+        if self._sign_in_cleanup:
+            period = f"{local.date().isoformat()}T{local.hour:02d}"
+            async with self._storage.platform() as session:
+                if not await session.job_done(SIGN_IN_CLEANUP, period):
+                    await session.purge_expired_sign_ins()
+                    await session.finish_job(SIGN_IN_CLEANUP, period)
         if self._notices is not None:
             # Expiry of payment notices and deletion of receipts past their retention (those of payment
             # notices after 90 days, those of the subscription after 3 years), once an hour.
