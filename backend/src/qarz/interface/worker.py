@@ -11,6 +11,7 @@ import signal
 from aiogram import Bot
 
 from qarz.application.dispatch import Dispatcher
+from qarz.application.exports import ExportService
 from qarz.application.files import FileService
 from qarz.application.measurement import MeasurementService
 from qarz.application.payment_notices import PaymentNoticeService
@@ -18,7 +19,7 @@ from qarz.application.reminders import ReminderService
 from qarz.application.scheduler import Scheduler
 from qarz.application.shop_deletion import ShopDeletionService
 from qarz.application.subscription import SubscriptionService
-from qarz.domain.files import MAX_FILE_BYTES
+from qarz.domain.exports import MAX_EXPORT_BYTES
 from qarz.infrastructure.db import Database
 from qarz.infrastructure.file_store import build_file_store
 from qarz.infrastructure.settings import Settings
@@ -38,7 +39,8 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
     bot = Bot(settings.bot_token)
     # No SMS provider is chosen yet: the SMS path exists, is switched off, and refuses to send.
     dispatcher = Dispatcher(database, ChannelSender(telegram=TelegramSender(bot), sms=NoSmsProvider()))
-    file_store = build_file_store(settings, max_object_bytes=MAX_FILE_BYTES)
+    file_store = build_file_store(settings, max_object_bytes=MAX_EXPORT_BYTES)
+    files = FileService(database, file_store)
     scheduler = Scheduler(
         database,
         ReminderService(database),
@@ -46,7 +48,9 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
         # Erasing a shop deletes its receipts from the file store too.
         deletion=ShopDeletionService(database, files=file_store),
         # Stale payment notices are marked expired and receipts past their retention are deleted.
-        notices=PaymentNoticeService(database, FileService(database, file_store)),
+        notices=PaymentNoticeService(database, files),
+        # Exports that were asked for are written, a few at each tick.
+        exports=ExportService(database, files),
         measurement=MeasurementService(database),
     )
     next_schedule = 0.0

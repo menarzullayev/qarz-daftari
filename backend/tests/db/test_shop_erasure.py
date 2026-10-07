@@ -61,6 +61,10 @@ def fill(owner: psycopg.Connection, shop: Shop) -> uuid.UUID:
             (shop.shop_id, shop.customer_id),
         ),
         (
+            "INSERT INTO export_job (id, shop_id, requested_by) VALUES (gen_random_uuid(), %s, %s)",
+            (shop.shop_id, shop.member_id),
+        ),
+        (
             "INSERT INTO removal_request (id, shop_id, customer_id, status) "
             "VALUES (gen_random_uuid(), %s, %s, 'waiting')",
             (shop.shop_id, shop.customer_id),

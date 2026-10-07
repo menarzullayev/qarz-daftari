@@ -260,6 +260,12 @@ UZ = {
     ),
     "PAYMENT_NOTICE_NOT_OPEN": "Bu to'lov xabari allaqachon ko'rib chiqilgan yoki muddati o'tgan.",
     "FILE_STORE_UNAVAILABLE": "Fayllarni saqlash hozir ishlamayapti. Birozdan keyin qayta urinib ko'ring.",
+    "export_ready": (
+        "✅ «{shop}» do'konining eksporti tayyor. Uni ilovaning eksport bo'limidan yuklab oling; fayl 7 kun saqlanadi."
+    ),
+    "export_failed": "«{shop}» do'konining eksportini tayyorlab bo'lmadi. Birozdan keyin qaytadan so'rang.",
+    "EXPORT_NOT_ALLOWED": "Eksport allaqachon tayyorlanmoqda yoki bugungi eksportlar soni tugagan.",
+    "EXPORT_NOT_READY": "Bu eksport fayli hali tayyor emas yoki muddati o'tgan.",
     "currency": "so'm",
 }
 
@@ -509,6 +515,12 @@ RU = {
     ),
     "PAYMENT_NOTICE_NOT_OPEN": "Это сообщение об оплате уже рассмотрено или его срок истёк.",
     "FILE_STORE_UNAVAILABLE": "Хранилище файлов сейчас недоступно. Попробуйте ещё раз чуть позже.",
+    "export_ready": (
+        "✅ Выгрузка магазина «{shop}» готова. Скачайте её в разделе выгрузок приложения; файл хранится 7 дней."
+    ),
+    "export_failed": "Не удалось подготовить выгрузку магазина «{shop}». Запросите её ещё раз чуть позже.",
+    "EXPORT_NOT_ALLOWED": "Выгрузка уже готовится, или на сегодня выгрузок больше нет.",
+    "EXPORT_NOT_READY": "Файл этой выгрузки ещё не готов или срок его хранения истёк.",
     "currency": "сум",
 }
 

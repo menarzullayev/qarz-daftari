@@ -307,6 +307,61 @@ class PaymentNoticeRecord:
 
 
 @dataclass(frozen=True)
+class ExportJobRecord:
+    job_id: UUID
+    requested_by: UUID
+    status: str
+    file_id: UUID | None
+    error: str | None
+    attempts: int
+    row_count: int | None
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    file_delete_after: datetime | None  # when the workbook is deleted; None when there is none
+
+
+@dataclass(frozen=True)
+class ExportEntry:
+    """One ledger entry as the export writes it."""
+
+    entry_id: UUID
+    customer_id: UUID
+    customer_name: str
+    seq: int
+    kind: str
+    amount: int
+    note: str | None
+    reverses_id: UUID | None
+    reversed_kind: str | None  # the kind of the entry a reversal reverses
+    is_reversed: bool
+    promised_date: date | None
+    author_id: UUID
+    author_role: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class ExportPromise:
+    entry_id: UUID
+    promised_date: date
+    reason: str | None
+    actor: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class ExportCustomer:
+    customer_id: UUID
+    display_name: str
+    name_norm: str
+    phone: str | None
+    status: str
+    credit_limit: int | None
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class WaitingLink:
     """Someone who started the bot from the counter code and agreed, not yet attached to a record."""
 
@@ -803,6 +858,55 @@ class TenantSession(Protocol):
         """Mark as expired the waiting notices sent before `before`; their receipts get the given deadline."""
         ...
 
+    async def lock_exports(self) -> None:
+        """Let one request at a time decide whether the shop may start an export, until the transaction ends."""
+        ...
+
+    async def add_export_job(self, *, job_id: UUID, requested_by: UUID, now: datetime) -> ExportJobRecord: ...
+
+    async def get_export_job(self, job_id: UUID) -> ExportJobRecord | None: ...
+
+    async def export_jobs(self, limit: int) -> list[ExportJobRecord]:
+        """Newest first."""
+        ...
+
+    async def export_in_progress(self) -> bool: ...
+
+    async def exports_since(self, start: datetime) -> int:
+        """Exports of the shop asked for at or after `start`, failed ones left out."""
+        ...
+
+    async def finish_export_job(
+        self,
+        job_id: UUID,
+        *,
+        status: str,
+        file_id: UUID | None,
+        error: str | None,
+        row_count: int | None,
+        now: datetime,
+    ) -> bool:
+        """Close a job that is running. False when it is not running any more; nothing is changed then."""
+        ...
+
+    async def member_recipient(self, membership_id: UUID) -> tuple[int, str] | None:
+        """Telegram chat and language of an active member; None when there is nobody to tell."""
+        ...
+
+    async def export_entries(
+        self, *, until: datetime, after: tuple[datetime, UUID] | None, limit: int
+    ) -> list[ExportEntry]:
+        """Ledger entries recorded up to `until`, oldest first, after the given position."""
+        ...
+
+    async def export_promises(self, entry_ids: list[UUID]) -> list[ExportPromise]:
+        """Every promise ever set on the given entries, by entry and then oldest first."""
+        ...
+
+    async def export_customers(self, *, after: UUID | None, limit: int) -> list[ExportCustomer]:
+        """Customers of the shop in identifier order, after the given one."""
+        ...
+
     async def staff_recipients(self, roles: list[str]) -> list[tuple[int, str]]:
         """Telegram chat and language of each active member holding one of the roles."""
         ...
@@ -906,6 +1010,10 @@ class PlatformSession(Protocol):
     async def update_seen(self, update_id: int) -> bool: ...
 
     async def shops_due_for_reminders(self, hour: int) -> list[UUID]: ...
+
+    async def claim_export_job(self, now: datetime, stale_before: datetime) -> tuple[UUID, UUID, int] | None:
+        """Take one export job to write: the job, its shop, and how many times it has now been started."""
+        ...
 
     async def shops_with_receipt_work(self, stale_before: datetime, now: datetime) -> list[UUID]:
         """Shops with a waiting notice sent before `stale_before` or a receipt due for deletion at `now`."""
