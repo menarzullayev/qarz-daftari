@@ -788,6 +788,11 @@ class PlatformSession(Protocol):
 
     async def subscriptions_to_review(self, today: date) -> list[SubscriptionToReview]: ...
 
+    async def health_figures(self) -> dict[str, dict[str, float]]:
+        """Numbers for monitoring: how long the oldest due message of each channel has waited, in
+        seconds, and how long ago each scheduled job last finished. No identifiers."""
+        ...
+
     async def online_payment_shop(self, order_id: UUID) -> UUID | None:
         """The shop an order belongs to; nothing else about it."""
         ...
@@ -886,7 +891,11 @@ class PlatformSession(Protocol):
 
     async def admin_stored_response(self, admin_id: UUID, key: str) -> dict[str, Any] | None: ...
 
-    async def store_admin_response(self, admin_id: UUID, key: str, response: dict[str, Any]) -> None: ...
+    async def store_admin_response(
+        self, admin_id: UUID, key: str, response: dict[str, Any], about_shop: UUID | None
+    ) -> None:
+        """`about_shop` names the shop the request was about; the row is erased with that shop."""
+        ...
 
     async def admin_shop_search(
         self,

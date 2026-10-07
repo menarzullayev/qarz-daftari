@@ -1,0 +1,19 @@
+{
+  "event_id": "c2f0fd451f3f",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-07T00:17:40+00:00",
+  "path": ".project-alpha\\decisions\\DEC-041.md",
+  "stage": "04-prd",
+  "title": "Date change request choices",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-041",
+  "decision": "The seven days of BR-15 run from the moment of the decline; an accepted request's promise is recorded as made at the customer's request with the customer's reason; a direct change by the shop to the requested date or later closes an open request as accepted, and one tap in chat decides; fully paid is judged by the oldest-first allocation; a request is refused in a suspended shop; a column decline_reason was added to the approved table; nobody is told when a request expires",
+  "context": "Decided by an agent during the autonomous build under DEC-020; implemented and awaiting the founder's review",
+  "chosen_option": "Choices as listed in pull request 38",
+  "rationale": "BR-15 names the wait and the single open request but not from when the wait is counted or what a direct change does to an open request",
+  "impact": "Medium",
+  "reversibility": "High",
+  "evidence": "EVID-058",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

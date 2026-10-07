@@ -19,7 +19,8 @@ class Settings(BaseSettings):
     # Key that encrypts secrets stored in the database (the administrators' second-factor secrets):
     # 32 random bytes, base64. Without it the administrator's API is not served.
     secrets_key: str = Field(default="", repr=False)
-
+    # Bearer token the monitoring system sends to read /metrics. Empty: the endpoint is not served.
+    metrics_token: str = ""
     # Online payment of the subscription. Empty until provider contracts exist; even when set, the
     # platform switch `online_pay_on` decides, and it is off unless an administrator turns it on.
     payme_merchant_id: str = ""

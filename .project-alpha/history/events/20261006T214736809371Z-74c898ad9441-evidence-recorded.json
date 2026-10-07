@@ -1,0 +1,15 @@
+{
+  "event_id": "74c898ad9441",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T21:47:36+00:00",
+  "path": "docs\\evidence\\EVID-055.md",
+  "stage": "09-development-plan",
+  "title": "Deleting a shop passes CI on main",
+  "claim": "Asking for and cancelling the deletion of a shop, and the erasure of all its data after 30 days by a database function tested directly (story S18.4, pull request 33) passed CI on main in the run for commit 717fb6f. Objects in the file store are not deleted yet because the application has no file store yet",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/33 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37532163589",
+  "date": "2026-10-07",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-055"
+}

@@ -52,9 +52,13 @@ CREATE TABLE admin_request_key (
   admin_id    uuid NOT NULL REFERENCES app_user(id),
   key         text NOT NULL,
   response    jsonb NOT NULL,
+  -- The shop a request was about, if any: its stored answer shows the shop's name and its owner's
+  -- Telegram identifier, and is erased with the shop. Not named shop_id: a platform table, no tenant policy.
+  about_shop  uuid,
   created_at  timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (admin_id, key)
 );
+CREATE INDEX admin_request_key_shop ON admin_request_key (about_shop) WHERE about_shop IS NOT NULL;
 REVOKE ALL ON admin_request_key FROM qd_app;
 GRANT SELECT, INSERT, DELETE ON admin_request_key TO qd_app;
 
@@ -186,3 +190,70 @@ GRANT EXECUTE ON FUNCTION admin_shop_search(uuid, date, text, text, uuid, timest
 GRANT EXECUTE ON FUNCTION admin_shop_receipts(uuid, uuid) TO qd_app;
 GRANT EXECUTE ON FUNCTION admin_lock_subscription(uuid, uuid) TO qd_app;
 GRANT EXECUTE ON FUNCTION admin_store_subscription(uuid, uuid, text, date, date, text, timestamptz) TO qd_app;
+
+-- Erasing a shop erases the stored answers of administrator requests about it too: the function of
+-- 0019 with one more table. The audit keeps its rows; they name the shop only by its identifier.
+CREATE OR REPLACE FUNCTION erase_shop(p_shop_id uuid) RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  people uuid[];
+  person uuid;
+BEGIN
+  PERFORM 1 FROM shop
+    WHERE id = p_shop_id AND status = 'deletion_pending' AND deletion_due IS NOT NULL AND deletion_due <= now()
+    FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN false;
+  END IF;
+
+  -- Everyone the shop knew: its staff and the people linked as its customers.
+  SELECT array_agg(DISTINCT user_id) INTO people FROM (
+    SELECT user_id FROM membership WHERE shop_id = p_shop_id
+    UNION
+    SELECT user_id FROM customer_link WHERE shop_id = p_shop_id AND user_id IS NOT NULL
+  ) known;
+
+  -- Children before parents. Every table that carries a shop identifier is listed here;
+  -- tests/db/test_shop_erasure.py fails when one is added and not listed.
+  DELETE FROM goods_line WHERE shop_id = p_shop_id;
+  DELETE FROM promise WHERE shop_id = p_shop_id;
+  DELETE FROM dispute WHERE shop_id = p_shop_id;
+  DELETE FROM date_change_request WHERE shop_id = p_shop_id;
+  DELETE FROM payment_notice WHERE shop_id = p_shop_id;
+  DELETE FROM reminder WHERE shop_id = p_shop_id;
+  DELETE FROM removal_request WHERE shop_id = p_shop_id;
+  DELETE FROM ledger_entry WHERE shop_id = p_shop_id;
+  DELETE FROM import_batch WHERE shop_id = p_shop_id;
+  DELETE FROM customer_link WHERE shop_id = p_shop_id;
+  DELETE FROM customer WHERE shop_id = p_shop_id;
+  DELETE FROM catalog_item WHERE shop_id = p_shop_id;
+  DELETE FROM subscription_receipt WHERE shop_id = p_shop_id;
+  DELETE FROM stored_file WHERE shop_id = p_shop_id;
+  DELETE FROM support_access WHERE shop_id = p_shop_id;
+  DELETE FROM ownership_transfer WHERE shop_id = p_shop_id;
+  DELETE FROM invitation WHERE shop_id = p_shop_id;
+  DELETE FROM activity WHERE shop_id = p_shop_id;
+  DELETE FROM request_key WHERE shop_id = p_shop_id;
+  DELETE FROM admin_request_key WHERE about_shop = p_shop_id;
+  DELETE FROM outbox_message WHERE shop_id = p_shop_id;
+  DELETE FROM online_payment WHERE shop_id = p_shop_id;
+  DELETE FROM subscription WHERE shop_id = p_shop_id;
+  DELETE FROM membership WHERE shop_id = p_shop_id;
+
+  UPDATE app_user SET active_shop = NULL WHERE active_shop = p_shop_id;
+  -- The row stays as a tombstone with nothing of the shop left in it.
+  UPDATE shop
+     SET status = 'erased', name = 'erased', deletion_due = NULL, reminders_on = false, sms_on = false,
+         default_credit_limit = NULL
+   WHERE id = p_shop_id;
+
+  IF people IS NOT NULL THEN
+    FOREACH person IN ARRAY people LOOP
+      PERFORM forget_user_if_unused(person);
+    END LOOP;
+  END IF;
+  RETURN true;
+END $$;

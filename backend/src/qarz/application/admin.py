@@ -280,21 +280,15 @@ class AdminService:
                     )
                 return shop_body(await self._shop(session, admin_id, shop_id))
 
-            done = await idempotency.run_once(
-                AdminRequestKeys(session, admin_id),
+            return await idempotency.run_once(
+                # The stored answer shows the shop; it is kept under the shop and erased with it.
+                AdminRequestKeys(session, admin_id, about_shop=shop_id),
                 key=key,
                 operation=operation,
                 user_id=admin_id,
                 request={"shop": str(shop_id), "reason": why, **request},
                 action=apply,
-                # Only the shop's identifier is kept: its name and its owner's Telegram identifier must
-                # not outlive the shop in a table that erasing a shop does not touch.
-                redact=lambda body: {"id": body["id"]},
             )
-            if "subscription" in done:
-                return done
-            # A repeat: the change is not made again, and the shop is shown as it is now.
-            return shop_body(await self._shop(session, admin_id, shop_id))
 
     async def set_trial(
         self, admin_id: UUID, shop_id: UUID, trial_ends: date, reason: str | None, request_key: str | None

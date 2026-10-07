@@ -71,9 +71,10 @@ def _hash(token: str) -> bytes:
 class AdminRequestKeys:
     """Stored results of one administrator's writes, in the shape `idempotency.run_once` expects."""
 
-    def __init__(self, session: PlatformSession, admin_id: UUID) -> None:
+    def __init__(self, session: PlatformSession, admin_id: UUID, about_shop: UUID | None = None) -> None:
         self._session = session
         self._admin_id = admin_id
+        self._about_shop = about_shop
 
     async def lock_request_key(self, key: str) -> None:
         await self._session.lock_admin_request_key(self._admin_id, key)
@@ -82,7 +83,7 @@ class AdminRequestKeys:
         return await self._session.admin_stored_response(self._admin_id, key)
 
     async def store_response(self, key: str, response: dict[str, Any]) -> None:
-        await self._session.store_admin_response(self._admin_id, key, response)
+        await self._session.store_admin_response(self._admin_id, key, response, self._about_shop)
 
 
 class AdminAccess:

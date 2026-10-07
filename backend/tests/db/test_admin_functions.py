@@ -479,3 +479,44 @@ def test_an_admin_session_belongs_to_an_administrator_account(owner: psycopg.Con
             "VALUES (gen_random_uuid(), %s, %s, now(), now() + interval '1 hour')",
             (uuid.uuid4().bytes, _user(owner)),
         )
+
+
+# --- erasing a shop -------------------------------------------------------------------------------------
+
+
+def test_erasing_a_shop_deletes_the_stored_admin_answers_about_it_and_no_others(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+) -> None:
+    admin = _admin(owner)
+    for key, about in (("about-a-1", shop_a.shop_id), ("about-a-2", shop_a.shop_id), ("about-b", shop_b.shop_id)):
+        owner.execute(
+            "INSERT INTO admin_request_key (admin_id, key, response, about_shop) VALUES (%s, %s, %s::jsonb, %s)",
+            (admin, key, '{"name": "Shop"}', about),
+        )
+    owner.execute(
+        "INSERT INTO admin_request_key (admin_id, key, response) VALUES (%s, 'about-none', '{}'::jsonb)", (admin,)
+    )
+    audit_id = uuid.uuid4()
+    owner.execute(
+        "INSERT INTO admin_audit (id, admin_id, action, target_type, target_id, target_shop) "
+        "VALUES (%s, %s, 'subscription.suspended', 'shop', %s, %s)",
+        (audit_id, admin, str(shop_a.shop_id), shop_a.shop_id),
+    )
+    owner.execute(
+        "UPDATE shop SET status = 'deletion_pending', deletion_due = now() - interval '1 minute' WHERE id = %s",
+        (shop_a.shop_id,),
+    )
+    with as_app(None) as conn:
+        assert conn.execute("SELECT erase_shop(%s)", (shop_b.shop_id,)).fetchone() == (False,), "not asked for"
+        assert conn.execute("SELECT erase_shop(%s)", (shop_a.shop_id,)).fetchone() == (True,)
+    kept = owner.execute("SELECT key FROM admin_request_key WHERE admin_id = %s ORDER BY key", (admin,)).fetchall()
+    assert kept == [("about-b",), ("about-none",)]
+    assert owner.execute("SELECT count(*) FROM admin_audit WHERE id = %s", (audit_id,)).fetchone() == (1,)
+
+
+def test_erase_shop_still_pins_its_search_path_and_is_for_the_application_only(owner: psycopg.Connection) -> None:
+    row = owner.execute(
+        "SELECT prosecdef, proconfig, has_function_privilege('qd_app', oid, 'EXECUTE'), "
+        "has_function_privilege('public', oid, 'EXECUTE') FROM pg_proc WHERE oid = 'erase_shop(uuid)'::regprocedure"
+    ).fetchone()
+    assert row == (True, ["search_path=public, pg_temp"], True, False)

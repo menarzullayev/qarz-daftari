@@ -259,15 +259,12 @@ def test_extending_a_trial_is_stored_audited_and_idempotent(
         "after": {"state": "trial", "trial_ends": new.isoformat(), "paid_through": None, "prior_state": None},
     }
 
-    # The same request again: no second effect or audit row. The answer shows the shop as it is now,
-    # because nothing of a shop is kept in the stored answer but its identifier.
+    # The same request again: the stored first answer (ADR-006), though the shop changed in between,
+    # and no second effect or audit row.
     owner.execute("UPDATE subscription SET trial_ends = %s WHERE shop_id = %s", (old, world.shop_a))
+    owner.execute("UPDATE shop SET name = 'Boshqa nom' WHERE id = %s", (world.shop_a,))
     again = client.post(f"{SHOPS}/{world.shop_a}/trial", json=body, headers={**admin, **key})
-    assert again.status_code == 200
-    assert again.json() == {
-        **response.json(),
-        "subscription": {**response.json()["subscription"], "trial_ends": old.isoformat()},
-    }
+    assert (again.status_code, again.json()) == (200, response.json())
     assert _stored(owner, world.shop_a)[1] == old
     assert len(_audit(owner, world.shop_a)) == 1
 

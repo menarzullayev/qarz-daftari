@@ -35,8 +35,11 @@ from qarz.application.admin_access import (
     OPEN_ADMIN_SESSION,
     READ_ADMIN_AUTH,
     AdminAccess,
+    SecondFactorInvalid,
+    SecondFactorLocked,
 )
 from qarz.application.errors import NotFound, Unauthenticated, ValidationFailed
+from qarz.interface.observability import SECURITY_BAD_SECOND_FACTOR
 from qarz.interface.shops_api import IdempotencyKey
 
 ADMIN_COOKIE = "qd_admin"
@@ -95,6 +98,7 @@ def add_admin_routes(
         user_id = await user_of(request)
         if user_id is None:
             raise Unauthenticated()
+        request.state.user_id = user_id  # for the request's log line
         if count is not None:
             # The per-user rate limit, as on every other signed-in route, before anything is looked up.
             count(user_id)
@@ -141,7 +145,11 @@ def add_admin_routes(
     @app.post(BASE + "/auth/session", name=OPEN_ADMIN_SESSION.name, status_code=201)
     async def open_session(request: Request, response: Response, user_id: entry) -> dict[str, Any]:
         body = await _read(request, CodeBody)
-        issued = await access.open_session(user_id, body.code)
+        try:
+            issued = await access.open_session(user_id, body.code)
+        except (SecondFactorInvalid, SecondFactorLocked):
+            request.state.security_event = SECURITY_BAD_SECOND_FACTOR
+            raise
         response.set_cookie(
             ADMIN_COOKIE,
             issued.token,
@@ -216,9 +224,13 @@ def add_admin_routes(
         request: Request, user_id: admin, idempotency_key: IdempotencyKey = None
     ) -> dict[str, Any]:
         body = await _read(request, SettingsPatch)
-        return await service.update_settings(
-            user_id, body.changes, code=body.code, reason=body.reason, request_key=idempotency_key
-        )
+        try:
+            return await service.update_settings(
+                user_id, body.changes, code=body.code, reason=body.reason, request_key=idempotency_key
+            )
+        except (SecondFactorInvalid, SecondFactorLocked):
+            request.state.security_event = SECURITY_BAD_SECOND_FACTOR
+            raise
 
     @app.get(BASE + "/audit", name=LIST_AUDIT.name)
     async def list_audit(

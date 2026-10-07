@@ -1,0 +1,15 @@
+{
+  "event_id": "c50d6c3fbf0d",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-07T00:26:41+00:00",
+  "path": "docs\\evidence\\EVID-060.md",
+  "stage": "09-development-plan",
+  "title": "The Payme and Click adapters pass CI on main, switched off",
+  "claim": "The adapters for paying the subscription through Payme and Click behind the platform switch (story S17.3, pull request 44) passed CI on main in the run for commit 27661e0. The switch is off and no provider key exists. The adapters were written from the providers' published protocols as the agent knows them and have never been run against either provider's test environment; both must be checked against the providers' current documentation and test cabinets before the switch is ever turned on",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/44 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37550663900",
+  "date": "2026-10-07",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-060"
+}

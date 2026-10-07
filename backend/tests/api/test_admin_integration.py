@@ -269,7 +269,7 @@ def test_a_stored_trial_length_outside_the_allowed_range_applies_nowhere(
 # --- nothing of a shop outlives it in the administrator's tables ---------------------------------------
 
 
-def test_a_stored_answer_keeps_only_the_shops_identifier(
+def test_a_stored_answer_is_kept_under_its_shop_and_the_audit_names_the_shop_only_by_identifier(
     client: TestClient, world: World, owner: psycopg.Connection, admin_env: AdminEnv
 ) -> None:
     admin = elevate(client, admin_env, world.admin, make_admin(owner, admin_env, world.admin))
@@ -281,48 +281,50 @@ def test_a_stored_answer_keeps_only_the_shops_identifier(
     first = client.post(path, json={"reason": "Tekshiruv uchun"}, headers={**admin, **key})
     assert first.status_code == 200, first.text
     assert first.json()["name"] == "Maxfiy Nomli Dokon"
+    # A change that is about no shop is kept under none.
+    assert client.patch(SETTINGS, json={"changes": {"trial_days": 9}}, headers={**admin, **_key()}).status_code == 200
 
-    kept = owner.execute("SELECT response::text FROM admin_request_key WHERE admin_id = %s", (world.admin,)).fetchall()
+    kept = owner.execute(
+        "SELECT about_shop, response->'body'->>'name' FROM admin_request_key WHERE admin_id = %s ORDER BY about_shop",
+        (world.admin,),
+    ).fetchall()
+    assert kept == [(world.shop_a, "Maxfiy Nomli Dokon"), (None, None)]
     audit = owner.execute(
         "SELECT reason, detail::text FROM admin_audit WHERE target_shop = %s", (world.shop_a,)
     ).fetchall()
-    written = " ".join(str(row) for row in kept + audit)
-    assert str(world.shop_a) in written
-    assert "Maxfiy Nomli Dokon" not in written
-    assert str(owner_tg[0]) not in written
-
-    # A repeat makes no second change and shows the shop as it is now.
-    owner.execute("UPDATE shop SET name = 'Yangi Nom' WHERE id = %s", (world.shop_a,))
-    again = client.post(path, json={"reason": "Tekshiruv uchun"}, headers={**admin, **key})
-    assert again.status_code == 200, again.text
-    assert again.json() == {**first.json(), "name": "Yangi Nom"}
-    assert len(audit) == len(
-        owner.execute("SELECT 1 FROM admin_audit WHERE target_shop = %s", (world.shop_a,)).fetchall()
-    )
+    assert len(audit) == 1
+    assert "Maxfiy Nomli Dokon" not in str(audit)
+    assert str(owner_tg[0]) not in str(audit)
 
 
-def test_after_a_shop_is_erased_the_audit_still_says_what_was_done_to_it(
+def test_erasing_a_shop_erases_the_stored_answers_about_it_and_leaves_the_audit(
     client: TestClient, world: World, owner: psycopg.Connection, admin_env: AdminEnv
 ) -> None:
-    """The audit names a shop only by its identifier, so erasing the shop leaves nothing personal in it."""
     admin = elevate(client, admin_env, world.admin, make_admin(owner, admin_env, world.admin))
     key = _key()
     path = f"{ADMIN_API}/shops/{world.shop_a}/suspend"
-    assert client.post(path, json={"reason": "Yopilmoqda"}, headers={**admin, **key}).status_code == 200
+    first = client.post(path, json={"reason": "Yopilmoqda"}, headers={**admin, **key})
+    assert first.status_code == 200
+    other = client.post(
+        f"{ADMIN_API}/shops/{world.shop_b}/suspend", json={"reason": "Boshqa"}, headers={**admin, **_key()}
+    )
+    assert other.status_code == 200
     owner.execute(
         "UPDATE shop SET status = 'deletion_pending', deletion_due = now() - interval '1 minute' WHERE id = %s",
         (world.shop_a,),
     )
     assert owner.execute("SELECT erase_shop(%s)", (world.shop_a,)).fetchone() == (True,)
 
+    kept = owner.execute("SELECT about_shop FROM admin_request_key WHERE admin_id = %s", (world.admin,)).fetchall()
+    assert kept == [(world.shop_b,)]
+    # The audit still says what was done, naming the shop only by its identifier.
     rows = client.get(f"{ADMIN_API}/audit", params={"shop_id": str(world.shop_a)}, headers=admin).json()["items"]
     assert [(row["action"], row["reason"]) for row in rows] == [("subscription.suspended", "Yopilmoqda")]
     assert "Shop A" not in str(rows)
-    # The repeat of the request shows what is left of the shop; nothing more can be done to it.
-    repeat = client.post(path, json={"reason": "Yopilmoqda"}, headers={**admin, **key})
-    assert (repeat.status_code, repeat.json()["status"]) == (200, "erased")
-    assert (repeat.json()["staff_count"], repeat.json()["customer_count"]) == (0, 0)
-    assert client.post(path, json={"reason": "Yana"}, headers={**admin, **_key()}).status_code == 404
+    # With its stored answer gone the same request is a new one, and there is nothing left to change.
+    assert client.post(path, json={"reason": "Yopilmoqda"}, headers={**admin, **key}).status_code == 404
+    listed = client.get(f"{ADMIN_API}/shops/{world.shop_a}", headers=admin).json()
+    assert (listed["name"], listed["status"], listed["owner_tg_id"]) == ("erased", "erased", None)
 
 
 # --- the account is asked for, whatever the schema guarantees -------------------------------------------
@@ -370,3 +372,93 @@ def test_a_live_admin_session_without_an_account_is_refused_by_the_application_i
         _gate(None)
     with pytest.raises(NotFound):
         _gate(AdminAccount("disabled", b"x", True, 0, None, None))
+
+
+# --- observability --------------------------------------------------------------------------------------
+
+METRICS_TOKEN = "a-metrics-token-for-tests"
+
+
+@pytest.fixture
+def observed(app_database_url: str, admin_env: AdminEnv, ticks: Ticks) -> Iterator[TestClient]:
+    limits = RateLimits(user=Limit(per_minute=1, burst=3), shop=Limit(per_minute=6000, burst=6000))
+    yield from _app(app_database_url, admin_env, metrics_token=METRICS_TOKEN, rate_limits=limits, monotonic=ticks)
+
+
+def _second_factor_events(client: TestClient) -> int:
+    text = client.get("/metrics", headers={"Authorization": f"Bearer {METRICS_TOKEN}"}).text
+    for line in text.splitlines():
+        if line.startswith('qd_security_events_total{kind="bad_second_factor"}'):
+            return int(line.split()[-1])
+    return 0
+
+
+def test_a_refused_second_factor_is_a_security_event_and_a_rate_limit_is_not(
+    observed: TestClient,
+    world: World,
+    owner: psycopg.Connection,
+    admin_env: AdminEnv,
+    ticks: Ticks,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import json
+    import logging
+
+    caplog.set_level(logging.INFO, logger="qarz.request")
+    secret = make_admin(owner, admin_env, world.admin)
+    session = f"{ADMIN_API}/auth/session"
+
+    def attempt(code: str) -> Any:
+        return observed.post(session, json={"code": code}, headers=as_user(world.admin))
+
+    assert _second_factor_events(observed) == 0
+    assert attempt("000000").status_code == 403
+    assert _second_factor_events(observed) == 1
+    events = [record for record in caplog.records if record.getMessage() == "security"]
+    assert [(record.__dict__["kind"], record.__dict__["route"]) for record in events] == [
+        ("bad_second_factor", session)
+    ]
+    assert str(events[0].__dict__["user_id"]) == str(world.admin)
+    assert "000000" not in json.dumps([str(record.__dict__) for record in caplog.records])
+
+    # The right code is no event, and its request is logged with the caller.
+    opened = attempt(fresh_code(admin_env, secret))
+    assert opened.status_code == 201
+    assert _second_factor_events(observed) == 1
+    logged = [r for r in caplog.records if r.getMessage() == "request" and r.__dict__.get("route") == session]
+    assert str(logged[-1].__dict__["user_id"]) == str(world.admin)
+
+    # A wrong code on a change that asks for the code again counts too.
+    headers = {
+        **as_user(world.admin),
+        "Cookie": f"qd_admin={opened.headers['set-cookie'].split('qd_admin=')[1].split(';')[0]}",
+    }
+    change = {"changes": {"price_uzs": 2_000}, "code": "000000"}
+    assert observed.patch(SETTINGS, json=change, headers={**headers, **_key()}).status_code == 403
+    assert _second_factor_events(observed) == 2
+
+    # Over the rate now: 429 on the same route, which is not a refused code.
+    over = attempt("000000")
+    assert (over.status_code, over.json()["error"]["code"]) == (429, "RATE_LIMITED")
+    assert _second_factor_events(observed) == 2
+
+    # A locked factor answers 429 as well, and that one is an event.
+    owner.execute(
+        "UPDATE admin_account SET locked_until = %s WHERE user_id = %s",
+        (admin_env.clock.now() + timedelta(minutes=5), world.admin),
+    )
+    ticks.now += 600
+    locked = attempt("000000")
+    assert (locked.status_code, locked.json()["error"]["code"]) == (429, "SECOND_FACTOR_LOCKED")
+    assert _second_factor_events(observed) == 3
+
+
+def test_a_refused_administrator_route_is_logged_with_the_caller(
+    observed: TestClient, world: World, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    caplog.set_level(logging.INFO, logger="qarz.request")
+    assert observed.get(SETTINGS, headers=as_user(world.owner_a)).status_code == 404
+    logged = [r for r in caplog.records if r.getMessage() == "request" and r.__dict__.get("route") == SETTINGS]
+    assert [(str(r.__dict__["user_id"]), r.__dict__["status"]) for r in logged] == [(str(world.owner_a), 404)]

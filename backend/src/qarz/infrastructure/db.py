@@ -1745,6 +1745,25 @@ class PgPlatformSession:
         ).first()
         return row is not None
 
+    async def health_figures(self) -> dict[str, dict[str, float]]:
+        waiting = (
+            await self._conn.execute(
+                text(
+                    "SELECT channel, extract(epoch FROM now() - min(next_try_at)) AS seconds "
+                    "FROM outbox_message WHERE status = 'pending' AND next_try_at <= now() GROUP BY channel"
+                )
+            )
+        ).all()
+        jobs = (
+            await self._conn.execute(
+                text("SELECT job, extract(epoch FROM now() - max(finished_at)) AS seconds FROM job_run GROUP BY job")
+            )
+        ).all()
+        return {
+            "qd_outbox_oldest_due_seconds": {str(row.channel): float(row.seconds) for row in waiting},
+            "qd_job_last_finished_seconds": {str(row.job): float(row.seconds) for row in jobs},
+        }
+
     async def subscriptions_to_review(self, today: date) -> list[SubscriptionToReview]:
         rows = (
             await self._conn.execute(
@@ -2124,13 +2143,20 @@ class PgPlatformSession:
         response = row.response
         return json.loads(response) if isinstance(response, str) else dict(response)
 
-    async def store_admin_response(self, admin_id: UUID, key: str, response: dict[str, Any]) -> None:
+    async def store_admin_response(
+        self, admin_id: UUID, key: str, response: dict[str, Any], about_shop: UUID | None
+    ) -> None:
         await self._conn.execute(
             text(
-                "INSERT INTO admin_request_key (admin_id, key, response) "
-                "VALUES (:admin_id, :key, CAST(:response AS jsonb))"
+                "INSERT INTO admin_request_key (admin_id, key, response, about_shop) "
+                "VALUES (:admin_id, :key, CAST(:response AS jsonb), CAST(:about_shop AS uuid))"
             ),
-            {"admin_id": admin_id, "key": key, "response": json.dumps(response, ensure_ascii=False)},
+            {
+                "admin_id": admin_id,
+                "key": key,
+                "response": json.dumps(response, ensure_ascii=False),
+                "about_shop": about_shop,
+            },
         )
 
     async def admin_shop_search(

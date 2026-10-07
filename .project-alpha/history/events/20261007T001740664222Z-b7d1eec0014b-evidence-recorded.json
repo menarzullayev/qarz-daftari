@@ -1,0 +1,15 @@
+{
+  "event_id": "b7d1eec0014b",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-07T00:17:40+00:00",
+  "path": "docs\\evidence\\EVID-058.md",
+  "stage": "09-development-plan",
+  "title": "Date change requests pass CI on main",
+  "claim": "Customers asking to move a promised date, the shop accepting, declining or moving it directly, and the promise history on both pages (story S10.3, pull request 38) passed CI on main in the run for commit 1bf48b9. Concurrent requests were not tested as races, and no screen exists for it yet",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/38 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37538124542",
+  "date": "2026-10-07",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-058"
+}
