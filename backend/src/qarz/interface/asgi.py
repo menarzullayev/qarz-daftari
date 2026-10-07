@@ -10,11 +10,13 @@ from qarz.application.online_payment import PaymentKeys
 from qarz.infrastructure.db import Database
 from qarz.infrastructure.settings import Settings
 from qarz.interface.http import create_app
+from qarz.interface.observability import configure_logging
 from qarz.interface.rate_limit import Limit, RateLimits
 
 
 def build(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
+    configure_logging()
     database = Database(settings.database_url, statement_timeout_ms=settings.statement_timeout_ms)
     # Without a bot token no Telegram signature can be verified, so no API is served at all.
     auth = AuthService(database, settings.bot_token) if settings.bot_token else None
@@ -23,6 +25,7 @@ def build(settings: Settings | None = None) -> FastAPI:
         database,
         auth=auth,
         webhook_secret=settings.webhook_secret or None,
+        metrics_token=settings.metrics_token or None,
         payment_keys=PaymentKeys(
             payme_merchant_id=settings.payme_merchant_id,
             payme_key=settings.payme_secret_key,

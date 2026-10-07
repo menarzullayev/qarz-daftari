@@ -20,6 +20,7 @@ from qarz.infrastructure.db import Database
 from qarz.infrastructure.settings import Settings
 from qarz.infrastructure.sms_sender import ChannelSender, NoSmsProvider
 from qarz.infrastructure.telegram_sender import TelegramSender
+from qarz.interface.observability import configure_logging
 
 log = logging.getLogger("qarz.worker")
 IDLE_SECONDS = 0.5
@@ -65,7 +66,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    configure_logging()
     stop = asyncio.Event()
 
     async def runner() -> None:

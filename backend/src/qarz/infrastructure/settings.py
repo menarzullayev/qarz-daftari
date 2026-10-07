@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     bot_token: str = ""
     # Secret Telegram sends with every webhook call.
     webhook_secret: str = ""
+    # Bearer token the monitoring system sends to read /metrics. Empty: the endpoint is not served.
+    metrics_token: str = ""
     # Online payment of the subscription. Empty until provider contracts exist; even when set, the
     # platform switch `online_pay_on` decides, and it is off unless an administrator turns it on.
     payme_merchant_id: str = ""

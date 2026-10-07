@@ -1,0 +1,15 @@
+{
+  "event_id": "c986d0a8c98e",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-07T00:31:21+00:00",
+  "path": "docs\\evidence\\EVID-061.md",
+  "stage": "09-development-plan",
+  "title": "The fixes for the security review's findings pass CI on main",
+  "claim": "Fixes for findings 1 to 7 and 10 of the security review (pull request 45) passed CI on main in the run for commit 67b49b6; each of the review's tests that was an expected failure is now an ordinary passing test. Findings 8 and P39-1 were fixed with the rate limits in pull request 39. Findings 9, 11, 12, 13 and the notes are open, and the review itself lists what it did not read",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/45 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37551908103",
+  "date": "2026-10-07",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-061"
+}

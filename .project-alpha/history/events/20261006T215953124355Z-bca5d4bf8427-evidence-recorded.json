@@ -1,0 +1,15 @@
+{
+  "event_id": "bca5d4bf8427",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-06T21:59:53+00:00",
+  "path": "docs\\evidence\\EVID-057.md",
+  "stage": "09-development-plan",
+  "title": "The period report and overdue debt by age pass CI on main",
+  "claim": "The period report and the report of overdue debt by age for managers and owners (story S13.1, pull request 37) passed CI on main in the run for commit cba9213. The report was compared with the domain rules on generated ledgers. On a developer machine with a generated shop of 2 000 customers a one-year report took 0.41 s at 50 000 entries and 1.7 s at 200 000; that is one machine and generated data, not a load test",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/37 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37536192537",
+  "date": "2026-10-07",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-057"
+}
