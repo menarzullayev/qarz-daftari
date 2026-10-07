@@ -469,8 +469,10 @@ describe("disconnecting from the shop", () => {
     fireEvent.click(pending);
     held.resolve(ok({ disconnected: true }));
 
-    expect((await screen.findByRole("status")).textContent).toBe(
-      "Do'kondan uzildingiz. Qayta ulanish uchun do'kondan yangi havola so'rang.",
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toBe(
+        "Do'kondan uzildingiz. Qayta ulanish uchun do'kondan yangi havola so'rang.",
+      ),
     );
     expect(server.writes()).toHaveLength(1);
     expect(server.writes()[0]).toMatchObject({ method: "POST", path: `${ME_BASE}/disconnect` });
@@ -539,7 +541,7 @@ describe("asking for removal of their data", () => {
     await open(server);
     ask();
     fireEvent.click(screen.getByRole("button", { name: "Ha, o'chirilsin" }));
-    expect((await screen.findByRole("status")).textContent).toBe("Ma'lumotlaringiz o'chirildi.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Ma'lumotlaringiz o'chirildi."));
     expect(server.sent.filter((sent) => sent.method === "GET")).toHaveLength(1);
     expect(document.body.textContent).not.toContain("Ali Valiyev");
     expect(screen.queryByRole("region")).toBeNull();

@@ -218,7 +218,7 @@ describe("changing the promised date", () => {
     await open(server);
     server.held.entries = [PAYMENT, entryBody({ id: CREDIT_ID, amount: 140000, promised_date: "2026-11-25" })];
     fill("2026-11-25", " Kelishildi ");
-    expect((await screen.findByRole("status")).textContent).toBe("Muddat o'zgartirildi: 2026-yil 5-noyabr o'rniga 2026-yil 25-noyabr.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Muddat o'zgartirildi: 2026-yil 5-noyabr o'rniga 2026-yil 25-noyabr."));
     expect(server.writes()).toHaveLength(1);
     expect(server.writes()[0]).toMatchObject({
       method: "POST",

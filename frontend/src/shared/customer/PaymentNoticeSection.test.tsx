@@ -157,7 +157,7 @@ describe("sending", () => {
     await open(server);
     server.held.notices = [noticeBody()];
     fill("50000");
-    expect((await screen.findByRole("status")).textContent).toBe("Xabar do'konga yuborildi: 50 000 so'm.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Xabar do'konga yuborildi: 50 000 so'm."));
     expect(notices(server)).toHaveLength(1);
     expect(notices(server)[0]).toMatchObject({ method: "POST", body: { amount: 50000 } });
     expect(notices(server)[0]?.form).toBeUndefined();

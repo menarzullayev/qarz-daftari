@@ -157,7 +157,7 @@ describe("asking for an export", () => {
     expect(server.writes()[0]?.headers["Idempotency-Key"]).toMatch(/^[A-Za-z0-9_-]{8,128}$/);
     server.held.items = [queued()];
     held.resolve(ok(queued(), 201));
-    expect((await screen.findByRole("status")).textContent).toBe("So'rov qabul qilindi. Fayl tayyor bo'lgach, shu ro'yxatda ko'rinadi.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("So'rov qabul qilindi. Fayl tayyor bo'lgach, shu ro'yxatda ko'rinadi."));
     await waitFor(() => expect(rowText(0)).toEqual(["2026-yil 6-oktabr, 10:58Navbatda", "Siz", "Holat o'zi yangilanib turadi."]));
     expect(button.disabled).toBe(false);
   });

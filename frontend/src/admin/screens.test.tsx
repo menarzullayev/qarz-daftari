@@ -204,7 +204,7 @@ describe("one shop", () => {
     fireEvent.click(screen.getByRole("button", { name: "Davom etish" }));
     held.detail = shopDetailBody({}, { state: "suspended", stored_state: "suspended", prior_state: "trial" });
     fireEvent.click(screen.getByRole("button", { name: "Ha, bajarilsin" }));
-    expect((await screen.findByRole("status")).textContent).toBe("Bajarildi: Do'konni to'xtatish.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Bajarildi: Do'konni to'xtatish."));
     expect(server.writes()).toHaveLength(1);
     const sent = server.writes()[0];
     expect(sent).toMatchObject({ method: "POST", path: `${ADMIN}/shops/${SHOP_ID}/suspend`, body: { reason: "To'lov qilinmadi" } });
