@@ -48,6 +48,7 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
         "PROMISE_ALREADY_SET",  # said as "promise_closed"
         "DELETION_ALREADY_REQUESTED",  # deleting a shop is done in the Mini App or the panel
         "DELETION_NOT_REQUESTED",
+        "ONLINE_PAY_OFF",  # paying online starts in the Mini App or the panel
         "REMINDERS_OFF",  # reminders are managed in the Mini App, not in the chat
         "REMINDER_NOT_DUE",
         "REMINDER_LIMIT_REACHED",
