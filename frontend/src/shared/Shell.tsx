@@ -13,7 +13,7 @@ export type ShellNavItem = {
 
 type ShellProps = {
   /** Which client this is ("entry.app", "entry.panel", "entry.admin"); shown next to the product name. */
-  entryKey: MessageKey;
+  entryKey?: MessageKey | undefined;
   /**
    * The context every screen names: the active shop for staff (REQ-064). `label` is read to screen
    * reader users before the value. Omitted by the admin panel, which has no active shop.
@@ -105,7 +105,7 @@ export function Shell({
         <div className="shell__identity">
           <p className="shell__brand">
             <span className="shell__product">{appName}</span>
-            <span className="shell__entry">{t(entryKey)}</span>
+            {entryKey ? <span className="shell__entry">{t(entryKey)}</span> : null}
           </p>
           {context ? (
             <p className="shell__context">

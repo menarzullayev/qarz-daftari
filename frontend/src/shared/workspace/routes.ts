@@ -12,6 +12,7 @@ export type WorkspaceRoute =
   | { screen: "waiting" }
   | { screen: "counterCode" }
   | { screen: "disputes" }
+  | { screen: "paymentNotices" }
   | { screen: "dateRequests" }
   | { screen: "reports" }
   | { screen: "catalog" }
@@ -48,6 +49,9 @@ export function matchWorkspaceRoute(path: string): WorkspaceMatch | null {
       return { route: { screen: "counterCode" }, sectionPath: "/customers", titleKey: "counter.title" };
     case "/disputes":
       return { route: { screen: "disputes" }, sectionPath: "/disputes", titleKey: "disputes.title" };
+    // Every role decides payment notices, so they sit with the customer book, which every role has.
+    case "/payment-notices":
+      return { route: { screen: "paymentNotices" }, sectionPath: "/customers", titleKey: "notices.title" };
     // Requests to move a date sit with the disputes: both are what customers ask and managers answer.
     case "/date-requests":
       return { route: { screen: "dateRequests" }, sectionPath: "/disputes", titleKey: "dates.title" };
