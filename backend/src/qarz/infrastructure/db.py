@@ -5,17 +5,17 @@ next use of a pooled connection, and the row-level security policies hide every 
 """
 
 import json
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from qarz.application.errors import AlreadyMember
+from qarz.application.errors import AlreadyMember, StorageTimeout
 from qarz.application.ports import (
     ActivityRow,
     CatalogItemRecord,
@@ -83,21 +83,35 @@ _BALANCES = (
     f"FROM ({_LIVE}) l GROUP BY l.customer_id"
 )
 
+# The balance of the customer row `c`, read through the (customer_id, seq) index. A page of customers
+# then costs what the page holds, not what the shop holds: joining `_BALANCES` to a filtered customer list
+# adds up every entry of the shop, and the planner may do that once per customer (S19.1 load test).
+_BALANCE_OF_C = (
+    "(SELECT coalesce(sum(CASE WHEN e.kind IN ('credit', 'opening') THEN e.amount ELSE -e.amount END), 0)::bigint "
+    "FROM ledger_entry e WHERE e.customer_id = c.id AND e.kind <> 'reversal' "
+    "AND NOT EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id))"
+)
+
 # Oldest-first allocation (BR-3) in one pass: the uncovered part of a debt is what its running total
 # exceeds the customer's total payments by, capped at its own amount. This must agree with
-# `qarz.domain.ledger`; tests/api/test_ledger_api.py compares the two on generated accounts.
+# `qarz.domain.ledger`; tests/api/test_customers_ledger.py compares the two on generated accounts.
+# The promised date is looked up only for debts with something left uncovered: a covered debt adds
+# nothing to any figure, and most debts of a long account are covered (S19.1 load test).
 _OWED = (
     f"WITH live AS ({_LIVE}), "
     "paid AS (SELECT customer_id, sum(amount) AS paid FROM live WHERE kind = 'payment' GROUP BY customer_id), "
     "debt AS ("
-    "  SELECT l.customer_id, l.amount, "
-    "         sum(l.amount) OVER (PARTITION BY l.customer_id ORDER BY l.seq) AS running, "
-    f"         {_PROMISED.format(entry='l')} AS promised "
+    "  SELECT l.id, l.customer_id, l.amount, "
+    "         sum(l.amount) OVER (PARTITION BY l.customer_id ORDER BY l.seq) AS running "
     "    FROM live l WHERE l.kind IN ('credit', 'opening')), "
-    "owed AS ("
-    "  SELECT d.customer_id, d.promised, "
+    "uncovered AS ("
+    "  SELECT d.id, d.customer_id, "
     "         least(d.amount, greatest(0, d.running - coalesce(p.paid, 0))) AS remaining "
-    "    FROM debt d LEFT JOIN paid p ON p.customer_id = d.customer_id)"
+    "    FROM debt d LEFT JOIN paid p ON p.customer_id = d.customer_id), "
+    "owed AS ("
+    "  SELECT u.customer_id, u.remaining, "
+    f"         CASE WHEN u.remaining > 0 THEN {_PROMISED.format(entry='u')} END AS promised "
+    "    FROM uncovered u)"
 )
 
 _FIGURES = (
@@ -275,6 +289,24 @@ _OPEN_NOTICES = (
 def _like_pattern(part: str) -> str:
     escaped = part.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
+
+
+_QUERY_CANCELED = "57014"  # SQLSTATE query_canceled: what a statement over `statement_timeout` ends with
+
+
+@contextmanager
+def _timeouts() -> Iterator[None]:
+    """Turn a statement the database cancelled for running too long into the application's own error.
+
+    The transaction it ran in is rolled back by the block inside; the connection goes back to the pool
+    and serves the next request.
+    """
+    try:
+        yield
+    except DBAPIError as error:
+        if getattr(error.orig, "sqlstate", None) == _QUERY_CANCELED:
+            raise StorageTimeout() from error
+        raise
 
 
 def _async_url(url: str) -> str:
@@ -659,15 +691,16 @@ class PgTenantSession:
         rows = (
             await self._conn.execute(
                 text(
-                    f"SELECT {_CUSTOMER_COLUMNS}, c.name_norm, coalesce(b.balance, 0) AS balance "
-                    f"FROM customer c LEFT JOIN ({_BALANCES}) b ON b.customer_id = c.id "
+                    # The page is chosen first; balances are then read for its customers only.
+                    f"SELECT {_CUSTOMER_COLUMNS}, c.name_norm, {_BALANCE_OF_C} AS balance FROM ("
+                    f"SELECT {_CUSTOMER_COLUMNS}, c.name_norm FROM customer c "
                     "WHERE c.status = :status "
                     "  AND ((CAST(:name AS text) IS NULL AND CAST(:digits AS text) IS NULL) "
                     "       OR c.name_norm LIKE CAST(:name AS text) "
                     "       OR regexp_replace(coalesce(c.phone, ''), '[^0-9]', '', 'g') LIKE CAST(:digits AS text)) "
                     "  AND (CAST(:after_name AS text) IS NULL "
                     "       OR (c.name_norm, c.id) > (CAST(:after_name AS text), CAST(:after_id AS uuid))) "
-                    "ORDER BY c.name_norm, c.id LIMIT :limit"
+                    "ORDER BY c.name_norm, c.id LIMIT :limit) c ORDER BY c.name_norm, c.id"
                 ),
                 {
                     "status": status,
@@ -685,8 +718,7 @@ class PgTenantSession:
         rows = (
             await self._conn.execute(
                 text(
-                    f"SELECT {_CUSTOMER_COLUMNS}, coalesce(b.balance, 0) AS balance "
-                    f"FROM customer c LEFT JOIN ({_BALANCES}) b ON b.customer_id = c.id "
+                    f"SELECT {_CUSTOMER_COLUMNS}, {_BALANCE_OF_C} AS balance FROM customer c "
                     "WHERE c.status = 'active' AND c.name_norm = :name ORDER BY c.created_at, c.id"
                 ),
                 {"name": name_norm},
@@ -2414,7 +2446,17 @@ class PgPlatformSession:
 class Database:
     """Connection pool for the application role, which cannot bypass row-level security."""
 
-    def __init__(self, url: str, *, pool_size: int = 5, max_overflow: int = 5) -> None:
+    def __init__(self, url: str, *, pool_size: int = 5, max_overflow: int = 5, statement_timeout_ms: int = 0) -> None:
+        """`statement_timeout_ms` is the longest one statement may run on these connections; 0 is no limit.
+
+        It is a setting of each connection this pool opens, not of the role: the migration owner and
+        anything else that connects as `qd_app` by other means is unaffected.
+        """
+        if statement_timeout_ms < 0:
+            raise ValueError("the statement timeout cannot be negative")
+        connect_args: dict[str, Any] = {}
+        if statement_timeout_ms and _async_url(url).startswith("postgresql+asyncpg://"):
+            connect_args["server_settings"] = {"statement_timeout": str(statement_timeout_ms)}
         self._engine: AsyncEngine = create_async_engine(
             _async_url(url),
             pool_pre_ping=True,
@@ -2422,23 +2464,27 @@ class Database:
             max_overflow=max_overflow,
             # Errors are logged with their text; without this it would hold names and phone numbers.
             hide_parameters=True,
+            connect_args=connect_args,
         )
 
     @asynccontextmanager
     async def tenant(self, shop_id: UUID) -> AsyncIterator[PgTenantSession]:
-        async with self._engine.begin() as conn:
-            # is_local = true: the setting ends with this transaction.
-            await conn.execute(text("SELECT set_config('qd.shop_id', :shop_id, true)"), {"shop_id": str(shop_id)})
-            yield PgTenantSession(conn, shop_id)
+        with _timeouts():
+            async with self._engine.begin() as conn:
+                # is_local = true: the setting ends with this transaction.
+                await conn.execute(text("SELECT set_config('qd.shop_id', :shop_id, true)"), {"shop_id": str(shop_id)})
+                yield PgTenantSession(conn, shop_id)
 
     @asynccontextmanager
     async def platform(self) -> AsyncIterator[PgPlatformSession]:
-        async with self._engine.begin() as conn:
-            yield PgPlatformSession(conn)
+        with _timeouts():
+            async with self._engine.begin() as conn:
+                yield PgPlatformSession(conn)
 
     async def user_language(self, user_id: UUID) -> str | None:
-        async with self._engine.connect() as conn:
-            row = (await conn.execute(text("SELECT lang FROM app_user WHERE id = :id"), {"id": user_id})).first()
+        with _timeouts():
+            async with self._engine.connect() as conn:
+                row = (await conn.execute(text("SELECT lang FROM app_user WHERE id = :id"), {"id": user_id})).first()
         return None if row is None else str(row.lang)
 
     async def reachable(self) -> bool:
