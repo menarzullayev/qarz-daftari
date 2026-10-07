@@ -1,0 +1,58 @@
+# Overlay for the proof on a developer machine ONLY (scripts/local.sh). Never used on a server.
+# Adds what the real deployment keeps on the database hosts: a throwaway PostgreSQL and, in place of the
+# S3 store, a directory on a volume.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: qarz
+      POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:?run scripts/local.sh, which generates the env file}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "qarz"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+    volumes:
+      - db:/var/lib/postgresql/data
+    networks: [egress]
+
+  migrate:
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # The migrations create the role `qd_app` without a login; a server gets its password from the
+  # operator once. Here a one-shot does it.
+  local-role:
+    image: postgres:16-alpine
+    restart: "no"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      PGPASSWORD: ${LOCAL_POSTGRES_PASSWORD:?}
+      LOCAL_APP_PASSWORD: ${LOCAL_APP_PASSWORD:?}
+    entrypoint: ["sh", "-c"]
+    command:
+      - echo "ALTER ROLE qd_app LOGIN PASSWORD :'pw'" | psql -q -h db -U postgres -d qarz -v ON_ERROR_STOP=1 -v pw="$$LOCAL_APP_PASSWORD"
+    networks: [egress]
+
+  api:
+    depends_on:
+      local-role:
+        condition: service_completed_successfully
+    volumes:
+      - files:/var/lib/qarz/files
+
+  worker:
+    depends_on:
+      local-role:
+        condition: service_completed_successfully
+    volumes:
+      - files:/var/lib/qarz/files
+
+volumes:
+  db: {}
+  files: {}

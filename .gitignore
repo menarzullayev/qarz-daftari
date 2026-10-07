@@ -28,3 +28,6 @@ Thumbs.db
 
 # Local rehearsal of the two-server design: result logs
 deploy/rehearsal/.out/
+
+# Local proof of the production stack: generated certificate, env file, state
+deploy/production/.local/

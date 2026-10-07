@@ -1,0 +1,149 @@
+# Qarz Daftari on the application host: proxy, API, worker, and the one-shot migration.
+#
+# NOT here, by design (ADR-014, ADR-015, ADR-020): PostgreSQL and the file store. They live on the
+# database hosts; these services reach them through QD_DATABASE_URL, QD_MIGRATION_URL and QD_S3_*.
+#
+# Settings come from an env file that is not in the repository (see .env.example), given with
+# `docker compose --env-file`. The scripts in scripts/ do that; run them, not compose by hand.
+# Each service is given only the names it reads: the owner connection goes to `migrate` alone.
+name: qarz
+
+x-defaults: &defaults
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  logging:
+    # Rotated by size on the host: at most 10 files of 20 MB a service. The operations document asks for
+    # 30 days; size rotation does not promise a number of days (see the README).
+    driver: json-file
+    options:
+      max-size: "20m"
+      max-file: "10"
+
+x-backend-image: &backend-image
+  image: ${DEPLOY_BACKEND_IMAGE:-qarz-daftari/backend}:${DEPLOY_RELEASE:?set DEPLOY_RELEASE to the commit to run}
+  build:
+    context: ../../backend
+
+# Read by both the API and the worker.
+x-shared-env: &shared-env
+  QD_DATABASE_URL: ${QD_DATABASE_URL:?QD_DATABASE_URL is not set}
+  QD_BOT_TOKEN: ${QD_BOT_TOKEN:-}
+  QD_FILE_STORE: ${QD_FILE_STORE:-}
+  QD_FILE_ROOT: ${QD_FILE_ROOT:-}
+  QD_S3_ENDPOINT: ${QD_S3_ENDPOINT:-}
+  QD_S3_BUCKET: ${QD_S3_BUCKET:-}
+  QD_S3_REGION: ${QD_S3_REGION:-us-east-1}
+  QD_S3_ACCESS_KEY: ${QD_S3_ACCESS_KEY:-}
+  QD_S3_SECRET_KEY: ${QD_S3_SECRET_KEY:-}
+
+services:
+  migrate:
+    <<: [*defaults, *backend-image]
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    healthcheck:
+      disable: true
+    environment:
+      QD_MIGRATION_URL: ${QD_MIGRATION_URL:?QD_MIGRATION_URL is not set}
+    networks: [egress]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+
+  api:
+    <<: [*defaults, *backend-image]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    stop_grace_period: 30s
+    environment:
+      <<: *shared-env
+      QD_WEBHOOK_SECRET: ${QD_WEBHOOK_SECRET:-}
+      QD_SECRETS_KEY: ${QD_SECRETS_KEY:-}
+      QD_ADMIN_TG_IDS: ${QD_ADMIN_TG_IDS:-}
+      QD_METRICS_TOKEN: ${QD_METRICS_TOKEN:-}
+      QD_RATE_USER_PER_MINUTE: ${QD_RATE_USER_PER_MINUTE:-120}
+      QD_RATE_USER_BURST: ${QD_RATE_USER_BURST:-60}
+      QD_RATE_SHOP_PER_MINUTE: ${QD_RATE_SHOP_PER_MINUTE:-600}
+      QD_RATE_SHOP_BURST: ${QD_RATE_SHOP_BURST:-200}
+      QD_STATEMENT_TIMEOUT_MS: ${QD_STATEMENT_TIMEOUT_MS:-5000}
+      QD_PAYME_MERCHANT_ID: ${QD_PAYME_MERCHANT_ID:-}
+      QD_PAYME_SECRET_KEY: ${QD_PAYME_SECRET_KEY:-}
+      QD_CLICK_SERVICE_ID: ${QD_CLICK_SERVICE_ID:-}
+      QD_CLICK_MERCHANT_ID: ${QD_CLICK_MERCHANT_ID:-}
+      QD_CLICK_SECRET_KEY: ${QD_CLICK_SECRET_KEY:-}
+    # The image's own health check (GET /healthz inside the container) applies.
+    networks: [edge, egress]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+          pids: 256
+
+  worker:
+    <<: [*defaults, *backend-image]
+    command: ["python", "-m", "qarz.interface.worker"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    stop_grace_period: 30s
+    # The worker listens on nothing, so the image's HTTP check does not apply and is switched off. A
+    # worker that died is restarted by the restart policy; one that runs but does no work shows in the
+    # API's metrics (qd_job_last_finished_seconds, qd_outbox_oldest_due_seconds), not here.
+    healthcheck:
+      disable: true
+    environment:
+      <<: *shared-env
+      QD_WORKER_STATEMENT_TIMEOUT_MS: ${QD_WORKER_STATEMENT_TIMEOUT_MS:-60000}
+    networks: [egress]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+          pids: 256
+
+  proxy:
+    <<: *defaults
+    image: ${DEPLOY_PROXY_IMAGE:-qarz-daftari/proxy}:${DEPLOY_RELEASE:?set DEPLOY_RELEASE to the commit to run}
+    build:
+      context: ../..
+      dockerfile: deploy/production/nginx/Dockerfile
+      args:
+        VITE_BOT_USERNAME: ${VITE_BOT_USERNAME:-}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    # The only published ports of the whole file.
+    ports:
+      - "${DEPLOY_BIND:-0.0.0.0}:${DEPLOY_HTTP_PORT:-80}:8080"
+      - "${DEPLOY_BIND:-0.0.0.0}:${DEPLOY_HTTPS_PORT:-443}:8443"
+    volumes:
+      - ${DEPLOY_TLS_DIR:-/etc/qarz/tls}:/etc/nginx/tls:ro
+      - ${DEPLOY_ACME_DIR:-/var/lib/qarz/acme}:/var/www/acme:ro
+    networks: [public, edge]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 192M
+          pids: 128
+
+networks:
+  # The proxy's way out to the published ports.
+  public: {}
+  # Proxy to API only; no route to anywhere else.
+  edge:
+    internal: true
+  # API and worker to the database hosts, the file store and Telegram.
+  egress: {}
