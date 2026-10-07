@@ -147,6 +147,94 @@ jobs:
         if: always()
         run: deploy/production/scripts/local.sh down || true
 
+  # The front end and the back end, run together (e2e/): the built pages in Chromium against the real
+  # API, worker and database, through the proxy of deploy/production, so its Content-Security-Policy,
+  # body limits and headers are in force. The images come from the same build cache as deploy-files.
+  # Nothing the stack sends can leave the runner (deploy/production/compose.e2e.yml).
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      COMMIT: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Script and overlay
+        env:
+          DEPLOY_RELEASE: ci
+          QD_DATABASE_URL: postgresql://qd_app@db.invalid/qarz
+          QD_MIGRATION_URL: postgresql://owner@db.invalid/qarz
+          LOCAL_POSTGRES_PASSWORD: ci
+          LOCAL_APP_PASSWORD: ci
+        run: |
+          shellcheck --external-sources --severity=warning e2e/stack.sh
+          test -x e2e/stack.sh
+          docker compose -f deploy/production/compose.yml -f deploy/production/compose.local.yml \
+            -f deploy/production/compose.e2e.yml config --quiet
+      - uses: docker/setup-buildx-action@v3
+      - name: Backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          load: true
+          tags: qarz-daftari/backend:${{ github.sha }}
+          cache-from: type=gha,scope=backend
+      - name: Proxy image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/production/nginx/Dockerfile
+          load: true
+          build-args: VITE_BOT_USERNAME=qd_local_proof_bot
+          tags: qarz-daftari/proxy:${{ github.sha }}
+          cache-from: type=gha,scope=proxy
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - name: Install the suite
+        working-directory: e2e
+        run: npm ci
+      - name: Playwright's browser, from the cache when the version is the same
+        id: browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          if [ "${{ steps.browser.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps --only-shell chromium
+          fi
+      - name: Types
+        working-directory: e2e
+        run: npm run typecheck
+      - name: The stack comes up
+        run: |
+          test "$(git rev-parse HEAD)" = "$COMMIT"
+          e2e/stack.sh up
+      - name: The journeys
+        working-directory: e2e
+        run: npm test
+      - name: Report when it failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 7
+      - name: Logs when it failed
+        if: failure()
+        run: e2e/stack.sh logs 80 || true
+      - name: Remove the stack
+        if: always()
+        run: e2e/stack.sh down || true
+
   # The backup files (deploy/backup): the scripts pass shellcheck, the units pass systemd-analyze, the
   # proof's Compose overlay parses, and the alert rules pass their own tests. The proof itself
   # (deploy/backup/proof/run.sh all) takes about five minutes with its image builds and is run by hand.

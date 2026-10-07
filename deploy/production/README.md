@@ -19,6 +19,7 @@ a real certificate, a real bot or a real database host. See "Not proven" at the 
 | `nginx/nginx.conf`, `nginx/conf.d/qarz.conf`, `nginx/snippets/` | TLS, redirect, headers, limits, routing, the access log. |
 | `compose.yml` | `proxy`, `api`, `worker`, `migrate`. Only the proxy publishes ports. |
 | `compose.local.yml` | Overlay for the local proof only: PostgreSQL and a volume for files. |
+| `compose.e2e.yml` | Overlay for the end-to-end suite only: closes the API's and the worker's way out. |
 | `.env.example` | Every name the services read, by service, without values. |
 | `scripts/deploy.sh`, `rollback.sh`, `smoke.sh` | See below. `local.sh` runs the local proof; `lib.sh` is shared. |
 
@@ -175,7 +176,37 @@ deploy/production/scripts/local.sh down        # containers, networks, volumes, 
 ```
 
 Everything generated is under `deploy/production/.local/`, which git ignores. CI builds both images, checks
-the compose files and runs this same proof on every pull request.
+the compose files and runs this same proof on every pull request, and runs the end-to-end suite (below)
+against the same images.
+
+## The end-to-end suite
+
+`e2e/` drives the built front end in Chromium (Playwright) against this stack: the real API, worker and
+PostgreSQL behind the proxy, so the policy, the limits and the headers above are in force. It is a
+package of its own, so that `frontend/` installs and bundles nothing of it.
+
+```sh
+git commit …                       # the images are built from the commit, as for the local proof
+e2e/stack.sh up                    # project qd-e2e on https://127.0.0.1:28443 (http: 28480)
+cd e2e && npm ci && npx playwright install chromium
+npm test                           # about a minute and a half; npx playwright test tests/04 for one file
+e2e/stack.sh down                  # containers, networks, volumes, images, generated files
+```
+
+- **Nothing leaves the machine.** `compose.e2e.yml` makes the network of the API and the worker
+  internal, so the worker's calls to Telegram fail at once; what it would have sent is read from the
+  `outbox_message` table. The browser's requests for Telegram's two scripts are answered by stand-ins
+  (`e2e/support/fixtures.ts`), and a request to anywhere else fails the test.
+- **Signing in** is done the way Telegram would do it: launch data and Login-widget fields signed with
+  the stack's made-up bot token (`e2e/support/telegram.ts`), and chat updates posted to `/tg/webhook`
+  with the stack's webhook secret. The application has no test entrance.
+- **The database** is read with `psql` as its owner, in read-only transactions.
+- **Every journey** fails on a Content-Security-Policy violation reported by the browser and on an API
+  answer without `X-Request-Id`.
+- An administrator's second factor is enrolled once, so the stack's allow-list holds eight made-up
+  identifiers and each run uses the next one; after eight runs, `down` and `up` again.
+- `down` removes every `qarz-daftari/backend` and `qarz-daftari/proxy` image on the machine, the local
+  proof's included. Generated files are in `deploy/production/.local-e2e/`, which git ignores.
 
 ## Not covered here
 

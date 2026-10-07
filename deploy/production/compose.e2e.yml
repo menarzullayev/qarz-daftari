@@ -1,0 +1,8 @@
+# Overlay for the end-to-end suite ONLY (e2e/stack.sh), on top of compose.yml and compose.local.yml.
+# The suite signs in as made-up people and makes the application queue messages for them. The worker
+# would hand those to Telegram's Bot API, so the network the API and the worker use to reach the outside
+# is closed here: nothing either of them sends can leave the machine. What would have been sent stays in
+# the `outbox_message` table, where the suite reads it.
+networks:
+  egress:
+    internal: true
