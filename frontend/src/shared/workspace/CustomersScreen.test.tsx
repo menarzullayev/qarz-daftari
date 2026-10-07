@@ -138,11 +138,12 @@ describe("picking a customer for a new entry", () => {
 });
 
 describe("connecting customers from the customer book", () => {
-  it("leads to the waiting list and to the counter code", async () => {
+  it("leads to the payment notices, the waiting list and the counter code", async () => {
     renderScreen(<CustomersScreen />, { fetch: fakeServer(() => page([ALI])).fetch });
     await screen.findByText("Ali Valiyev");
     const nav = screen.getByRole("navigation", { name: "Mijozlarni Telegramga ulash" });
     expect(within(nav).getAllByRole("link").map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
+      ["To'lov xabarlari", "#/payment-notices"],
       ["Ulanishni kutayotganlar", "#/customers/waiting"],
       ["Peshtaxta kodi", "#/customers/counter-code"],
     ]);

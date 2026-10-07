@@ -263,6 +263,7 @@ describe("a person's own accounts", () => {
       "openDispute",
       "read",
       "requestRemoval",
+      "sendPaymentNotice",
       "withdrawDispute",
     ]);
   });

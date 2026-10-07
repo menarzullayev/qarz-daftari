@@ -162,6 +162,9 @@ export function CustomersScreen({ pick = false, selectedId }: CustomersScreenPro
       {body}
       {pick ? null : (
         <nav className="actions" aria-label={t("link.nav")}>
+          <Link to="/payment-notices" className="button">
+            {t("notices.title")}
+          </Link>
           <Link to="/customers/waiting" className="button">
             {t("waiting.title")}
           </Link>

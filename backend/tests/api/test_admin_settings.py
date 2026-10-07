@@ -448,7 +448,11 @@ def test_every_administrator_write_leaves_exactly_one_audit_row_saying_who_what_
     who, action, target_type, target_id, target_shop, reason, at = rows[0]
     assert who == world.admin
     assert at is not None
-    if "shops" in op_name:
+    if "support" in op_name:
+        assert action == op_name.replace("admin.support.", "support.") + ("ed" if op_name.endswith("open") else "d")
+        assert (target_type, target_id, target_shop) == ("shop", str(world.shop_a), world.shop_a)
+        assert reason == (None if body is None else body["reason"])
+    elif "shops" in op_name:
         assert action.startswith("subscription.")
         assert (target_type, target_id, target_shop) == ("shop", str(world.shop_a), world.shop_a)
         assert body is not None
