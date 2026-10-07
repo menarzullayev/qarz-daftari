@@ -1,0 +1,19 @@
+# Runs on the standby server. Output goes to the journal: journalctl -u qd-backup-check.service
+[Unit]
+Description=Qarz Daftari: age of the newest backup and of the newest archived WAL segment
+Documentation=https://github.com/menarzullayev/qarz-daftari/blob/main/deploy/backup/README.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+EnvironmentFile=-/etc/qarz-backup/backup.env
+ExecStart=/opt/qarz-backup/scripts/check.sh --quiet
+SyslogIdentifier=qd-backup-check
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=50s
+NoNewPrivileges=yes
+ProtectHome=yes

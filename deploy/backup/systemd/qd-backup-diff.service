@@ -1,0 +1,22 @@
+# Runs on the standby server. Output goes to the journal: journalctl -u qd-backup-diff.service
+[Unit]
+Description=Qarz Daftari: daily differential database backup (pgBackRest)
+Documentation=https://github.com/menarzullayev/qarz-daftari/blob/main/deploy/backup/README.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+EnvironmentFile=-/etc/qarz-backup/backup.env
+ExecStart=/opt/qarz-backup/scripts/backup.sh diff
+SyslogIdentifier=qd-backup-diff
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=4h
+NoNewPrivileges=yes
+ProtectHome=yes
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

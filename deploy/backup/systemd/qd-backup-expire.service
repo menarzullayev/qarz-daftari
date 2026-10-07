@@ -1,0 +1,22 @@
+# Runs on the standby server. Output goes to the journal: journalctl -u qd-backup-expire.service
+[Unit]
+Description=Qarz Daftari: remove backups the retention rules no longer keep
+Documentation=https://github.com/menarzullayev/qarz-daftari/blob/main/deploy/backup/README.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+EnvironmentFile=-/etc/qarz-backup/backup.env
+ExecStart=/opt/qarz-backup/scripts/expire.sh
+SyslogIdentifier=qd-backup-expire
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=2h
+NoNewPrivileges=yes
+ProtectHome=yes
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

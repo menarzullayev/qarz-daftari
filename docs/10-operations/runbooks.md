@@ -98,7 +98,19 @@ all (no public address exists).
    through the product (runbook 6), and missing ones are entered again.
 5. Tell the affected shops which minutes they must enter again.
 
-**Not yet possible.** No backup schedule runs anywhere; only one base backup in one local rehearsal.
+Before step 3, see what there is to restore from: `pgbackrest --stanza=qarz info` on the standby lists the
+backups, and `deploy/backup/scripts/check.sh` prints the age of the newest backup and of the newest
+archived WAL segment. The moment wanted must lie after the end of a full backup whose WAL is still kept:
+the last 14 days at least (`deploy/backup/README.md`, "Retention"). Older weekly backups and the monthly
+dumps (`deploy/backup/scripts/monthly-archive.sh`) give the state of their own moment only.
+
+The weekly restore test (`deploy/backup/scripts/restore-test.sh`) restores the latest backup and checks
+the ledger in it. It is not a point-in-time restore: it stops where the backup ends and removes the
+instance. A red restore test means this runbook may not work when it is needed; treat it the same day.
+
+**Not yet possible.** The backup schedule, the restore test and the expiry exist as configuration and
+scripts (`deploy/backup/`) and were proven in containers on one machine; they are installed on no server,
+because no server exists. A point-in-time restore from a repository on a real standby has never been done.
 
 ## 4. Rotate bot token, webhook secret, server secret, database passwords, backup key
 
@@ -111,12 +123,29 @@ all (no public address exists).
 | Server secret (`QD_SECRETS_KEY`) | See below | Every file link already handed out stops working (they live five minutes anyway) |
 | Database passwords | `ALTER ROLE qd_app PASSWORD ...` as the owner; update `QD_DATABASE_URL`; restart API and worker | Requests fail between the change and the restart |
 | Metrics token (`QD_METRICS_TOKEN`) | Set a new value; restart the API; update the monitoring system | Scrapes fail until both are changed |
-| Backup key | Create a new repository with the new key and take a full backup; keep the old key until the old backups have aged out | Losing the key loses the backups: keep it in two places off both servers |
+| Backup key | See below | Losing the key loses the backups: keep it in two places off both servers |
 
 **The server secret needs care.** It derives the key that signs file links and the key that encrypts the
 administrators' second-factor secrets. Changing it makes every stored second-factor secret unreadable:
 each administrator must be enrolled again (runbook 7 describes the operator step). **Not yet possible:**
 there is no tool that re-encrypts the stored secrets under a new key.
+
+**The backup key.** pgBackRest cannot change the passphrase of an existing repository. Where the key
+lives and what it protects: `deploy/backup/README.md`, "The key".
+
+1. Generate the new passphrase away from both servers and store it in the two places **before** using it.
+2. On the standby, stop the timers (`systemctl stop 'qd-backup-*.timer' qd-restore-test.timer`), move the
+   old repository aside (`/var/lib/pgbackrest` to a dated name), put the new passphrase into
+   `/etc/pgbackrest/conf.d/cipher.conf`, run `pgbackrest --stanza=qarz stanza-create`, then
+   `deploy/backup/scripts/backup.sh full` and `deploy/backup/scripts/restore-test.sh`.
+3. Start the timers. Until the full backup of step 2 has ended there is no usable backup under the new key,
+   and WAL archiving fails between moving the repository and `stanza-create`: do it at night, and expect
+   the archive alert.
+4. Keep the old repository and the old passphrase until the old backups have aged out (8 weeks; 12 months
+   if the monthly dumps under the old key are to stay readable), then remove both. The file store archives
+   and monthly dumps written from now on use the new passphrase; the earlier ones need the old one.
+
+**Not yet possible:** these steps have never been run; they are written from the tools' documentation.
 
 After any rotation following a suspected leak: review the admin audit and the request log for the period
 of exposure, and treat it as runbook 11.

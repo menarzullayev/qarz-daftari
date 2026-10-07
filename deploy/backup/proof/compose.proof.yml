@@ -1,0 +1,79 @@
+# Overlay on deploy/rehearsal/compose.yml for the local proof of deploy/backup (proof/run.sh).
+# One machine, throwaway data, loopback ports only. Paths are relative to deploy/rehearsal.
+#
+# Adds to the rehearsal stack: the backup scripts and the repository's migrations mounted read-only
+# into the database containers, a volume standing for /var/lib/qarz-backup, a second object store
+# standing for the standby's, and a container with rclone, shellcheck and systemd-analyze.
+
+x-postgres-proof: &postgres-proof
+  image: qd-backup-proof-postgres:16
+
+services:
+  pg-primary:
+    <<: *postgres-proof
+    environment: &backup-env
+      QD_BACKUP_ENV: /nonexistent
+      QD_DATABASE: qd_load_proof
+      QD_STATE_DIR: /var/lib/qarz-backup
+      QD_TEXTFILE_DIR: /var/lib/qarz-backup/textfile
+      QD_MIGRATIONS_DIR: /qd-migrations
+    volumes: &backup-volumes
+      - ../backup:/qd-backup:ro
+      - ../../backend/migrations/versions:/qd-migrations:ro
+      - proof-state:/var/lib/qarz-backup
+
+  pg-standby:
+    <<: *postgres-proof
+    environment: *backup-env
+    volumes: *backup-volumes
+
+  pg-pitr:
+    <<: *postgres-proof
+
+  filestore:
+    image: qd-backup-proof-filestore:1
+
+  filestore-standby:
+    build: ./filestore
+    image: qd-backup-proof-filestore:1
+    environment:
+      GARAGE_RPC_SECRET: ${QD_FILESTORE_RPC_SECRET:-unused}
+      GARAGE_ADMIN_TOKEN: ${QD_FILESTORE_ADMIN_TOKEN:-unused}
+    ports:
+      - "127.0.0.1:${QD_PORT_FILESTORE_STANDBY:-55911}:3900"
+    volumes:
+      - filestore-standby-meta:/var/lib/garage/meta
+      - filestore-standby-data:/var/lib/garage/data
+
+  tools:
+    build: ../backup/proof
+    image: qd-backup-proof-tools:1
+    command: ["sleep", "infinity"]
+    stop_grace_period: 1s
+    environment:
+      <<: *backup-env
+      PGBACKREST_REPO1_CIPHER_PASS: ${QD_BACKUP_CIPHER_PASS:-unused}
+      RCLONE_CONFIG: /dev/null
+      RCLONE_CONFIG_PRIMARY_TYPE: s3
+      RCLONE_CONFIG_PRIMARY_PROVIDER: Other
+      RCLONE_CONFIG_PRIMARY_ENDPOINT: http://filestore:3900
+      RCLONE_CONFIG_PRIMARY_REGION: garage
+      RCLONE_CONFIG_PRIMARY_FORCE_PATH_STYLE: "true"
+      RCLONE_CONFIG_PRIMARY_ACCESS_KEY_ID: ${QD_FILESTORE_KEY_ID:-unused}
+      RCLONE_CONFIG_PRIMARY_SECRET_ACCESS_KEY: ${QD_FILESTORE_KEY_SECRET:-unused}
+      RCLONE_CONFIG_STANDBY_TYPE: s3
+      RCLONE_CONFIG_STANDBY_PROVIDER: Other
+      RCLONE_CONFIG_STANDBY_ENDPOINT: http://filestore-standby:3900
+      RCLONE_CONFIG_STANDBY_REGION: garage
+      RCLONE_CONFIG_STANDBY_FORCE_PATH_STYLE: "true"
+      RCLONE_CONFIG_STANDBY_ACCESS_KEY_ID: ${QD_FILESTORE_KEY_ID:-unused}
+      RCLONE_CONFIG_STANDBY_SECRET_ACCESS_KEY: ${QD_FILESTORE_KEY_SECRET:-unused}
+    volumes:
+      - ../backup:/qd-backup:ro
+      - ./scripts:/qd-rehearsal-scripts:ro
+      - proof-state:/var/lib/qarz-backup
+
+volumes:
+  proof-state:
+  filestore-standby-meta:
+  filestore-standby-data:

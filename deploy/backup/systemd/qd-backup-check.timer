@@ -1,0 +1,11 @@
+# Every minute. A failed run of this unit means a backup or the archive is too old.
+[Unit]
+Description=Qarz Daftari: age of the newest backup and of the newest archived WAL segment (schedule)
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Persistent=false
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

@@ -24,7 +24,14 @@ if [ -f "$ENV_FILE" ]; then
     set +a
 fi
 
-dc() { docker compose --progress quiet -f compose.yml "$@"; }
+# The Compose project. Another directory can run its own copy of this stack beside this one by
+# setting QD_COMPOSE_PROJECT and adding services through QD_COMPOSE_OVERLAY (a second compose file,
+# path relative to this directory); deploy/backup/proof does.
+PROJECT="${QD_COMPOSE_PROJECT:-qd-rehearsal}"
+
+dc() {
+    docker compose --progress quiet -p "$PROJECT" -f compose.yml ${QD_COMPOSE_OVERLAY:+-f "$QD_COMPOSE_OVERLAY"} "$@"
+}
 
 log() { printf '%s %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }

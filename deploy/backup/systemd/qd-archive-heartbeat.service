@@ -1,0 +1,19 @@
+# Runs on the primary server. Output goes to the journal: journalctl -u qd-archive-heartbeat.service
+[Unit]
+Description=Qarz Daftari: one small WAL record a minute, so that a quiet archive means a broken one
+Documentation=https://github.com/menarzullayev/qarz-daftari/blob/main/deploy/backup/README.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+EnvironmentFile=-/etc/qarz-backup/backup.env
+ExecStart=/opt/qarz-backup/scripts/archive-heartbeat.sh
+SyslogIdentifier=qd-archive-heartbeat
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=30s
+NoNewPrivileges=yes
+ProtectHome=yes

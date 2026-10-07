@@ -1,0 +1,22 @@
+# Runs on the standby server. Output goes to the journal: journalctl -u qd-filestore-archive.service
+[Unit]
+Description=Qarz Daftari: weekly file store archive, part of the weekly backup
+Documentation=https://github.com/menarzullayev/qarz-daftari/blob/main/deploy/backup/README.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+EnvironmentFile=-/etc/qarz-backup/backup.env
+ExecStart=/opt/qarz-backup/scripts/filestore-sync.sh archive
+SyslogIdentifier=qd-filestore-archive
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=4h
+NoNewPrivileges=yes
+ProtectHome=yes
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

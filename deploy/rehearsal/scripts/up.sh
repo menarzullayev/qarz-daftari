@@ -5,7 +5,7 @@
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-if [ -n "$(docker ps -aq --filter label=com.docker.compose.project=qd-rehearsal)" ]; then
+if [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT")" ]; then
     die "the rehearsal stack already exists; run scripts/down.sh first"
 fi
 

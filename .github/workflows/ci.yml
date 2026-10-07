@@ -147,6 +147,54 @@ jobs:
         if: always()
         run: deploy/production/scripts/local.sh down || true
 
+  # The backup files (deploy/backup): the scripts pass shellcheck, the units pass systemd-analyze, the
+  # proof's Compose overlay parses, and the alert rules pass their own tests. The proof itself
+  # (deploy/backup/proof/run.sh all) takes about five minutes with its image builds and is run by hand.
+  backup-files:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Scripts
+        run: |
+          shellcheck --external-sources --severity=style deploy/backup/scripts/*.sh deploy/backup/proof/run.sh
+          for script in deploy/backup/scripts/*.sh deploy/backup/proof/run.sh; do
+            bash -n "$script"
+            test -x "$script" || { echo "$script is not executable" >&2; exit 1; }
+          done
+          if grep -rIl $'\r' deploy/backup; then
+            echo "carriage returns found" >&2
+            exit 1
+          fi
+      - name: Units
+        run: |
+          sudo mkdir -p /opt/qarz-backup
+          sudo cp -r deploy/backup/scripts /opt/qarz-backup/
+          id postgres > /dev/null 2>&1 || sudo useradd --system postgres
+          systemd-analyze verify --man=no deploy/backup/systemd/*.service deploy/backup/systemd/*.timer
+          for timer in deploy/backup/systemd/*.timer; do
+            sed -n 's/^OnCalendar=//p' "$timer" | while read -r calendar; do
+              systemd-analyze calendar "$calendar" > /dev/null
+            done
+          done
+      - name: The proof's Compose overlay is valid
+        env:
+          QD_POSTGRES_PASSWORD: ci
+          QD_REPL_PASSWORD: ci
+          QD_BACKUP_CIPHER_PASS: ci
+          QD_FILESTORE_RPC_SECRET: ci
+          QD_FILESTORE_ADMIN_TOKEN: ci
+        run: |
+          docker compose -p qd-backup-proof -f deploy/rehearsal/compose.yml \
+            -f deploy/backup/proof/compose.proof.yml config --quiet
+      - name: Alert rules and their tests
+        run: |
+          promtool() {
+            docker run --rm -v "$PWD/deploy/monitoring:/rules:ro" --entrypoint promtool prom/prometheus:v3.5.0 "$@"
+          }
+          promtool check rules /rules/alerts.yml
+          promtool test rules /rules/alerts.test.yml
+
   documents:
     runs-on: ubuntu-latest
     steps:

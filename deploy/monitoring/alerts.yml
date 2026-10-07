@@ -112,3 +112,47 @@ groups:
         for: 3m
         labels: {severity: phone, channel: external}
         annotations: {summary: "The application exposes no metrics"}
+
+  # Host-level figures. They do not come from the application's /metrics: the scripts of deploy/backup
+  # write them on the standby into the directory that node_exporter's textfile collector reads.
+  - name: qarz-backup
+    rules:
+      - alert: BackupFailed
+        # The last run of the weekly full or of the daily differential backup ended in failure.
+        expr: qd_backup_last_run_success == 0
+        for: 5m
+        labels: {severity: day, channel: operator-telegram}
+        annotations: {summary: "The last {{ $labels.type }} backup failed"}
+
+      - alert: BackupMissing
+        # No backup of any type for 26 hours (one is taken every night), no full backup for 8 days
+        # (one is taken every week), or no figure at all.
+        expr: |
+          time() - max(qd_backup_last_success_timestamp_seconds) > 93600
+            or time() - qd_backup_last_success_timestamp_seconds{type="full"} > 691200
+            or absent(qd_backup_last_success_timestamp_seconds)
+        for: 10m
+        labels: {severity: day, channel: operator-telegram}
+        annotations: {summary: "No recent backup in the repository"}
+
+      - alert: WalArchiveStale
+        # "Log archive age older than 5 minutes": the newest WAL segment in the repository is older
+        # than that, there is none (-1), the check that measures it has not run for 5 minutes, or
+        # there is no figure at all. This is the bound on what a lost primary loses (ADR-015).
+        expr: |
+          qd_wal_archive_newest_age_seconds > 300
+            or qd_wal_archive_newest_age_seconds < 0
+            or time() - qd_backup_check_timestamp_seconds > 300
+            or absent(qd_wal_archive_newest_age_seconds)
+        for: 1m
+        labels: {severity: phone, channel: external}
+        annotations: {summary: "The WAL archive is older than 5 minutes"}
+
+      - alert: RestoreTestNotPassed
+        # The weekly restore test of the latest backup has not passed for 8 days, or never has.
+        expr: |
+          time() - qd_backup_restore_test_last_success_timestamp_seconds > 691200
+            or absent(qd_backup_restore_test_last_success_timestamp_seconds)
+        for: 10m
+        labels: {severity: day, channel: operator-telegram}
+        annotations: {summary: "The restore test has not passed in 8 days"}

@@ -1,0 +1,144 @@
+# Tests of the backup alert rules, for `promtool test rules deploy/monitoring/alerts.test.yml`.
+# In these tests time() starts at 0, so a figure of 0 means "happened when the test began".
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+
+tests:
+  # Everything fresh: none of the four backup alerts fires.
+  - name: healthy
+    interval: 1m
+    input_series:
+      - series: 'qd_backup_last_run_success{type="full"}'
+        values: '1x30'
+      - series: 'qd_backup_last_run_success{type="diff"}'
+        values: '1x30'
+      - series: 'qd_backup_last_success_timestamp_seconds{type="full"}'
+        values: '0x30'
+      - series: 'qd_backup_last_success_timestamp_seconds{type="diff"}'
+        values: '0x30'
+      - series: 'qd_wal_archive_newest_age_seconds'
+        values: '30x30'
+      - series: 'qd_backup_check_timestamp_seconds'
+        values: '0+60x30'
+      - series: 'qd_backup_restore_test_last_success_timestamp_seconds'
+        values: '0x30'
+    alert_rule_test:
+      - {eval_time: 20m, alertname: BackupFailed, exp_alerts: []}
+      - {eval_time: 20m, alertname: BackupMissing, exp_alerts: []}
+      - {eval_time: 20m, alertname: WalArchiveStale, exp_alerts: []}
+      - {eval_time: 20m, alertname: RestoreTestNotPassed, exp_alerts: []}
+
+  # Negative: the newest archived segment grows older than 5 minutes.
+  - name: archive stale
+    interval: 1m
+    input_series:
+      - series: 'qd_wal_archive_newest_age_seconds'
+        values: '30 90 150 210 270 330 390 450 510 570'
+      - series: 'qd_backup_check_timestamp_seconds'
+        values: '0+60x9'
+    alert_rule_test:
+      - {eval_time: 4m, alertname: WalArchiveStale, exp_alerts: []}
+      - eval_time: 7m
+        alertname: WalArchiveStale
+        exp_alerts:
+          - exp_labels: {severity: phone, channel: external}
+            exp_annotations: {summary: "The WAL archive is older than 5 minutes"}
+
+  # Negative: the archive looks fresh, but only because the check stopped running.
+  - name: check stopped
+    interval: 1m
+    input_series:
+      - series: 'qd_wal_archive_newest_age_seconds'
+        values: '30x15'
+      - series: 'qd_backup_check_timestamp_seconds'
+        values: '0x15'
+    alert_rule_test:
+      - {eval_time: 4m, alertname: WalArchiveStale, exp_alerts: []}
+      - eval_time: 8m
+        alertname: WalArchiveStale
+        exp_alerts:
+          - exp_labels: {severity: phone, channel: external}
+            exp_annotations: {summary: "The WAL archive is older than 5 minutes"}
+
+  # Negative: a backup run failed.
+  - name: backup failed
+    interval: 1m
+    input_series:
+      - series: 'qd_backup_last_run_success{type="full"}'
+        values: '1x15'
+      - series: 'qd_backup_last_run_success{type="diff"}'
+        values: '0x15'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: BackupFailed
+        exp_alerts:
+          - exp_labels: {severity: day, channel: operator-telegram, type: diff}
+            exp_annotations: {summary: "The last diff backup failed"}
+
+  # Negative: the nightly backup stops. Nothing at 20 hours, an alert after 26.
+  - name: no backup for more than a day
+    interval: 1m
+    input_series:
+      - series: 'qd_backup_last_success_timestamp_seconds{type="full"}'
+        values: "0x1700"
+      - series: 'qd_backup_last_success_timestamp_seconds{type="diff"}'
+        values: "0x1700"
+    alert_rule_test:
+      - {eval_time: 20h, alertname: BackupMissing, exp_alerts: []}
+      - eval_time: 27h
+        alertname: BackupMissing
+        exp_alerts:
+          - exp_labels: {severity: day, channel: operator-telegram}
+            exp_annotations: {summary: "No recent backup in the repository"}
+
+  # Negative: differentials keep coming but the weekly full does not. Nothing at 7 days, an alert after 8.
+  - name: no full backup for more than a week
+    interval: 1m
+    input_series:
+      - series: 'qd_backup_last_success_timestamp_seconds{type="full"}'
+        values: "0x13000"
+      - series: 'qd_backup_last_success_timestamp_seconds{type="diff"}'
+        values: "0+60x13000"
+    alert_rule_test:
+      - {eval_time: 7d, alertname: BackupMissing, exp_alerts: []}
+      - eval_time: 9d
+        alertname: BackupMissing
+        exp_alerts:
+          - exp_labels: {severity: day, channel: operator-telegram, type: full}
+            exp_annotations: {summary: "No recent backup in the repository"}
+
+  # Negative: the restore test stops passing. Nothing at 7 days, an alert after 8.
+  - name: restore test not passed
+    interval: 1m
+    input_series:
+      - series: 'qd_backup_restore_test_last_success_timestamp_seconds'
+        values: "0x13000"
+    alert_rule_test:
+      - {eval_time: 7d, alertname: RestoreTestNotPassed, exp_alerts: []}
+      - eval_time: 9d
+        alertname: RestoreTestNotPassed
+        exp_alerts:
+          - exp_labels: {severity: day, channel: operator-telegram}
+            exp_annotations: {summary: "The restore test has not passed in 8 days"}
+
+  # Negative: the scripts report nothing at all (never installed, or the collector lost its directory).
+  - name: no figures
+    interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: BackupMissing
+        exp_alerts:
+          - exp_labels: {severity: day, channel: operator-telegram}
+            exp_annotations: {summary: "No recent backup in the repository"}
+      - eval_time: 15m
+        alertname: WalArchiveStale
+        exp_alerts:
+          - exp_labels: {severity: phone, channel: external}
+            exp_annotations: {summary: "The WAL archive is older than 5 minutes"}
+      - eval_time: 15m
+        alertname: RestoreTestNotPassed
+        exp_alerts:
+          - exp_labels: {severity: day, channel: operator-telegram}
+            exp_annotations: {summary: "The restore test has not passed in 8 days"}
