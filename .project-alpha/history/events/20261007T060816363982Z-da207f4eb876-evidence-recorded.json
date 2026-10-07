@@ -1,0 +1,15 @@
+{
+  "event_id": "da207f4eb876",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-07T06:08:16+00:00",
+  "path": "docs\\evidence\\EVID-068.md",
+  "stage": "09-development-plan",
+  "title": "Exports pass CI on main",
+  "claim": "Exports of a shop as worker jobs with five-minute signed downloads (story S13.2, pull request 52) passed CI on main in the run for commit 763309d. On a developer machine a shop with 200 000 entries was exported in about 16 seconds to a 34 MB workbook with a peak of 148 MB of memory; the file was opened in one copy of Microsoft Excel only, and the export was never run against a real object store",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/52 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37566846892",
+  "date": "2026-10-07",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-068"
+}

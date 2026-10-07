@@ -1,0 +1,21 @@
+{
+  "event_id": "96082892db90",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-07T06:08:16+00:00",
+  "path": ".project-alpha\\decisions\\DEC-052.md",
+  "stage": "04-prd",
+  "title": "No fresh code to decide a subscription receipt",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-052",
+  "decision": "Approving or rejecting a receipt needs the administrator session and not a newly entered code. This answers the specification's open question 4",
+  "context": "Answered by the founder on 2026-10-07 when asked by the agent in the working session",
+  "chosen_option": "The session is enough",
+  "rationale": "The founder chose it; setting the paid-through date by hand works the same way",
+  "impact": "Low",
+  "reversibility": "High",
+  "evidence": "EVID-069",
+  "approval_required": "yes",
+  "approval_status": "approved",
+  "approver": "founder",
+  "approved_at": "2026-10-07"
+}
