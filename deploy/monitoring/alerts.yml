@@ -103,6 +103,13 @@ groups:
         labels: {severity: sight, channel: operator-telegram}
         annotations: {summary: "An administrator asked for a shop's data without support access"}
 
+      - alert: ShopOwnerReassigned
+        # An administrator gave a shop to another person (runbook 7). It happens only by the founder's
+        # written decision, so the operator should be able to name the decision behind each one.
+        expr: increase(qd_security_events_total{kind="owner_reassigned"}[10m]) > 0
+        labels: {severity: sight, channel: operator-telegram}
+        annotations: {summary: "An administrator reassigned the ownership of a shop"}
+
   - name: qarz-up
     rules:
       - alert: MetricsMissing

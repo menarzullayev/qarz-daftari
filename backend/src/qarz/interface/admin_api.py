@@ -38,6 +38,7 @@ from qarz.application.admin_access import (
     SecondFactorInvalid,
     SecondFactorLocked,
 )
+from qarz.application.admin_ownership import REASSIGN_OWNER, AdminOwnershipService
 from qarz.application.admin_receipts import (
     APPROVE_RECEIPT,
     LIST_RECEIPTS,
@@ -46,7 +47,7 @@ from qarz.application.admin_receipts import (
     AdminReceiptService,
 )
 from qarz.application.errors import NotFound, Unauthenticated, ValidationFailed
-from qarz.interface.observability import SECURITY_BAD_SECOND_FACTOR
+from qarz.interface.observability import SECURITY_BAD_SECOND_FACTOR, SECURITY_OWNER_REASSIGNED
 from qarz.interface.shops_api import IdempotencyKey
 
 ADMIN_COOKIE = "qd_admin"
@@ -79,6 +80,14 @@ class PaidThroughBody(ReasonBody):
     paid_through: date
 
 
+class OwnerBody(ReasonBody):
+    # The person is named as the administrator's side names people: by Telegram identifier. They must
+    # have started the bot, so that the service knows them.
+    new_owner_tg_id: int = Field(gt=0, le=2**62)
+    # Never optional: this change asks for the second factor again every time.
+    code: str = Field(pattern=r"^[0-9]{6}$")
+
+
 class ApproveBody(_Strict):
     # Absent or null approves the months the owner stated; a number corrects them (BR-27).
     months: int | None = None
@@ -107,6 +116,7 @@ def add_admin_routes(
     language_of: LanguageOf,
     count: Callable[[UUID], None] | None = None,
     receipts: AdminReceiptService | None = None,
+    ownership: AdminOwnershipService | None = None,
 ) -> Callable[[Request], Awaitable[UUID]]:
     """Adds the routes and returns the dependency that lets only a full administrator through, for
     other modules that add routes to the administrator's side."""
@@ -229,6 +239,29 @@ def add_admin_routes(
     ) -> dict[str, Any]:
         body = await _read(request, ReasonBody)
         return await service.unsuspend(user_id, shop_id, body.reason, idempotency_key)
+
+    if ownership is not None:
+        owners = ownership
+
+        @app.post(BASE + "/shops/{shop_id}/owner", name=REASSIGN_OWNER.name)
+        async def reassign_owner(
+            shop_id: UUID, request: Request, user_id: admin, idempotency_key: IdempotencyKey = None
+        ) -> dict[str, Any]:
+            body = await _read(request, OwnerBody)
+            try:
+                answer = await owners.reassign(
+                    user_id,
+                    shop_id,
+                    new_owner_tg_id=body.new_owner_tg_id,
+                    code=body.code,
+                    reason=body.reason,
+                    request_key=idempotency_key,
+                )
+            except (SecondFactorInvalid, SecondFactorLocked):
+                request.state.security_event = SECURITY_BAD_SECOND_FACTOR
+                raise
+            request.state.security_event = SECURITY_OWNER_REASSIGNED
+            return answer
 
     # --- subscription receipts --------------------------------------------------------------------------
 

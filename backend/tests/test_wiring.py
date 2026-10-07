@@ -166,6 +166,33 @@ def test_a_server_secret_that_is_too_short_refuses_to_start(key: str) -> None:
         build(Settings(database_url=DB, bot_token="123:test", admin_tg_ids="1001", secrets_key=key))
 
 
+@pytest.mark.parametrize("key", ["short", "x" * 15])
+@pytest.mark.parametrize("admin_tg_ids", ["1001", ""], ids=["with administrators", "file links only"])
+def test_a_previous_server_secret_that_is_too_short_refuses_to_start(key: str, admin_tg_ids: str) -> None:
+    with pytest.raises(ValueError, match="too short"):
+        build(
+            Settings(
+                database_url=DB,
+                bot_token="123:test",
+                admin_tg_ids=admin_tg_ids,
+                secrets_key=SECRETS_KEY,
+                secrets_key_previous=key,
+            )
+        )
+
+
+def test_the_application_starts_with_a_previous_server_secret_and_without_one() -> None:
+    for previous in ("", "the-secret-before-this-one-0123456789"):
+        paths = _admin_paths(admin_tg_ids="1001", secrets_key=SECRETS_KEY, secrets_key_previous=previous)
+        assert "/api/admin/v1/shops/{shop_id}/owner" in paths
+
+
+def test_the_previous_server_secret_is_empty_by_default_and_not_shown_when_settings_are_printed() -> None:
+    assert Settings().secrets_key_previous == ""
+    previous = "the-secret-before-this-one-0123456789"
+    assert previous not in repr(Settings(secrets_key=SECRETS_KEY, secrets_key_previous=previous))
+
+
 def test_the_allow_list_is_read_as_numbers() -> None:
     assert Settings(admin_tg_ids=" 1001, 1002 ,,1001 ").admin_allow_list() == frozenset({1001, 1002})
     assert Settings(admin_tg_ids="").admin_allow_list() == frozenset()

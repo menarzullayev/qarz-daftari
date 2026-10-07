@@ -460,6 +460,24 @@ export function createAdminApi(options: {
       return call(transport, { method: "GET", path: `${BASE}/settings`, signal, read: platformSettings });
     },
 
+    /**
+     * Gives the shop to the person with this Telegram identifier (an owner who lost their account).
+     * Needs a reason and, every time, a fresh code from the authenticator.
+     */
+    reassignOwner(
+      shopId: string,
+      input: { newOwnerTgId: number; reason: string; code: string },
+      idempotencyKey: string,
+    ): Promise<AdminShop> {
+      return call(transport, {
+        method: "POST",
+        path: `${BASE}/shops/${encodeURIComponent(shopId)}/owner`,
+        body: { new_owner_tg_id: input.newOwnerTgId, reason: input.reason, code: input.code },
+        idempotencyKey,
+        read: adminShop,
+      });
+    },
+
     /** Changes platform settings. `code` is asked for again when a sensitive one is among them. */
     updateSettings(
       changes: Readonly<Record<string, SettingValue>>,

@@ -1167,6 +1167,17 @@ ADMIN_CALLS: dict[str, AdminCall] = {
         True,
         prepare=_suspended,
     ),
+    # This one asks for the second factor again on every call, and the suite cannot know a right code:
+    # the code here is well formed and wrong. An administrator is therefore let in as far as the code and
+    # refused there (403, nothing written), which still tells them apart from everyone else, who get the
+    # 404 of an unknown route. What it does with a right code is in test_admin_owner.py.
+    "admin.shops.owner.reassign": AdminCall(
+        "POST",
+        lambda w: f"{ADMIN_API}/shops/{w.shop_a}/owner",
+        lambda w: {"new_owner_tg_id": 987654321, "reason": "Egasi hisobini yo'qotdi", "code": "000000"},
+        True,
+        ok_status=403,
+    ),
     "admin.settings.read": AdminCall("GET", lambda w: f"{ADMIN_API}/settings"),
     # A change that needs no second code, so that it would go through for anyone let in.
     "admin.settings.update": AdminCall(

@@ -48,6 +48,7 @@ from qarz.application.ports import (
     NewReversal,
     OnlinePayment,
     OutboxMessage,
+    OwnerReassignment,
     PaymentNoticeRecord,
     PeriodTotals,
     PromiseRecord,
@@ -3448,6 +3449,52 @@ class PgPlatformSession:
             owner_tg=None if row.owner_tg is None else int(row.owner_tg),
             owner_lang=row.owner_lang,
         )
+
+    async def admin_reassign_owner(
+        self, admin_id: UUID, shop_id: UUID, *, new_owner_tg: int, reason: str, now: datetime
+    ) -> OwnerReassignment:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT outcome, audit_id, shop_name, shop_lang, deletion_due, previous_owner, "
+                    "  previous_owner_tg, previous_owner_lang, new_owner, new_owner_lang, transfer_cancelled "
+                    "FROM admin_reassign_owner(:admin, :shop, :tg, :reason, :now)"
+                ),
+                {"admin": admin_id, "shop": shop_id, "tg": new_owner_tg, "reason": reason, "now": now},
+            )
+        ).one()
+        return OwnerReassignment(
+            outcome=row.outcome,
+            audit_id=row.audit_id,
+            shop_name=row.shop_name,
+            shop_lang=row.shop_lang,
+            deletion_due=row.deletion_due,
+            previous_owner=row.previous_owner,
+            previous_owner_tg=None if row.previous_owner_tg is None else int(row.previous_owner_tg),
+            previous_owner_lang=row.previous_owner_lang,
+            new_owner=row.new_owner,
+            new_owner_lang=row.new_owner_lang,
+            transfer_cancelled=bool(row.transfer_cancelled),
+        )
+
+    async def admin_secrets(self) -> list[tuple[UUID, bytes]]:
+        rows = (
+            await self._conn.execute(text("SELECT user_id, totp_secret FROM admin_account ORDER BY user_id FOR UPDATE"))
+        ).all()
+        return [(row.user_id, bytes(row.totp_secret)) for row in rows]
+
+    async def replace_admin_secret(self, user_id: UUID, *, old: bytes, new: bytes) -> bool:
+        # Only the secret's column: the application role may not touch the status (migration 0027).
+        row = (
+            await self._conn.execute(
+                text(
+                    "UPDATE admin_account SET totp_secret = :new WHERE user_id = :id AND totp_secret = :old "
+                    "RETURNING user_id"
+                ),
+                {"id": user_id, "old": old, "new": new},
+            )
+        ).first()
+        return row is not None
 
     async def admin_store_subscription(
         self,

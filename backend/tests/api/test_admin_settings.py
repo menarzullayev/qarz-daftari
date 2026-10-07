@@ -40,6 +40,9 @@ NEEDS_CODE = {
 }
 
 
+REASSIGN = "admin.shops.owner.reassign"
+
+
 def _key() -> dict[str, str]:
     return {"Idempotency-Key": f"admin-{uuid.uuid4().hex}"}
 
@@ -427,7 +430,13 @@ def test_a_malformed_settings_request_is_a_validation_error(
 
 @pytest.mark.parametrize("op_name", sorted(name for name, call in ADMIN_CALLS.items() if call.changes_data))
 def test_every_administrator_write_leaves_exactly_one_audit_row_saying_who_what_and_why(
-    client: TestClient, world: World, owner: psycopg.Connection, admin: dict[str, str], op_name: str
+    client: TestClient,
+    world: World,
+    owner: psycopg.Connection,
+    admin_env: AdminEnv,
+    admin: dict[str, str],
+    secret: bytes,
+    op_name: str,
 ) -> None:
     call = ADMIN_CALLS[op_name]
     if call.prepare is not None:
@@ -435,8 +444,15 @@ def test_every_administrator_write_leaves_exactly_one_audit_row_saying_who_what_
     before = owner.execute("SELECT count(*) FROM admin_audit").fetchone()
     assert before is not None
     body = None if call.json is None else call.json(world)
+    expected = call.ok_status
+    if op_name == REASSIGN:
+        # The suite's request carries a wrong code and names nobody; here the write has to happen.
+        new_owner = owner.execute("SELECT tg_id FROM app_user WHERE id = %s", (world.stranger,)).fetchone()
+        assert new_owner is not None and body is not None
+        body = {**body, "new_owner_tg_id": new_owner[0], "code": fresh_code(admin_env, secret)}
+        expected = 200
     response = client.request(call.method, call.path(world), json=body, headers={**admin, **_key()})
-    assert response.status_code == call.ok_status, response.text
+    assert response.status_code == expected, response.text
 
     rows = owner.execute(
         "SELECT admin_id, action, target_type, target_id, target_shop, reason, at FROM admin_audit "
@@ -452,6 +468,14 @@ def test_every_administrator_write_leaves_exactly_one_audit_row_saying_who_what_
         assert action == op_name.replace("admin.support.", "support.") + ("ed" if op_name.endswith("open") else "d")
         assert (target_type, target_id, target_shop) == ("shop", str(world.shop_a), world.shop_a)
         assert reason == (None if body is None else body["reason"])
+    elif op_name == REASSIGN:
+        assert (action, target_type, target_id, target_shop) == (
+            "shop.owner_reassigned",
+            "shop",
+            str(world.shop_a),
+            world.shop_a,
+        )
+        assert body is not None and reason == body["reason"]
     elif "shops" in op_name:
         assert action.startswith("subscription.")
         assert (target_type, target_id, target_shop) == ("shop", str(world.shop_a), world.shop_a)

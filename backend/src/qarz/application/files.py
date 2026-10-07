@@ -66,12 +66,20 @@ class FileService:
         new_token: Callable[[], str] | None = None,
         *,
         link_secret: str | None = None,
+        previous_link_secret: str | None = None,
     ) -> None:
         self._storage = storage
         self._store = store
         self._new_token = new_token or _new_token
         # Without the server secret no link can be signed or believed: no file is served at all.
         self._link_key = None if link_secret is None else derive_key(link_secret)
+        # During a rotation of the server secret: links signed just before the restart keep working for
+        # the five minutes they have left. Nothing is signed with this key.
+        self._previous_link_key = (
+            derive_key(previous_link_secret)
+            if link_secret is not None and previous_link_secret and previous_link_secret != link_secret
+            else None
+        )
 
     @staticmethod
     def check(data: bytes) -> CheckedFile:
@@ -146,6 +154,8 @@ class FileService:
         and a file that has been deleted or marked for deletion since the link was given.
         """
         named = None if self._link_key is None else verify(self._link_key, token, now)
+        if named is None and self._previous_link_key is not None:
+            named = verify(self._previous_link_key, token, now)
         if named is None:
             raise NotFound()
         shop_id, file_id = named

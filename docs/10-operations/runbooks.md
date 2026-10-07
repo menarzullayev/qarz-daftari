@@ -120,15 +120,42 @@ because no server exists. A point-in-time restore from a repository on a real st
 |---|---|---|
 | Bot token (`QD_BOT_TOKEN`) | Revoke and reissue with BotFather; set the new value; restart API and worker; set the webhook again | Until restart: sign-in and sending fail. Sessions already open keep working |
 | Webhook secret (`QD_WEBHOOK_SECRET`) | Generate a new one; set the webhook with it; then restart the API with it | Between the two steps Telegram's calls are refused (403) and delivered again later |
-| Server secret (`QD_SECRETS_KEY`) | See below | Every file link already handed out stops working (they live five minutes anyway) |
+| Server secret (`QD_SECRETS_KEY`) | See below | Nothing, when done in the order below |
 | Database passwords | `ALTER ROLE qd_app PASSWORD ...` as the owner; update `QD_DATABASE_URL`; restart API and worker | Requests fail between the change and the restart |
 | Metrics token (`QD_METRICS_TOKEN`) | Set a new value; restart the API; update the monitoring system | Scrapes fail until both are changed |
 | Backup key | See below | Losing the key loses the backups: keep it in two places off both servers |
 
 **The server secret needs care.** It derives the key that signs file links and the key that encrypts the
-administrators' second-factor secrets. Changing it makes every stored second-factor secret unreadable:
-each administrator must be enrolled again (runbook 7 describes the operator step). **Not yet possible:**
-there is no tool that re-encrypts the stored secrets under a new key.
+administrators' second-factor secrets. Changed on its own it makes every stored second-factor secret
+unreadable. It is therefore rotated with the old secret kept beside the new one for a few minutes:
+
+1. Generate the new secret (`.env.example` shows how) and store it in the password manager.
+2. In the API's environment set `QD_SECRETS_KEY_PREVIOUS` to the secret in use and `QD_SECRETS_KEY` to the
+   new one; restart the API. From here new file links are signed with the new key and links handed out
+   a moment ago still open; administrators sign in with the device they have, because a stored secret the
+   new key cannot read is tried under the previous one. Nothing new is signed or encrypted with the
+   previous secret.
+3. Re-encrypt the stored second-factor secrets, with the same two settings in the environment:
+   `docker compose run --rm api python -m qarz.interface.rotate_secrets`. It works in one transaction,
+   prints how many secrets it re-encrypted, how many were already under the new key and how many neither
+   key could read, and never prints a secret. It can be run again: the second run re-encrypts none.
+4. If it names accounts that neither key could read (exit status 1), those administrators are enrolled
+   again (runbook 7, "An administrator"); nothing else was lost by the rotation.
+5. Not sooner than five minutes after step 2 (the life of a file link), clear `QD_SECRETS_KEY_PREVIOUS`
+   and restart the API. Run the command once more: it must report nothing re-encrypted and nothing
+   unreadable beyond step 4. Then destroy the old secret.
+
+While `QD_SECRETS_KEY_PREVIOUS` is set, whoever holds the old secret can still sign a file link. **After a
+suspected leak** do not leave it in the API at all: stop the API, run step 3 with both settings given to
+the command only, and start the API with the new secret alone. Administrators and file links are
+unavailable for that minute, and links handed out before it stop working.
+
+A wrong value in `QD_SECRETS_KEY_PREVIOUS` changes nothing: the command reports the secrets as readable
+under neither key and leaves them as they were, so it can be run again with the right value. A secret
+shorter than 16 characters in either setting refuses to start, the API and the command alike.
+
+These steps are exercised by the test suite against a test database (`backend/tests/api/test_secret_rotation.py`);
+they have never been carried out on a server.
 
 **The backup key.** pgBackRest cannot change the passphrase of an existing repository. Where the key
 lives and what it protects: `deploy/backup/README.md`, "The key".
@@ -193,10 +220,25 @@ Always a reversal through the product; never a change in the database.
    known to the service, the shop's details, a payment made from the owner's card). Write down what was
    accepted.
 2. The person starts the bot from their new Telegram account, so that the service knows it.
-3. **Not yet possible in the product.** There is no administrator action that reassigns ownership. The
-   only tested way to change an owner is the transfer the old owner starts and a manager accepts. Until an
-   audited administrator action exists, this is a change in the database by the founder's written
-   decision, made as the owner connection, recorded in the incident note with the two user identifiers.
+3. On the founder's written decision an administrator opens the shop in the administrators' panel and
+   uses "Change the owner" (`POST /api/admin/v1/shops/{shop_id}/owner`): the new account's Telegram
+   identifier, the reason (what proof was accepted; it is kept in the admin audit and shown to nobody
+   else), and a fresh code from the authenticator, which this action asks for every time. Somebody the
+   service does not know, the present owner, and a person who already owns five shops are refused.
+4. What it does, in one transaction: the new account becomes the owner; the old account stays in the shop
+   as a **suspended manager**, so it can do nothing there (it may be in someone else's hands) until the new
+   owner reinstates or removes it under Staff; a transfer the old owner had offered is cancelled. A
+   suspended shop stays suspended. A shop waiting for deletion **keeps waiting with the same date**: the
+   new owner is told the date and cancels the deletion in the panel if it was not theirs. An erased shop
+   cannot be reassigned.
+5. What is recorded and who is told: the admin audit (`shop.owner_reassigned`, with both user identifiers
+   and the reason), the shop's own activity log, a message to the new owner, and a message to the old
+   account that says only that the service's administration changed the shop's ownership. The operator
+   gets the alert `ShopOwnerReassigned` and matches it to the founder's decision.
+6. A mistake is corrected by the same action, back to the earlier account, with its own reason.
+
+The action is covered by tests (`backend/tests/api/test_admin_owner.py`); it has never been used for a real
+shop.
 
 **An administrator.** A lost device means a lost second factor; it cannot be replaced through the API.
 
