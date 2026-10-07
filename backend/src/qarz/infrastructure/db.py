@@ -31,6 +31,7 @@ from qarz.application.ports import (
     MemberRecord,
     Membership,
     MyShop,
+    OnlinePayment,
     OutboxMessage,
     PeriodTotals,
     PromiseRecord,
@@ -275,6 +276,40 @@ def _async_url(url: str) -> str:
     return url
 
 
+_SUBSCRIPTION_LOCKED = "SELECT state, trial_ends, paid_through FROM subscription FOR UPDATE"
+_ONLINE_PAYMENT_COLUMNS = (
+    "id, prepare_id, months, amount, state, provider, provider_txn, provider_time, cancel_reason, "
+    "started_at, paid_at, cancelled_at"
+)
+_ONLINE_PAYMENT_INSERT = (
+    "INSERT INTO online_payment (id, shop_id, months, amount) VALUES (:id, :shop_id, :months, :amount) "
+    f"RETURNING {_ONLINE_PAYMENT_COLUMNS}"
+)
+_ONLINE_PAYMENT_BY_ID = f"SELECT {_ONLINE_PAYMENT_COLUMNS} FROM online_payment WHERE id = :id"
+_ONLINE_PAYMENT_LOCKED = f"{_ONLINE_PAYMENT_BY_ID} FOR UPDATE"
+_ONLINE_PAYMENT_BY_TXN = (
+    f"SELECT {_ONLINE_PAYMENT_COLUMNS} FROM online_payment "
+    "WHERE provider = :provider AND provider_txn = :txn FOR UPDATE"
+)
+
+
+def _online_payment(row: Any) -> OnlinePayment:
+    return OnlinePayment(
+        id=UUID(str(row.id)),
+        prepare_id=int(row.prepare_id),
+        months=int(row.months),
+        amount=int(row.amount),
+        state=str(row.state),
+        provider=row.provider,
+        provider_txn=row.provider_txn,
+        provider_time=None if row.provider_time is None else int(row.provider_time),
+        cancel_reason=None if row.cancel_reason is None else int(row.cancel_reason),
+        started_at=row.started_at,
+        paid_at=row.paid_at,
+        cancelled_at=row.cancelled_at,
+    )
+
+
 class PgTenantSession:
     def __init__(self, conn: AsyncConnection, shop_id: UUID) -> None:
         self._conn = conn
@@ -283,8 +318,13 @@ class PgTenantSession:
     async def active_membership(self, user_id: UUID) -> Membership | None:
         row = (
             await self._conn.execute(
-                text("SELECT id, role FROM membership WHERE user_id = :user_id AND status = 'active'"),
-                {"user_id": user_id},
+                # The shop is named here as well as by row-level security, so that a connection made
+                # with a role that bypasses it still finds nobody a member of a shop they are not in.
+                text(
+                    "SELECT id, role FROM membership "
+                    "WHERE user_id = :user_id AND shop_id = :shop_id AND status = 'active'"
+                ),
+                {"user_id": user_id, "shop_id": self._shop_id},
             )
         ).first()
         return None if row is None else Membership(row.id, Role(row.role))
@@ -1602,6 +1642,67 @@ class PgTenantSession:
         row = (await self._conn.execute(text(_DELETION_LOCKED if for_update else _DELETION_STATE))).one()
         return str(row.status), row.deletion_due
 
+    async def subscription_locked(self) -> tuple[str, date | None, date | None] | None:
+        row = (await self._conn.execute(text(_SUBSCRIPTION_LOCKED))).first()
+        return None if row is None else (str(row.state), row.trial_ends, row.paid_through)
+
+    async def pay_subscription(self, paid_through: date, now: datetime) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE subscription SET paid_through = :paid_through, updated_at = :now, "
+                "state = CASE WHEN state = 'suspended' THEN state ELSE 'active' END, "
+                "prior_state = CASE WHEN state = 'suspended' THEN 'active' ELSE NULL END"
+            ),
+            {"paid_through": paid_through, "now": now},
+        )
+
+    async def create_online_payment(self, *, order_id: UUID, months: int, amount: int) -> OnlinePayment:
+        row = (
+            await self._conn.execute(
+                text(_ONLINE_PAYMENT_INSERT),
+                {"id": order_id, "shop_id": self._shop_id, "months": months, "amount": amount},
+            )
+        ).one()
+        return _online_payment(row)
+
+    async def online_payment(self, order_id: UUID, *, for_update: bool = False) -> OnlinePayment | None:
+        row = (
+            await self._conn.execute(
+                text(_ONLINE_PAYMENT_LOCKED if for_update else _ONLINE_PAYMENT_BY_ID), {"id": order_id}
+            )
+        ).first()
+        return None if row is None else _online_payment(row)
+
+    async def online_payment_by_txn(self, provider: str, txn: str) -> OnlinePayment | None:
+        row = (await self._conn.execute(text(_ONLINE_PAYMENT_BY_TXN), {"provider": provider, "txn": txn})).first()
+        return None if row is None else _online_payment(row)
+
+    async def start_online_payment(
+        self, order_id: UUID, *, provider: str, txn: str, provider_time: int | None, now: datetime
+    ) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE online_payment SET state = 'pending', provider = :provider, provider_txn = :txn, "
+                "provider_time = :provider_time, started_at = :now WHERE id = :id AND state = 'created'"
+            ),
+            {"id": order_id, "provider": provider, "txn": txn, "provider_time": provider_time, "now": now},
+        )
+
+    async def finish_online_payment(self, order_id: UUID, now: datetime) -> None:
+        await self._conn.execute(
+            text("UPDATE online_payment SET state = 'paid', paid_at = :now WHERE id = :id AND state = 'pending'"),
+            {"id": order_id, "now": now},
+        )
+
+    async def cancel_online_payment(self, order_id: UUID, *, reason: int | None, now: datetime) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE online_payment SET state = 'cancelled', cancel_reason = :reason, cancelled_at = :now "
+                "WHERE id = :id AND state = 'pending'"
+            ),
+            {"id": order_id, "reason": reason, "now": now},
+        )
+
     async def set_deletion(self, *, status: str, due: datetime | None) -> None:
         await self._conn.execute(
             text("UPDATE shop SET status = :status, deletion_due = :due WHERE id = :shop_id"),
@@ -1680,6 +1781,32 @@ class PgPlatformSession:
             )
             for row in rows
         ]
+
+    async def online_payment_shop(self, order_id: UUID) -> UUID | None:
+        row = (await self._conn.execute(text("SELECT online_payment_shop(:id) AS shop_id"), {"id": order_id})).one()
+        return None if row.shop_id is None else UUID(str(row.shop_id))
+
+    async def online_payment_shop_by_txn(self, provider: str, txn: str) -> UUID | None:
+        row = (
+            await self._conn.execute(
+                text("SELECT online_payment_shop_by_txn(:provider, :txn) AS shop_id"),
+                {"provider": provider, "txn": txn},
+            )
+        ).one()
+        return None if row.shop_id is None else UUID(str(row.shop_id))
+
+    async def payme_statement(self, from_ms: int, to_ms: int) -> list[OnlinePayment]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT id, 0 AS prepare_id, 0 AS months, amount, state, 'payme' AS provider, provider_txn, "
+                    "provider_time, cancel_reason, started_at, paid_at, cancelled_at "
+                    "FROM payme_statement(:from_ms, :to_ms)"
+                ),
+                {"from_ms": from_ms, "to_ms": to_ms},
+            )
+        ).all()
+        return [_online_payment(row) for row in rows]
 
     async def erase_shop(self, shop_id: UUID) -> bool:
         row = (await self._conn.execute(text("SELECT erase_shop(:shop_id) AS erased"), {"shop_id": shop_id})).one()
@@ -2067,7 +2194,12 @@ class Database:
 
     def __init__(self, url: str, *, pool_size: int = 5, max_overflow: int = 5) -> None:
         self._engine: AsyncEngine = create_async_engine(
-            _async_url(url), pool_pre_ping=True, pool_size=pool_size, max_overflow=max_overflow
+            _async_url(url),
+            pool_pre_ping=True,
+            pool_size=pool_size,
+            max_overflow=max_overflow,
+            # Errors are logged with their text; without this it would hold names and phone numbers.
+            hide_parameters=True,
         )
 
     @asynccontextmanager

@@ -79,6 +79,11 @@ def fill(owner: psycopg.Connection, shop: Shop) -> uuid.UUID:
             (shop.shop_id,),
         ),
         (
+            "INSERT INTO online_payment (id, shop_id, months, amount, state, provider, provider_txn) "
+            "VALUES (gen_random_uuid(), %s, 1, 100000, 'pending', 'payme', %s)",
+            (shop.shop_id, f"txn-{uuid.uuid4().hex}"),
+        ),
+        (
             "INSERT INTO activity (id, shop_id, actor_kind, action, subject_type) "
             "VALUES (gen_random_uuid(), %s, 'system', 'test', 'shop')",
             (shop.shop_id,),

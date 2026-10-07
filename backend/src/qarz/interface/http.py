@@ -1,5 +1,6 @@
 """HTTP application factory (technical specification, API contract)."""
 
+import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Protocol
@@ -22,6 +23,7 @@ from qarz.application.disputes import DisputeService
 from qarz.application.errors import AppError, Unauthenticated
 from qarz.application.ledger_service import LedgerService
 from qarz.application.links import LinkService
+from qarz.application.online_payment import OnlinePaymentService, PaymentKeys
 from qarz.application.ownership import OwnershipService
 from qarz.application.ports import Storage
 from qarz.application.reminders import ReminderService
@@ -33,6 +35,7 @@ from qarz.application.subscription import SubscriptionService
 from qarz.application.telegram_updates import UpdateProcessor
 from qarz.interface.account_api import add_account_routes
 from qarz.interface.auth_api import SessionAuthenticator, add_auth_routes
+from qarz.interface.body_limit import BodyLimit
 from qarz.interface.catalog_api import add_catalog_routes
 from qarz.interface.credit_api import add_credit_routes
 from qarz.interface.customers_api import add_customer_routes
@@ -41,6 +44,8 @@ from qarz.interface.disputes_api import add_dispute_routes
 from qarz.interface.errors import app_error_handler, error_response
 from qarz.interface.links_api import add_link_routes
 from qarz.interface.me_api import add_me_routes
+from qarz.interface.online_payment_api import add_online_order_routes, add_provider_routes
+from qarz.interface.rate_limit import RateLimiter, RateLimits
 from qarz.interface.reminders_api import add_reminder_routes
 from qarz.interface.reports_api import add_report_routes
 from qarz.interface.shop_deletion_api import add_shop_deletion_routes
@@ -58,6 +63,18 @@ class Authenticator(Protocol):
     async def user_id(self, request: Request) -> UUID | None: ...
 
 
+# What a caller can be answered without being a member of the shop: not found, and a malformed request.
+_STRANGER_ANSWERS = frozenset({404, 422})
+
+
+def _shop_in_path(request: Request) -> UUID | None:
+    raw = request.path_params.get("shop_id")
+    try:
+        return None if raw is None else UUID(str(raw))
+    except ValueError:
+        return None
+
+
 def create_app(
     database_reachable: HealthCheck,
     storage: Storage | None = None,
@@ -66,12 +83,16 @@ def create_app(
     authenticator: Authenticator | None = None,
     webhook_secret: str | None = None,
     now: Callable[[], datetime] | None = None,
+    payment_keys: PaymentKeys | None = None,
+    rate_limits: RateLimits | None = None,
+    monotonic: Callable[[], float] = time.monotonic,
 ) -> FastAPI:
     """Build the application.
 
     With only a health check it serves `/healthz`. With storage and an auth service it serves the API,
     authenticating through Telegram-backed sessions; `authenticator` replaces that only in tests, and `now`
-    replaces the clock of the ledger only in tests.
+    replaces the clock of the ledger only in tests. `rate_limits` are applied to signed-in callers; the
+    deployed application always has them, and most tests leave them out.
     """
     app = FastAPI(title="Qarz Daftari", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -87,6 +108,8 @@ def create_app(
             return {"status": "down"}
         return {"status": "ok"}
 
+    # An oversized body is refused before any route, handler or sign-in sees it.
+    app.add_middleware(BodyLimit)
     app.add_exception_handler(AppError, app_error_handler)
 
     @app.exception_handler(RequestValidationError)
@@ -104,15 +127,42 @@ def create_app(
         response.status_code = 404 if code == "NOT_FOUND" else exc.status_code
         return response
 
-    if storage is not None and auth is not None:
+    payments = None if storage is None else OnlinePaymentService(storage, payment_keys or PaymentKeys(), now)
+    if payments is not None:
+        # Served whatever the configuration, so that a provider is always answered: "disabled" until
+        # the platform switch is on and that provider's key is set (ADR-019).
+        add_provider_routes(app, payments)
+
+    if storage is not None and auth is not None and payments is not None:
         resolver: Authenticator = authenticator or SessionAuthenticator(auth)
+        limiter = None if rate_limits is None else RateLimiter(rate_limits, monotonic)
 
         async def current_user(request: Request) -> UUID:
             user_id = await resolver.user_id(request)
             if user_id is None:
                 raise Unauthenticated()
+            if limiter is not None:
+                shop_id = _shop_in_path(request)
+                # Before anything else is done for the request, so that a flood costs little.
+                limiter.check(user_id, shop_id)
+                request.state.counted_for = (user_id, shop_id)
             request.state.lang = await storage.user_language(user_id) or "uz"
             return user_id
+
+        if limiter is not None:
+            counted = limiter
+
+            @app.middleware("http")
+            async def count_for_the_shop(
+                request: Request, call_next: Callable[[Request], Awaitable[Response]]
+            ) -> Response:
+                response = await call_next(request)
+                user_id, shop_id = getattr(request.state, "counted_for", (None, None))
+                # Only an answer given to a member counts against the shop. A stranger gets 404, or 422 when
+                # the request is malformed, which is found before anyone is asked who they are.
+                if user_id is not None and shop_id is not None and response.status_code not in _STRANGER_ANSWERS:
+                    counted.answered(user_id, shop_id)
+                return response
 
         add_auth_routes(app, auth, current_user)
         add_shop_routes(app, ShopService(storage), current_user)
@@ -121,6 +171,7 @@ def create_app(
         add_me_routes(app, CustomerAccountService(storage, now), current_user)
         add_shop_deletion_routes(app, ShopDeletionService(storage, now), current_user)
         add_subscription_routes(app, SubscriptionService(storage, now), current_user)
+        add_online_order_routes(app, payments, current_user)
         add_credit_routes(app, CreditService(storage, now), current_user)
         add_reminder_routes(app, ReminderService(storage, now), current_user)
         add_report_routes(app, ReportService(storage, now), current_user)

@@ -114,6 +114,13 @@ class Incoming:
 
     @property
     def key(self) -> str:
+        # With colons, which an API request key may not contain: nobody can take this key first.
+        return f"tg:update:{self.update_id}"
+
+    @property
+    def new_shop_key(self) -> str:
+        """The key for opening a shop, which goes through the same operation as the API and so must have
+        an API key's form. A new shop has no colleagues yet for anyone to take the key from."""
         return f"tg-update-{self.update_id}"
 
 
@@ -744,7 +751,7 @@ class ChatService:
     async def _create_shop(self, session: PlatformSession, incoming: Incoming, replies: Replies, text: str) -> None:
         name = " ".join(text.split())
         try:
-            body = await self._shops.create(incoming.user_id, name, incoming.lang, incoming.key)
+            body = await self._shops.create(incoming.user_id, name, incoming.lang, incoming.new_shop_key)
         except ValidationFailed:
             await replies.send(say(incoming.lang, "shop_name_invalid"))
             return

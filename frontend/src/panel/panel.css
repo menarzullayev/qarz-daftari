@@ -1,0 +1,177 @@
+/*
+ * The web panel's own styles (REQ-050, REQ-N15). Under 1024px the panel is the phone layout of the
+ * shared style sheets, and the tables of its back-office screens stack into cards. From 1024px the
+ * content is wider, lists are tables, and a customer opens beside the customer book.
+ * Only the color variables of shell.css are used, so the contrast check there covers these rules too.
+ */
+
+.nav__side {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-top: 1px solid var(--qd-border);
+}
+
+.nav__side .field {
+  margin: 0;
+}
+
+.signin__widget {
+  min-height: 3rem;
+  margin: 1rem 0;
+}
+
+.filters {
+  display: grid;
+  gap: 0.5rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.filters .field,
+.filters .search {
+  margin: 0;
+}
+
+.filters .search {
+  align-items: end;
+}
+
+.filters .search .field {
+  flex: 1 1 12rem;
+}
+
+.table-wrap {
+  margin: 0.75rem 0;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--qd-border);
+  font-weight: 400;
+  text-align: left;
+  vertical-align: top;
+  /* Not "anywhere": that lets a column shrink until a short word such as a unit is cut in two. */
+  overflow-wrap: break-word;
+}
+
+.table thead th {
+  background: var(--qd-surface);
+  color: var(--qd-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.table tbody th,
+.table tfoot th,
+.table tfoot td {
+  font-weight: 600;
+}
+
+.table .table__num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.table .notice,
+.table .actions,
+.table .form {
+  margin: 0;
+}
+
+.table .hint {
+  margin: 0;
+}
+
+/* Narrow: each row becomes a card, each cell a line that starts with its column's name. */
+@media (max-width: 1023.98px) {
+  .table,
+  .table tbody,
+  .table tfoot,
+  .table tr,
+  .table th,
+  .table td {
+    display: block;
+  }
+
+  /* Kept for a screen reader, which still reads the column names; not drawn. */
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .table tr {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--qd-border);
+  }
+
+  .table th,
+  .table td {
+    padding: 0.25rem 0;
+    border-bottom: 0;
+  }
+
+  .table td[data-label]::before {
+    display: block;
+    color: var(--qd-muted);
+    font-size: 0.875rem;
+    content: attr(data-label);
+  }
+
+  .table .table__num {
+    text-align: left;
+  }
+}
+
+@media (min-width: 1024px) {
+  .shell__main {
+    max-width: 90rem;
+  }
+
+  .filters {
+    grid-template-columns: minmax(12rem, 16rem) minmax(12rem, 16rem) minmax(16rem, 1fr);
+    align-items: end;
+  }
+
+  /* The customer book on the left, the open customer on the right. */
+  .panes {
+    display: grid;
+    grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);
+    gap: 2rem;
+    align-items: start;
+  }
+
+  .panes__list {
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    padding-right: 1rem;
+    overflow-y: auto;
+    border-right: 1px solid var(--qd-border);
+  }
+
+  .panes__detail {
+    min-width: 0;
+  }
+
+  .row__link[aria-current="page"] {
+    font-weight: 700;
+    text-decoration: underline;
+  }
+}

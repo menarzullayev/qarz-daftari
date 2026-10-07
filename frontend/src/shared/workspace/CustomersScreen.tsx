@@ -4,6 +4,7 @@ import { useI18n } from "../../i18n/I18nProvider";
 import type { Customer } from "../api";
 import { formatMoney } from "../format";
 import { usePagedList } from "../hooks";
+import { useDesktop } from "../layout";
 import { Link } from "../router";
 import { useWorkspace } from "./context";
 import { Empty, Failure, Loading, LoadMore } from "./parts";
@@ -20,14 +21,19 @@ type CustomersScreenProps = {
    * entry, where a row offers the two things a seller records: a credit sale and a payment.
    */
   pick?: boolean;
+  /**
+   * The customer open beside the list in the web panel's two-pane view. The list then stays a narrow
+   * column of rows, with that customer marked as the current one.
+   */
+  selectedId?: string;
 };
 
-function Row({ customer, pick }: { customer: Customer; pick: boolean }) {
+function Row({ customer, pick, selectedId }: { customer: Customer; pick: boolean; selectedId: string | undefined }) {
   const { t, language } = useI18n();
   if (!pick) {
     return (
       <li className="row">
-        <Link to={`/customers/${customer.id}`} className="row__link">
+        <Link to={`/customers/${customer.id}`} className="row__link" current={customer.id === selectedId}>
           <span className="row__name">{customer.displayName}</span>
           <span className="row__amount">{formatMoney(customer.balance, language)}</span>
         </Link>
@@ -57,8 +63,9 @@ function Row({ customer, pick }: { customer: Customer; pick: boolean }) {
 }
 
 /** The customer book with search by name or phone, used both for browsing and for picking a customer. */
-export function CustomersScreen({ pick = false }: CustomersScreenProps) {
+export function CustomersScreen({ pick = false, selectedId }: CustomersScreenProps) {
   const { api } = useWorkspace();
+  const desktop = useDesktop();
   const { t } = useI18n();
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
@@ -94,11 +101,15 @@ export function CustomersScreen({ pick = false }: CustomersScreenProps) {
   } else {
     body = (
       <>
-        <ul className="rows">
-          {state.items.map((customer) => (
-            <Row key={customer.id} customer={customer} pick={pick} />
-          ))}
-        </ul>
+        {desktop && selectedId === undefined ? (
+          <desktop.CustomersTable items={state.items} pick={pick} />
+        ) : (
+          <ul className="rows">
+            {state.items.map((customer) => (
+              <Row key={customer.id} customer={customer} pick={pick} selectedId={selectedId} />
+            ))}
+          </ul>
+        )}
         {state.nextCursor !== null ? (
           <LoadMore loading={state.loadingMore} error={state.moreError} onClick={loadMore} />
         ) : null}

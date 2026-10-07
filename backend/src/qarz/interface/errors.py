@@ -18,6 +18,7 @@ _STATUS = {
     "NOT_TRANSFER_TARGET": 409,
     "SUBSCRIPTION_LIMITED": 402,
     "SHOP_SUSPENDED": 403,
+    "RATE_LIMITED": 429,
     "CUSTOMER_ARCHIVED": 409,
     "CUSTOMER_HAS_BALANCE": 409,
     "EXCEEDS_BALANCE": 409,
@@ -29,6 +30,7 @@ _STATUS = {
     "DISPUTE_NOT_ALLOWED": 409,
     "DELETION_ALREADY_REQUESTED": 409,
     "DELETION_NOT_REQUESTED": 409,
+    "ONLINE_PAY_OFF": 409,
     "LIMIT_REACHED": 409,
     "REMINDERS_OFF": 409,
     "REMINDER_NOT_DUE": 409,
@@ -84,6 +86,8 @@ _MESSAGES = {
         "LIMIT_REACHED": "Bu savdo mijozning nasiya limitidan oshadi. Menejer yoki do'kon egasi yoza oladi.",
         "DELETION_ALREADY_REQUESTED": "Do'konni o'chirish allaqachon so'ralgan.",
         "DELETION_NOT_REQUESTED": "Do'konni o'chirish so'ralmagan.",
+        "ONLINE_PAY_OFF": "Onlayn to'lov hozircha yoqilmagan. Karta orqali to'lash: /obuna",
+        "RATE_LIMITED": "So'rovlar juda ko'p. Biroz kutib, qayta urinib ko'ring.",
         "ERROR": "Xatolik yuz berdi.",
     },
     "ru": {
@@ -124,6 +128,8 @@ _MESSAGES = {
         "LIMIT_REACHED": "Эта продажа превысит лимит клиента. Записать может менеджер или владелец.",
         "DELETION_ALREADY_REQUESTED": "Удаление магазина уже запрошено.",
         "DELETION_NOT_REQUESTED": "Удаление магазина не запрашивалось.",
+        "ONLINE_PAY_OFF": "Онлайн-оплата пока не включена. Оплата переводом на карту: /obuna",
+        "RATE_LIMITED": "Слишком много запросов. Подождите немного и повторите.",
         "ERROR": "Произошла ошибка.",
     },
 }
@@ -138,4 +144,8 @@ def error_response(code: str, lang: str, fields: dict[str, str] | None = None) -
 async def app_error_handler(request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, AppError)
     lang = getattr(request.state, "lang", "uz")
-    return error_response(exc.code, lang, exc.fields)
+    response = error_response(exc.code, lang, exc.fields)
+    retry_after = getattr(exc, "retry_after", None)
+    if retry_after is not None:
+        response.headers["Retry-After"] = str(retry_after)
+    return response

@@ -6,9 +6,11 @@ Run with:  uvicorn qarz.interface.asgi:build --factory
 from fastapi import FastAPI
 
 from qarz.application.auth import AuthService
+from qarz.application.online_payment import PaymentKeys
 from qarz.infrastructure.db import Database
 from qarz.infrastructure.settings import Settings
 from qarz.interface.http import create_app
+from qarz.interface.rate_limit import Limit, RateLimits
 
 
 def build(settings: Settings | None = None) -> FastAPI:
@@ -21,4 +23,15 @@ def build(settings: Settings | None = None) -> FastAPI:
         database,
         auth=auth,
         webhook_secret=settings.webhook_secret or None,
+        payment_keys=PaymentKeys(
+            payme_merchant_id=settings.payme_merchant_id,
+            payme_key=settings.payme_secret_key,
+            click_service_id=settings.click_service_id,
+            click_merchant_id=settings.click_merchant_id,
+            click_key=settings.click_secret_key,
+        ),
+        rate_limits=RateLimits(
+            user=Limit(settings.rate_user_per_minute, settings.rate_user_burst),
+            shop=Limit(settings.rate_shop_per_minute, settings.rate_shop_burst),
+        ),
     )

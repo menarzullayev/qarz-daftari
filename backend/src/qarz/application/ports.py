@@ -252,6 +252,24 @@ class PromiseRecord:
 
 
 @dataclass(frozen=True)
+class OnlinePayment:
+    """An order to pay the subscription online, and what the provider has done with it."""
+
+    id: UUID
+    prepare_id: int
+    months: int
+    amount: int
+    state: str
+    provider: str | None
+    provider_txn: str | None
+    provider_time: int | None
+    cancel_reason: int | None
+    started_at: datetime | None
+    paid_at: datetime | None
+    cancelled_at: datetime | None
+
+
+@dataclass(frozen=True)
 class ShopToErase:
     shop_id: UUID
     shop_name: str
@@ -635,6 +653,30 @@ class TenantSession(Protocol):
 
     async def record_system_activity(self, *, action: str, subject_id: UUID) -> None: ...
 
+    async def subscription_locked(self) -> tuple[str, date | None, date | None] | None:
+        """As `subscription`, holding the row until the transaction ends."""
+        ...
+
+    async def pay_subscription(self, paid_through: date, now: datetime) -> None:
+        """Set the paid-through date. The shop becomes active unless an administrator suspended it."""
+        ...
+
+    async def create_online_payment(self, *, order_id: UUID, months: int, amount: int) -> OnlinePayment: ...
+
+    async def online_payment(self, order_id: UUID, *, for_update: bool = False) -> OnlinePayment | None: ...
+
+    async def online_payment_by_txn(self, provider: str, txn: str) -> OnlinePayment | None:
+        """The order a provider's transaction belongs to, locked until the transaction ends."""
+        ...
+
+    async def start_online_payment(
+        self, order_id: UUID, *, provider: str, txn: str, provider_time: int | None, now: datetime
+    ) -> None: ...
+
+    async def finish_online_payment(self, order_id: UUID, now: datetime) -> None: ...
+
+    async def cancel_online_payment(self, order_id: UUID, *, reason: int | None, now: datetime) -> None: ...
+
     async def deletion_state(self, *, for_update: bool = False) -> tuple[str, datetime | None]:
         """The shop's status (active or deletion_pending) and when it is due to be erased."""
         ...
@@ -676,6 +718,16 @@ class PlatformSession(Protocol):
         ...
 
     async def subscriptions_to_review(self, today: date) -> list[SubscriptionToReview]: ...
+
+    async def online_payment_shop(self, order_id: UUID) -> UUID | None:
+        """The shop an order belongs to; nothing else about it."""
+        ...
+
+    async def online_payment_shop_by_txn(self, provider: str, txn: str) -> UUID | None: ...
+
+    async def payme_statement(self, from_ms: int, to_ms: int) -> list[OnlinePayment]:
+        """Payme's transactions whose time, as Payme gave it, lies in the period."""
+        ...
 
     async def job_done(self, job: str, period: str) -> bool: ...
 
