@@ -79,6 +79,7 @@ UZ = {
     "CANNOT_REVERSE_REVERSAL": "Bekor qilish yozuvini bekor qilib bo'lmaydi.",
     "WOULD_GO_NEGATIVE": "Bekor qilinsa qarz manfiy bo'lib qoladi. Avval keyingi to'lovni bekor qiling.",
     "error": "Xatolik yuz berdi. Qaytadan urinib ko'ring.",
+    "TIMEOUT": "Juda uzoq davom etdi va to'xtatildi. Hech narsa yozilmadi. Qaytadan urinib ko'ring.",
     "consent_v2": (
         "{shop} do'koni sizning nasiya xaridlaringiz va to'lovlaringizni Qarz Daftari xizmati orqali "
         "yuritadi. Saqlanadigan ma'lumotlar: do'kon sizni qanday nomlagani, telefon raqamingiz (agar bergan "
@@ -280,6 +281,7 @@ RU = {
     "CANNOT_REVERSE_REVERSAL": "Запись об отмене отменить нельзя.",
     "WOULD_GO_NEGATIVE": "После такой отмены долг стал бы отрицательным. Сначала отмените более позднюю оплату.",
     "error": "Произошла ошибка. Попробуйте ещё раз.",
+    "TIMEOUT": "Это заняло слишком много времени и было остановлено. Ничего не записано. Попробуйте ещё раз.",
     "consent_v2": (
         "Магазин {shop} ведёт учёт ваших покупок в долг и оплат через сервис Qarz Daftari. Хранятся: как "
         "магазин вас записал, ваш номер телефона (если вы его дали), идентификатор вашего аккаунта "

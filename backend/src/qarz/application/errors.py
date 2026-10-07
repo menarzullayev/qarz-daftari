@@ -35,6 +35,15 @@ class ValidationFailed(AppError):
     code = "VALIDATION"
 
 
+class StorageTimeout(AppError):
+    """A statement ran longer than the application allows and was cancelled; nothing was saved.
+
+    One slow query must not hold a database core while every other shop waits (S19.1 load test).
+    """
+
+    code = "TIMEOUT"
+
+
 class AlreadyMember(AppError):
     """The person is already a member of the shop they were invited to."""
 

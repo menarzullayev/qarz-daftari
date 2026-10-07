@@ -926,3 +926,86 @@ def test_the_database_figures_agree_with_the_domain_rules_on_generated_accounts(
         },
         "due_today": sum(o["due_today"] for _, o in owing.values()),
     }
+
+
+# --- the lists read only what they show (S19.1 load test) ---------------------------------------------
+
+
+def test_every_page_of_the_customer_list_carries_its_own_balances(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    """Balances are read for the customers of the page only; each page must still show the right ones."""
+    expected: dict[str, int] = {}
+    for index in range(7):
+        customer = seed_customer(owner, world.shop_a, f"Sahifa {index}")
+        if index == 0:
+            expected[str(customer)] = 0  # no entries at all
+            continue
+        seed_entry(owner, world, customer, 1, "credit", 10_000 * index, promised=today(), days_ago=3)
+        seed_entry(owner, world, customer, 2, "payment", 1_000 * index, days_ago=2)
+        balance = 9_000 * index
+        if index % 3 == 0:
+            # A second sale, reversed: it and its reversal both drop out of the balance.
+            other = seed_entry(owner, world, customer, 3, "credit", 4_000, promised=today(), days_ago=1)
+            seed_entry(owner, world, customer, 4, "reversal", 4_000, reverses=other)
+        elif index % 3 == 1:
+            seed_entry(owner, world, customer, 3, "credit", 500, promised=today(), days_ago=1)
+            balance += 500
+        expected[str(customer)] = balance
+
+    seen: dict[str, int] = {}
+    cursor: str | None = None
+    pages = 0
+    while True:
+        params: dict[str, Any] = {"q": "sahifa", "limit": 3}
+        if cursor:
+            params["cursor"] = cursor
+        page = read(client, world.seller_a, f"{shop(world)}/customers", **params).json()
+        assert not set(seen) & {item["id"] for item in page["items"]}
+        seen |= {item["id"]: item["balance"] for item in page["items"]}
+        cursor = page["next_cursor"]
+        pages += 1
+        if cursor is None:
+            break
+    assert pages == 3
+    assert seen == expected
+    # A customer of another shop with the same name adds nothing to anyone's balance here.
+    stranger = seed_customer(owner, world.shop_b, "Sahifa 1")
+    member_b = owner.execute("SELECT id FROM membership WHERE shop_id = %s LIMIT 1", (world.shop_b,)).fetchone()
+    assert member_b is not None
+    seed_entry(owner, world, stranger, 1, "credit", 777_000, promised=today(), shop_id=world.shop_b, author=member_b[0])
+    again = read(client, world.seller_a, f"{shop(world)}/customers", q="sahifa", limit=100).json()["items"]
+    assert {item["id"]: item["balance"] for item in again} == expected
+
+
+def test_a_promise_on_a_covered_sale_changes_no_figure(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    """The lists look up the promised date of uncovered debts only; a covered one must not be missed for it."""
+    customer = seed_customer(owner, world.shop_a, "Qoplangan")
+    paid_off = seed_entry(
+        owner, world, customer, 1, "credit", 30_000, promised=today() - timedelta(days=30), days_ago=40
+    )
+    seed_entry(owner, world, customer, 2, "credit", 20_000, promised=today() - timedelta(days=2), days_ago=10)
+    seed_entry(owner, world, customer, 3, "credit", 5_000, promised=today(), days_ago=1)
+    # Covers the first sale entirely and 4 000 of the second.
+    seed_entry(owner, world, customer, 4, "payment", 34_000)
+
+    def listed() -> dict[str, Any]:
+        items = read(client, world.seller_a, f"{shop(world)}/overview/debtors", limit=100).json()["items"]
+        return next(dict(item) for item in items if item["display_name"] == "Qoplangan")
+
+    since = (today() - timedelta(days=2)).isoformat()
+    expected = {"amount": 16_000, "since": since, "days": 2, "due_today": 5_000}
+    assert (listed()["balance"], listed()["overdue"]) == (21_000, expected)
+    assert detail(client, world, customer)["overdue"] == expected
+    before = read(client, world.seller_a, f"{shop(world)}/overview").json()
+
+    # Moving the promise of the covered sale, in either direction, is seen nowhere.
+    owner.execute(
+        "INSERT INTO promise (id, shop_id, entry_id, promised_date, actor) VALUES (%s, %s, %s, %s, 'staff')",
+        (uuid.uuid4(), world.shop_a, paid_off, today() - timedelta(days=300)),
+    )
+    assert (listed()["balance"], listed()["overdue"]) == (21_000, expected)
+    assert detail(client, world, customer)["overdue"] == expected
+    assert read(client, world.seller_a, f"{shop(world)}/overview").json() == before

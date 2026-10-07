@@ -1,0 +1,40 @@
+# PostgreSQL for a local load test run only. Never used in production.
+#
+# Unlike docker-compose.dev.yml this keeps its data on a volume, not in memory: a load test that never
+# waits for a disk would flatter every write. The limits and settings imitate the primary server of
+# docs/06-architecture (4 cores, 8 GB) only roughly; a developer machine is not that server.
+#
+#   docker compose -f backend/loadtest/docker-compose.yml up -d
+#   docker compose -f backend/loadtest/docker-compose.yml down -v     # removes the data
+services:
+  loadtest-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+    command:
+      - postgres
+      - -c
+      - shared_buffers=2GB
+      - -c
+      - effective_cache_size=4GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - max_wal_size=4GB
+    cpus: 4
+    mem_limit: 6g
+    shm_size: 1g
+    ports:
+      - "127.0.0.1:54330:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    volumes:
+      - loadtest-data:/var/lib/postgresql/data
+
+volumes:
+  loadtest-data:

@@ -19,6 +19,7 @@ _STATUS = {
     "SUBSCRIPTION_LIMITED": 402,
     "SHOP_SUSPENDED": 403,
     "RATE_LIMITED": 429,
+    "TIMEOUT": 503,
     "CUSTOMER_ARCHIVED": 409,
     "CUSTOMER_HAS_BALANCE": 409,
     "EXCEEDS_BALANCE": 409,
@@ -88,6 +89,7 @@ _MESSAGES = {
         "DELETION_NOT_REQUESTED": "Do'konni o'chirish so'ralmagan.",
         "ONLINE_PAY_OFF": "Onlayn to'lov hozircha yoqilmagan. Karta orqali to'lash: /obuna",
         "RATE_LIMITED": "So'rovlar juda ko'p. Biroz kutib, qayta urinib ko'ring.",
+        "TIMEOUT": "So'rov juda uzoq davom etdi va to'xtatildi. Hech narsa saqlanmadi. Qayta urinib ko'ring.",
         "ERROR": "Xatolik yuz berdi.",
     },
     "ru": {
@@ -130,6 +132,7 @@ _MESSAGES = {
         "DELETION_NOT_REQUESTED": "Удаление магазина не запрашивалось.",
         "ONLINE_PAY_OFF": "Онлайн-оплата пока не включена. Оплата переводом на карту: /obuna",
         "RATE_LIMITED": "Слишком много запросов. Подождите немного и повторите.",
+        "TIMEOUT": "Запрос выполнялся слишком долго и был остановлен. Ничего не сохранено. Повторите попытку.",
         "ERROR": "Произошла ошибка.",
     },
 }
