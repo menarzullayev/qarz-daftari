@@ -111,37 +111,20 @@ _BALANCE_OF_C = (
     "AND NOT EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id))"
 )
 
-# Oldest-first allocation (BR-3) in one pass: the uncovered part of a debt is what its running total
-# exceeds the customer's total payments by, capped at its own amount. This must agree with
-# `qarz.domain.ledger`; tests/api/test_customers_ledger.py compares the two on generated accounts.
-# The promised date is looked up only for debts with something left uncovered: a covered debt adds
-# nothing to any figure, and most debts of a long account are covered (S19.1 load test).
-_OWED = (
-    f"WITH live AS ({_LIVE}), "
-    "paid AS (SELECT customer_id, sum(amount) AS paid FROM live WHERE kind = 'payment' GROUP BY customer_id), "
-    "debt AS ("
-    "  SELECT l.id, l.customer_id, l.amount, "
-    "         sum(l.amount) OVER (PARTITION BY l.customer_id ORDER BY l.seq) AS running "
-    "    FROM live l WHERE l.kind IN ('credit', 'opening')), "
-    "uncovered AS ("
-    "  SELECT d.id, d.customer_id, "
-    "         least(d.amount, greatest(0, d.running - coalesce(p.paid, 0))) AS remaining "
-    "    FROM debt d LEFT JOIN paid p ON p.customer_id = d.customer_id), "
-    "owed AS ("
-    "  SELECT u.customer_id, u.remaining, "
-    f"         CASE WHEN u.remaining > 0 THEN {_PROMISED.format(entry='u')} END AS promised "
-    "    FROM uncovered u)"
-)
-
+# What each customer still owes, from the stored open debts (migration 0026): one row for every debt the
+# oldest-first allocation (BR-3) leaves partly or wholly unpaid, with what is left of it and its current
+# promised date. The database rewrites a customer's rows whenever an entry or a promise of theirs is
+# added, so this costs what is owed, not what was ever recorded. That the rows agree with the ledger is
+# checked by `open_debt_mismatches` in tests/db/test_open_debt.py, and the figures built on them are
+# compared with `qarz.domain.ledger` on generated accounts in tests/api/test_customers_ledger.py.
 _FIGURES = (
-    f"{_OWED}, "
-    "figures AS ("
+    "WITH figures AS ("
     "  SELECT customer_id, "
     "         sum(remaining)::bigint AS balance, "
-    "         coalesce(sum(remaining) FILTER (WHERE promised < :today), 0)::bigint AS overdue, "
-    "         min(promised) FILTER (WHERE promised < :today AND remaining > 0) AS since, "
-    "         coalesce(sum(remaining) FILTER (WHERE promised = :today), 0)::bigint AS due_today "
-    "    FROM owed GROUP BY customer_id) "
+    "         coalesce(sum(remaining) FILTER (WHERE promised_date < :today), 0)::bigint AS overdue, "
+    "         min(promised_date) FILTER (WHERE promised_date < :today) AS since, "
+    "         coalesce(sum(remaining) FILTER (WHERE promised_date = :today), 0)::bigint AS due_today "
+    "    FROM open_debt GROUP BY customer_id) "
 )
 
 
@@ -231,9 +214,8 @@ _FELL_DUE = (
 # What the oldest-first allocation leaves uncovered, per customer and promised date. Whether that is
 # overdue, and for how long, is decided by `qarz.domain.reports.age_band`.
 _UNCOVERED = (
-    f"{_OWED} "
-    "SELECT customer_id, promised, sum(remaining)::bigint AS remaining FROM owed "
-    "WHERE remaining > 0 AND promised IS NOT NULL GROUP BY customer_id, promised"
+    "SELECT customer_id, promised_date AS promised, sum(remaining)::bigint AS remaining FROM open_debt "
+    "WHERE promised_date IS NOT NULL GROUP BY customer_id, promised_date"
 )
 
 
