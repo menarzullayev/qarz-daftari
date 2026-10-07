@@ -118,3 +118,60 @@ def test_the_test_authenticator_cannot_reach_production_wiring() -> None:
 def test_the_worker_refuses_to_start_without_a_bot_token() -> None:
     with pytest.raises(RuntimeError, match="QD_BOT_TOKEN"):
         asyncio.run(run(Settings(database_url=DB, bot_token=""), asyncio.Event()))
+
+
+# --- the administrator's side (ADR-017) -------------------------------------------------------------
+
+SECRETS_KEY = "a-server-secret-for-wiring-tests-0123456789"
+
+
+def _admin_paths(**admin: str) -> set[str]:
+    settings = Settings(database_url=DB, bot_token="123:test", webhook_secret="a-long-enough-secret", **admin)
+    return {path for path in _paths(settings) if path.startswith("/api/admin/")}
+
+
+def test_with_an_allow_list_and_a_secrets_key_the_administrators_side_is_served() -> None:
+    paths = _admin_paths(admin_tg_ids="1001, 1002", secrets_key=SECRETS_KEY)
+    assert {"/api/admin/v1/auth", "/api/admin/v1/shops", "/api/admin/v1/settings", "/api/admin/v1/audit"} <= paths
+
+
+@pytest.mark.parametrize(
+    "admin",
+    [
+        {"admin_tg_ids": "", "secrets_key": ""},
+        {"admin_tg_ids": "1001", "secrets_key": ""},
+        {"admin_tg_ids": "", "secrets_key": SECRETS_KEY},
+        {"admin_tg_ids": " , ", "secrets_key": SECRETS_KEY},
+    ],
+)
+def test_without_an_allow_list_or_without_a_key_the_administrators_side_does_not_exist(admin: dict[str, str]) -> None:
+    """Nobody can be an administrator then, so there is nothing to serve."""
+    assert _admin_paths(**admin) == set()
+
+
+def test_without_a_bot_token_the_administrators_side_is_not_served_either() -> None:
+    settings = Settings(database_url=DB, bot_token="", admin_tg_ids="1001", secrets_key=SECRETS_KEY)
+    assert not {path for path in _paths(settings) if path.startswith("/api/")}
+
+
+@pytest.mark.parametrize("ids", ["1001,abc", "-5", "0", "1.5", "1001;1002", "١٢٣"])
+def test_a_malformed_allow_list_refuses_to_start(ids: str) -> None:
+    with pytest.raises(ValueError, match="QD_ADMIN_TG_IDS"):
+        build(Settings(database_url=DB, bot_token="123:test", admin_tg_ids=ids, secrets_key=SECRETS_KEY))
+
+
+@pytest.mark.parametrize("key", ["short", "x" * 15])
+def test_a_server_secret_that_is_too_short_refuses_to_start(key: str) -> None:
+    with pytest.raises(ValueError, match="too short"):
+        build(Settings(database_url=DB, bot_token="123:test", admin_tg_ids="1001", secrets_key=key))
+
+
+def test_the_allow_list_is_read_as_numbers() -> None:
+    assert Settings(admin_tg_ids=" 1001, 1002 ,,1001 ").admin_allow_list() == frozenset({1001, 1002})
+    assert Settings(admin_tg_ids="").admin_allow_list() == frozenset()
+
+
+def test_the_secrets_key_and_the_allow_list_are_not_shown_when_settings_are_printed() -> None:
+    shown = repr(Settings(admin_tg_ids="1001", secrets_key=SECRETS_KEY))
+    assert SECRETS_KEY not in shown
+    assert "1001" not in shown

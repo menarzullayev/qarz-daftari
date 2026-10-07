@@ -51,6 +51,9 @@ BUCKETS_MS = (25, 50, 100, 200, 300, 400, 500, 1000, 2500, 5000)
 SECURITY_SHOP_NOT_MEMBER = "shop_not_member"
 SECURITY_BAD_SIGN_IN = "bad_sign_in"
 SECURITY_BAD_WEBHOOK_SECRET = "bad_webhook_secret"  # noqa: S105  (the name of an event, not a secret)
+# An administrator's second-factor code was refused, or the factor is locked. A route reports it itself
+# (`request.state.security_event`): the status alone does not tell it from a rate limit.
+SECURITY_BAD_SECOND_FACTOR = "bad_second_factor"
 
 _INTERNAL_ERROR = "Xatolik yuz berdi."
 
@@ -221,7 +224,8 @@ class Observe:
             "user_id": user_id,
             "shop_id": (scope.get("path_params") or {}).get("shop_id") if route != "unmatched" else None,
         }
-        kind = security_kind(route, status, signed_in=user_id is not None)
+        reported = state.get("security_event") if isinstance(state, dict) else None
+        kind = reported or security_kind(route, status, signed_in=user_id is not None)
         if kind is not None:
             self._metrics.security_event(kind)
             log.warning("security", extra={**fields, "kind": kind})

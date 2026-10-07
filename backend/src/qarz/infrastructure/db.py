@@ -18,6 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from qarz.application.errors import AlreadyMember, StorageTimeout
 from qarz.application.ports import (
     ActivityRow,
+    AdminAccount,
+    AdminAuditRow,
+    AdminReceiptRow,
+    AdminShopRow,
     CatalogItemRecord,
     CreditSettings,
     CustomerAccount,
@@ -28,6 +32,7 @@ from qarz.application.ports import (
     DisputeRecord,
     EntryRow,
     GoodsLineRecord,
+    LockedSubscription,
     MemberRecord,
     Membership,
     MyShop,
@@ -265,6 +270,11 @@ _WEEK_FIGURES = (
     "  FILTER (WHERE kind = 'credit' AND handle_ms IS NOT NULL) AS median_credit_handle_ms "
     "FROM measure.event WHERE at >= :start AND at < :end"
 )
+_ADMIN_ACCOUNT = (
+    "SELECT status, totp_secret, confirmed_at, failed_codes, locked_until, last_step "
+    "FROM admin_account WHERE user_id = :id"
+)
+_ADMIN_ACCOUNT_LOCKED = f"{_ADMIN_ACCOUNT} FOR UPDATE"
 
 _FILE_COLUMNS = "f.id, f.purpose, f.object_key, f.sha256, f.size_bytes, f.mime, f.delete_after"
 _FILE_BY_ID = f"SELECT {_FILE_COLUMNS} FROM stored_file f WHERE f.id = :id"
@@ -2202,6 +2212,347 @@ class PgPlatformSession:
             await self._conn.execute(text("SELECT value FROM platform_setting WHERE key = :key"), {"key": key})
         ).first()
         return None if row is None else row.value
+
+    # --- the administrator's side (ADR-017, ADR-018) ---------------------------------------------------
+
+    async def telegram_id(self, user_id: UUID) -> int | None:
+        row = (await self._conn.execute(text("SELECT tg_id FROM app_user WHERE id = :id"), {"id": user_id})).first()
+        return None if row is None or row.tg_id is None else int(row.tg_id)
+
+    async def admin_account(self, user_id: UUID, *, for_update: bool) -> AdminAccount | None:
+        row = (
+            await self._conn.execute(text(_ADMIN_ACCOUNT_LOCKED if for_update else _ADMIN_ACCOUNT), {"id": user_id})
+        ).first()
+        if row is None:
+            return None
+        return AdminAccount(
+            status=row.status,
+            secret=bytes(row.totp_secret),
+            confirmed=row.confirmed_at is not None,
+            failures=int(row.failed_codes),
+            locked_until=row.locked_until,
+            last_step=None if row.last_step is None else int(row.last_step),
+        )
+
+    async def enrol_admin(self, user_id: UUID, secret: bytes) -> bool:
+        # A confirmed or disabled account is left alone: only someone who never proved they hold the
+        # secret may be given a new one.
+        row = (
+            await self._conn.execute(
+                text(
+                    "INSERT INTO admin_account (user_id, totp_secret) VALUES (:id, :secret) "
+                    "ON CONFLICT (user_id) DO UPDATE SET totp_secret = EXCLUDED.totp_secret, failed_codes = 0, "
+                    "  locked_until = NULL, last_step = NULL "
+                    "WHERE admin_account.confirmed_at IS NULL AND admin_account.status = 'active' "
+                    "RETURNING user_id"
+                ),
+                {"id": user_id, "secret": secret},
+            )
+        ).first()
+        return row is not None
+
+    async def save_factor_state(
+        self,
+        user_id: UUID,
+        *,
+        failures: int,
+        locked_until: datetime | None,
+        last_step: int | None,
+        confirmed_at: datetime | None,
+    ) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE admin_account SET failed_codes = :failures, locked_until = :locked_until, "
+                "  last_step = :last_step, confirmed_at = coalesce(confirmed_at, :confirmed_at) "
+                "WHERE user_id = :id"
+            ),
+            {
+                "id": user_id,
+                "failures": failures,
+                "locked_until": locked_until,
+                "last_step": last_step,
+                "confirmed_at": confirmed_at,
+            },
+        )
+
+    async def open_admin_session(
+        self, *, token_hash: bytes, user_id: UUID, now: datetime, expires_at: datetime
+    ) -> None:
+        await self.revoke_admin_sessions(user_id, now)
+        await self._conn.execute(
+            text(
+                "INSERT INTO admin_session (id, token_hash, user_id, created_at, expires_at) "
+                "VALUES (:id, :token_hash, :user_id, :now, :expires_at)"
+            ),
+            {"id": uuid4(), "token_hash": token_hash, "user_id": user_id, "now": now, "expires_at": expires_at},
+        )
+
+    async def admin_session_expiry(self, token_hash: bytes, user_id: UUID, now: datetime) -> datetime | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT expires_at FROM admin_session WHERE token_hash = :token_hash AND user_id = :user_id "
+                    "AND revoked_at IS NULL AND expires_at > :now"
+                ),
+                {"token_hash": token_hash, "user_id": user_id, "now": now},
+            )
+        ).first()
+        return None if row is None else row.expires_at
+
+    async def revoke_admin_sessions(self, user_id: UUID, now: datetime) -> None:
+        await self._conn.execute(
+            text("UPDATE admin_session SET revoked_at = :now WHERE user_id = :user_id AND revoked_at IS NULL"),
+            {"user_id": user_id, "now": now},
+        )
+
+    async def add_admin_audit(
+        self,
+        *,
+        admin_id: UUID,
+        action: str,
+        target_type: str,
+        target_id: str | None,
+        shop_id: UUID | None,
+        reason: str | None,
+        detail: dict[str, Any],
+        now: datetime,
+    ) -> UUID:
+        audit_id = uuid4()
+        await self._conn.execute(
+            text(
+                "INSERT INTO admin_audit "
+                "  (id, at, admin_id, action, target_type, target_id, target_shop, reason, detail) "
+                "VALUES (:id, :at, :admin_id, :action, :target_type, :target_id, :shop_id, :reason, "
+                "        CAST(:detail AS jsonb))"
+            ),
+            {
+                "id": audit_id,
+                "at": now,
+                "admin_id": admin_id,
+                "action": action,
+                "target_type": target_type,
+                "target_id": target_id,
+                "shop_id": shop_id,
+                "reason": reason,
+                "detail": json.dumps(detail, ensure_ascii=False),
+            },
+        )
+        return audit_id
+
+    async def list_admin_audit(
+        self, *, shop_id: UUID | None, action_prefix: str | None, before: tuple[datetime, UUID] | None, limit: int
+    ) -> list[AdminAuditRow]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT id, at, admin_id, action, target_type, target_id, target_shop, reason, detail "
+                    "FROM admin_audit "
+                    "WHERE (CAST(:shop_id AS uuid) IS NULL OR target_shop = CAST(:shop_id AS uuid)) "
+                    "  AND (CAST(:prefix AS text) IS NULL OR starts_with(action, CAST(:prefix AS text))) "
+                    "  AND (CAST(:before_at AS timestamptz) IS NULL "
+                    "       OR (at, id) < (CAST(:before_at AS timestamptz), CAST(:before_id AS uuid))) "
+                    "ORDER BY at DESC, id DESC LIMIT :limit"
+                ),
+                {
+                    "shop_id": shop_id,
+                    "prefix": action_prefix,
+                    "before_at": before[0] if before else None,
+                    "before_id": before[1] if before else None,
+                    "limit": limit,
+                },
+            )
+        ).all()
+        return [
+            AdminAuditRow(
+                audit_id=row.id,
+                at=row.at,
+                admin_id=row.admin_id,
+                action=row.action,
+                target_type=row.target_type,
+                target_id=row.target_id,
+                shop_id=row.target_shop,
+                reason=row.reason,
+                detail=json.loads(row.detail) if isinstance(row.detail, str) else dict(row.detail),
+            )
+            for row in rows
+        ]
+
+    async def lock_admin_request_key(self, admin_id: UUID, key: str) -> None:
+        # The lock's name travels as a bound parameter; see lock_request_key of the tenant session.
+        await self._conn.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended('admin_request_key:' || :admin || ':' || :key, 0))"),
+            {"admin": str(admin_id), "key": key},
+        )
+
+    async def admin_stored_response(self, admin_id: UUID, key: str) -> dict[str, Any] | None:
+        row = (
+            await self._conn.execute(
+                text("SELECT response FROM admin_request_key WHERE admin_id = :admin_id AND key = :key"),
+                {"admin_id": admin_id, "key": key},
+            )
+        ).first()
+        if row is None:
+            return None
+        response = row.response
+        return json.loads(response) if isinstance(response, str) else dict(response)
+
+    async def store_admin_response(
+        self, admin_id: UUID, key: str, response: dict[str, Any], about_shop: UUID | None
+    ) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO admin_request_key (admin_id, key, response, about_shop) "
+                "VALUES (:admin_id, :key, CAST(:response AS jsonb), CAST(:about_shop AS uuid))"
+            ),
+            {
+                "admin_id": admin_id,
+                "key": key,
+                "response": json.dumps(response, ensure_ascii=False),
+                "about_shop": about_shop,
+            },
+        )
+
+    async def admin_shop_search(
+        self,
+        admin_id: UUID,
+        *,
+        today: date,
+        query: str | None,
+        state: str | None,
+        shop_id: UUID | None,
+        after: tuple[datetime, UUID] | None,
+        limit: int,
+    ) -> list[AdminShopRow]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT shop_id, name, lang, status, created_at, deletion_due, state, effective_state, "
+                    "       trial_ends, paid_through, prior_state, owner_tg, staff_count, customer_count "
+                    "FROM admin_shop_search(:admin, :today, CAST(:query AS text), CAST(:state AS text), "
+                    "  CAST(:shop AS uuid), CAST(:after_created AS timestamptz), CAST(:after_id AS uuid), :limit)"
+                ),
+                {
+                    "admin": admin_id,
+                    "today": today,
+                    "query": query,
+                    "state": state,
+                    "shop": shop_id,
+                    "after_created": after[0] if after else None,
+                    "after_id": after[1] if after else None,
+                    "limit": limit,
+                },
+            )
+        ).all()
+        return [
+            AdminShopRow(
+                shop_id=row.shop_id,
+                name=row.name,
+                lang=row.lang,
+                status=row.status,
+                created_at=row.created_at,
+                deletion_due=row.deletion_due,
+                state=row.state,
+                effective_state=row.effective_state,
+                trial_ends=row.trial_ends,
+                paid_through=row.paid_through,
+                prior_state=row.prior_state,
+                owner_tg=None if row.owner_tg is None else int(row.owner_tg),
+                staff_count=int(row.staff_count),
+                customer_count=int(row.customer_count),
+            )
+            for row in rows
+        ]
+
+    async def admin_shop_receipts(self, admin_id: UUID, shop_id: UUID) -> list[AdminReceiptRow]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT receipt_id, stated_amount, status, months, reject_reason, created_at, decided_at "
+                    "FROM admin_shop_receipts(:admin, :shop)"
+                ),
+                {"admin": admin_id, "shop": shop_id},
+            )
+        ).all()
+        return [
+            AdminReceiptRow(
+                receipt_id=row.receipt_id,
+                stated_amount=int(row.stated_amount),
+                status=row.status,
+                months=None if row.months is None else int(row.months),
+                reject_reason=row.reject_reason,
+                created_at=row.created_at,
+                decided_at=row.decided_at,
+            )
+            for row in rows
+        ]
+
+    async def admin_lock_subscription(self, admin_id: UUID, shop_id: UUID) -> LockedSubscription | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT state, trial_ends, paid_through, prior_state, shop_name, owner_tg, owner_lang "
+                    "FROM admin_lock_subscription(:admin, :shop)"
+                ),
+                {"admin": admin_id, "shop": shop_id},
+            )
+        ).first()
+        if row is None:
+            return None
+        return LockedSubscription(
+            state=row.state,
+            trial_ends=row.trial_ends,
+            paid_through=row.paid_through,
+            prior_state=row.prior_state,
+            shop_name=row.shop_name,
+            owner_tg=None if row.owner_tg is None else int(row.owner_tg),
+            owner_lang=row.owner_lang,
+        )
+
+    async def admin_store_subscription(
+        self,
+        admin_id: UUID,
+        shop_id: UUID,
+        *,
+        state: str,
+        trial_ends: date | None,
+        paid_through: date | None,
+        prior_state: str | None,
+        now: datetime,
+    ) -> bool:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT admin_store_subscription(:admin, :shop, :state, CAST(:trial_ends AS date), "
+                    "  CAST(:paid_through AS date), CAST(:prior_state AS text), :now) AS changed"
+                ),
+                {
+                    "admin": admin_id,
+                    "shop": shop_id,
+                    "state": state,
+                    "trial_ends": trial_ends,
+                    "paid_through": paid_through,
+                    "prior_state": prior_state,
+                    "now": now,
+                },
+            )
+        ).one()
+        return bool(row.changed)
+
+    async def platform_settings(self) -> dict[str, tuple[Any, str, datetime]]:
+        rows = (await self._conn.execute(text("SELECT key, value, updated_by, updated_at FROM platform_setting"))).all()
+        # The driver hands a jsonb value over already decoded; a stored string must not be decoded again.
+        return {row.key: (row.value, row.updated_by, row.updated_at) for row in rows}
+
+    async def set_platform_setting(self, key: str, value: Any, *, updated_by: str, now: datetime) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO platform_setting (key, value, updated_by, updated_at) "
+                "VALUES (:key, CAST(:value AS jsonb), :updated_by, :now) "
+                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, "
+                "  updated_at = EXCLUDED.updated_at"
+            ),
+            {"key": key, "value": json.dumps(value), "updated_by": updated_by, "now": now},
+        )
 
     async def set_active_shop(self, user_id: UUID, shop_id: UUID) -> None:
         await self._conn.execute(

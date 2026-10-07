@@ -17,7 +17,7 @@ from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import operation
 from qarz.application.ports import ReminderCandidate, ReminderSettings, Storage, TenantSession
 from qarz.application.shops import require_member
-from qarz.domain import ledger
+from qarz.domain import ledger, platform_settings
 from qarz.domain.access import Capability
 from qarz.domain.promise import tashkent_date
 from qarz.domain.reminders import (
@@ -157,7 +157,7 @@ class ReminderService:
     async def _sms_left(self, session: TenantSession, today: date) -> tuple[bool, int]:
         """Whether SMS is on for the platform, and how many the shop may still send this month."""
         on = await session.platform_setting(SMS_ON) is True
-        quota = await session.platform_setting(SMS_QUOTA)
+        quota = platform_settings.effective(SMS_QUOTA, await session.platform_setting(SMS_QUOTA))
         if not on or isinstance(quota, bool) or not isinstance(quota, int) or quota <= 0:
             return on, 0
         return on, max(0, quota - await session.sms_reminders_since(today.replace(day=1)))

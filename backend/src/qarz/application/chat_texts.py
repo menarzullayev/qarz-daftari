@@ -153,6 +153,11 @@ UZ = {
     ),
     "sms_due_today": "{shop}: {name}, bugun {amount} to'lash kuni. Rahmat.",
     "sms_overdue": "{shop}: {name}, {amount} qarz muddati o'tgan. Iltimos, to'lab qo'ying.",
+    "shop_suspended": (
+        "«{shop}» do'koni xizmat ma'muriyati tomonidan to'xtatildi. Sabab: {reason}\n"
+        "Endi faqat do'kon egasi ma'lumotlarni ko'ra oladi va eksport qila oladi."
+    ),
+    "shop_unsuspended": "«{shop}» do'koni yana ishlamoqda: to'xtatish bekor qilindi. Izoh: {reason}",
     "LIMIT_REACHED": "Bu savdo mijozning nasiya limitidan oshadi. Uni menejer yoki do'kon egasi yoza oladi.",
     "limit_warning": "⚠️ Qarz limitdan oshdi: limit {limit}, qarz {balance}.",
     "sub_header": "«{shop}» — obuna",
@@ -395,6 +400,11 @@ RU = {
     ),
     "sms_due_today": "{shop}: {name}, сегодня срок оплаты {amount}. Спасибо.",
     "sms_overdue": "{shop}: {name}, срок оплаты долга {amount} прошёл. Пожалуйста, оплатите.",
+    "shop_suspended": (
+        "Магазин «{shop}» приостановлен администрацией сервиса. Причина: {reason}\n"
+        "Теперь только владелец может просматривать и выгружать данные."
+    ),
+    "shop_unsuspended": "Магазин «{shop}» снова работает: приостановка снята. Комментарий: {reason}",
     "LIMIT_REACHED": "Эта продажа превысит лимит клиента. Записать её может менеджер или владелец.",
     "limit_warning": "⚠️ Долг превысил лимит: лимит {limit}, долг {balance}.",
     "sub_header": "«{shop}» — подписка",
