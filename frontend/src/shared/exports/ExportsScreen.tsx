@@ -288,10 +288,10 @@ function Exports({ pollMs }: { pollMs: number }) {
 /**
  * Export of the shop's book (REQ-028): what the file holds, the request, the recent exports with their
  * state, and the download. For managers and owners; in a suspended shop the server gives it to the
- * owner alone, so a manager is told that and nothing is asked. Import is another story: its part of
- * this section waits.
+ * owner alone, so a manager is told that and nothing is asked. `after` is the other half of the section,
+ * the import, which is loaded apart; nobody who gets the not-found screen is shown it.
  */
-export default function ExportsScreen({ pollMs = POLL_MS }: { pollMs?: number }) {
+export default function ExportsScreen({ pollMs = POLL_MS, after = null }: { pollMs?: number; after?: ReactNode }) {
   const { role, shopMode } = useWorkspace();
   const { t } = useI18n();
   if (!canManage(role)) {
@@ -307,10 +307,7 @@ export default function ExportsScreen({ pollMs = POLL_MS }: { pollMs?: number })
       ) : (
         <Exports pollMs={pollMs} />
       )}
-      <section aria-labelledby="import-title">
-        <h2 id="import-title">{t("exports.import.title")}</h2>
-        <p>{t("screen.placeholder")}</p>
-      </section>
+      {after}
     </>
   );
 }

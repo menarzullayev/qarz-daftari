@@ -5,6 +5,8 @@ import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { uzExports } from "../i18n/exports/uz";
+import { uzImports } from "../i18n/imports/uz";
+import { uzReceipts } from "../i18n/receipts/uz";
 import { uzSupport } from "../i18n/support/uz";
 import { creditSettingsBody, fakeServer, NOON, ok, refusal, settingsBody, SHOP_BASE, SHOP_ID, supportAccessBody } from "../testing/fakeServer";
 import type { ApiAuth } from "./api";
@@ -100,6 +102,21 @@ describe("exports and support access stay out of the Mini App's first load (NFR-
     expect(app).toContain('lazy(() => import("./exports/ExportsScreen"))');
   });
 
+  it("loads the import screen and the owner's subscription receipts on demand too: nothing imports them except through import()", () => {
+    for (const [folder, importer, line] of [
+      ["imports", "shared/StaffApp.tsx", 'lazy(() => import("./imports/ImportScreen"))'],
+      ["receipts", "shared/workspace/SubscriptionScreen.tsx", 'lazy(() => import("../receipts/ReceiptSection"))'],
+    ] as const) {
+      const own = new RegExp(`^(shared/${folder}/|i18n/${folder}/)`);
+      const offenders = sources()
+        .filter((source) => !own.test(source.name))
+        .flatMap((file) => staticImports(file.text).filter((specifier) => new RegExp(`(^|/)${folder}/`).test(specifier)).map((specifier) => `${file.name}: ${specifier}`));
+      expect(offenders).toEqual([]);
+      expect(sources().find((source) => source.name === importer)?.text ?? "").toContain(line);
+    }
+    expect(staticImports('import ImportScreen from "./imports/ImportScreen";').some((specifier) => /(^|\/)imports\//.test(specifier))).toBe(true);
+  });
+
   it("loads the owner's support access on demand everywhere but in the web panel, whose notice is on every screen", () => {
     const importers = sources()
       .filter((source) => !SUPPORT_FILES.test(source.name))
@@ -124,6 +141,8 @@ describe("exports and support access stay out of the Mini App's first load (NFR-
         .filter((source) => !allowed.test(source.name))
         .flatMap((file) => keys.filter((key) => file.text.includes(`"${key}"`)).map((key) => `${file.name}: ${key}`));
     expect(named(Object.keys(uzExports), EXPORTS)).toEqual([]);
+    expect(named(Object.keys(uzImports), /^(shared\/imports\/|i18n\/imports\/)/)).toEqual([]);
+    expect(named(Object.keys(uzReceipts), /^(shared\/receipts\/|i18n\/receipts\/)/)).toEqual([]);
     // The panel's notice speaks from the support catalog, which the panel loads when it starts.
     expect(named(Object.keys(uzSupport), /^(shared\/support\/|i18n\/support\/|panel\/OfficeBanner\.tsx$)/)).toEqual([]);
   });
@@ -132,7 +151,7 @@ describe("exports and support access stay out of the Mini App's first load (NFR-
     const admin = sources().filter((source) => source.name.startsWith("admin/") && source.name !== "admin/testing.tsx");
     expect(admin.length).toBeGreaterThan(12);
     const offenders = admin.flatMap((file) =>
-      [...file.text.matchAll(/["']([^"']*(?:shared\/support|shared\/exports|i18n\/support|i18n\/exports)[^"']*)["']/g)].map((match) => `${file.name}: ${match[1]}`),
+      [...file.text.matchAll(/["']([^"']*(?:shared\/support|shared\/exports|shared\/imports|shared\/receipts|i18n\/support|i18n\/exports|i18n\/imports|i18n\/receipts)[^"']*)["']/g)].map((match) => `${file.name}: ${match[1]}`),
     );
     expect(offenders).toEqual([]);
   });

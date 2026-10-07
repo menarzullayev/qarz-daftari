@@ -13,6 +13,8 @@ import type { AdminApi } from "./adminApi";
 import { AuditScreen } from "./AuditScreen";
 import "./messages";
 import { ADMIN_SECTIONS } from "./navigation";
+import { ReceiptScreen } from "./ReceiptScreen";
+import { ReceiptsScreen } from "./ReceiptsScreen";
 import { isUuid } from "./rules";
 import { SettingsScreen } from "./SettingsScreen";
 import { ShopScreen } from "./ShopScreen";
@@ -88,6 +90,12 @@ function match(path: string, api: AdminApi, now: () => Date, who: Who): Match | 
       screen: <SupportAccessScreen key={second ?? ""} api={api} shopId={second ?? null} now={now} who={who} />,
     };
   }
+  if (path === "/receipts") {
+    return { sectionPath: "/receipts", titleKey: "admin.nav.receipts", screen: <ReceiptsScreen api={api} /> };
+  }
+  if (first === "receipts" && second !== undefined && isUuid(second)) {
+    return { sectionPath: "/receipts", titleKey: "admin.rc.title", screen: <ReceiptScreen key={second} api={api} receiptId={second} /> };
+  }
   if (path === "/settings") {
     return { sectionPath: "/settings", titleKey: "admin.nav.settings", screen: <SettingsScreen api={api} /> };
   }
@@ -139,7 +147,7 @@ export function AdminRoutes({ api, now = systemClock, sessionEnds = null, onSess
     title = t(found.titleKey);
     screen = found.screen;
   } else if (section) {
-    // Subscription receipts are another story: their section waits, and calls nothing.
+    // No server behind the frame (a developer's preview): the section's name, and nothing asked.
     title = t(section.labelKey);
     screen = <PlaceholderScreen />;
   }

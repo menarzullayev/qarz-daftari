@@ -49,5 +49,4 @@ export const ruExports: RuExportsCatalog = {
   "exports.notReady.expired": "Срок файла истёк, он удалён. Запросите новый экспорт.",
   "exports.stale": "Не удалось обновить состояние.",
   "exports.refresh": "Обновить",
-  "exports.import.title": "Импорт",
 };

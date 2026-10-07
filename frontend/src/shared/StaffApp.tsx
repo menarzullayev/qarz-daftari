@@ -67,6 +67,7 @@ const PaymentNoticesScreen = lazy(() => import("./workspace/PaymentNoticesScreen
 const DateRequestsScreen = lazy(() => import("./workspace/DateRequestsScreen"));
 const ReportsScreen = lazy(() => import("./reports/ReportsScreen"));
 const ExportsScreen = lazy(() => import("./exports/ExportsScreen"));
+const ImportScreen = lazy(() => import("./imports/ImportScreen"));
 const SupportAccessSection = lazy(() => import("./support/SupportAccessSection"));
 
 /**
@@ -150,7 +151,13 @@ function workspaceScreen(
     case "exports":
       return (
         <Suspense fallback={<Loading />}>
-          <ExportsScreen />
+          <ExportsScreen
+            after={
+              <Suspense fallback={<Loading />}>
+                <ImportScreen />
+              </Suspense>
+            }
+          />
         </Suspense>
       );
     case "catalog":

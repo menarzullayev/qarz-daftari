@@ -206,7 +206,12 @@ function Detail({ api, loaded, now, who, reload }: { api: AdminApi; loaded: Admi
   const day = (iso: string) => dayText(iso, language);
 
   const receipts: Column<SubscriptionReceipt>[] = [
-    { id: "created", header: t("admin.receipts.created"), rowHeader: true, cell: (receipt) => formatInstant(receipt.createdAt, language) },
+    {
+      id: "created",
+      header: t("admin.receipts.created"),
+      rowHeader: true,
+      cell: (receipt) => <Link to={`/receipts/${receipt.id}`}>{formatInstant(receipt.createdAt, language)}</Link>,
+    },
     {
       id: "amount",
       header: t("admin.receipts.amount"),
