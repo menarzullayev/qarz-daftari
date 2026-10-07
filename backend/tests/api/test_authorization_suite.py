@@ -129,6 +129,26 @@ def _notice_id(world: World) -> uuid.UUID:
     return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-notice:{world.entry_a}")
 
 
+def _export_job_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-export:{world.entry_a}")
+
+
+def _finished_export(owner: psycopg.Connection, world: World) -> None:
+    """An export of shop A that the worker has finished: a workbook kept for a week."""
+    file_id = uuid.uuid5(uuid.NAMESPACE_URL, f"suite-export-file:{world.entry_a}")
+    owner.execute(
+        "INSERT INTO stored_file (id, shop_id, purpose, object_key, sha256, size_bytes, mime, delete_after) "
+        "VALUES (%s, %s, 'export', 'ee/suite-export', %s, 4, "
+        "'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', now() + interval '7 days')",
+        (file_id, world.shop_a, hashlib.sha256(b"xlsx").digest()),
+    )
+    owner.execute(
+        "INSERT INTO export_job (id, shop_id, requested_by, status, file_id, attempts, row_count, started_at, "
+        "finished_at) VALUES (%s, %s, %s, 'done', %s, 1, 1, now(), now())",
+        (_export_job_id(world), world.shop_a, world.owner_a_membership, file_id),
+    )
+
+
 def _sent_notice(owner: psycopg.Connection, world: World) -> None:
     """Ali says he paid 20 000 of the 50 000 he owes, and sent a receipt with it."""
     content = b"%PDF-1.4 suite receipt"
@@ -248,6 +268,11 @@ CALLS: dict[str, Call] = {
         {"reason": "Mahsulot berilgan"},
         True,
         prepare=_open_dispute,
+    ),
+    "exports.request": Call("POST", lambda w, shop: f"/api/v1/shops/{shop}/exports", None, True, 201),
+    "exports.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/exports"),
+    "exports.download": Call(
+        "GET", lambda w, shop: f"/api/v1/shops/{shop}/exports/{_export_job_id(w)}/download", prepare=_finished_export
     ),
     "payment_notices.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/payment-notices"),
     "payment_notices.accept": Call(
@@ -401,6 +426,11 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "disputes.decline": {Role.MANAGER, Role.OWNER},
     # Specification, resources table: "payment notices: all staff"; role matrix, "Accept or decline a
     # payment notice": seller, manager, owner. The receipt is what they decide on.
+    # REQ-028 "an owner or manager can export"; specification, resources table: "reports and exports:
+    # manager, owner"; role matrix: exports in the manager's row.
+    "exports.request": {Role.MANAGER, Role.OWNER},
+    "exports.list": {Role.MANAGER, Role.OWNER},
+    "exports.download": {Role.MANAGER, Role.OWNER},
     "payment_notices.list": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "payment_notices.accept": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "payment_notices.decline": {Role.SELLER, Role.MANAGER, Role.OWNER},
@@ -623,6 +653,10 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
             "WHERE shop_id = %s ORDER BY id",
             (shop,),
         ).fetchall(),
+        owner.execute(
+            "SELECT id, requested_by, status, file_id, error, attempts FROM export_job WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
         # The objects of the file store itself: a refused call writes and removes none.
         sorted(str(path.relative_to(current_file_root())) for path in current_file_root().rglob("*") if path.is_file()),
     )
@@ -737,6 +771,7 @@ def test_a_member_of_one_shop_cannot_reach_another(
         world.waiting_a,
         _dispute_id(world),
         _notice_id(world),
+        _export_job_id(world),
         _date_request_id(world),
     )
     uses_foreign_resource = any(str(resource) in call.path(world, world.shop_b) for resource in foreign)

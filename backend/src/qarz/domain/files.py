@@ -13,8 +13,9 @@ MAX_FILE_BYTES = 5 * 1024 * 1024
 RECEIPT_RETENTION = timedelta(days=90)
 
 JPEG, PNG, WEBP, PDF = "image/jpeg", "image/png", "image/webp", "application/pdf"
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"  # what the service itself writes
 RECEIPT_TYPES = frozenset({JPEG, PNG, WEBP, PDF})
-EXTENSIONS = {JPEG: "jpg", PNG: "png", WEBP: "webp", PDF: "pdf"}
+EXTENSIONS = {JPEG: "jpg", PNG: "png", WEBP: "webp", PDF: "pdf", XLSX: "xlsx"}
 
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _KEY_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")

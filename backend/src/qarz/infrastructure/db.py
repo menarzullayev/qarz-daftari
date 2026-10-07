@@ -7,7 +7,7 @@ next use of a pooled connection, and the row-level security policies hide every 
 import json
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4, uuid5
 
@@ -31,6 +31,10 @@ from qarz.application.ports import (
     DebtFigures,
     DisputeRecord,
     EntryRow,
+    ExportCustomer,
+    ExportEntry,
+    ExportJobRecord,
+    ExportPromise,
     GoodsLineRecord,
     LockedSubscription,
     MemberRecord,
@@ -280,7 +284,8 @@ _FILE_COLUMNS = "f.id, f.purpose, f.object_key, f.sha256, f.size_bytes, f.mime, 
 _FILE_BY_ID = f"SELECT {_FILE_COLUMNS} FROM stored_file f WHERE f.id = :id"
 _DUE_RECEIPT_FILES = (
     f"SELECT {_FILE_COLUMNS} FROM stored_file f "
-    "WHERE f.purpose = 'payment_notice' AND f.delete_after <= :now ORDER BY f.delete_after, f.id LIMIT :limit"
+    "WHERE f.purpose IN ('payment_notice', 'export') AND f.delete_after <= :now "
+    "ORDER BY f.delete_after, f.id LIMIT :limit"
 )
 _NOTICE_SELECT = (
     "SELECT n.id, n.customer_id, n.amount, n.file_id, n.status, n.payment_entry, e.amount AS recorded_amount, "
@@ -297,6 +302,36 @@ _OPEN_NOTICES = (
     f"{_NOTICE_SELECT} WHERE n.status = 'sent' AND n.created_at >= :since AND c.status <> 'anonymized' "
     "ORDER BY n.created_at, n.id"
 )
+
+_EXPORT_JOB_SELECT = (
+    "SELECT j.id, j.requested_by, j.status, j.file_id, j.error, j.attempts, j.row_count, j.created_at, "
+    "j.started_at, j.finished_at, f.delete_after FROM export_job j LEFT JOIN stored_file f ON f.id = j.file_id "
+)
+_EXPORT_JOB_BY_ID = f"{_EXPORT_JOB_SELECT} WHERE j.id = :id"
+_EXPORT_JOBS = f"{_EXPORT_JOB_SELECT} ORDER BY j.created_at DESC, j.id LIMIT :limit"
+# One page of the ledger for the export, by the (shop_id, created_at) index. A reversal recorded after
+# the export's own instant is not in the file, so the entry it reverses is not shown as reversed either:
+# the sheet agrees with itself.
+_EXPORT_ENTRIES = (
+    "SELECT e.id, e.customer_id, c.display_name, e.seq, e.kind, e.amount, e.note, e.reverses_id, "
+    "t.kind AS reversed_kind, e.author_id, m.role AS author_role, e.created_at, "
+    f"{_PROMISED.format(entry='e')} AS promised_date, "
+    "EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id AND r.created_at <= :until) AS is_reversed "
+    "FROM ledger_entry e JOIN customer c ON c.id = e.customer_id JOIN membership m ON m.id = e.author_id "
+    "LEFT JOIN ledger_entry t ON t.id = e.reverses_id "
+    "WHERE e.created_at <= :until AND (e.created_at, e.id) > (:after_at, :after_id) "
+    "ORDER BY e.created_at, e.id LIMIT :limit"
+)
+_EXPORT_PROMISES = (
+    "SELECT p.entry_id, p.promised_date, p.reason, p.actor, p.created_at FROM promise p "
+    "WHERE p.entry_id = ANY(CAST(:ids AS uuid[])) ORDER BY p.entry_id, p.created_at, p.id"
+)
+_EXPORT_CUSTOMERS = (
+    "SELECT c.id, c.display_name, c.name_norm, c.phone, c.status, c.credit_limit, c.created_at FROM customer c "
+    "WHERE c.id > :after ORDER BY c.id LIMIT :limit"
+)
+_FIRST_UUID = UUID(int=0)
+_BEFORE_EVERYTHING = datetime(1, 1, 1, tzinfo=UTC)
 
 
 def _like_pattern(part: str) -> str:
@@ -1555,8 +1590,10 @@ class PgTenantSession:
 
     async def remove_stored_file(self, file_id: UUID) -> None:
         await self._conn.execute(text("UPDATE payment_notice SET file_id = NULL WHERE file_id = :id"), {"id": file_id})
+        await self._conn.execute(text("UPDATE export_job SET file_id = NULL WHERE file_id = :id"), {"id": file_id})
         await self._conn.execute(
-            text("DELETE FROM stored_file WHERE id = :id AND purpose = 'payment_notice'"), {"id": file_id}
+            text("DELETE FROM stored_file WHERE id = :id AND purpose IN ('payment_notice', 'export')"),
+            {"id": file_id},
         )
 
     async def stored_object_keys(self) -> list[str]:
@@ -1665,6 +1702,147 @@ class PgTenantSession:
         for file_id in [row.file_id for row in rows if row.file_id is not None]:
             await self.shorten_file_retention(file_id, files_delete_after)
         return len(rows)
+
+    # --- exports -------------------------------------------------------------------------------------
+
+    @staticmethod
+    def _export_job(row: Any) -> ExportJobRecord:
+        return ExportJobRecord(
+            row.id,
+            row.requested_by,
+            str(row.status),
+            row.file_id,
+            row.error,
+            int(row.attempts),
+            None if row.row_count is None else int(row.row_count),
+            row.created_at,
+            row.started_at,
+            row.finished_at,
+            row.delete_after,
+        )
+
+    async def lock_exports(self) -> None:
+        await self._conn.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:scope, 0))"),
+            {"scope": "exports:" + str(self._shop_id)},
+        )
+
+    async def add_export_job(self, *, job_id: UUID, requested_by: UUID, now: datetime) -> ExportJobRecord:
+        await self._conn.execute(
+            text(
+                "INSERT INTO export_job (id, shop_id, requested_by, status, created_at) "
+                "VALUES (:id, :shop_id, :requested_by, 'queued', :now)"
+            ),
+            {"id": job_id, "shop_id": self._shop_id, "requested_by": requested_by, "now": now},
+        )
+        row = (await self._conn.execute(text(_EXPORT_JOB_BY_ID), {"id": job_id})).one()
+        return self._export_job(row)
+
+    async def get_export_job(self, job_id: UUID) -> ExportJobRecord | None:
+        row = (await self._conn.execute(text(_EXPORT_JOB_BY_ID), {"id": job_id})).first()
+        return None if row is None else self._export_job(row)
+
+    async def export_jobs(self, limit: int) -> list[ExportJobRecord]:
+        rows = (await self._conn.execute(text(_EXPORT_JOBS), {"limit": limit})).all()
+        return [self._export_job(row) for row in rows]
+
+    async def export_in_progress(self) -> bool:
+        row = (
+            await self._conn.execute(text("SELECT 1 FROM export_job WHERE status IN ('queued', 'running') LIMIT 1"))
+        ).first()
+        return row is not None
+
+    async def exports_since(self, start: datetime) -> int:
+        row = (
+            await self._conn.execute(
+                text("SELECT count(*) AS asked FROM export_job WHERE created_at >= :start AND status <> 'failed'"),
+                {"start": start},
+            )
+        ).one()
+        return int(row.asked)
+
+    async def finish_export_job(
+        self,
+        job_id: UUID,
+        *,
+        status: str,
+        file_id: UUID | None,
+        error: str | None,
+        row_count: int | None,
+        now: datetime,
+    ) -> bool:
+        result = await self._conn.execute(
+            text(
+                "UPDATE export_job SET status = :status, file_id = :file_id, error = :error, row_count = :row_count, "
+                "finished_at = :now WHERE id = :id AND status = 'running'"
+            ),
+            {"id": job_id, "status": status, "file_id": file_id, "error": error, "row_count": row_count, "now": now},
+        )
+        return int(result.rowcount) == 1
+
+    async def member_recipient(self, membership_id: UUID) -> tuple[int, str] | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT u.tg_id, u.lang FROM membership m JOIN app_user u ON u.id = m.user_id "
+                    "WHERE m.id = :id AND m.status = 'active' AND u.tg_id IS NOT NULL"
+                ),
+                {"id": membership_id},
+            )
+        ).first()
+        return None if row is None else (int(row.tg_id), str(row.lang))
+
+    async def export_entries(
+        self, *, until: datetime, after: tuple[datetime, UUID] | None, limit: int
+    ) -> list[ExportEntry]:
+        after_at, after_id = after or (_BEFORE_EVERYTHING, _FIRST_UUID)
+        rows = (
+            await self._conn.execute(
+                text(_EXPORT_ENTRIES), {"until": until, "after_at": after_at, "after_id": after_id, "limit": limit}
+            )
+        ).all()
+        return [
+            ExportEntry(
+                row.id,
+                row.customer_id,
+                str(row.display_name),
+                int(row.seq),
+                str(row.kind),
+                int(row.amount),
+                row.note,
+                row.reverses_id,
+                row.reversed_kind,
+                bool(row.is_reversed),
+                row.promised_date,
+                row.author_id,
+                str(row.author_role),
+                row.created_at,
+            )
+            for row in rows
+        ]
+
+    async def export_promises(self, entry_ids: list[UUID]) -> list[ExportPromise]:
+        rows = (await self._conn.execute(text(_EXPORT_PROMISES), {"ids": entry_ids})).all()
+        return [
+            ExportPromise(row.entry_id, row.promised_date, row.reason, str(row.actor), row.created_at) for row in rows
+        ]
+
+    async def export_customers(self, *, after: UUID | None, limit: int) -> list[ExportCustomer]:
+        rows = (
+            await self._conn.execute(text(_EXPORT_CUSTOMERS), {"after": after or _FIRST_UUID, "limit": limit})
+        ).all()
+        return [
+            ExportCustomer(
+                row.id,
+                str(row.display_name),
+                str(row.name_norm),
+                row.phone,
+                str(row.status),
+                None if row.credit_limit is None else int(row.credit_limit),
+                row.created_at,
+            )
+            for row in rows
+        ]
 
     async def staff_recipients(self, roles: list[str]) -> list[tuple[int, str]]:
         rows = (
@@ -2105,6 +2283,15 @@ class PgPlatformSession:
             )
         ).all()
         return [row.shop_id for row in rows]
+
+    async def claim_export_job(self, now: datetime, stale_before: datetime) -> tuple[UUID, UUID, int] | None:
+        row = (
+            await self._conn.execute(
+                text("SELECT job_id, shop_id, attempts FROM claim_export_job(:now, :stale_before)"),
+                {"now": now, "stale_before": stale_before},
+            )
+        ).first()
+        return None if row is None else (row.job_id, row.shop_id, int(row.attempts))
 
     async def shops_with_receipt_work(self, stale_before: datetime, now: datetime) -> list[UUID]:
         rows = (

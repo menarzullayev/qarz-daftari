@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from qarz.application.admin_access import AdminAccess
 from qarz.application.auth import AuthService
 from qarz.application.online_payment import PaymentKeys
-from qarz.domain.files import MAX_FILE_BYTES
+from qarz.domain.exports import MAX_EXPORT_BYTES
 from qarz.infrastructure.db import Database
 from qarz.infrastructure.file_store import build_file_store
 from qarz.infrastructure.secret_box import SecretBox
@@ -40,7 +40,7 @@ def build(settings: Settings | None = None) -> FastAPI:
         admin=admin,
         webhook_secret=settings.webhook_secret or None,
         # A store that is named but misconfigured stops the start; none at all only refuses receipts.
-        file_store=build_file_store(settings, max_object_bytes=MAX_FILE_BYTES),
+        file_store=build_file_store(settings, max_object_bytes=MAX_EXPORT_BYTES),
         secrets_key=settings.secrets_key or None,
         telegram_files=TelegramFileFetcher.for_token(settings.bot_token) if settings.bot_token else None,
         metrics_token=settings.metrics_token or None,

@@ -153,8 +153,9 @@ class FileService:
             record = await session.get_stored_file(file_id)
         if record is None or _due(record, now):
             raise NotFound()
-        # The name carries part of the file's identifier and nothing about the person.
-        return record.mime, f"receipt-{file_id.hex[:8]}.{EXTENSIONS[record.mime]}", await self.content(record)
+        # The name says what kind of file it is and carries part of its identifier: nothing about a person.
+        kind = "export" if record.purpose == "export" else "receipt"
+        return record.mime, f"{kind}-{file_id.hex[:8]}.{EXTENSIONS[record.mime]}", await self.content(record)
 
     async def content(self, record: StoredFileRecord) -> bytes:
         """The content of a file whose record was read in its shop's transaction.

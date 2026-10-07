@@ -53,6 +53,8 @@ _STATUS = {
     "SUBSCRIPTION_CHANGE_REFUSED": 409,
     "PAYMENT_NOTICE_NOT_ALLOWED": 409,
     "PAYMENT_NOTICE_NOT_OPEN": 409,
+    "EXPORT_NOT_ALLOWED": 409,
+    "EXPORT_NOT_READY": 409,
     "FILE_STORE_UNAVAILABLE": 503,
 }
 
@@ -102,6 +104,8 @@ _MESSAGES = {
         "SUBSCRIPTION_CHANGE_REFUSED": "Obunaning hozirgi holatida bu o'zgarishni qilib bo'lmaydi.",
         "PAYMENT_NOTICE_NOT_ALLOWED": "Ko'rib chiqilmagan to'lov xabarlaringiz juda ko'p. Do'kon javobini kuting.",
         "PAYMENT_NOTICE_NOT_OPEN": "Bu to'lov xabari allaqachon ko'rib chiqilgan yoki muddati o'tgan.",
+        "EXPORT_NOT_ALLOWED": "Eksport allaqachon tayyorlanmoqda yoki bugungi eksportlar soni tugagan.",
+        "EXPORT_NOT_READY": "Bu eksport fayli hali tayyor emas yoki muddati o'tgan.",
         "FILE_STORE_UNAVAILABLE": "Fayllarni saqlash hozir ishlamayapti. Birozdan keyin qayta urinib ko'ring.",
         "ONLINE_PAY_OFF": "Onlayn to'lov hozircha yoqilmagan. Karta orqali to'lash: /obuna",
         "RATE_LIMITED": "So'rovlar juda ko'p. Biroz kutib, qayta urinib ko'ring.",
@@ -153,6 +157,8 @@ _MESSAGES = {
         "SUBSCRIPTION_CHANGE_REFUSED": "При текущем состоянии подписки это изменение невозможно.",
         "PAYMENT_NOTICE_NOT_ALLOWED": "У вас слишком много нерассмотренных сообщений об оплате. Дождитесь ответа.",
         "PAYMENT_NOTICE_NOT_OPEN": "Это сообщение об оплате уже рассмотрено или его срок истёк.",
+        "EXPORT_NOT_ALLOWED": "Выгрузка уже готовится, или на сегодня выгрузок больше нет.",
+        "EXPORT_NOT_READY": "Файл этой выгрузки ещё не готов или срок его хранения истёк.",
         "FILE_STORE_UNAVAILABLE": "Хранилище файлов сейчас недоступно. Попробуйте ещё раз чуть позже.",
         "ONLINE_PAY_OFF": "Онлайн-оплата пока не включена. Оплата переводом на карту: /obuna",
         "RATE_LIMITED": "Слишком много запросов. Подождите немного и повторите.",
