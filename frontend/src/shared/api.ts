@@ -103,6 +103,48 @@ export type Entry = {
   authorId: string | null;
   /** Empty for an amount-only entry. */
   lines: GoodsLine[];
+  /** Every promised date the entry has carried, oldest first; the last one is the current date. */
+  promises: PromiseRecord[];
+  /** The newest request to move the entry's date, whatever its state; null when there was none. */
+  dateRequest: DateRequest | null;
+};
+
+/**
+ * One promised date of an entry (INV-9). `actor` says where it came from: "default" (the shop's usual
+ * term), "staff" (chosen or changed by the shop), "customer_request" (asked by the customer, accepted).
+ */
+export type PromiseRecord = { promisedDate: string; actor: string; reason: string | null; createdAt: string };
+
+/**
+ * A customer's request to move the promised date of one entry (REQ-066). `status`: open, accepted,
+ * declined, or expired (the entry was paid or reversed, or the shop set another date itself).
+ */
+export type DateRequest = {
+  id: string;
+  entryId: string;
+  status: string;
+  requestedDate: string;
+  reason: string | null;
+  declineReason: string | null;
+  createdAt: string;
+  closedAt: string | null;
+};
+
+/** An open request as a manager or an owner sees it. `promisedDate` is the date it would replace. */
+export type OpenDateRequest = DateRequest & {
+  customerId: string;
+  customerName: string;
+  amount: number;
+  promisedDate: string | null;
+};
+
+/** What the server answers to a changed promised date: both dates, and a request the change closed. */
+export type ChangedPromise = {
+  entryId: string;
+  promisedDate: string;
+  previousDate: string;
+  /** The customer's request that this date satisfied and closed as accepted; null when none was closed. */
+  dateRequest: DateRequest | null;
 };
 
 export type CustomerDetail = Customer & {
@@ -260,6 +302,8 @@ export type AccountEntry = {
   disputed: boolean;
   dispute: Dispute | null;
   lines: GoodsLine[];
+  promises: PromiseRecord[];
+  dateRequest: DateRequest | null;
 };
 
 export type AccountDetail = MyAccount & {
@@ -376,6 +420,61 @@ function goodsLines(value: unknown): GoodsLine[] {
   return value === undefined || value === null ? [] : list(value, goodsLine);
 }
 
+function promiseRecord(value: unknown): PromiseRecord {
+  const body = record(value);
+  return {
+    promisedDate: text(body["promised_date"]),
+    actor: text(body["actor"]),
+    reason: textOrNull(body["reason"]),
+    createdAt: text(body["created_at"]),
+  };
+}
+
+/** A server that does not send the history yet answers without the field: that is an entry with none. */
+function promiseRecords(value: unknown): PromiseRecord[] {
+  return value === undefined || value === null ? [] : list(value, promiseRecord);
+}
+
+function dateRequest(value: unknown): DateRequest {
+  const body = record(value);
+  return {
+    id: text(body["id"]),
+    entryId: text(body["entry_id"]),
+    status: text(body["status"]),
+    requestedDate: text(body["requested_date"]),
+    reason: textOrNull(body["reason"]),
+    declineReason: textOrNull(body["decline_reason"]),
+    createdAt: text(body["created_at"]),
+    closedAt: textOrNull(body["closed_at"]),
+  };
+}
+
+function dateRequestOrNull(value: unknown): DateRequest | null {
+  return value === undefined || value === null ? null : dateRequest(value);
+}
+
+function openDateRequest(value: unknown): OpenDateRequest {
+  const body = record(value);
+  return {
+    ...dateRequest(body),
+    customerId: text(body["customer_id"]),
+    customerName: text(body["customer_name"]),
+    amount: whole(body["amount"]),
+    promisedDate: textOrNull(body["promised_date"]),
+  };
+}
+
+function changedPromise(value: unknown): ChangedPromise {
+  const body = record(value);
+  const changed = record(body["entry"]);
+  return {
+    entryId: text(changed["id"]),
+    promisedDate: text(changed["promised_date"]),
+    previousDate: text(changed["previous_date"]),
+    dateRequest: dateRequestOrNull(body["date_request"]),
+  };
+}
+
 function entry(value: unknown): Entry {
   const body = record(value);
   return {
@@ -391,6 +490,8 @@ function entry(value: unknown): Entry {
     disputed: flag(body["disputed"]),
     authorId: textOrNull(body["author_id"]),
     lines: goodsLines(body["lines"]),
+    promises: promiseRecords(body["promises"]),
+    dateRequest: dateRequestOrNull(body["date_request"]),
   };
 }
 
@@ -684,6 +785,8 @@ function accountEntry(value: unknown): AccountEntry {
     disputed: flag(body["disputed"]),
     dispute: objection === null || objection === undefined ? null : dispute(objection),
     lines: goodsLines(body["lines"]),
+    promises: promiseRecords(body["promises"]),
+    dateRequest: dateRequestOrNull(body["date_request"]),
   };
 }
 
@@ -967,6 +1070,55 @@ function shopApi(transport: Transport, shopId: string) {
         body: { promised_date: promisedDate },
         idempotencyKey,
         read: chosenPromise,
+      });
+    },
+
+    /**
+     * A manager or an owner moves the promised date of a debt that still stands (REQ-067). The date it
+     * replaces stays in the entry's history.
+     */
+    changePromise(
+      entryId: string,
+      promisedDate: string,
+      reason: string | null,
+      idempotencyKey: string,
+    ): Promise<ChangedPromise> {
+      const body: Json = { promised_date: promisedDate };
+      if (reason !== null) {
+        body["reason"] = reason;
+      }
+      return call(transport, {
+        method: "POST",
+        path: `${base}/entries/${segment(entryId)}/promise`,
+        body,
+        idempotencyKey,
+        read: changedPromise,
+      });
+    },
+
+    /** Open requests to move a promised date. Managers and owners only (REQ-067). */
+    listDateRequests(signal?: AbortSignal): Promise<OpenDateRequest[]> {
+      return call(transport, { method: "GET", path: `${base}/date-requests`, signal, read: items(openDateRequest) });
+    },
+
+    /** Accepts a request: the date asked for becomes the entry's promised date. */
+    acceptDateRequest(requestId: string, idempotencyKey: string): Promise<void> {
+      return call(transport, {
+        method: "POST",
+        path: `${base}/date-requests/${segment(requestId)}/accept`,
+        idempotencyKey,
+        read: () => undefined,
+      });
+    },
+
+    /** Declines a request; the reason, when one is given, is sent to the customer. */
+    declineDateRequest(requestId: string, reason: string | null, idempotencyKey: string): Promise<void> {
+      return call(transport, {
+        method: "POST",
+        path: `${base}/date-requests/${segment(requestId)}/decline`,
+        body: reason === null ? {} : { reason },
+        idempotencyKey,
+        read: () => undefined,
       });
     },
 
@@ -1255,6 +1407,14 @@ function accountApi(transport: Transport, linkId: string) {
         body: { entry_id: entryId, reason: reasonBody(reason) },
         read: dispute,
       });
+    },
+    /** Asks the shop to move the promised date of one entry to a later day (REQ-066). */
+    openDateRequest(entryId: string, requestedDate: string, reason: string | null): Promise<DateRequest> {
+      const body: Json = { entry_id: entryId, requested_date: requestedDate };
+      if (reason !== null) {
+        body["reason"] = reason;
+      }
+      return call(transport, { method: "POST", path: `${base}/date-requests`, body, read: dateRequest });
     },
     withdrawDispute(disputeId: string): Promise<Dispute> {
       return call(transport, {

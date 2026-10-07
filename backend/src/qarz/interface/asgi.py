@@ -19,7 +19,7 @@ from qarz.interface.rate_limit import Limit, RateLimits
 def build(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
     configure_logging()
-    database = Database(settings.database_url)
+    database = Database(settings.database_url, statement_timeout_ms=settings.statement_timeout_ms)
     # Without a bot token no Telegram signature can be verified, so no API is served at all.
     auth = AuthService(database, settings.bot_token) if settings.bot_token else None
     # No allow-list or no key for the second-factor secrets: nobody can be an administrator, so that side

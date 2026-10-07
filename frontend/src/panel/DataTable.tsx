@@ -1,14 +1,8 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment } from "react";
 
-export type Column<T> = {
-  id: string;
-  header: string;
-  cell: (item: T) => ReactNode;
-  /** Amounts and counts: right-aligned, in tabular figures. */
-  numeric?: boolean;
-  /** The cell that names the row; it is rendered as the row's header. */
-  rowHeader?: boolean;
-};
+import type { Column, TableProps } from "../shared/layout";
+
+export type { Column };
 
 /**
  * A real table: a caption, column headers, and a header cell in each row, so a screen reader can say
@@ -22,17 +16,7 @@ export function DataTable<T>({
   rowKey,
   expanded,
   foot,
-}: {
-  /** Names the table for a screen reader; not drawn. */
-  caption: string;
-  columns: readonly Column<T>[];
-  items: readonly T[];
-  rowKey: (item: T) => string;
-  /** Content that takes a full row under an item, such as an open form; null for none. */
-  expanded?: (item: T) => ReactNode;
-  /** One summary row: a cell per column. */
-  foot?: readonly ReactNode[];
-}) {
+}: TableProps<T>) {
   return (
     <div className="table-wrap">
       <table className="table" role="table">

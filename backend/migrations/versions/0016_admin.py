@@ -1,7 +1,7 @@
 """The administrator's side: second factor, admin sessions, audit, cross-shop functions.
 
 Revision ID: 0016
-Revises: 0021
+Revises: 0020
 """
 
 from pathlib import Path
@@ -9,7 +9,7 @@ from pathlib import Path
 from alembic import op
 
 revision = "0016"
-down_revision = "0021"
+down_revision = "0020"
 branch_labels = None
 depends_on = None
 

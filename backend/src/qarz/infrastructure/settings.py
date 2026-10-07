@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     rate_user_burst: int = 60
     rate_shop_per_minute: int = 600
     rate_shop_burst: int = 200
+    # The longest one SQL statement may run, in milliseconds, before the database cancels it. Set by
+    # the application on its own connections (not on the role), so migrations are not limited.
+    # The API's limit bounds what one request can cost every other shop; the worker's jobs read
+    # across shops and get longer. 0 means no limit.
+    statement_timeout_ms: int = 5000
+    worker_statement_timeout_ms: int = 60000
 
     def admin_allow_list(self) -> frozenset[int]:
         """The allow-list as numbers. Anything that is not a positive whole number refuses to start."""

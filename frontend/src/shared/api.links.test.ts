@@ -257,6 +257,13 @@ describe("a person's own accounts", () => {
 
   it("has no call that confirms an entry: a customer is never asked to (BR-10)", () => {
     const { account } = client({});
-    expect(Object.keys(account).sort()).toEqual(["disconnect", "openDispute", "read", "requestRemoval", "withdrawDispute"]);
+    expect(Object.keys(account).sort()).toEqual([
+      "disconnect",
+      "openDateRequest",
+      "openDispute",
+      "read",
+      "requestRemoval",
+      "withdrawDispute",
+    ]);
   });
 });

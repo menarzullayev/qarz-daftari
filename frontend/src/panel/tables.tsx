@@ -117,7 +117,7 @@ function CatalogTable({
   );
 }
 
-const PARTS: DesktopParts = { CustomersTable, DebtorsTable, CatalogTable };
+const PARTS: DesktopParts = { Table: DataTable, CustomersTable, DebtorsTable, CatalogTable };
 
 function subscribe(onChange: () => void): () => void {
   if (typeof window.matchMedia !== "function") {

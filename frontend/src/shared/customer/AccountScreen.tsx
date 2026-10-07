@@ -1,11 +1,22 @@
 import { useState, type ReactNode } from "react";
 
-import { useI18n } from "../../i18n/I18nProvider";
+import { useI18n, type Translate } from "../../i18n/I18nProvider";
 import type { MessageKey } from "../../i18n/types";
-import type { AccountApi, AccountDetail, AccountEntry, ApiError, RemovalOutcome } from "../api";
-import { formatCalendarDay, formatMoney } from "../format";
+import type { AccountApi, AccountDetail, AccountEntry, ApiError, DateRequest, RemovalOutcome } from "../api";
+import {
+  askAgainAt,
+  DATE_REASON_MAX,
+  type DayRange,
+  isDebtKind,
+  REPEAT_AFTER_DECLINE_DAYS,
+  requestedDate,
+  requestRange,
+  saleDay,
+} from "../dateRules";
+import { type CalendarDay, formatCalendarDay, formatDateTime, formatMoney } from "../format";
 import { type Submission, useLoad, useSubmit } from "../hooks";
 import { parseIsoDate } from "../promise";
+import { DateReasonForm, dayText, PromiseHistory } from "../promiseParts";
 import { GoodsList } from "../workspace/GoodsEditor";
 import { Confirm, ENTRY_KIND_LABELS, errorText, Failure, formatInstant, Loading, ReasonForm } from "../workspace/parts";
 
@@ -38,10 +49,77 @@ function refusalDetail(error: ApiError | null, t: (key: MessageKey) => string): 
   return key ? t(key) : null;
 }
 
+/** What a customer needs to ask for a later date on an entry: the day it was sold and the days to choose from. */
+export type LaterDate = { sale: CalendarDay; current: CalendarDay; range: DayRange };
+
 /**
- * One entry as the customer sees it. The only things a customer can do about an entry are to dispute it
- * and to take that dispute back: they are never asked to confirm an entry (BR-10), so there is no
- * such control here and there must never be one.
+ * Whether "ask for a later date" is offered for an entry (REQ-066, BR-15), and with which days: a debt
+ * that is not reversed, on an account that still owes, with no request waiting for an answer, not
+ * declined within the last seven days, and with a later day left to ask for. The API does not say how
+ * much of one entry is still owed, so the account's balance stands in; the server refuses an entry that
+ * is fully paid, and that refusal is shown.
+ */
+export function laterDate(entry: AccountEntry, balance: number, now: Date): LaterDate | null {
+  if (!isDebtKind(entry.kind) || entry.reversed || balance <= 0 || entry.promisedDate === null) {
+    return null;
+  }
+  if (entry.dateRequest?.status === "open" || askAgainAt(entry.dateRequest, now) !== null) {
+    return null;
+  }
+  const sale = saleDay(entry.createdAt);
+  const current = parseIsoDate(entry.promisedDate);
+  const range = sale && current ? requestRange(sale, current) : null;
+  return sale && current && range ? { sale, current, range } : null;
+}
+
+const DATE_STATE: Readonly<Record<string, MessageKey>> = {
+  open: "my.date.open",
+  accepted: "my.date.accepted",
+  declined: "my.date.declined",
+  expired: "my.date.expired",
+};
+
+/** Why the server refused a date request, in the customer's words (`fields.reason`, or the code itself). */
+const DATE_REFUSALS: Readonly<Record<string, MessageKey>> = {
+  not_a_debt: "my.date.refused.notADebt",
+  reversed: "my.date.refused.reversed",
+  fully_paid: "my.date.refused.fullyPaid",
+  already_open: "my.date.refused.alreadyOpen",
+  not_later: "dates.date.notLater",
+  declined_recently: "my.date.refused.declinedRecently",
+};
+
+function dateRefusalDetail(error: ApiError | null, t: Translate): string | null {
+  if (error?.code === "REQUEST_ALREADY_OPEN") {
+    return t("my.date.refused.alreadyOpen");
+  }
+  const key = error?.code === "DATE_REQUEST_NOT_ALLOWED" ? DATE_REFUSALS[error.fields["reason"] ?? ""] : undefined;
+  return key ? t(key, key === "my.date.refused.declinedRecently" ? { days: REPEAT_AFTER_DECLINE_DAYS } : {}) : null;
+}
+
+/** The newest request about an entry and what became of it; a declined one says when to ask again. */
+function DateRequestState({ request, now }: { request: DateRequest; now: Date }) {
+  const { t, language } = useI18n();
+  const again = askAgainAt(request, now);
+  const state = DATE_STATE[request.status];
+  return (
+    <div className="notice">
+      <p className="row__warning">
+        {state ? t(state, { date: dayText(request.requestedDate, language) }) : t("my.date.closed")}
+      </p>
+      {request.reason ? <p>{t("my.date.reason", { reason: request.reason })}</p> : null}
+      {request.status === "declined" && request.declineReason ? (
+        <p>{t("my.date.declineReason", { reason: request.declineReason })}</p>
+      ) : null}
+      {again ? <p className="row__meta">{t("my.date.again", { date: formatDateTime(again, language) })}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * One entry as the customer sees it. A customer can dispute an entry, take that dispute back, and ask
+ * the shop for a later date: they are never asked to confirm an entry (BR-10), so there is no such
+ * control here and there must never be one.
  */
 function EntryRow({
   entry,
@@ -53,8 +131,23 @@ function EntryRow({
   onDispute,
   onCancel,
   onWithdraw,
+  later,
+  now,
+  dating,
+  dateError,
+  onAskDate,
+  onDate,
+  onCancelDate,
 }: {
   entry: AccountEntry;
+  /** The days a later date may be asked from, or null when asking is not offered for this entry. */
+  later: LaterDate | null;
+  now: Date;
+  dating: boolean;
+  dateError: ApiError | null;
+  onAskDate: () => void;
+  onDate: (date: string, reason: string | null) => void;
+  onCancelDate: () => void;
   disputing: boolean;
   busy: boolean;
   disputeError: ApiError | null;
@@ -79,6 +172,28 @@ function EntryRow({
         <p className="row__meta">{t("entry.promised", { date: formatCalendarDay(promised, language) })}</p>
       ) : null}
       {entry.reversed ? <p className="row__meta">{t("entry.reversed")}</p> : null}
+      <PromiseHistory promises={entry.promises} mine />
+      {entry.dateRequest ? <DateRequestState request={entry.dateRequest} now={now} /> : null}
+      {later === null ? null : dating ? (
+        <DateReasonForm
+          id={`later-${entry.id}`}
+          label={t("my.date.label")}
+          range={later.range}
+          hint={t("my.date.hint", { max: DATE_REASON_MAX })}
+          submitLabel={t("my.date.submit")}
+          pending={busy}
+          error={dateError}
+          errorDetail={dateRefusalDetail(dateError, t)}
+          name="requested_date"
+          choose={(text) => requestedDate(text, later.sale, later.current)}
+          onSubmit={onDate}
+          onCancel={onCancelDate}
+        />
+      ) : (
+        <button type="button" className="button button--small" onClick={onAskDate} disabled={busy}>
+          {t("my.date.ask")}
+        </button>
+      )}
 
       {dispute ? (
         <div className="notice">
@@ -126,6 +241,8 @@ function EntryRow({
 
 type Asking = "disconnect" | "removal" | null;
 
+const systemClock = () => new Date();
+
 function failureOf(state: Submission<unknown>): ApiError | null {
   return state.status === "error" ? state.error : null;
 }
@@ -137,9 +254,11 @@ function Detail({
   reload,
   onDisconnected,
   onRemoval,
+  now,
 }: {
   account: AccountDetail;
   api: AccountApi;
+  now: Date;
   /** The server's answer to a removal request made on this screen, kept across the reload. */
   removal: RemovalOutcome | null;
   reload: () => void;
@@ -160,6 +279,13 @@ function Detail({
     }),
   );
   const withdraw = useSubmit((disputeId: string) => api.withdrawDispute(disputeId).then(reload));
+  const [dating, setDating] = useState<string | null>(null);
+  const later = useSubmit((payload: { entryId: string; date: string; reason: string | null }) =>
+    api.openDateRequest(payload.entryId, payload.date, payload.reason).then(() => {
+      setDating(null);
+      reload();
+    }),
+  );
   const disconnect = useSubmit(() => api.disconnect().then(onDisconnected));
   const remove = useSubmit(() =>
     api.requestRemoval().then((outcome) => {
@@ -167,7 +293,7 @@ function Detail({
       onRemoval(outcome);
     }),
   );
-  const busy = [dispute, withdraw, disconnect, remove].some((write) => write.state.status === "pending");
+  const busy = [dispute, withdraw, later, disconnect, remove].some((write) => write.state.status === "pending");
 
   const ask = (next: Asking) => {
     setAsking(next);
@@ -214,6 +340,19 @@ function Detail({
                   dispute.reset();
                 }}
                 onWithdraw={withdraw.submit}
+                later={laterDate(entry, account.balance, now)}
+                now={now}
+                dating={dating === entry.id}
+                dateError={dating === entry.id ? failureOf(later.state) : null}
+                onAskDate={() => {
+                  setDating(entry.id);
+                  later.reset();
+                }}
+                onDate={(date, reason) => later.submit({ entryId: entry.id, date, reason })}
+                onCancelDate={() => {
+                  setDating(null);
+                  later.reset();
+                }}
               />
             ))}
           </ul>
@@ -284,7 +423,17 @@ function Detail({
  * A person's own account in one shop (REQ-019 to REQ-021, REQ-029, REQ-016): what they owe, what is
  * late, and the entries, exactly as the server returns them for this link and nothing else.
  */
-export function AccountScreen({ api, back }: { api: AccountApi; /** The way to the list of accounts. */ back: ReactNode }) {
+export function AccountScreen({
+  api,
+  back,
+  now = systemClock,
+}: {
+  api: AccountApi;
+  /** The way to the list of accounts. */
+  back: ReactNode;
+  /** The current instant; tests pass a fixed one. */
+  now?: (() => Date) | undefined;
+}) {
   const { t } = useI18n();
   const { state, reload } = useLoad((signal) => api.read(signal), [api]);
   const [ended, setEnded] = useState<"disconnected" | "removed" | null>(null);
@@ -318,6 +467,7 @@ export function AccountScreen({ api, back }: { api: AccountApi; /** The way to t
     <Detail
       account={state.data}
       api={api}
+      now={now()}
       removal={removal}
       reload={reload}
       onDisconnected={() => setEnded("disconnected")}
