@@ -12,6 +12,20 @@ class Settings(BaseSettings):
     bot_token: str = ""
     # Secret Telegram sends with every webhook call.
     webhook_secret: str = ""
+    # Where files are kept (ADR-020): "filesystem" (development, tests) or "s3" (production). Empty means
+    # no store is configured and every file is refused.
+    file_store: str = ""
+    # Directory of the filesystem store.
+    file_root: str = ""
+    # The S3-compatible store: scheme://host[:port], bucket, signing region and credentials.
+    s3_endpoint: str = ""
+    s3_bucket: str = ""
+    s3_region: str = "us-east-1"
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    # Server secret from which purpose-specific keys are derived; today the key that signs links to stored
+    # files. Empty: no link is given and no file is served.
+    secrets_key: str = ""
     # Bearer token the monitoring system sends to read /metrics. Empty: the endpoint is not served.
     metrics_token: str = ""
     # Online payment of the subscription. Empty until provider contracts exist; even when set, the

@@ -11,6 +11,7 @@ An operation that is registered but not described here fails the suite, and so d
 not bound to a registered operation, so nothing can be added without being checked.
 """
 
+import hashlib
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -26,7 +27,7 @@ from qarz.application.operations import all_operations
 from qarz.domain.access import Role, lowest_role_with
 from qarz.domain.promise import tashkent_date
 
-from .conftest import World, as_user
+from .conftest import World, as_user, current_file_root
 
 pytestmark = pytest.mark.db
 
@@ -104,6 +105,29 @@ def _deletion_pending(owner: psycopg.Connection, world: World) -> None:
     owner.execute(
         "UPDATE shop SET status = 'deletion_pending', deletion_due = now() + interval '30 days' WHERE id = %s",
         (world.shop_a,),
+    )
+
+
+def _notice_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-notice:{world.entry_a}")
+
+
+def _sent_notice(owner: psycopg.Connection, world: World) -> None:
+    """Ali says he paid 20 000 of the 50 000 he owes, and sent a receipt with it."""
+    content = b"%PDF-1.4 suite receipt"
+    token = uuid.uuid5(uuid.NAMESPACE_URL, f"suite-receipt:{world.entry_a}").hex * 2
+    target = current_file_root() / token[:2] / token
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(content)
+    file_id = uuid.uuid5(uuid.NAMESPACE_URL, f"suite-file:{world.entry_a}")
+    owner.execute(
+        "INSERT INTO stored_file (id, shop_id, purpose, object_key, sha256, size_bytes, mime, delete_after) "
+        "VALUES (%s, %s, 'payment_notice', %s, %s, %s, 'application/pdf', now() + interval '104 days')",
+        (file_id, world.shop_a, f"{token[:2]}/{token}", hashlib.sha256(content).digest(), len(content)),
+    )
+    owner.execute(
+        "INSERT INTO payment_notice (id, shop_id, customer_id, amount, file_id) VALUES (%s, %s, %s, 20000, %s)",
+        (_notice_id(world), world.shop_a, world.customer_a, file_id),
     )
 
 
@@ -207,6 +231,24 @@ CALLS: dict[str, Call] = {
         {"reason": "Mahsulot berilgan"},
         True,
         prepare=_open_dispute,
+    ),
+    "payment_notices.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/payment-notices"),
+    "payment_notices.accept": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/payment-notices/{_notice_id(w)}/accept",
+        None,
+        True,
+        prepare=_sent_notice,
+    ),
+    "payment_notices.decline": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/payment-notices/{_notice_id(w)}/decline",
+        {"reason": "Pul kelib tushmagan"},
+        True,
+        prepare=_sent_notice,
+    ),
+    "payment_notices.receipt": Call(
+        "GET", lambda w, shop: f"/api/v1/shops/{shop}/payment-notices/{_notice_id(w)}/receipt", prepare=_sent_notice
     ),
     "date_requests.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/date-requests"),
     "date_requests.accept": Call(
@@ -340,6 +382,12 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     # Flagged to the owner and managers (REQ-017); a seller sees only that an entry is disputed.
     "disputes.list": {Role.MANAGER, Role.OWNER},
     "disputes.decline": {Role.MANAGER, Role.OWNER},
+    # Specification, resources table: "payment notices: all staff"; role matrix, "Accept or decline a
+    # payment notice": seller, manager, owner. The receipt is what they decide on.
+    "payment_notices.list": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "payment_notices.accept": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "payment_notices.decline": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "payment_notices.receipt": {Role.SELLER, Role.MANAGER, Role.OWNER},
     # Specification, resources table: date requests are listed and decided by "manager, owner", and
     # `/shops/{id}/entries/{eid}/promise` is "Manager, owner" (REQ-067).
     "date_requests.list": {Role.MANAGER, Role.OWNER},
@@ -413,6 +461,12 @@ SELF_CALLS: dict[str, PlainCall] = {
         "POST",
         "/api/v1/me/accounts/00000000-0000-4000-8000-000000000000/disputes/00000000-0000-4000-8000-000000000000/withdraw",
         ok_status=404,
+    ),
+    "me.accounts.payment_notices.send": PlainCall(
+        "POST",
+        "/api/v1/me/accounts/00000000-0000-4000-8000-000000000000/payment-notices",
+        {"amount": 20000},
+        404,
     ),
     "me.accounts.date_requests.open": PlainCall(
         "POST",
@@ -542,6 +596,18 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
         ).fetchone(),
         # Measurement rows carry no shop identifier; tests run one at a time, so a total is enough.
         owner.execute("SELECT count(*) FROM measure.event").fetchone(),
+        owner.execute(
+            "SELECT id, customer_id, amount, file_id, status, payment_entry, decline_reason, decided_by, closed_at "
+            "FROM payment_notice WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
+        owner.execute(
+            "SELECT id, purpose, object_key, sha256, size_bytes, mime, delete_after FROM stored_file "
+            "WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
+        # The objects of the file store itself: a refused call writes and removes none.
+        sorted(str(path.relative_to(current_file_root())) for path in current_file_root().rglob("*") if path.is_file()),
     )
 
 
@@ -653,6 +719,7 @@ def test_a_member_of_one_shop_cannot_reach_another(
         world.learned_item_a,
         world.waiting_a,
         _dispute_id(world),
+        _notice_id(world),
         _date_request_id(world),
     )
     uses_foreign_resource = any(str(resource) in call.path(world, world.shop_b) for resource in foreign)

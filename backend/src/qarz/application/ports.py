@@ -278,6 +278,35 @@ class ShopToErase:
 
 
 @dataclass(frozen=True)
+class StoredFileRecord:
+    """A file the service keeps for a shop. The key is random and names nobody."""
+
+    file_id: UUID
+    purpose: str
+    object_key: str
+    sha256: bytes
+    size_bytes: int
+    mime: str
+    delete_after: datetime | None
+
+
+@dataclass(frozen=True)
+class PaymentNoticeRecord:
+    notice_id: UUID
+    customer_id: UUID
+    amount: int  # what the customer says they paid
+    file_id: UUID | None
+    status: str
+    payment_entry: UUID | None
+    recorded_amount: int | None  # of the payment an accepted notice produced
+    decline_reason: str | None
+    created_at: datetime
+    closed_at: datetime | None
+    # An earlier file of the same shop has the same content. For staff only.
+    receipt_seen_before: bool = False
+
+
+@dataclass(frozen=True)
 class WaitingLink:
     """Someone who started the bot from the counter code and agreed, not yet attached to a record."""
 
@@ -613,6 +642,72 @@ class TenantSession(Protocol):
         """Open date requests of the shop, oldest first."""
         ...
 
+    async def add_stored_file(
+        self,
+        *,
+        file_id: UUID,
+        purpose: str,
+        object_key: str,
+        sha256: bytes,
+        size_bytes: int,
+        mime: str,
+        now: datetime,
+        delete_after: datetime | None,
+    ) -> None: ...
+
+    async def get_stored_file(self, file_id: UUID) -> StoredFileRecord | None: ...
+
+    async def shorten_file_retention(self, file_id: UUID, delete_after: datetime) -> None:
+        """Bring the day a file is deleted forward. It is never moved later."""
+        ...
+
+    async def due_receipt_files(self, now: datetime, limit: int) -> list[StoredFileRecord]:
+        """Payment-notice receipts whose retention has run out, oldest first."""
+        ...
+
+    async def remove_stored_file(self, file_id: UUID) -> None:
+        """Forget a file whose object has been deleted, and whatever notice still pointed to it."""
+        ...
+
+    async def stored_object_keys(self) -> list[str]:
+        """The key of every file kept for the shop, whatever its purpose."""
+        ...
+
+    async def add_payment_notice(
+        self, *, notice_id: UUID, customer_id: UUID, amount: int, file_id: UUID | None, now: datetime
+    ) -> PaymentNoticeRecord: ...
+
+    async def get_payment_notice(self, notice_id: UUID) -> PaymentNoticeRecord | None: ...
+
+    async def notices_of_customer(self, customer_id: UUID, limit: int) -> list[PaymentNoticeRecord]:
+        """Newest first."""
+        ...
+
+    async def count_open_notices(self, customer_id: UUID) -> int:
+        """Notices of the customer marked as waiting for the shop. Stale ones count until they are marked expired."""
+        ...
+
+    async def open_payment_notices(self, since: datetime) -> list[tuple[PaymentNoticeRecord, str]]:
+        """Notices waiting for the shop and sent no earlier than `since`, oldest first, with the customer's name."""
+        ...
+
+    async def close_payment_notice(
+        self,
+        notice_id: UUID,
+        *,
+        status: str,
+        payment_entry: UUID | None,
+        decline_reason: str | None,
+        decided_by: UUID | None,
+        now: datetime,
+    ) -> PaymentNoticeRecord: ...
+
+    async def expire_payment_notices(
+        self, *, before: datetime, now: datetime, customer_id: UUID | None, files_delete_after: datetime
+    ) -> int:
+        """Mark as expired the waiting notices sent before `before`; their receipts get the given deadline."""
+        ...
+
     async def staff_recipients(self, roles: list[str]) -> list[tuple[int, str]]:
         """Telegram chat and language of each active member holding one of the roles."""
         ...
@@ -702,6 +797,10 @@ class PlatformSession(Protocol):
     async def update_seen(self, update_id: int) -> bool: ...
 
     async def shops_due_for_reminders(self, hour: int) -> list[UUID]: ...
+
+    async def shops_with_receipt_work(self, stale_before: datetime, now: datetime) -> list[UUID]:
+        """Shops with a waiting notice sent before `stale_before` or a receipt due for deletion at `now`."""
+        ...
 
     async def measure_between(self, start: datetime, end: datetime) -> dict[str, float | None]:
         """Identity-free totals of the measurement events in [start, end)."""
@@ -871,3 +970,33 @@ class SendFailed(Exception):
 
 class Sender(Protocol):
     async def send(self, channel: str, recipient: str, payload: dict[str, Any]) -> None: ...
+
+
+class FileMissing(Exception):
+    """The file store holds nothing under the key."""
+
+
+class FileStoreError(Exception):
+    """The file store could not be reached or refused the request. Never carries file content."""
+
+
+class FileStore(Protocol):
+    """Where file contents live (ADR-020). Keys are opaque; see `qarz.domain.files.is_safe_key`."""
+
+    async def put(self, key: str, data: bytes, mime: str) -> None: ...
+
+    async def get(self, key: str) -> bytes:
+        """Raises FileMissing when there is no such object."""
+        ...
+
+    async def delete(self, key: str) -> None:
+        """Deleting what is not there is not an error."""
+        ...
+
+
+class TelegramFiles(Protocol):
+    """Files people send to the bot (Bot API `getFile`)."""
+
+    async def fetch(self, file_id: str, max_bytes: int) -> bytes | None:
+        """The content, or None when it is larger than `max_bytes` or cannot be had."""
+        ...

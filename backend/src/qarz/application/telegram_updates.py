@@ -12,7 +12,8 @@ from typing import Any
 
 from qarz.application.chat import ChatService, Incoming, Replies
 from qarz.application.chat_texts import CATALOGS, say
-from qarz.application.ports import Storage
+from qarz.application.ports import Storage, TelegramFiles
+from qarz.domain.files import MAX_FILE_BYTES
 
 
 def _language(stored: str | None, telegram_code: str | None) -> str:
@@ -25,6 +26,20 @@ def _is_id(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def _sent_file(message: dict[str, Any]) -> str | None:
+    """Identifier of the photo or document in a message. Of a photo, the largest size the service accepts."""
+    photo = message.get("photo")
+    if isinstance(photo, list):
+        sizes = [size for size in photo if isinstance(size, dict) and isinstance(size.get("file_id"), str)]
+        fitting = [size for size in sizes if _is_id(size.get("file_size")) and size["file_size"] <= MAX_FILE_BYTES]
+        chosen = max(fitting, key=lambda size: int(size["file_size"]), default=sizes[-1] if sizes else None)
+        return None if chosen is None else str(chosen["file_id"])
+    document = message.get("document")
+    if isinstance(document, dict) and isinstance(document.get("file_id"), str):
+        return str(document["file_id"])
+    return None
+
+
 @dataclass(frozen=True)
 class Processed:
     fresh: bool  # False when the update was a duplicate and nothing was done
@@ -33,9 +48,10 @@ class Processed:
 
 
 class UpdateProcessor:
-    def __init__(self, storage: Storage, chat: ChatService) -> None:
+    def __init__(self, storage: Storage, chat: ChatService, files: TelegramFiles | None = None) -> None:
         self._storage = storage
         self._chat = chat
+        self._files = files
 
     async def process(self, update: dict[str, Any]) -> bool:
         """Process one update. Returns False when it was a duplicate and nothing was done."""
@@ -77,6 +93,9 @@ class UpdateProcessor:
 
         person: int | None = sender_id if served and isinstance(sender_id, int) else None
 
+        sent_file = _sent_file(message) if isinstance(message, dict) and not isinstance(pressed, dict) else None
+        wanted = False
+        content: bytes | None = None
         user_id = None
         if person is not None:
             # Writing to the bot is how a person first becomes a user of the service (sign-in through
@@ -86,6 +105,11 @@ class UpdateProcessor:
                 if await session.update_seen(update_id):
                     return Processed(False, answer)
                 user_id = await session.ensure_user(person, _language(None, sender.get("language_code")))
+                wanted = sent_file is not None and await self._chat.awaits_receipt(session, user_id)
+            if wanted and sent_file is not None and self._files is not None:
+                # Fetched between the two transactions: none is open while Telegram is asked for the
+                # file, and a file nobody asked for is never downloaded at all.
+                content = await self._files.fetch(sent_file, MAX_FILE_BYTES)
 
         async with self._storage.platform() as session:
             if not await session.claim_update(update_id):
@@ -109,6 +133,8 @@ class UpdateProcessor:
             text = message.get("text")
             if isinstance(text, str) and text.strip():
                 await self._chat.handle_text(session, incoming, text)
+            elif sent_file is not None:
+                await self._chat.handle_file(session, incoming, content)
             else:
                 await Replies(session, incoming).send(say(lang, "only_text"))
             return Processed(True, answer)

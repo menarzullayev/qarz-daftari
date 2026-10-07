@@ -38,6 +38,7 @@ from qarz.application.goods_lines import (
     require_sum,
     store_lines_in,
 )
+from qarz.application.notice_view import open_notices_of
 from qarz.application.operations import operation
 from qarz.application.ports import (
     DateRequestRecord,
@@ -779,6 +780,8 @@ class LedgerService:
                     for row in shown
                 ],
                 "entries_total": len(account),
+                # Payment notices of this customer that wait for a decision (REQ-061).
+                "payment_notices": await open_notices_of(session, customer_id, self._now()),
             }
 
     async def overview(self, user_id: UUID, shop_id: UUID) -> dict[str, Any]:

@@ -14,7 +14,7 @@ from qarz.application import idempotency
 from qarz.application.chat_texts import day, say
 from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import operation
-from qarz.application.ports import Storage, TenantSession
+from qarz.application.ports import FileStore, FileStoreError, Storage, TenantSession
 from qarz.application.shops import require_member
 from qarz.domain.access import Capability
 from qarz.domain.promise import tashkent_date
@@ -45,9 +45,12 @@ async def _tell_owner(session: TenantSession, shop_id: UUID, dedupe: str, key: s
 
 
 class ShopDeletionService:
-    def __init__(self, storage: Storage, now: Callable[[], datetime] | None = None) -> None:
+    def __init__(
+        self, storage: Storage, now: Callable[[], datetime] | None = None, files: FileStore | None = None
+    ) -> None:
         self._storage = storage
         self._now = now or (lambda: datetime.now(UTC))
+        self._files = files
 
     async def state(self, user_id: UUID, shop_id: UUID) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
@@ -130,12 +133,31 @@ class ShopDeletionService:
                 action=apply,
             )
 
+    async def _delete_files(self, shop_id: UUID) -> bool:
+        """Delete every object kept for the shop (receipts, ADR-020). False when one could not be deleted:
+        the shop is then left as it is and tried again at the next run."""
+        async with self._storage.tenant(shop_id) as session:
+            keys = await session.stored_object_keys()
+        if not keys:
+            return True
+        if self._files is None:
+            return False
+        try:
+            for key in keys:
+                await self._files.delete(key)
+        except FileStoreError:
+            return False
+        return True
+
     async def erase_due(self) -> int:
         """Erase every shop whose waiting period is over. Safe to repeat; the database decides what is due."""
         async with self._storage.platform() as session:
             shops = await session.shops_to_erase()
         erased = 0
         for shop in shops:
+            # The files first: once the rows are gone nothing would remember where the objects are.
+            if not await self._delete_files(shop.shop_id):
+                continue
             async with self._storage.platform() as session:
                 if not await session.erase_shop(shop.shop_id):
                     continue
