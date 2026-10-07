@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 
 from qarz.application.chat_texts import day, money, say
 from qarz.application.files import FileService
-from qarz.application.imports import ImportService
+from qarz.application.imports import ImportService, apply_in, check_in, undo_in
 from qarz.application.reminders import ReminderService
 from qarz.application.scheduler import Scheduler
 from qarz.application.xlsx import MIME as XLSX_MIME
@@ -1563,3 +1563,69 @@ def test_two_thousand_rows_no_request_runs_long_and_the_worker_does_each_step_in
         assert timings[request] < 3, request
     for step in ("check (worker)", "apply (worker)", "undo (worker)"):
         assert timings[step] < 20, step
+
+
+# --- found by breaking the rules one at a time ----------------------------------------------------------
+
+
+def test_each_step_looks_at_the_state_again_once_it_holds_the_batch(
+    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+) -> None:
+    """Between a worker reading a batch and locking it another may finish the step: asked directly, with
+    the rows in hand, a check or an apply of a batch that waits for neither changes nothing; and a step
+    is not given up once it is done."""
+    data = table("Karim,,250000,,")
+    batch = uuid.UUID(applied(client, world, data))
+    parsed = imports.parse(data, today())
+    assert isinstance(parsed, imports.ParsedFile)
+    before = (batches(owner, world), entries(owner, world), count(owner, world, "customer"))
+
+    async def late() -> None:
+        database = Database(app_database_url)
+        try:
+            now = datetime.now(UTC)
+            async with database.tenant(world.shop_a) as session:
+                await check_in(session, batch, parsed, now)
+            async with database.tenant(world.shop_a) as session:
+                await apply_in(session, batch, parsed, now)
+            async with database.tenant(world.shop_a) as session:
+                await undo_in(session, batch, now)
+            service = ImportService(database, FileService(database, FilesystemFileStore(file_root)))
+            for step in ("uploaded", "applying", "undoing"):
+                await service._give_up(world.shop_a, batch, step, "internal")
+        finally:
+            await database.dispose()
+
+    asyncio.run(late())
+    assert (batches(owner, world), entries(owner, world), count(owner, world, "customer")) == before
+    assert state(client, world, batch)["refused"] is None
+    assert told(owner, batch, "import_failed") == []
+
+
+def test_an_undo_leaves_a_dispute_that_was_already_decided_as_it_was(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    batch = applied(client, world, table("Ali,,70000,,"))
+    imported = owner.execute("SELECT id FROM ledger_entry WHERE import_batch_id = %s", (batch,)).fetchone()
+    assert imported is not None
+    disputed = client.post(
+        f"{ME}/{link_of(owner, world.customer_a)}/disputes",
+        json={"entry_id": str(imported[0]), "reason": "Bu qarz to'langan"},
+        headers=as_user(world.customer_of_a),
+    )
+    declined = client.post(
+        f"{shop(world)}/disputes/{disputed.json()['id']}/decline",
+        json={"reason": "Daftarda bor"},
+        headers={**as_user(world.owner_a), **key()},
+    )
+    assert declined.status_code == 200
+    kept = owner.execute(
+        "SELECT status, decided_by, closed_at FROM dispute WHERE entry_id = %s", (imported[0],)
+    ).fetchone()
+    assert undone(client, world, batch)["status"] == "undone"
+    assert (
+        owner.execute(
+            "SELECT status, decided_by, closed_at FROM dispute WHERE entry_id = %s", (imported[0],)
+        ).fetchone()
+        == kept
+    )
