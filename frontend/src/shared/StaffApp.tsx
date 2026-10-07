@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { lazy, Suspense, useMemo, type ReactNode } from "react";
 
 import { I18nProvider, useI18n } from "../i18n/I18nProvider";
 import type { Language, MessageKey } from "../i18n/types";
@@ -21,6 +21,7 @@ import { DisputesScreen } from "./workspace/DisputesScreen";
 import { EntryScreen } from "./workspace/EntryScreen";
 import { NewCustomerScreen } from "./workspace/NewCustomerScreen";
 import { OverviewScreen } from "./workspace/OverviewScreen";
+import { Loading } from "./workspace/parts";
 import { RemindersScreen } from "./workspace/RemindersScreen";
 import { matchWorkspaceRoute, type WorkspaceRoute } from "./workspace/routes";
 import type { ShopMode } from "./workspace/shopMode";
@@ -59,6 +60,11 @@ export type StaffRoutesProps = {
 type StaffAppProps = StaffRoutesProps & { initialLanguage: Language };
 
 const systemClock = () => new Date();
+
+// Opened by managers and owners now and then, never on the way to recording a sale: loaded on demand,
+// so the first load of the Mini App does not carry them (NFR-010).
+const DateRequestsScreen = lazy(() => import("./workspace/DateRequestsScreen"));
+const ReportsScreen = lazy(() => import("./reports/ReportsScreen"));
 
 /**
  * One customer. On a wide screen of the web panel the customer book stays beside it: the list on the
@@ -106,6 +112,18 @@ function workspaceScreen(
       return <CounterCodeScreen />;
     case "disputes":
       return <DisputesScreen />;
+    case "dateRequests":
+      return (
+        <Suspense fallback={<Loading />}>
+          <DateRequestsScreen />
+        </Suspense>
+      );
+    case "reports":
+      return (
+        <Suspense fallback={<Loading />}>
+          <ReportsScreen />
+        </Suspense>
+      );
     case "catalog":
       return <CatalogScreen />;
     case "reminders":

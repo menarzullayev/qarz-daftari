@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from "react";
 
 import { useI18n } from "../../i18n/I18nProvider";
-import type { Customer, CustomerDetail, CustomerPatch, Entry } from "../api";
+import type { ApiError, ChangedPromise, Customer, CustomerDetail, CustomerPatch, Entry } from "../api";
+import { changedDate, changeRange, DATE_REASON_MAX, isDebtKind, saleDay } from "../dateRules";
 import { formatCalendarDay, formatDateTime, formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
 import { canManage } from "../navigation";
 import { parseIsoDate } from "../promise";
+import { DateReasonForm, dayText, PromiseHistory } from "../promiseParts";
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
 import { canAddGoods, mayAddGoods } from "./AddGoodsScreen";
@@ -24,6 +26,68 @@ import { ReminderAction } from "./ReminderAction";
  */
 export function canReverse(entry: Entry, mayManage: boolean): boolean {
   return mayManage && entry.kind !== "reversal" && !entry.reversed;
+}
+
+/**
+ * Only a manager or an owner is offered a change of the promised date (REQ-067), and only for a debt
+ * that still stands: a credit sale or an opening balance that is not reversed.
+ */
+export function canChangePromise(entry: Entry, mayManage: boolean): boolean {
+  return mayManage && isDebtKind(entry.kind) && !entry.reversed && saleDay(entry.createdAt) !== null;
+}
+
+/** What a change of date did, as the server answered it, and the request it left waiting, if any. */
+export type PromiseOutcome = {
+  changed: ChangedPromise;
+  /** The date the customer's request asked for, if one was open; it is still open unless `changed` closed it. */
+  asked: string | null;
+};
+
+const CHANGE_REFUSALS: Readonly<Record<string, "dates.refused.notADebt" | "dates.refused.reversed">> = {
+  not_a_debt: "dates.refused.notADebt",
+  reversed: "dates.refused.reversed",
+};
+
+function PromiseChange({
+  entry,
+  onChanged,
+  onCancel,
+}: {
+  entry: Entry;
+  onChanged: (outcome: PromiseOutcome) => void;
+  onCancel: () => void;
+}) {
+  const { api } = useWorkspace();
+  const { t } = useI18n();
+  const sale = saleDay(entry.createdAt);
+  const current = entry.promisedDate === null ? null : parseIsoDate(entry.promisedDate);
+  const { state, submit } = useSubmit((payload: { date: string; reason: string | null }, key) =>
+    api.changePromise(entry.id, payload.date, payload.reason, key).then((changed) => {
+      const open = entry.dateRequest?.status === "open" ? entry.dateRequest : null;
+      onChanged({ changed, asked: open ? open.requestedDate : null });
+    }),
+  );
+  if (sale === null) {
+    return null;
+  }
+  const failure: ApiError | null = state.status === "error" ? state.error : null;
+  const refusal = failure?.code === "PROMISE_NOT_CHANGEABLE" ? CHANGE_REFUSALS[failure.fields["reason"] ?? ""] : undefined;
+  return (
+    <DateReasonForm
+      id={`promise-${entry.id}`}
+      label={t("dates.change.label")}
+      range={changeRange(sale)}
+      hint={t("dates.change.hint", { max: DATE_REASON_MAX })}
+      submitLabel={t("dates.change.submit")}
+      pending={state.status === "pending"}
+      error={failure}
+      errorDetail={refusal ? t(refusal) : null}
+      name="promised_date"
+      choose={(text) => changedDate(text, sale, current)}
+      onSubmit={(date, reason) => submit({ date, reason })}
+      onCancel={onCancel}
+    />
+  );
 }
 
 function EditForm({ customer, onSaved, onCancel }: { customer: Customer; onSaved: () => void; onCancel: () => void }) {
@@ -130,7 +194,16 @@ function EntryRow({
   onAsk,
   onConfirm,
   onCancel,
+  changing,
+  onAskChange,
+  onChanged,
+  onCancelChange,
 }: {
+  /** Whether the form that changes this entry's promised date is open. */
+  changing: boolean;
+  onAskChange: () => void;
+  onChanged: (outcome: PromiseOutcome) => void;
+  onCancelChange: () => void;
   entry: Entry;
   /** Where goods can be added to this entry, or null when that is not offered. */
   goodsPath: string | null;
@@ -157,6 +230,26 @@ function EntryRow({
         <p className="row__meta">{t("entry.promised", { date: formatCalendarDay(promised, language) })}</p>
       ) : null}
       {entry.reversed ? <p className="row__meta">{t("entry.reversed")}</p> : null}
+      <PromiseHistory promises={entry.promises} />
+      {entry.dateRequest?.status === "open" ? (
+        <div className="notice">
+          <p className="row__warning">
+            <span>{t("dates.request.open", { date: dayText(entry.dateRequest.requestedDate, language) })}</span>
+            {/* Only a manager or an owner has the list where a request is answered. */}
+            {mayManage ? <Link to="/date-requests">{t("dates.title")}</Link> : null}
+          </p>
+          {entry.dateRequest.reason ? <p>{t("dates.row.reason", { reason: entry.dateRequest.reason })}</p> : null}
+        </div>
+      ) : null}
+      {canChangePromise(entry, mayManage) ? (
+        changing ? (
+          <PromiseChange entry={entry} onChanged={onChanged} onCancel={onCancelChange} />
+        ) : (
+          <button type="button" className="button button--small" onClick={onAskChange} disabled={pending}>
+            {t("dates.change")}
+          </button>
+        )
+      ) : null}
       {entry.disputed ? (
         <p className="row__warning">
           <span>{t("entry.disputed")}</span>
@@ -192,7 +285,18 @@ function EntryRow({
   );
 }
 
-function Detail({ customer, reload }: { customer: CustomerDetail; reload: () => void }) {
+function Detail({
+  customer,
+  reload,
+  outcome,
+  onPromiseChanged,
+}: {
+  customer: CustomerDetail;
+  reload: () => void;
+  /** What the last change of a promised date on this screen did; it outlives the reload that follows. */
+  outcome: PromiseOutcome | null;
+  onPromiseChanged: (outcome: PromiseOutcome) => void;
+}) {
   const { api, role, membershipId, now } = useWorkspace();
   const { t, language } = useI18n();
   const mayManage = canManage(role);
@@ -200,6 +304,7 @@ function Detail({ customer, reload }: { customer: CustomerDetail; reload: () => 
   const today = now();
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [changing, setChanging] = useState<string | null>(null);
 
   // A finished write reloads the customer, which replaces this component with a fresh one.
   const reversal = useSubmit((entryId: string, key) => api.reverseEntry(entryId, key).then(reload));
@@ -276,6 +381,21 @@ function Detail({ customer, reload }: { customer: CustomerDetail; reload: () => 
             {errorText(reversal.state.error, t)}
           </p>
         ) : null}
+        {outcome ? (
+          <div className="notice notice--done" role="status">
+            <p>
+              {t("dates.changed", {
+                previous: dayText(outcome.changed.previousDate, language),
+                date: dayText(outcome.changed.promisedDate, language),
+              })}
+            </p>
+            {outcome.changed.dateRequest ? (
+              <p>{t("dates.changed.requestClosed", { date: dayText(outcome.changed.dateRequest.requestedDate, language) })}</p>
+            ) : outcome.asked !== null ? (
+              <p>{t("dates.changed.requestOpen", { date: dayText(outcome.asked, language) })}</p>
+            ) : null}
+          </div>
+        ) : null}
         {customer.entries.length === 0 ? (
           <p className="state">{t("customer.entries.none")}</p>
         ) : (
@@ -295,6 +415,14 @@ function Detail({ customer, reload }: { customer: CustomerDetail; reload: () => 
                 onAsk={() => setConfirming(entry.id)}
                 onConfirm={() => reversal.submit(entry.id)}
                 onCancel={() => setConfirming(null)}
+                changing={changing === entry.id}
+                onAskChange={() => setChanging(entry.id)}
+                onChanged={(changed) => {
+                  // The reload that follows may bring the new entries into this same component.
+                  setChanging(null);
+                  onPromiseChanged(changed);
+                }}
+                onCancelChange={() => setChanging(null)}
               />
             ))}
           </ul>
@@ -313,6 +441,7 @@ function Detail({ customer, reload }: { customer: CustomerDetail; reload: () => 
 export function CustomerScreen({ customerId }: { customerId: string }) {
   const { api } = useWorkspace();
   const { state, reload } = useLoad((signal) => api.readCustomer(customerId, signal), [api, customerId]);
+  const [outcome, setOutcome] = useState<PromiseOutcome | null>(null);
 
   if (state.status === "loading") {
     return <Loading />;
@@ -320,5 +449,15 @@ export function CustomerScreen({ customerId }: { customerId: string }) {
   if (state.status === "error") {
     return state.error.code === "NOT_FOUND" ? <NotFoundScreen /> : <Failure error={state.error} onRetry={reload} />;
   }
-  return <Detail customer={state.data} reload={reload} />;
+  return (
+    <Detail
+      customer={state.data}
+      reload={reload}
+      outcome={outcome}
+      onPromiseChanged={(changed) => {
+        setOutcome(changed);
+        reload();
+      }}
+    />
+  );
 }

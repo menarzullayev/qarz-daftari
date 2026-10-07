@@ -8,7 +8,31 @@ import type { ApiError, CatalogItem, Customer, Debtor, ShopMembership } from "./
  * answers null and a screen draws the rows it always drew. The components themselves live in the
  * panel's entry, so none of their code is part of the Mini App's first load (NFR-010).
  */
+export type Column<T> = {
+  id: string;
+  header: string;
+  cell: (item: T) => ReactNode;
+  /** Amounts and counts: right-aligned, in tabular figures. */
+  numeric?: boolean;
+  /** The cell that names the row; it is rendered as the row's header. */
+  rowHeader?: boolean;
+};
+
+export type TableProps<T> = {
+  /** Names the table for a screen reader; not drawn. */
+  caption: string;
+  columns: readonly Column<T>[];
+  items: readonly T[];
+  rowKey: (item: T) => string;
+  /** Content that takes a full row under an item, such as an open form; null for none. */
+  expanded?: (item: T) => ReactNode;
+  /** One summary row: a cell per column. */
+  foot?: readonly ReactNode[];
+};
+
 export type DesktopParts = {
+  /** A real table for any list, for the screens that have no table of their own (the reports). */
+  Table: <T>(props: TableProps<T>) => ReactNode;
   CustomersTable: ComponentType<{ items: readonly Customer[]; pick: boolean }>;
   DebtorsTable: ComponentType<{ items: readonly Debtor[] }>;
   CatalogTable: ComponentType<{

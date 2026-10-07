@@ -18,6 +18,9 @@ describe("matchWorkspaceRoute", () => {
     ["/customers/waiting", { screen: "waiting" }, "/customers"],
     ["/customers/counter-code", { screen: "counterCode" }, "/customers"],
     ["/disputes", { screen: "disputes" }, "/disputes"],
+    // Date requests have no tab of their own: they are answered where disputes are.
+    ["/date-requests", { screen: "dateRequests" }, "/disputes"],
+    ["/reports", { screen: "reports" }, "/reports"],
     ["/catalog", { screen: "catalog" }, "/catalog"],
     ["/shop-settings", { screen: "shopSettings" }, "/shop-settings"],
     ["/reminders", { screen: "reminders" }, "/reminders"],
@@ -27,7 +30,9 @@ describe("matchWorkspaceRoute", () => {
   });
 
   it.each([
-    "/reports",
+    "/import-export",
+    "/reports/period",
+    "/date-requests/1",
     "/customers/",
     "/customers/42",
     "/customers/new/credit",
