@@ -28,9 +28,13 @@ from qarz.application.ports import (
     DisputeRecord,
     EntryRow,
     GoodsLineRecord,
+    ImportBatchRecord,
+    ImportCandidate,
     MemberRecord,
     Membership,
     MyShop,
+    NewImportCustomer,
+    NewImportEntry,
     OnlinePayment,
     OutboxMessage,
     PaymentNoticeRecord,
@@ -270,8 +274,15 @@ _FILE_COLUMNS = "f.id, f.purpose, f.object_key, f.sha256, f.size_bytes, f.mime, 
 _FILE_BY_ID = f"SELECT {_FILE_COLUMNS} FROM stored_file f WHERE f.id = :id"
 _DUE_RECEIPT_FILES = (
     f"SELECT {_FILE_COLUMNS} FROM stored_file f "
-    "WHERE f.purpose = 'payment_notice' AND f.delete_after <= :now ORDER BY f.delete_after, f.id LIMIT :limit"
+    "WHERE f.purpose IN ('payment_notice', 'import') AND f.delete_after <= :now "
+    "ORDER BY f.delete_after, f.id LIMIT :limit"
 )
+_IMPORT_COLUMNS = "b.id, b.status, b.file_id, b.summary, b.author_id, b.created_at, b.applied_at"
+_IMPORT_BY_ID = f"SELECT {_IMPORT_COLUMNS} FROM import_batch b WHERE b.id = :id"
+_IMPORT_LOCKED = f"{_IMPORT_BY_ID} FOR UPDATE"
+_IMPORTS_NEWEST = f"SELECT {_IMPORT_COLUMNS} FROM import_batch b ORDER BY b.created_at DESC, b.id LIMIT :limit"
+# Rows of one bulk statement: small enough that no statement comes near the timeout.
+_BULK_ROWS = 500
 _NOTICE_SELECT = (
     "SELECT n.id, n.customer_id, n.amount, n.file_id, n.status, n.payment_entry, e.amount AS recorded_amount, "
     "n.decline_reason, n.created_at, n.closed_at, c.display_name, "
@@ -746,6 +757,7 @@ class PgTenantSession:
             await self._conn.execute(
                 text(
                     "SELECT e.id, e.seq, e.kind, e.amount, e.note, e.reverses_id, e.author_id, e.created_at, "
+                    "       e.import_batch_id, "
                     f"       {_PROMISED.format(entry='e')} AS promised_date, "
                     "       (e.kind IN ('credit', 'opening') AND EXISTS ("
                     "          SELECT 1 FROM dispute d WHERE d.entry_id = e.id AND d.status = 'open')) AS disputed "
@@ -768,6 +780,7 @@ class PgTenantSession:
                 ),
                 row.note,
                 row.author_id,
+                row.import_batch_id,
             )
             for row in rows
         ]
@@ -1545,9 +1558,203 @@ class PgTenantSession:
 
     async def remove_stored_file(self, file_id: UUID) -> None:
         await self._conn.execute(text("UPDATE payment_notice SET file_id = NULL WHERE file_id = :id"), {"id": file_id})
+        await self._conn.execute(text("UPDATE import_batch SET file_id = NULL WHERE file_id = :id"), {"id": file_id})
         await self._conn.execute(
-            text("DELETE FROM stored_file WHERE id = :id AND purpose = 'payment_notice'"), {"id": file_id}
+            text("DELETE FROM stored_file WHERE id = :id AND purpose IN ('payment_notice', 'import')"), {"id": file_id}
         )
+
+    # --- imports (REQ-062, REQ-063) -----------------------------------------------------------------------
+
+    def _import(self, row: Any) -> ImportBatchRecord:
+        return ImportBatchRecord(
+            row.id,
+            str(row.status),
+            row.file_id,
+            {}
+            if row.summary is None
+            else (json.loads(row.summary) if isinstance(row.summary, str) else dict(row.summary)),
+            row.author_id,
+            row.created_at,
+            row.applied_at,
+        )
+
+    async def create_import_batch(
+        self,
+        *,
+        batch_id: UUID,
+        status: str,
+        file_id: UUID,
+        summary: dict[str, Any],
+        author_id: UUID,
+        now: datetime,
+    ) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO import_batch (id, shop_id, status, file_id, summary, author_id, created_at) "
+                "VALUES (:id, :shop_id, :status, :file_id, CAST(:summary AS jsonb), :author_id, :now)"
+            ),
+            {
+                "id": batch_id,
+                "shop_id": self._shop_id,
+                "status": status,
+                "file_id": file_id,
+                "summary": json.dumps(summary, ensure_ascii=False),
+                "author_id": author_id,
+                "now": now,
+            },
+        )
+
+    async def get_import_batch(self, batch_id: UUID, *, for_update: bool) -> ImportBatchRecord | None:
+        row = (
+            await self._conn.execute(text(_IMPORT_LOCKED if for_update else _IMPORT_BY_ID), {"id": batch_id})
+        ).first()
+        return None if row is None else self._import(row)
+
+    async def set_import_batch(
+        self, batch_id: UUID, *, status: str, summary: dict[str, Any], applied_at: datetime | None
+    ) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE import_batch SET status = :status, summary = CAST(:summary AS jsonb), "
+                "applied_at = coalesce(:applied_at, applied_at) WHERE id = :id"
+            ),
+            {
+                "id": batch_id,
+                "status": status,
+                "summary": json.dumps(summary, ensure_ascii=False),
+                "applied_at": applied_at,
+            },
+        )
+
+    async def list_import_batches(self, limit: int) -> list[ImportBatchRecord]:
+        rows = (await self._conn.execute(text(_IMPORTS_NEWEST), {"limit": limit})).all()
+        return [self._import(row) for row in rows]
+
+    async def import_candidates(self, name_norms: list[str], phones: list[str]) -> list[ImportCandidate]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT c.id, c.display_name, c.name_norm, c.phone, c.status FROM customer c "
+                    "WHERE c.status <> 'anonymized' AND (c.name_norm = ANY(CAST(:names AS text[])) "
+                    "OR c.phone = ANY(CAST(:phones AS text[]))) ORDER BY c.created_at, c.id"
+                ),
+                {"names": name_norms, "phones": phones},
+            )
+        ).all()
+        return [
+            ImportCandidate(row.id, str(row.display_name), str(row.name_norm), row.phone, str(row.status))
+            for row in rows
+        ]
+
+    async def lock_customers(self, customer_ids: list[UUID]) -> None:
+        await self._conn.execute(
+            text("SELECT c.id FROM customer c WHERE c.id = ANY(CAST(:ids AS uuid[])) ORDER BY c.id FOR UPDATE"),
+            {"ids": customer_ids},
+        )
+
+    async def last_seqs(self, customer_ids: list[UUID]) -> dict[UUID, int]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT e.customer_id, max(e.seq) AS seq FROM ledger_entry e "
+                    "WHERE e.customer_id = ANY(CAST(:ids AS uuid[])) GROUP BY e.customer_id"
+                ),
+                {"ids": customer_ids},
+            )
+        ).all()
+        return {row.customer_id: int(row.seq) for row in rows}
+
+    async def add_import_customers(self, customers: list[NewImportCustomer]) -> None:
+        for start in range(0, len(customers), _BULK_ROWS):
+            await self._conn.execute(
+                text(
+                    "INSERT INTO customer (id, shop_id, display_name, name_norm, phone) "
+                    "VALUES (:id, :shop_id, :name, :norm, :phone)"
+                ),
+                [
+                    {
+                        "id": customer.customer_id,
+                        "shop_id": self._shop_id,
+                        "name": customer.display_name,
+                        "norm": customer.name_norm,
+                        "phone": customer.phone,
+                    }
+                    for customer in customers[start : start + _BULK_ROWS]
+                ],
+            )
+
+    async def add_import_entries(
+        self, batch_id: UUID, author_id: UUID, now: datetime, entries: list[NewImportEntry]
+    ) -> None:
+        shop_ref = uuid5(_MEASURE_NAMESPACE, str(self._shop_id))
+        for start in range(0, len(entries), _BULK_ROWS):
+            chunk = entries[start : start + _BULK_ROWS]
+            await self._conn.execute(
+                text(
+                    "INSERT INTO ledger_entry "
+                    "(id, shop_id, customer_id, seq, kind, amount, note, author_id, import_batch_id, created_at) "
+                    "VALUES (:id, :shop_id, :customer_id, :seq, 'opening', :amount, :note, :author_id, :batch_id, :now)"
+                ),
+                [
+                    {
+                        "id": entry.entry_id,
+                        "shop_id": self._shop_id,
+                        "customer_id": entry.customer_id,
+                        "seq": entry.seq,
+                        "amount": entry.amount,
+                        "note": entry.note,
+                        "author_id": author_id,
+                        "batch_id": batch_id,
+                        "now": now,
+                    }
+                    for entry in chunk
+                ],
+            )
+            await self._conn.execute(
+                text(
+                    "INSERT INTO promise (id, shop_id, entry_id, promised_date, actor, created_at) "
+                    "VALUES (:id, :shop_id, :entry_id, :promised_date, :actor, :now)"
+                ),
+                [
+                    {
+                        "id": uuid4(),
+                        "shop_id": self._shop_id,
+                        "entry_id": entry.entry_id,
+                        "promised_date": entry.promised_date,
+                        "actor": entry.promise_actor,
+                        "now": now,
+                    }
+                    for entry in chunk
+                ],
+            )
+            await self._conn.execute(
+                text(
+                    "INSERT INTO measure.event (id, shop_ref, entry_ref, kind, amount, promised) "
+                    "VALUES (:id, :shop_ref, :entry_ref, 'opening', :amount, :promised)"
+                ),
+                [
+                    {
+                        "id": uuid4(),
+                        "shop_ref": shop_ref,
+                        "entry_ref": uuid5(_MEASURE_NAMESPACE, str(entry.entry_id)),
+                        "amount": entry.amount,
+                        "promised": entry.promised_date,
+                    }
+                    for entry in chunk
+                ],
+            )
+
+    async def entries_of_import(self, batch_id: UUID) -> list[tuple[UUID, UUID, bool]]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT e.id, e.customer_id, EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id) "
+                    "AS reversed FROM ledger_entry e WHERE e.import_batch_id = :id ORDER BY e.customer_id, e.seq"
+                ),
+                {"id": batch_id},
+            )
+        ).all()
+        return [(row.id, row.customer_id, bool(row.reversed)) for row in rows]
 
     async def stored_object_keys(self) -> list[str]:
         rows = (await self._conn.execute(text("SELECT object_key FROM stored_file ORDER BY created_at, id"))).all()

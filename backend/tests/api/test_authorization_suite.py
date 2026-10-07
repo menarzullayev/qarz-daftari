@@ -24,6 +24,7 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from qarz.application.operations import all_operations
+from qarz.domain import imports
 from qarz.domain.access import Role, lowest_role_with
 from qarz.domain.promise import tashkent_date
 
@@ -47,6 +48,8 @@ class Call:
     prepare: Callable[[psycopg.Connection, World], None] | None = None
     # Callers whose role is allowed but who are refused for another stated reason: caller -> (status, code).
     refused: tuple[tuple[str, int, str], ...] = ()
+    # A body that is not JSON: the bytes of an uploaded file.
+    content: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -135,6 +138,54 @@ def _last_week(shop: uuid.UUID) -> str:
     """A valid period for the report: the seven Tashkent days that end today."""
     last = tashkent_date(datetime.now(UTC))
     return f"/api/v1/shops/{shop}/reports/period?from={last - timedelta(days=6)}&to={last}"
+
+
+SUITE_IMPORT = b"Ism,Qarz summasi\nImport Mijoz,70000\n"
+
+
+def _import_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-import:{world.shop_a}")
+
+
+def _import_plan() -> str:
+    """The plan of SUITE_IMPORT in a shop that has no customer of that name: one new customer."""
+    parsed = imports.parse(SUITE_IMPORT, tashkent_date(datetime.now(UTC)))
+    assert isinstance(parsed, imports.ParsedFile)
+    return imports.plan_token(imports.plan(parsed.rows, [])[0])
+
+
+def _stored_import(owner: psycopg.Connection, world: World, status: str) -> None:
+    token = uuid.uuid5(uuid.NAMESPACE_URL, f"suite-import-file:{world.shop_a}").hex * 2
+    target = current_file_root() / token[:2] / token
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(SUITE_IMPORT)
+    file_id = uuid.uuid5(uuid.NAMESPACE_URL, f"suite-import-row:{world.shop_a}")
+    owner.execute(
+        "INSERT INTO stored_file (id, shop_id, purpose, object_key, sha256, size_bytes, mime, delete_after) "
+        "VALUES (%s, %s, 'import', %s, %s, %s, 'text/csv', now() + interval '30 days')",
+        (file_id, world.shop_a, f"{token[:2]}/{token}", hashlib.sha256(SUITE_IMPORT).digest(), len(SUITE_IMPORT)),
+    )
+    owner.execute(
+        "INSERT INTO import_batch (id, shop_id, status, file_id, summary, author_id, applied_at) "
+        "VALUES (%s, %s, %s, %s, %s, %s, CASE WHEN %s = 'applied' THEN now() END)",
+        (
+            _import_id(world),
+            world.shop_a,
+            status,
+            file_id,
+            '{"format": "csv", "rows": 1, "errors": [], "created_customers": []}',
+            world.owner_a_membership,
+            status,
+        ),
+    )
+
+
+def _validated_import(owner: psycopg.Connection, world: World) -> None:
+    _stored_import(owner, world, "validated")
+
+
+def _applied_import(owner: psycopg.Connection, world: World) -> None:
+    _stored_import(owner, world, "applied")
 
 
 CALLS: dict[str, Call] = {
@@ -249,6 +300,35 @@ CALLS: dict[str, Call] = {
     ),
     "payment_notices.receipt": Call(
         "GET", lambda w, shop: f"/api/v1/shops/{shop}/payment-notices/{_notice_id(w)}/receipt", prepare=_sent_notice
+    ),
+    "imports.template": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/imports/template"),
+    "imports.upload": Call(
+        "POST", lambda w, shop: f"/api/v1/shops/{shop}/imports", None, True, 201, content=SUITE_IMPORT
+    ),
+    "imports.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/imports", prepare=_validated_import),
+    "imports.read": Call(
+        "GET", lambda w, shop: f"/api/v1/shops/{shop}/imports/{_import_id(w)}", prepare=_validated_import
+    ),
+    "imports.apply": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/imports/{_import_id(w)}/apply",
+        None,  # the body names the plan of the file; filled in by _body
+        True,
+        prepare=_validated_import,
+    ),
+    "imports.undo": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/imports/{_import_id(w)}/undo",
+        None,
+        True,
+        prepare=_applied_import,
+    ),
+    "imports.discard": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/imports/{_import_id(w)}/discard",
+        None,
+        True,
+        prepare=_validated_import,
     ),
     "date_requests.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/date-requests"),
     "date_requests.accept": Call(
@@ -393,6 +473,15 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "date_requests.list": {Role.MANAGER, Role.OWNER},
     "date_requests.accept": {Role.MANAGER, Role.OWNER},
     "date_requests.decline": {Role.MANAGER, Role.OWNER},
+    # REQ-062: "An owner or manager can import"; specification, resources table: `/shops/{id}/imports`,
+    # "Template, upload, preview, apply, undo", "Manager, owner".
+    "imports.template": {Role.MANAGER, Role.OWNER},
+    "imports.upload": {Role.MANAGER, Role.OWNER},
+    "imports.list": {Role.MANAGER, Role.OWNER},
+    "imports.read": {Role.MANAGER, Role.OWNER},
+    "imports.apply": {Role.MANAGER, Role.OWNER},
+    "imports.undo": {Role.MANAGER, Role.OWNER},
+    "imports.discard": {Role.MANAGER, Role.OWNER},
     "ledger.entry.promise.change": {Role.MANAGER, Role.OWNER},
     # Specification, resources table: "Author, manager, owner". Any staff member by role; within the
     # operation only the entry's author or a manager (REQ-038).
@@ -512,6 +601,8 @@ def _body(world: World, op_name: str, call: Call) -> dict[str, Any] | None:
         return {"promised_date": (datetime.now(UTC).date() + timedelta(days=3)).isoformat()}
     if op_name == "catalog.learned.merge":
         return {"into": str(world.catalog_item_a)}
+    if op_name == "imports.apply":
+        return {"plan": _import_plan()}
     return call.json
 
 
@@ -519,6 +610,8 @@ def _invoke(client: TestClient, world: World, call: Call, shop: uuid.UUID, heade
     if call.changes_data:
         headers = {**headers, **_key()}
     op_name = next(name for name, candidate in CALLS.items() if candidate is call)
+    if call.content is not None:
+        return client.request(call.method, call.path(world, shop), content=call.content, headers=headers)
     return client.request(call.method, call.path(world, shop), json=_body(world, op_name, call), headers=headers)
 
 
@@ -606,9 +699,22 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
             "WHERE shop_id = %s ORDER BY id",
             (shop,),
         ).fetchall(),
-        # The objects of the file store itself: a refused call writes and removes none.
-        sorted(str(path.relative_to(current_file_root())) for path in current_file_root().rglob("*") if path.is_file()),
+        owner.execute(
+            "SELECT id, status, file_id, summary::text, author_id, applied_at FROM import_batch "
+            "WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
+        # The objects of the file store itself: a refused call writes and removes none. A file that another
+        # shop has recorded as its own is that shop's; one that nobody recorded is counted here.
+        _objects_not_of_other_shops(owner, shop),
     )
+
+
+def _objects_not_of_other_shops(owner: psycopg.Connection, shop: uuid.UUID) -> list[str]:
+    root = current_file_root()
+    elsewhere = {row[0] for row in owner.execute("SELECT object_key FROM stored_file WHERE shop_id <> %s", (shop,))}
+    found = sorted(path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file())
+    return [key for key in found if key not in elsewhere]
 
 
 # --- the suite covers everything --------------------------------------------------------------------
@@ -721,6 +827,7 @@ def test_a_member_of_one_shop_cannot_reach_another(
         _dispute_id(world),
         _notice_id(world),
         _date_request_id(world),
+        _import_id(world),
     )
     uses_foreign_resource = any(str(resource) in call.path(world, world.shop_b) for resource in foreign)
     if uses_foreign_resource:

@@ -49,6 +49,8 @@ _STATUS = {
     "PAYMENT_NOTICE_NOT_ALLOWED": 409,
     "PAYMENT_NOTICE_NOT_OPEN": 409,
     "FILE_STORE_UNAVAILABLE": 503,
+    "IMPORT_NOT_APPLICABLE": 409,
+    "IMPORT_UNDO_REFUSED": 409,
 }
 
 _MESSAGES = {
@@ -93,6 +95,8 @@ _MESSAGES = {
         "PAYMENT_NOTICE_NOT_ALLOWED": "Ko'rib chiqilmagan to'lov xabarlaringiz juda ko'p. Do'kon javobini kuting.",
         "PAYMENT_NOTICE_NOT_OPEN": "Bu to'lov xabari allaqachon ko'rib chiqilgan yoki muddati o'tgan.",
         "FILE_STORE_UNAVAILABLE": "Fayllarni saqlash hozir ishlamayapti. Birozdan keyin qayta urinib ko'ring.",
+        "IMPORT_NOT_APPLICABLE": "Bu importni hozirgi holatida qo'llab bo'lmaydi. Ko'rib chiqishni yangilang.",
+        "IMPORT_UNDO_REFUSED": "Bu importni bekor qilib bo'lmaydi: muddat o'tgan yoki yozuvlarga to'lov qilingan.",
         "ONLINE_PAY_OFF": "Onlayn to'lov hozircha yoqilmagan. Karta orqali to'lash: /obuna",
         "RATE_LIMITED": "So'rovlar juda ko'p. Biroz kutib, qayta urinib ko'ring.",
         "TIMEOUT": "So'rov juda uzoq davom etdi va to'xtatildi. Hech narsa saqlanmadi. Qayta urinib ko'ring.",
@@ -139,6 +143,8 @@ _MESSAGES = {
         "PAYMENT_NOTICE_NOT_ALLOWED": "У вас слишком много нерассмотренных сообщений об оплате. Дождитесь ответа.",
         "PAYMENT_NOTICE_NOT_OPEN": "Это сообщение об оплате уже рассмотрено или его срок истёк.",
         "FILE_STORE_UNAVAILABLE": "Хранилище файлов сейчас недоступно. Попробуйте ещё раз чуть позже.",
+        "IMPORT_NOT_APPLICABLE": "Этот импорт в его нынешнем состоянии применить нельзя. Обновите просмотр.",
+        "IMPORT_UNDO_REFUSED": "Этот импорт отменить нельзя: срок истёк или по записям уже есть оплаты.",
         "ONLINE_PAY_OFF": "Онлайн-оплата пока не включена. Оплата переводом на карту: /obuna",
         "RATE_LIMITED": "Слишком много запросов. Подождите немного и повторите.",
         "TIMEOUT": "Запрос выполнялся слишком долго и был остановлен. Ничего не сохранено. Повторите попытку.",

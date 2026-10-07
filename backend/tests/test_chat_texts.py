@@ -33,6 +33,8 @@ def test_every_text_the_chat_can_ask_for_exists() -> None:
 def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
     """A domain refusal must reach the seller in words, not as the generic error."""
     spoken_elsewhere = {
+        "IMPORT_NOT_APPLICABLE",  # an import is made in the Mini App, not in the chat
+        "IMPORT_UNDO_REFUSED",
         "UNAUTHENTICATED",  # the chat has no sign-in step
         "RATE_LIMITED",  # the API's limit; the chat is not called through the API
         "NOT_FOUND",  # said as "not_found"

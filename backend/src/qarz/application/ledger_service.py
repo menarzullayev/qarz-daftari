@@ -220,6 +220,8 @@ def _entry_body(
         "reversed": entry.id in reversed_ids,
         "disputed": entry.disputed,
         "author_id": str(row.author_id),
+        # Set on an opening balance that came from an import (REQ-063); null otherwise.
+        "import_id": None if row.import_batch_id is None else str(row.import_batch_id),
         "lines": [line_body(line) for line in lines],
         # Every promised date the entry has carried, oldest first; the last one is the current date.
         "promises": [promise_body(promise) for promise in promises],

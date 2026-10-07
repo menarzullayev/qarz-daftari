@@ -87,6 +87,53 @@ class EntryRow:
     entry: Entry
     note: str | None
     author_id: UUID
+    # Set on an opening balance that came from an import (REQ-063).
+    import_batch_id: UUID | None = None
+
+
+@dataclass(frozen=True)
+class ImportBatchRecord:
+    """One spreadsheet import (DOM-017). The summary holds counts, codes and identifiers, never a row's content."""
+
+    batch_id: UUID
+    status: str
+    file_id: UUID | None
+    summary: dict[str, Any]
+    author_id: UUID
+    created_at: datetime
+    applied_at: datetime | None
+
+
+@dataclass(frozen=True)
+class ImportCandidate:
+    """A customer of the shop that a row of an import could mean."""
+
+    customer_id: UUID
+    display_name: str
+    name_norm: str
+    phone: str | None
+    status: str
+
+
+@dataclass(frozen=True)
+class NewImportCustomer:
+    customer_id: UUID
+    display_name: str
+    name_norm: str
+    phone: str | None
+
+
+@dataclass(frozen=True)
+class NewImportEntry:
+    """One opening balance of an import, with the promise it starts with."""
+
+    entry_id: UUID
+    customer_id: UUID
+    seq: int
+    amount: int
+    note: str | None
+    promised_date: date
+    promise_actor: str
 
 
 @dataclass(frozen=True)
@@ -667,6 +714,55 @@ class TenantSession(Protocol):
 
     async def remove_stored_file(self, file_id: UUID) -> None:
         """Forget a file whose object has been deleted, and whatever notice still pointed to it."""
+        ...
+
+    async def create_import_batch(
+        self,
+        *,
+        batch_id: UUID,
+        status: str,
+        file_id: UUID,
+        summary: dict[str, Any],
+        author_id: UUID,
+        now: datetime,
+    ) -> None: ...
+
+    async def get_import_batch(self, batch_id: UUID, *, for_update: bool) -> ImportBatchRecord | None:
+        """With `for_update` the batch stays locked until the transaction ends: it is applied or undone once."""
+        ...
+
+    async def set_import_batch(
+        self, batch_id: UUID, *, status: str, summary: dict[str, Any], applied_at: datetime | None
+    ) -> None:
+        """Move the batch on. `applied_at` is set only when given; it is never cleared."""
+        ...
+
+    async def list_import_batches(self, limit: int) -> list[ImportBatchRecord]:
+        """The shop's imports, newest first."""
+        ...
+
+    async def import_candidates(self, name_norms: list[str], phones: list[str]) -> list[ImportCandidate]:
+        """Customers, archived ones included, with one of these normalized names or phones. Oldest first."""
+        ...
+
+    async def lock_customers(self, customer_ids: list[UUID]) -> None:
+        """Lock these customer rows, always in the same order, until the transaction ends."""
+        ...
+
+    async def last_seqs(self, customer_ids: list[UUID]) -> dict[UUID, int]:
+        """The highest entry number of each account that has entries."""
+        ...
+
+    async def add_import_customers(self, customers: list[NewImportCustomer]) -> None: ...
+
+    async def add_import_entries(
+        self, batch_id: UUID, author_id: UUID, now: datetime, entries: list[NewImportEntry]
+    ) -> None:
+        """Store the opening balances of an import with their promises and one measurement row each."""
+        ...
+
+    async def entries_of_import(self, batch_id: UUID) -> list[tuple[UUID, UUID, bool]]:
+        """Entry, customer and whether the entry is already reversed, in the order they were written."""
         ...
 
     async def stored_object_keys(self) -> list[str]:

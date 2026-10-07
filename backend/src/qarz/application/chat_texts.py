@@ -199,6 +199,15 @@ UZ = {
     ),
     "n_date_declined": "{shop}\n{amount} nasiya muddatini {date} ga ko'chirish so'rovingiz rad etildi.",
     "n_date_changed": "{shop}\n{name}, {amount} nasiyaning to'lash muddati o'zgartirildi: {old} → {date}",
+    "n_opening": (
+        "{shop}\n{name}, daftarga oldingi qarzingiz kiritildi: {amount}\n"
+        "To'lash muddati: {date}\nJami qarzingiz: {balance}"
+    ),
+    "s_import_applied": (
+        "📥 {shop}\nImport qo'llandi: {entries} ta qarz yozuvi, jami {amount}. Yangi mijozlar: {customers} ta.\n"
+        "24 soat ichida butunlay bekor qilish mumkin."
+    ),
+    "s_import_undone": "↩️ {shop}\nImport bekor qilindi: {entries} ta yozuv qaytarildi. Import summasi: {amount}.",
     "shop_deletion_requested": (
         "«{shop}» do'konini o'chirish so'raldi. Ma'lumotlar {date} kuni butunlay o'chiriladi. Shu kungacha "
         "eksport qilishingiz yoki bekor qilishingiz mumkin."
@@ -437,6 +446,14 @@ RU = {
     "n_date_accepted": "{shop}\nВаша просьба перенести срок оплаты долга {amount} принята.\nНовый срок оплаты: {date}",
     "n_date_declined": "{shop}\nВаша просьба перенести срок оплаты долга {amount} на {date} отклонена.",
     "n_date_changed": "{shop}\n{name}, срок оплаты долга {amount} изменён: {old} → {date}",
+    "n_opening": (
+        "{shop}\n{name}, в книгу внесён ваш прежний долг: {amount}\nСрок оплаты: {date}\nВсего долг: {balance}"
+    ),
+    "s_import_applied": (
+        "📥 {shop}\nИмпорт применён: записей о долге — {entries}, всего {amount}. Новых клиентов: {customers}.\n"
+        "В течение 24 часов его можно отменить целиком."
+    ),
+    "s_import_undone": "↩️ {shop}\nИмпорт отменён: отменено записей — {entries}. Сумма импорта: {amount}.",
     "shop_deletion_requested": (
         "Запрошено удаление магазина «{shop}». Данные будут полностью удалены {date}. До этого дня можно "
         "выгрузить данные или отменить удаление."
