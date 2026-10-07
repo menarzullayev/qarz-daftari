@@ -292,6 +292,16 @@ def test_the_alert_rules_name_routes_jobs_and_events_that_exist(observed: TestCl
     }
     assert named == kinds
     metrics_named = set(re.findall(r"\bqd_[a-z_]+", rules))
+    # Host-level figures the application does not expose: the backup scripts write them on the standby
+    # for node_exporter's textfile collector (deploy/backup/scripts; rule group qarz-backup). Each is
+    # checked against what the scripts write, so a figure renamed on one side only fails here.
+    host_level = {
+        "qd_backup_last_run_success",
+        "qd_backup_last_success_timestamp_seconds",
+        "qd_backup_check_timestamp_seconds",
+        "qd_wal_archive_newest_age_seconds",
+        "qd_backup_restore_test_last_success_timestamp_seconds",
+    }
     assert metrics_named <= {
         "qd_requests_total",
         "qd_request_duration_ms_bucket",
@@ -299,7 +309,15 @@ def test_the_alert_rules_name_routes_jobs_and_events_that_exist(observed: TestCl
         "qd_outbox_oldest_due_seconds",
         "qd_job_last_finished_seconds",
         "qd_receipts_oldest_waiting_seconds",
+        *host_level,
     }
+    scripts = "".join(
+        path.read_text(encoding="utf-8")
+        for path in (Path(__file__).resolve().parents[3] / "deploy" / "backup" / "scripts").glob("*.sh")
+    )
+    for name in sorted(host_level):
+        assert name in metrics_named, f"no alert rule reads {name}"
+        assert f"# TYPE {name} gauge" in scripts, f"no backup script writes {name}"
 
 
 def test_the_health_figures_tell_how_long_the_oldest_receipt_has_awaited_a_decision(

@@ -156,7 +156,8 @@ the compose files and runs this same proof on every pull request.
 
 - The database hosts: PostgreSQL primary and standby, replication, failover (ADR-014, ADR-015;
   `deploy/rehearsal/` is a rehearsal on one machine).
-- Backups and restore. Another task is doing backups.
+- Backups and restore: `deploy/backup/` (configuration and scripts for the database hosts; proven in
+  containers only).
 - The file store (ADR-020) and its replication.
 - The monitoring system, alert delivery, the external check of `/healthz`, log shipping and retention.
 - The host itself: firewall, operating-system updates, users, file modes of the secrets, disk.

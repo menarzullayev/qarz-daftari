@@ -76,5 +76,5 @@ Checks in `verify.sh`:
 - A dead container and a broken link look the same to the probe in `failover.sh`. The script cannot tell them apart; the operator must.
 - `failover.sh` promotes the database and nothing else. Starting the API and worker on the standby, repointing DNS and the Telegram webhook, and rebuilding a standby are not rehearsed.
 - The file store is one node. Replication of files to the standby is not rehearsed. Garage was used because the MinIO community images could not be pulled on 2026-10-06; this does not choose the production file store.
-- Only one full backup is taken. The weekly and daily backup schedule, retention, and the weekly restore test are not rehearsed.
+- Only one full backup is taken here. The weekly and daily backups, the restore test, expiry and the copy of the file store are in `deploy/backup/`, whose proof (`deploy/backup/proof/run.sh`) runs this stack under its own Compose project through `QD_COMPOSE_PROJECT` and `QD_COMPOSE_OVERLAY` (read by `scripts/lib.sh`). Retention over weeks is not rehearsed anywhere.
 - Scripts were run from Git Bash on Windows 11 with Docker Desktop, and from a Linux bash inside a container that talked to the same Docker engine. They were not run on a native Linux host.

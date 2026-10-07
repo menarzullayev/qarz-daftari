@@ -1,0 +1,22 @@
+# Runs on the standby server. Output goes to the journal: journalctl -u qd-backup-full.service
+[Unit]
+Description=Qarz Daftari: weekly full database backup (pgBackRest)
+Documentation=https://github.com/menarzullayev/qarz-daftari/blob/main/deploy/backup/README.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+EnvironmentFile=-/etc/qarz-backup/backup.env
+ExecStart=/opt/qarz-backup/scripts/backup.sh full
+SyslogIdentifier=qd-backup-full
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=8h
+NoNewPrivileges=yes
+ProtectHome=yes
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

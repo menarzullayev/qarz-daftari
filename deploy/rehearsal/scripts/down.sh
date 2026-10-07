@@ -16,7 +16,7 @@ set -euo pipefail
 export QD_POSTGRES_PASSWORD QD_REPL_PASSWORD QD_BACKUP_CIPHER_PASS
 export QD_FILESTORE_RPC_SECRET QD_FILESTORE_ADMIN_TOKEN
 
-log "removing containers, volumes, network and local images of project qd-rehearsal"
+log "removing containers, volumes, network and local images of project $PROJECT"
 dc --profile pitr down --volumes --remove-orphans --rmi local --timeout 5
 
 rm -f "$ENV_FILE"
@@ -24,7 +24,7 @@ if [ "${1:-}" = "--all" ]; then
     rm -rf "$OUT_DIR"
 fi
 
-left="$(docker ps -aq --filter label=com.docker.compose.project=qd-rehearsal | wc -l)"
-left_volumes="$(docker volume ls -q --filter label=com.docker.compose.project=qd-rehearsal | wc -l)"
+left="$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT" | wc -l)"
+left_volumes="$(docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT" | wc -l)"
 log "left behind: ${left// /} containers, ${left_volumes// /} volumes"
 [ "${left// /}" = "0" ] && [ "${left_volumes// /}" = "0" ] || die "cleanup is incomplete"

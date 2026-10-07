@@ -1,0 +1,11 @@
+# Monday to Saturday 01:30 Tashkent time; on Sunday the full backup runs instead.
+[Unit]
+Description=Qarz Daftari: daily differential database backup (pgBackRest) (schedule)
+
+[Timer]
+OnCalendar=Mon..Sat *-*-* 01:30:00 Asia/Tashkent
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,12 @@
+# Wednesday 02:30 Tashkent time: the latest backup is then a differential, so the test reads
+# the week's full backup and a differential on top of it.
+[Unit]
+Description=Qarz Daftari: weekly restore test of the latest backup (schedule)
+
+[Timer]
+OnCalendar=Wed *-*-* 02:30:00 Asia/Tashkent
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

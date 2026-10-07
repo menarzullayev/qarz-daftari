@@ -23,7 +23,8 @@ into a real monitoring system: there are no servers yet, so no alert has been tr
     `qd_receipts_oldest_waiting_seconds{status="submitted"}`, read from the database when the metrics
     are read. The last is absent while no subscription receipt awaits a decision.
 - **Alert rules.** `alerts.yml`, written against those metrics with the thresholds of the operations
-  document.
+  document. Its last group, `qarz-backup`, reads host-level figures that the backup scripts write, not
+  the application's `/metrics` (see the table below and `deploy/backup/README.md`).
 
 Counters live in the memory of the process that served the requests and start from zero when it starts.
 
@@ -33,7 +34,8 @@ Counters live in the memory of the process that served the requests and start fr
 |---|---|
 | External check of `/healthz` from outside both servers | Not set up; needs a service chosen by the founder |
 | Webhook backlog reported by Telegram | Not collected (needs a call to Telegram's `getWebhookInfo`) |
-| Replication lag, log archive age, backup | Not collected; they belong to the database hosts, which do not exist |
+| Replication lag | Not collected; it belongs to the database hosts, which do not exist |
+| Log archive age, backup | Written by the scripts of `deploy/backup/` on the standby for node_exporter's textfile collector: `qd_wal_archive_newest_age_seconds`, `qd_backup_last_success_timestamp_seconds{type}`, `qd_backup_last_run_success{type}`, `qd_backup_restore_test_last_success_timestamp_seconds`, `qd_backup_check_timestamp_seconds`. Rules `WalArchiveStale`, `BackupFailed`, `BackupMissing`, `RestoreTestNotPassed` (group `qarz-backup`), with their own tests in `alerts.test.yml` (`promtool test rules`). The figures were produced in the local proof only; no node_exporter reads them and nothing delivers the alerts, because the hosts do not exist |
 | Disk, memory, connections, certificate | Not collected; host-level |
 | Repeated failed administrator second factor | Counted as `qd_security_events_total{kind="bad_second_factor"}` with the rule `AdminSecondFactorRepeated`; nothing delivers the alert yet, like every rule here |
 | Receipts awaiting decision | `qd_receipts_oldest_waiting_seconds` with the rule `ReceiptsWaiting` (older than 24 hours); nothing delivers the alert yet, like every rule here |

@@ -1,0 +1,11 @@
+# Sunday 02:30 Tashkent time, an hour after the full database backup starts.
+[Unit]
+Description=Qarz Daftari: weekly file store archive, part of the weekly backup (schedule)
+
+[Timer]
+OnCalendar=Sun *-*-* 02:30:00 Asia/Tashkent
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
