@@ -34,6 +34,7 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
     """A domain refusal must reach the seller in words, not as the generic error."""
     spoken_elsewhere = {
         "UNAUTHENTICATED",  # the chat has no sign-in step
+        "RATE_LIMITED",  # the API's limit; the chat is not called through the API
         "NOT_FOUND",  # said as "not_found"
         "FORBIDDEN_ROLE",  # said as "forbidden"
         "VALIDATION",  # said with the field's own hint

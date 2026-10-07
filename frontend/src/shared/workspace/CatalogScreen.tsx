@@ -5,6 +5,7 @@ import type { ApiError, CatalogAction, CatalogItem, CatalogItemPatch, NewCatalog
 import { formatMoney } from "../format";
 import { parsePrice } from "../goods";
 import { usePagedList, useSubmit } from "../hooks";
+import { useDesktop } from "../layout";
 import { canManage } from "../navigation";
 import { cleanItemName, itemNameProblem, MAX_ITEM_NAME, MAX_UNIT_INPUT, priceMessage } from "./catalogRules";
 import { useWorkspace } from "./context";
@@ -274,6 +275,7 @@ type Panel = { kind: "create" } | { kind: "edit"; id: string } | { kind: "merge"
 export function CatalogScreen() {
   const { api, role } = useWorkspace();
   const { t, language } = useI18n();
+  const desktop = useDesktop();
   const mayManage = canManage(role);
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
@@ -313,7 +315,8 @@ export function CatalogScreen() {
     setQuery(text.trim());
   };
 
-  const row = (item: CatalogItem) => {
+  // What a manager or an owner can do with one item: its form when one is open, its buttons otherwise.
+  const controls = (item: CatalogItem) => {
     const act = (action: CatalogAction, label: string) => (
       <button
         type="button"
@@ -324,17 +327,7 @@ export function CatalogScreen() {
         {label}
       </button>
     );
-    return (
-      <li key={item.id} className="row">
-        <p className="row__link">
-          <span className="row__name">{item.name}</span>
-          <span className="row__amount">
-            {t("catalog.price", { price: formatMoney(item.price, language), unit: item.unit })}
-          </span>
-        </p>
-        {item.learned ? <p className="row__warning">{t("catalog.learned")}</p> : null}
-        {item.mergedInto !== null ? <p className="row__meta">{t("catalog.merged")}</p> : null}
-        {!mayManage ? null : panel?.kind === "edit" && panel.id === item.id ? (
+    return panel?.kind === "edit" && panel.id === item.id ? (
           <ItemForm
             item={item}
             onSend={(input, key) => {
@@ -373,10 +366,22 @@ export function CatalogScreen() {
               </>
             ) : null}
           </p>
-        )}
-      </li>
-    );
+        );
   };
+
+  const row = (item: CatalogItem) => (
+    <li key={item.id} className="row">
+      <p className="row__link">
+        <span className="row__name">{item.name}</span>
+        <span className="row__amount">
+          {t("catalog.price", { price: formatMoney(item.price, language), unit: item.unit })}
+        </span>
+      </p>
+      {item.learned ? <p className="row__warning">{t("catalog.learned")}</p> : null}
+      {item.mergedInto !== null ? <p className="row__meta">{t("catalog.merged")}</p> : null}
+      {mayManage ? controls(item) : null}
+    </li>
+  );
 
   let body: ReactNode;
   if (state.status === "loading") {
@@ -398,7 +403,15 @@ export function CatalogScreen() {
   } else {
     body = (
       <>
-        <ul className="rows">{state.items.map(row)}</ul>
+        {desktop ? (
+          <desktop.CatalogTable
+            items={state.items}
+            controls={mayManage ? controls : null}
+            openId={panel?.kind === "edit" || panel?.kind === "merge" ? panel.id : null}
+          />
+        ) : (
+          <ul className="rows">{state.items.map(row)}</ul>
+        )}
         {state.nextCursor !== null ? (
           <LoadMore loading={state.loadingMore} error={state.moreError} onClick={loadMore} />
         ) : null}

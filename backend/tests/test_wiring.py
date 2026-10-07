@@ -1,11 +1,14 @@
 """Production wiring: what the deployed application exposes for a given configuration."""
 
 import asyncio
+import uuid
 
 import pytest
 from fastapi.routing import APIRoute
+from fastapi.testclient import TestClient
 
 from qarz.infrastructure.settings import Settings
+from qarz.interface import http
 from qarz.interface.asgi import build
 from qarz.interface.worker import run
 
@@ -42,6 +45,47 @@ def test_the_provider_keys_come_from_the_environment_and_are_empty_by_default(
         monkeypatch.setenv(f"QD_{name}", f"value-of-{name}")
     filled = Settings(_env_file=None)  # type: ignore[call-arg]
     assert [getattr(filled, name.lower()) for name in names] == [f"value-of-{name}" for name in names]
+
+
+def test_the_deployed_application_limits_the_rate_of_signed_in_callers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Built from settings that allow one request a minute, a user's second request is refused with 429."""
+    known = uuid.uuid4()
+
+    class Known:
+        def __init__(self, *_: object) -> None: ...
+
+        async def user_id(self, request: object) -> uuid.UUID:
+            return known
+
+    monkeypatch.setattr(http, "SessionAuthenticator", Known)
+    app = build(
+        Settings(
+            database_url=DB,
+            bot_token="123:test",
+            webhook_secret="a-long-enough-secret",
+            rate_user_per_minute=1,
+            rate_user_burst=1,
+        )
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        first = client.get("/api/v1/me")
+        second = client.get("/api/v1/me")
+    # The first goes on to the database, which is not there in this test; the second is refused before that.
+    assert first.status_code == 500
+    assert second.status_code == 429
+    assert 30 <= int(second.headers["Retry-After"]) <= 60
+
+
+@pytest.mark.parametrize("name", ["rate_user_per_minute", "rate_user_burst", "rate_shop_per_minute", "rate_shop_burst"])
+def test_a_rate_limit_of_zero_is_refused_at_start(name: str) -> None:
+    with pytest.raises(ValueError, match="positive"):
+        build(Settings(database_url=DB, bot_token="123:test", webhook_secret="a-long-enough-secret", **{name: 0}))
+
+
+def test_the_default_limits_are_the_documented_ones() -> None:
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert (settings.rate_user_per_minute, settings.rate_user_burst) == (120, 60)
+    assert (settings.rate_shop_per_minute, settings.rate_shop_burst) == (600, 200)
 
 
 def test_without_a_bot_token_no_api_is_served() -> None:

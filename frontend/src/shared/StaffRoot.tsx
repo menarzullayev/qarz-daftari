@@ -1,15 +1,27 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { I18nProvider, useI18n } from "../i18n/I18nProvider";
 import type { Language, MessageKey } from "../i18n/types";
 import { type Api, type ApiAuth, type ApiError, createApi, type Fetch, type ShopMembership, toApiError } from "./api";
 import { isCustomerPath, MY_PATH } from "./customer/paths";
+import { type ShopSwitch, useDesktop, type WorkspaceExtension } from "./layout";
 import { Link, navigate, useHashPath } from "./router";
 import { SignInRequiredScreen } from "./screens";
 import { Shell } from "./Shell";
 import { StaffRoutes } from "./StaffApp";
 import { Failure, Loading } from "./workspace/parts";
 import { modeOfRefusal, type ShopMode } from "./workspace/shopMode";
+
+/** What the web panel adds to the workspace; the Mini App passes none of it. */
+export type PanelParts = {
+  extension: WorkspaceExtension;
+  /** Called when the session is not, or is no longer, accepted: the panel shows its sign-in screen. */
+  onSignedOut: () => void;
+  /** The controls under the side navigation of a wide screen, around the shop switcher's state. */
+  side: (shops: ShopSwitch) => ReactNode;
+  /** The same controls for a narrow screen, next to the overview's buttons. */
+  footer: ReactNode;
+};
 
 type StaffRootProps = {
   entryKey: MessageKey;
@@ -26,6 +38,9 @@ type StaffRootProps = {
    * for the Telegram Mini App, off for the web panel, which is for staff only.
    */
   customerPage?: boolean;
+  /** The bot whose deep links the screens show; by default the build's `VITE_BOT_USERNAME`. */
+  botUsername?: string | null | undefined;
+  panel?: PanelParts | undefined;
 };
 
 type Phase =
@@ -86,15 +101,19 @@ function ShopChooser({
   );
 }
 
-function Root({
+/** `StaffRoot` without the language context, for a caller that provides one of its own (the web panel). */
+export function StaffWorkspace({
   entryKey,
   connect,
   fetch = browserFetch,
   now,
   customerPage = false,
+  botUsername,
+  panel,
 }: Omit<StaffRootProps, "initialLanguage">) {
   const { t } = useI18n();
   const path = useHashPath();
+  const desktop = useDesktop();
   const [phase, setPhase] = useState<Phase>({ kind: "connecting" });
   const [attempt, setAttempt] = useState(0);
   const [choosing, setChoosing] = useState(false);
@@ -108,6 +127,7 @@ function Root({
     const signedOut = () => {
       if (!cancelled) {
         setPhase({ kind: "signedOut" });
+        panel?.onSignedOut();
       }
     };
     setPhase({ kind: "connecting" });
@@ -152,7 +172,11 @@ function Root({
       if (cancelled) {
         return;
       }
-      setPhase(failure.status === 401 ? { kind: "signedOut" } : { kind: "failed", error: failure });
+      if (failure.status === 401) {
+        signedOut();
+      } else {
+        setPhase({ kind: "failed", error: failure });
+      }
     });
     return () => {
       cancelled = true;
@@ -170,6 +194,7 @@ function Root({
     return ready.shops.find((candidate) => candidate.shopId === ready.activeShop) ?? only ?? null;
   }, [ready]);
   const shopApi = useMemo(() => (ready && shop ? ready.api.shop(shop.shopId) : undefined), [ready, shop]);
+  const reloadSession = useCallback(() => setAttempt((count) => count + 1), []);
 
   if (phase.kind === "connecting") {
     return (
@@ -238,17 +263,31 @@ function Root({
     );
   }
 
+  // On a wide screen of the web panel the shop switcher and sign-out sit under the side navigation;
+  // on a narrow one they join the overview's buttons, where the Mini App has its switcher.
+  const side =
+    panel && desktop
+      ? panel.side({ shops: phase.shops, activeShopId: shop.shopId, pending: choice.pending, error: choice.error, choose })
+      : undefined;
+  const footer = panel && !desktop ? panel.footer : null;
+  const switchHere = phase.shops.length > 1 && side === undefined;
+
   return (
     <StaffRoutes
       entryKey={entryKey}
       session={{ shopName: shop.name, role: shop.role, membershipId: shop.membershipId }}
       api={shopApi}
       now={now}
+      botUsername={botUsername}
       shopMode={shopMode}
+      extension={panel?.extension}
+      side={side}
+      shops={phase.shops}
+      reloadSession={reloadSession}
       overviewFooter={
-        phase.shops.length > 1 || phase.isCustomer ? (
+        switchHere || phase.isCustomer || footer ? (
           <p className="actions">
-            {phase.shops.length > 1 ? (
+            {switchHere ? (
               <button type="button" className="button" onClick={() => setChoosing(true)}>
                 {t("shops.switch")}
               </button>
@@ -258,6 +297,7 @@ function Root({
                 {t("my.nav.accounts")}
               </Link>
             ) : null}
+            {footer}
           </p>
         ) : null
       }
@@ -273,7 +313,7 @@ function Root({
 export function StaffRoot({ initialLanguage, ...root }: StaffRootProps) {
   return (
     <I18nProvider initialLanguage={initialLanguage}>
-      <Root {...root} />
+      <StaffWorkspace {...root} />
     </I18nProvider>
   );
 }

@@ -10,6 +10,7 @@ from qarz.application.online_payment import PaymentKeys
 from qarz.infrastructure.db import Database
 from qarz.infrastructure.settings import Settings
 from qarz.interface.http import create_app
+from qarz.interface.rate_limit import Limit, RateLimits
 
 
 def build(settings: Settings | None = None) -> FastAPI:
@@ -28,5 +29,9 @@ def build(settings: Settings | None = None) -> FastAPI:
             click_service_id=settings.click_service_id,
             click_merchant_id=settings.click_merchant_id,
             click_key=settings.click_secret_key,
+        ),
+        rate_limits=RateLimits(
+            user=Limit(settings.rate_user_per_minute, settings.rate_user_burst),
+            shop=Limit(settings.rate_shop_per_minute, settings.rate_shop_burst),
         ),
     )

@@ -732,12 +732,15 @@ async function errorFrom(response: Response): Promise<ApiError> {
   }
 }
 
+/** The response readers, for modules that add calls of their own (see `call`). */
+export const reading = { record, text, textOrNull, whole, wholeOrNull, flag, list, page, items };
+
 // --- requests ----------------------------------------------------------------------------------------
 
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9_-]{8,128}$/;
 
-type Call<T> = {
-  method: "GET" | "POST" | "PUT" | "PATCH";
+export type Call<T> = {
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   query?: Readonly<Record<string, string | null | undefined>>;
   body?: unknown;
@@ -746,7 +749,7 @@ type Call<T> = {
   read: (value: unknown) => T;
 };
 
-type Transport = {
+export type Transport = {
   fetch: Fetch;
   auth: ApiAuth | null;
   onUnauthenticated?: (() => void) | undefined;
@@ -754,7 +757,11 @@ type Transport = {
   onRefusal?: ((error: ApiError) => void) | undefined;
 };
 
-async function call<T>(transport: Transport, request: Call<T>): Promise<T> {
+/**
+ * One request. Exported for the modules that add calls outside the first load (the web panel's sign-in
+ * and back office); they go through the same headers, errors and refusal hooks as every other call.
+ */
+export async function call<T>(transport: Transport, request: Call<T>): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (transport.auth?.kind === "bearer") {
     headers["Authorization"] = `Bearer ${transport.auth.token}`;
@@ -832,6 +839,14 @@ const segment = encodeURIComponent;
 function shopApi(transport: Transport, shopId: string) {
   const base = `/api/v1/shops/${segment(shopId)}`;
   return {
+    /** Path of the shop in the API, for calls added by a module that is loaded apart (see `send`). */
+    base,
+
+    /** Sends a request with this session: the same headers, CSRF token and refusal hooks as the rest. */
+    send<T>(request: Call<T>): Promise<T> {
+      return call(transport, request);
+    },
+
     listCustomers(
       params: { q?: string; status?: "active" | "archived"; cursor?: string | null; limit?: number },
       signal?: AbortSignal,
