@@ -93,7 +93,10 @@ def add_admin_routes(
     user_of: UserOf,
     language_of: LanguageOf,
     count: Callable[[UUID], None] | None = None,
-) -> None:
+) -> Callable[[Request], Awaitable[UUID]]:
+    """Adds the routes and returns the dependency that lets only a full administrator through, for
+    other modules that add routes to the administrator's side."""
+
     async def _signed_in(request: Request) -> UUID:
         user_id = await user_of(request)
         if user_id is None:
@@ -237,7 +240,12 @@ def add_admin_routes(
         user_id: admin,
         shop_id: UUID | None = None,
         action: str | None = None,
+        admin_id: UUID | None = None,
         cursor: str | None = None,
         limit: int = 50,
     ) -> dict[str, Any]:
-        return await service.list_audit(user_id, shop_id=shop_id, action=action, cursor=cursor, limit=limit)
+        return await service.list_audit(
+            user_id, shop_id=shop_id, action=action, by=admin_id, cursor=cursor, limit=limit
+        )
+
+    return admin_user

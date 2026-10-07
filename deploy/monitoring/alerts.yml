@@ -80,6 +80,19 @@ groups:
         labels: {severity: sight, channel: operator-telegram}
         annotations: {summary: "Repeated failed administrator second factor"}
 
+      - alert: SupportAccessOpened
+        # An administrator can read one shop's customers and entries until the access ends (REQ-059).
+        # Expected now and then; the operator should know each time, and the shop's owner is told too.
+        expr: increase(qd_security_events_total{kind="support_access_opened"}[10m]) > 0
+        labels: {severity: sight, channel: operator-telegram}
+        annotations: {summary: "An administrator opened a support access to a shop"}
+
+      - alert: AdminWithoutSupportAccess
+        # An administrator asked for a shop's customers without an open support access and was refused.
+        expr: increase(qd_security_events_total{kind="admin_without_support_access"}[10m]) > 0
+        labels: {severity: sight, channel: operator-telegram}
+        annotations: {summary: "An administrator asked for a shop's data without support access"}
+
   - name: qarz-up
     rules:
       - alert: MetricsMissing

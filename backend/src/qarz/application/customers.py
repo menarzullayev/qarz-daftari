@@ -124,6 +124,44 @@ def decode_cursor(cursor: str, count: int) -> list[str]:
     return parts
 
 
+async def list_customers_in(
+    session: TenantSession, *, query: str | None, status: str, cursor: str | None, limit: int
+) -> dict[str, Any]:
+    """One page of customers with their balances. The caller has already decided who may see them."""
+    fields: dict[str, str] = {}
+    if not 1 <= limit <= MAX_PAGE:
+        fields["limit"] = f"must be between 1 and {MAX_PAGE}"
+    if status not in ("active", "archived"):
+        fields["status"] = "must be active or archived"
+    if query is not None and len(query) > 80:
+        fields["q"] = "at most 80 characters"
+    if fields:
+        raise ValidationFailed(fields)
+    after: tuple[str, UUID] | None = None
+    if cursor:
+        name_norm, customer_id = decode_cursor(cursor, 2)
+        try:
+            after = (name_norm, UUID(customer_id))
+        except ValueError as error:
+            raise ValidationFailed({"cursor": "not a cursor returned by this API"}) from error
+
+    text = (query or "").strip()
+    digits = "".join(ch for ch in text if ch.isdigit())
+    rows = await session.search_customers(
+        name_part=normalize_name(text) if text else None,
+        # A search that looks like a phone number also matches by phone digits.
+        phone_digits=digits if len(digits) >= 4 and len(digits) >= len(text.replace(" ", "")) - 3 else None,
+        status=status,
+        after=after,
+        limit=limit + 1,
+    )
+    page, more = rows[:limit], len(rows) > limit
+    return {
+        "items": [customer_body(customer, balance) for customer, balance, _ in page],
+        "next_cursor": encode_cursor(page[-1][2], page[-1][0].customer_id) if more else None,
+    }
+
+
 class CustomerService:
     def __init__(self, storage: Storage, now: Callable[[], datetime] | None = None) -> None:
         self._storage = storage
@@ -159,38 +197,7 @@ class CustomerService:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, LIST_CUSTOMERS)
             await require_viewable(session, actor, self._today())
-            fields: dict[str, str] = {}
-            if not 1 <= limit <= MAX_PAGE:
-                fields["limit"] = f"must be between 1 and {MAX_PAGE}"
-            if status not in ("active", "archived"):
-                fields["status"] = "must be active or archived"
-            if query is not None and len(query) > 80:
-                fields["q"] = "at most 80 characters"
-            if fields:
-                raise ValidationFailed(fields)
-            after: tuple[str, UUID] | None = None
-            if cursor:
-                name_norm, customer_id = decode_cursor(cursor, 2)
-                try:
-                    after = (name_norm, UUID(customer_id))
-                except ValueError as error:
-                    raise ValidationFailed({"cursor": "not a cursor returned by this API"}) from error
-
-            text = (query or "").strip()
-            digits = "".join(ch for ch in text if ch.isdigit())
-            rows = await session.search_customers(
-                name_part=normalize_name(text) if text else None,
-                # A search that looks like a phone number also matches by phone digits.
-                phone_digits=digits if len(digits) >= 4 and len(digits) >= len(text.replace(" ", "")) - 3 else None,
-                status=status,
-                after=after,
-                limit=limit + 1,
-            )
-            page, more = rows[:limit], len(rows) > limit
-            return {
-                "items": [customer_body(customer, balance) for customer, balance, _ in page],
-                "next_cursor": encode_cursor(page[-1][2], page[-1][0].customer_id) if more else None,
-            }
+            return await list_customers_in(session, query=query, status=status, cursor=cursor, limit=limit)
 
     async def update(
         self,

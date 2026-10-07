@@ -28,6 +28,10 @@ FUNCTIONS = [
     "admin_shop_receipts(uuid, uuid)",
     "admin_lock_subscription(uuid, uuid)",
     "admin_store_subscription(uuid, uuid, text, date, date, text, timestamptz)",
+    "admin_open_shop(uuid, uuid, timestamptz)",
+    "admin_support_open(uuid, uuid, uuid, text, timestamptz, timestamptz)",
+    "admin_support_close(uuid, uuid, timestamptz)",
+    "admin_support_list(uuid, uuid, boolean, timestamptz, timestamptz, uuid, integer)",
 ]
 SEARCH = "SELECT * FROM admin_shop_search(%s, %s, %s, %s, %s, %s, %s, %s)"
 SEARCH_COLUMNS = [

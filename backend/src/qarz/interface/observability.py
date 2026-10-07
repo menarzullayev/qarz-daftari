@@ -54,6 +54,10 @@ SECURITY_BAD_WEBHOOK_SECRET = "bad_webhook_secret"  # noqa: S105  (the name of a
 # An administrator's second-factor code was refused, or the factor is locked. A route reports it itself
 # (`request.state.security_event`): the status alone does not tell it from a rate limit.
 SECURITY_BAD_SECOND_FACTOR = "bad_second_factor"
+# An administrator opened a support access: from now until it ends they can read one shop's data.
+SECURITY_SUPPORT_ACCESS_OPENED = "support_access_opened"
+# An administrator asked for a shop's data without an open support access, and was refused.
+SECURITY_SUPPORT_ACCESS_REQUIRED = "admin_without_support_access"
 
 _INTERNAL_ERROR = "Xatolik yuz berdi."
 
