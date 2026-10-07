@@ -38,7 +38,8 @@ const CHOICE_LABELS = {
   picked: "promise.pick",
 } as const;
 
-function amountMessage(problem: AmountProblem, t: Translate): string {
+/** Why a typed amount is not one, in words; shared by every form that takes an amount. */
+export function amountMessage(problem: AmountProblem, t: Translate): string {
   switch (problem) {
     case "empty":
       return t("entry.amount.required");

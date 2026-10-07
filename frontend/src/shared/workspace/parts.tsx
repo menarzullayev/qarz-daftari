@@ -10,8 +10,19 @@ import { formatDateTime, formatMoney } from "../format";
  * the catalog only speaks when the server could not (no connection, or an answer that is not the API's).
  */
 export function errorText(error: ApiError, t: Translate): string {
+  // The server words this one in Uzbek only, whatever the reader's language: the catalog speaks instead.
+  if (error.code === "BODY_TOO_LARGE") {
+    return t("error.bodyTooLarge");
+  }
+  if (error.code === "RATE_LIMITED") {
+    const said = error.serverMessage ?? t("error.rateLimited");
+    return error.retryAfter === null ? said : `${said} ${t("error.wait", { count: error.retryAfter })}`;
+  }
   if (error.serverMessage) {
     return error.serverMessage;
+  }
+  if (error.code === "TIMEOUT") {
+    return t("error.timeout");
   }
   return error.code === NETWORK_ERROR ? t("error.network") : t("state.error");
 }

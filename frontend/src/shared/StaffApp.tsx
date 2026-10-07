@@ -63,6 +63,7 @@ const systemClock = () => new Date();
 
 // Opened by managers and owners now and then, never on the way to recording a sale: loaded on demand,
 // so the first load of the Mini App does not carry them (NFR-010).
+const PaymentNoticesScreen = lazy(() => import("./workspace/PaymentNoticesScreen"));
 const DateRequestsScreen = lazy(() => import("./workspace/DateRequestsScreen"));
 const ReportsScreen = lazy(() => import("./reports/ReportsScreen"));
 
@@ -112,6 +113,12 @@ function workspaceScreen(
       return <CounterCodeScreen />;
     case "disputes":
       return <DisputesScreen />;
+    case "paymentNotices":
+      return (
+        <Suspense fallback={<Loading />}>
+          <PaymentNoticesScreen />
+        </Suspense>
+      );
     case "dateRequests":
       return (
         <Suspense fallback={<Loading />}>

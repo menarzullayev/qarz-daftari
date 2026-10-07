@@ -7,12 +7,18 @@ export type Sent = {
   query: Record<string, string>;
   headers: Record<string, string>;
   body: unknown;
+  /** The fields of a multipart form, when the request carried one instead of JSON. */
+  form?: Record<string, FormDataEntryValue>;
 };
 
 /** What the fake server answers: a status with a JSON body, or "offline" for a request that never arrives. */
-export type Reply = { status: number; body: unknown } | "offline" | Promise<{ status: number; body: unknown } | "offline">;
+export type Reply =
+  | { status: number; body: unknown; headers?: Record<string, string> }
+  | "offline"
+  | Promise<{ status: number; body: unknown; headers?: Record<string, string> } | "offline">;
 
 export const ok = (body: unknown, status = 200) => ({ status, body });
+type Answer = { status: number; body: unknown; headers?: Record<string, string> };
 
 /** The API's one error shape (interface/errors.py). */
 export const refusal = (status: number, code: string, message: string, fields: Record<string, string> = {}) => ({
@@ -32,6 +38,9 @@ export function fakeServer(handler: (sent: Sent, index: number) => Reply) {
       headers: { ...(init.headers as Record<string, string>) },
       body: typeof init.body === "string" ? (JSON.parse(init.body) as unknown) : undefined,
     };
+    if (init.body instanceof FormData) {
+      request.form = Object.fromEntries(init.body.entries());
+    }
     sent.push(request);
     const reply = await handler(request, sent.length - 1);
     if (init.signal?.aborted) {
@@ -42,7 +51,7 @@ export function fakeServer(handler: (sent: Sent, index: number) => Reply) {
     }
     return new Response(JSON.stringify(reply.body), {
       status: reply.status,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(reply as Answer).headers },
     });
   };
   const writes = () => sent.filter((request) => request.method !== "GET");
@@ -342,6 +351,37 @@ export function overdueReportBody(overrides: Record<string, unknown> = {}) {
       { band: "31_90", from_days: 31, to_days: 90, amount: 0, customers: 0 },
       { band: "over_90", from_days: 91, to_days: null, amount: 35000, customers: 1 },
     ],
+    ...overrides,
+  };
+}
+
+export const NOTICE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+/** A payment notice of 50 000 UZS, sent on 6 October 2026 and still waiting (notice_view.notice_body). */
+export function noticeBody(overrides: Record<string, unknown> = {}) {
+  return {
+    id: NOTICE_ID,
+    status: "sent",
+    amount: 50000,
+    recorded_amount: null,
+    payment_entry_id: null,
+    has_receipt: false,
+    decline_reason: null,
+    created_at: "2026-10-06T05:10:00+00:00",
+    closed_at: null,
+    expires_at: "2026-10-20T05:10:00+00:00",
+    ...overrides,
+  };
+}
+
+/** One row of GET /shops/{id}/payment-notices: the notice with its customer and what they owe. */
+export function openNoticeBody(overrides: Record<string, unknown> = {}) {
+  return {
+    ...noticeBody({ has_receipt: true }),
+    receipt_seen_before: false,
+    customer_id: CUSTOMER_ID,
+    customer_name: "Ali Valiyev",
+    customer_balance: 120000,
     ...overrides,
   };
 }

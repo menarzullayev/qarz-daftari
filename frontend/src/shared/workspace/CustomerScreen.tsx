@@ -370,6 +370,12 @@ function Detail({
         </section>
       ) : null}
 
+      {customer.paymentNotices.length > 0 ? (
+        <p className="notice">
+          <span>{t("notices.card.open", { count: customer.paymentNotices.length })}</span>{" "}
+          <Link to="/payment-notices">{t("notices.title")}</Link>
+        </p>
+      ) : null}
       <PaymentHistoryNote history={customer.paymentHistory} />
       <CreditLimitSection customer={customer} onSaved={reload} />
       <LinkSection customerId={customer.id} archived={archived} />

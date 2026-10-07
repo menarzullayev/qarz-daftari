@@ -26,14 +26,23 @@ export class ApiError extends Error {
   /** Text from the server, already in the user's language; null when the server said nothing usable. */
   readonly serverMessage: string | null;
   readonly fields: Readonly<Record<string, string>>;
+  /** Whole seconds to wait before trying again, when the server said (`Retry-After`); otherwise null. */
+  readonly retryAfter: number | null;
 
-  constructor(status: number, code: string, serverMessage: string | null, fields: Readonly<Record<string, string>> = {}) {
+  constructor(
+    status: number,
+    code: string,
+    serverMessage: string | null,
+    fields: Readonly<Record<string, string>> = {},
+    retryAfter: number | null = null,
+  ) {
     super(code);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.serverMessage = serverMessage;
     this.fields = fields;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -152,7 +161,40 @@ export type CustomerDetail = Customer & {
   paymentHistory: PaymentHistory | null;
   entries: Entry[];
   entriesTotal: number;
+  /** The customer's payment notices that wait for the shop's decision, oldest first. */
+  paymentNotices: PaymentNotice[];
 };
+
+/**
+ * A customer's word that they paid an amount (REQ-060). It changes nothing by itself: staff accept it,
+ * which records a payment, or decline it. `status`: sent, accepted, declined, or expired (nobody
+ * decided within fourteen days).
+ */
+export type PaymentNotice = {
+  id: string;
+  status: string;
+  /** Whole UZS the customer stated. */
+  amount: number;
+  /** Whole UZS recorded when it was accepted; it may differ from what was stated. Null until then. */
+  recordedAmount: number | null;
+  hasReceipt: boolean;
+  declineReason: string | null;
+  createdAt: string;
+  closedAt: string | null;
+  expiresAt: string;
+  /** For staff only: the same receipt file was sent to this shop before. */
+  receiptSeenBefore: boolean;
+};
+
+/** An open notice as staff see it in the shop's list. */
+export type OpenPaymentNotice = PaymentNotice & { customerId: string; customerName: string; customerBalance: number };
+
+/** Where a receipt can be opened for a few minutes. The address is a credential: it is never stored. */
+export type ReceiptLink = { url: string; expiresAt: string };
+
+/** What a receipt may be (backend/src/qarz/domain/files.py). */
+export const RECEIPT_MAX_BYTES = 5 * 1024 * 1024;
+export const RECEIPT_TYPES: readonly string[] = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 
 export type Overview = {
   outstanding: number;
@@ -312,6 +354,8 @@ export type AccountDetail = MyAccount & {
   removalRequested: boolean;
   entries: AccountEntry[];
   entriesTotal: number;
+  /** The customer's own recent payment notices with their outcome, newest first. */
+  paymentNotices: PaymentNotice[];
 };
 
 /** `removed`: the data is gone now. Otherwise it waits until `waitingForBalance` UZS are paid. */
@@ -516,7 +560,44 @@ function customerDetail(value: unknown): CustomerDetail {
     paymentHistory: paymentHistory(body["payment_history"]),
     entries: list(body["entries"], entry),
     entriesTotal: whole(body["entries_total"]),
+    paymentNotices: paymentNotices(body["payment_notices"]),
   };
+}
+
+function paymentNotice(value: unknown): PaymentNotice {
+  const body = record(value);
+  return {
+    id: text(body["id"]),
+    status: text(body["status"]),
+    amount: whole(body["amount"]),
+    recordedAmount: wholeOrNull(body["recorded_amount"]),
+    hasReceipt: flag(body["has_receipt"]),
+    declineReason: textOrNull(body["decline_reason"]),
+    createdAt: text(body["created_at"]),
+    closedAt: textOrNull(body["closed_at"]),
+    expiresAt: text(body["expires_at"]),
+    receiptSeenBefore: body["receipt_seen_before"] === true,
+  };
+}
+
+/** A server that does not send notices yet answers without the field: that is an account with none. */
+function paymentNotices(value: unknown): PaymentNotice[] {
+  return value === undefined || value === null ? [] : list(value, paymentNotice);
+}
+
+function openPaymentNotice(value: unknown): OpenPaymentNotice {
+  const body = record(value);
+  return {
+    ...paymentNotice(body),
+    customerId: text(body["customer_id"]),
+    customerName: text(body["customer_name"]),
+    customerBalance: whole(body["customer_balance"]),
+  };
+}
+
+function receiptLink(value: unknown): ReceiptLink {
+  const body = record(value);
+  return { url: text(body["url"]), expiresAt: text(body["expires_at"]) };
 }
 
 function page<T>(item: (element: unknown) => T): (value: unknown) => Page<T> {
@@ -800,6 +881,7 @@ function accountDetail(value: unknown): AccountDetail {
     removalRequested: flag(body["removal_requested"]),
     entries: list(body["entries"], accountEntry),
     entriesTotal: whole(body["entries_total"]),
+    paymentNotices: paymentNotices(body["payment_notices"]),
   };
 }
 
@@ -821,17 +903,28 @@ function reasonBody(reason: string): string {
   return clean;
 }
 
+/** What a status means when the answer carries no code of its own (a proxy's page in front of the API). */
+const STATUS_CODES: Readonly<Record<number, string>> = { 413: "BODY_TOO_LARGE", 429: "RATE_LIMITED" };
+
+/** `Retry-After` as whole seconds; null when it is absent or is not a number of seconds. */
+function retryAfter(response: Response): number | null {
+  const raw = response.headers.get("Retry-After")?.trim() ?? "";
+  return /^\d{1,6}$/.test(raw) ? Number(raw) : null;
+}
+
 async function errorFrom(response: Response): Promise<ApiError> {
+  const wait = retryAfter(response);
   try {
     const failure = record(record(await response.json())["error"]);
     const fields: Record<string, string> = {};
     for (const [name, message] of Object.entries(record(failure["fields"] ?? {}))) {
       fields[name] = String(message);
     }
-    return new ApiError(response.status, text(failure["code"]), textOrNull(failure["message"]), fields);
+    return new ApiError(response.status, text(failure["code"]), textOrNull(failure["message"]), fields, wait);
   } catch {
-    // A proxy's HTML error page, for example: there is no message worth showing.
-    return new ApiError(response.status, "ERROR", null);
+    // A proxy's HTML error page, for example: there is no message worth showing. The status still says
+    // what happened when it is one of the three a person can act on.
+    return new ApiError(response.status, STATUS_CODES[response.status] ?? "ERROR", null, {}, wait);
   }
 }
 
@@ -847,6 +940,8 @@ export type Call<T> = {
   path: string;
   query?: Readonly<Record<string, string | null | undefined>>;
   body?: unknown;
+  /** A multipart form in place of a JSON body: the browser writes its content type and boundary. */
+  form?: FormData;
   idempotencyKey?: string;
   signal?: AbortSignal | undefined;
   read: (value: unknown) => T;
@@ -882,7 +977,9 @@ export async function call<T>(transport: Transport, request: Call<T>): Promise<T
     headers,
     credentials: transport.auth?.kind === "cookie" ? "same-origin" : "omit",
   };
-  if (request.body !== undefined) {
+  if (request.form !== undefined) {
+    init.body = request.form;
+  } else if (request.body !== undefined) {
     headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(request.body);
   }
@@ -1093,6 +1190,52 @@ function shopApi(transport: Transport, shopId: string) {
         body,
         idempotencyKey,
         read: changedPromise,
+      });
+    },
+
+    /** Payment notices that wait for a decision. Every member of staff may list and decide them (REQ-061). */
+    listPaymentNotices(signal?: AbortSignal): Promise<OpenPaymentNotice[]> {
+      return call(transport, { method: "GET", path: `${base}/payment-notices`, signal, read: items(openPaymentNotice) });
+    },
+
+    /**
+     * Accepts a notice, which records a payment. `amount` corrects what the customer stated; null
+     * records the stated amount.
+     */
+    acceptPaymentNotice(noticeId: string, amount: number | null, idempotencyKey: string): Promise<void> {
+      if (amount !== null && !Number.isSafeInteger(amount)) {
+        throw new RangeError("amount must be a whole number of UZS");
+      }
+      return call(transport, {
+        method: "POST",
+        path: `${base}/payment-notices/${segment(noticeId)}/accept`,
+        body: amount === null ? {} : { amount },
+        idempotencyKey,
+        read: () => undefined,
+      });
+    },
+
+    /** Declines a notice; the reason is sent to the customer. */
+    declinePaymentNotice(noticeId: string, reason: string, idempotencyKey: string): Promise<void> {
+      return call(transport, {
+        method: "POST",
+        path: `${base}/payment-notices/${segment(noticeId)}/decline`,
+        body: { reason: reasonBody(reason) },
+        idempotencyKey,
+        read: () => undefined,
+      });
+    },
+
+    /**
+     * Asks, with the session, for a link to a notice's receipt. The link works for five minutes without
+     * the session, in a new tab; when it has run out it answers 404 and a new one is asked for here.
+     */
+    receiptLink(noticeId: string, signal?: AbortSignal): Promise<ReceiptLink> {
+      return call(transport, {
+        method: "GET",
+        path: `${base}/payment-notices/${segment(noticeId)}/receipt`,
+        signal,
+        read: receiptLink,
       });
     },
 
@@ -1407,6 +1550,24 @@ function accountApi(transport: Transport, linkId: string) {
         body: { entry_id: entryId, reason: reasonBody(reason) },
         read: dispute,
       });
+    },
+    /**
+     * Tells the shop an amount was paid (REQ-060), with a receipt when there is one: then the request is
+     * a multipart form with the fields `amount` and `receipt`, otherwise JSON. The key makes a repeat
+     * return the first notice instead of sending a second.
+     */
+    sendPaymentNotice(amount: number, receipt: Blob | null, idempotencyKey: string): Promise<PaymentNotice> {
+      if (!Number.isSafeInteger(amount)) {
+        throw new RangeError("amount must be a whole number of UZS");
+      }
+      const path = `${base}/payment-notices`;
+      if (receipt === null) {
+        return call(transport, { method: "POST", path, body: { amount }, idempotencyKey, read: paymentNotice });
+      }
+      const form = new FormData();
+      form.set("amount", String(amount));
+      form.set("receipt", receipt);
+      return call(transport, { method: "POST", path, form, idempotencyKey, read: paymentNotice });
     },
     /** Asks the shop to move the promised date of one entry to a later day (REQ-066). */
     openDateRequest(entryId: string, requestedDate: string, reason: string | null): Promise<DateRequest> {

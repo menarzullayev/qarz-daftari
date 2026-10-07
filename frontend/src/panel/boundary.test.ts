@@ -26,8 +26,12 @@ function sources(folder: string): { name: string; text: string }[] {
     .map((name) => ({ name: `${folder}/${name}`, text: readFileSync(resolve(SRC, folder, name), "utf8") }));
 }
 
-/** Everything the Mini App's entry can reach: its own folder, the shared code, and the main catalog. */
-const OUTSIDE_PANEL = [...sources("app"), ...sources("shared"), ...sources("admin"), ...sources("testing")].concat(
+/**
+ * Everything the Mini App's entry can reach: its own folder, the shared code, and the main catalog. The
+ * administrator's entry is not among them: it is the other browser client, signs in the same way and
+ * draws the same tables, and takes both from here (its own borders are in admin/boundary.test.ts).
+ */
+const OUTSIDE_PANEL = [...sources("app"), ...sources("shared"), ...sources("testing")].concat(
   sources("i18n").filter((file) => !file.name.startsWith("i18n/panel/")),
 );
 
@@ -76,7 +80,7 @@ describe("the panel's code stays in the panel's entry", () => {
   });
 
   it("names Telegram's sign-in script in the widget alone", () => {
-    const mentions = [...OUTSIDE_PANEL, ...sources("panel")]
+    const mentions = [...OUTSIDE_PANEL, ...sources("panel"), ...sources("admin")]
       .filter((file) => file.text.includes("telegram-widget"))
       .map((file) => file.name);
     expect(mentions).toEqual(["panel/TelegramLogin.tsx"]);
