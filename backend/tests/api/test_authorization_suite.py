@@ -984,12 +984,16 @@ def _waiting_receipt(owner: psycopg.Connection, world: World) -> None:
     file_id = uuid.uuid5(uuid.NAMESPACE_URL, f"suite-subscription-file:{world.entry_a}")
     owner.execute(
         "INSERT INTO stored_file (id, shop_id, purpose, object_key, sha256, size_bytes, mime, delete_after) "
-        "VALUES (%s, %s, 'subscription_receipt', %s, %s, 20, 'application/pdf', now() + interval '3 years')",
+        "VALUES (%s, %s, 'subscription_receipt', %s, %s, 20, 'application/pdf', now() + interval '3 years') "
+        "ON CONFLICT (id) DO NOTHING",
         (file_id, world.shop_a, f"{file_id.hex[:2]}/{file_id.hex * 2}", hashlib.sha256(file_id.bytes).digest()),
     )
     owner.execute(
         "INSERT INTO subscription_receipt (id, shop_id, file_id, stated_amount, stated_months) "
-        "VALUES (%s, %s, %s, 100000, 1)",
+        "VALUES (%s, %s, %s, 100000, 1) "
+        # Waiting again when a test runs several decisions on the same world.
+        "ON CONFLICT (id) DO UPDATE SET status = 'submitted', months = NULL, reject_reason = NULL, "
+        "decided_by = NULL, decided_at = NULL",
         (_receipt_id(world), world.shop_a, file_id),
     )
 
