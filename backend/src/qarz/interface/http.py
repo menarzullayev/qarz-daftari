@@ -34,6 +34,7 @@ from qarz.application.subscription import SubscriptionService
 from qarz.application.telegram_updates import UpdateProcessor
 from qarz.interface.account_api import add_account_routes
 from qarz.interface.auth_api import SessionAuthenticator, add_auth_routes
+from qarz.interface.body_limit import BodyLimit
 from qarz.interface.catalog_api import add_catalog_routes
 from qarz.interface.credit_api import add_credit_routes
 from qarz.interface.customers_api import add_customer_routes
@@ -104,6 +105,8 @@ def create_app(
             return {"status": "down"}
         return {"status": "ok"}
 
+    # An oversized body is refused before any route, handler or sign-in sees it.
+    app.add_middleware(BodyLimit)
     app.add_exception_handler(AppError, app_error_handler)
 
     @app.exception_handler(RequestValidationError)

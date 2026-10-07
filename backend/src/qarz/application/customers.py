@@ -11,7 +11,7 @@ from qarz.application import idempotency
 from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import operation
 from qarz.application.ports import CustomerRecord, Membership, Storage, TenantSession
-from qarz.application.shops import require_member
+from qarz.application.shops import ShopSuspended, require_member
 from qarz.domain.access import Capability, Role
 from qarz.domain.credit import MAX_LIMIT, MIN_LIMIT, valid_limit
 from qarz.domain.names import normalize_name
@@ -33,10 +33,6 @@ class SubscriptionLimited(AppError):
     """The trial or paid period has ended: new credit sales are refused, everything else still works."""
 
     code = "SUBSCRIPTION_LIMITED"
-
-
-class ShopSuspended(AppError):
-    code = "SHOP_SUSPENDED"
 
 
 class CustomerArchived(AppError):

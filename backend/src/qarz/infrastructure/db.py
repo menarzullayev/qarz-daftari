@@ -269,8 +269,13 @@ class PgTenantSession:
     async def active_membership(self, user_id: UUID) -> Membership | None:
         row = (
             await self._conn.execute(
-                text("SELECT id, role FROM membership WHERE user_id = :user_id AND status = 'active'"),
-                {"user_id": user_id},
+                # The shop is named here as well as by row-level security, so that a connection made
+                # with a role that bypasses it still finds nobody a member of a shop they are not in.
+                text(
+                    "SELECT id, role FROM membership "
+                    "WHERE user_id = :user_id AND shop_id = :shop_id AND status = 'active'"
+                ),
+                {"user_id": user_id, "shop_id": self._shop_id},
             )
         ).first()
         return None if row is None else Membership(row.id, Role(row.role))
@@ -2053,7 +2058,12 @@ class Database:
 
     def __init__(self, url: str, *, pool_size: int = 5, max_overflow: int = 5) -> None:
         self._engine: AsyncEngine = create_async_engine(
-            _async_url(url), pool_pre_ping=True, pool_size=pool_size, max_overflow=max_overflow
+            _async_url(url),
+            pool_pre_ping=True,
+            pool_size=pool_size,
+            max_overflow=max_overflow,
+            # Errors are logged with their text; without this it would hold names and phone numbers.
+            hide_parameters=True,
         )
 
     @asynccontextmanager
