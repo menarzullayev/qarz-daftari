@@ -257,3 +257,91 @@ export function openDisputeBody(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+/** One promised date in an entry's history (ledger_service.promise_body). */
+export function promiseBody(overrides: Record<string, unknown> = {}) {
+  return { promised_date: "2026-11-05", actor: "default", reason: null, created_at: "2026-10-05T19:30:00+00:00", ...overrides };
+}
+
+export const DATE_REQUEST_ID = "99999999-9999-4999-8999-999999999999";
+
+/** A customer's request to move the date of `entryBody()` from 5 to 20 November, still open. */
+export function dateRequestBody(overrides: Record<string, unknown> = {}) {
+  return {
+    id: DATE_REQUEST_ID,
+    entry_id: "22222222-2222-4222-8222-222222222222",
+    status: "open",
+    requested_date: "2026-11-20",
+    reason: "Oylik kechikdi",
+    decline_reason: null,
+    created_at: "2026-10-06T05:10:00+00:00",
+    closed_at: null,
+    ...overrides,
+  };
+}
+
+/** One row of GET /shops/{id}/date-requests. */
+export function openDateRequestBody(overrides: Record<string, unknown> = {}) {
+  return {
+    ...dateRequestBody(),
+    customer_id: CUSTOMER_ID,
+    customer_name: "Ali Valiyev",
+    amount: 45000,
+    promised_date: "2026-11-05",
+    ...overrides,
+  };
+}
+
+/** GET /shops/{id}/reports/period for 1 to 6 October 2026: 500 000 + 300 000 + 50 000 − 250 000 = 600 000. */
+export function periodReportBody(overrides: Record<string, unknown> = {}) {
+  return {
+    from: "2026-10-01",
+    to: "2026-10-06",
+    outstanding: { start: 500000, end: 600000 },
+    credit: { amount: 300000, count: 4, customers: 3 },
+    payments: { amount: 250000, count: 2, customers: 2 },
+    opening: { amount: 50000, count: 1 },
+    net_change: 100000,
+    reversals: { amount: 20000, count: 1 },
+    new_customers: 2,
+    disputes_opened: 1,
+    on_time: { due_amount: 200000, on_time_amount: 150000, percent: 75 },
+    days: [
+      { date: "2026-10-01", credit: 100000, payments: 0 },
+      { date: "2026-10-02", credit: 0, payments: 0 },
+      { date: "2026-10-03", credit: 0, payments: 250000 },
+      { date: "2026-10-04", credit: 0, payments: 0 },
+      { date: "2026-10-05", credit: 0, payments: 0 },
+      { date: "2026-10-06", credit: 200000, payments: 0 },
+    ],
+    top_debtors: [
+      { customer_id: CUSTOMER_ID, display_name: "Ali Valiyev", balance: 400000 },
+      { customer_id: "11111111-1111-4111-8111-111111111112", display_name: "Vali Aliyev", balance: 200000 },
+    ],
+    staff: [
+      { membership_id: MEMBERSHIP_ID, role: "owner", credit: { amount: 100000, count: 1 }, payments: { amount: 250000, count: 2 } },
+      {
+        membership_id: "33333333-3333-4333-8333-3333333d4e5f",
+        role: "seller",
+        credit: { amount: 200000, count: 3 },
+        payments: { amount: 0, count: 0 },
+      },
+    ],
+    ...overrides,
+  };
+}
+
+/** GET /shops/{id}/reports/overdue as of 6 October 2026. */
+export function overdueReportBody(overrides: Record<string, unknown> = {}) {
+  return {
+    as_of: "2026-10-06",
+    total: { amount: 180000, customers: 3 },
+    bands: [
+      { band: "1_7", from_days: 1, to_days: 7, amount: 45000, customers: 1 },
+      { band: "8_30", from_days: 8, to_days: 30, amount: 100000, customers: 2 },
+      { band: "31_90", from_days: 31, to_days: 90, amount: 0, customers: 0 },
+      { band: "over_90", from_days: 91, to_days: null, amount: 35000, customers: 1 },
+    ],
+    ...overrides,
+  };
+}

@@ -244,6 +244,8 @@ describe("which entries are offered goods", () => {
     disputed: false,
     authorId: null,
     lines: [],
+    promises: [],
+    dateRequest: null,
     ...overrides,
   });
   const NOON = new Date("2026-10-06T07:00:00Z");

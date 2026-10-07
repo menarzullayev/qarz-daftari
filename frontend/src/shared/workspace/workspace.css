@@ -613,3 +613,18 @@ textarea.input--text {
     font-size: 1.5rem;
   }
 }
+
+/* Every promised date an entry has carried, oldest first. */
+.history {
+  margin: 0.25rem 0;
+}
+
+.history__list {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.875rem;
+}
+
+.history__list li > span {
+  display: block;
+}

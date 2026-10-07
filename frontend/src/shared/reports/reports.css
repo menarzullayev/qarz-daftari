@@ -1,0 +1,47 @@
+/*
+ * The reports screen. Phone first: the period's two dates under each other, lists as rows. Only the
+ * color variables of shell.css are used. The tables of a wide screen are the web panel's own.
+ */
+
+.period {
+  margin: 0 0 1rem;
+}
+
+.period__fields {
+  display: grid;
+  gap: 0.5rem;
+  align-items: end;
+  margin-top: 0.75rem;
+}
+
+.period__fields .field {
+  margin: 0;
+}
+
+.shell__main h3 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.equation {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--qd-border);
+  border-radius: 0.5rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.row--total .row__name,
+.row--total .row__amount {
+  font-weight: 700;
+}
+
+@media (min-width: 720px) {
+  .period__fields {
+    grid-template-columns: minmax(10rem, 14rem) minmax(10rem, 14rem) auto;
+    justify-content: start;
+  }
+}

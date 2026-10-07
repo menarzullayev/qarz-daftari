@@ -1,4 +1,5 @@
 import type { uzPanel } from "./panel/uz";
+import type { uzReports } from "./reports/uz";
 import type { uz } from "./uz";
 
 /** Uzbek nouns do not change after a number, so one form is enough. */
@@ -15,8 +16,11 @@ export type CoreMessageKey = keyof typeof uz;
 /** Keys of the web panel's own catalog, loaded by the panel entry only (see `addMessages`). */
 export type PanelMessageKey = keyof typeof uzPanel;
 
+/** Keys of the reports' own catalog, added when the reports screen is first opened (see `addMessages`). */
+export type ReportsMessageKey = keyof typeof uzReports;
+
 /** The Uzbek catalogs define the key set; every other catalog must match it exactly (ADR-021, NFR-007). */
-export type MessageKey = CoreMessageKey | PanelMessageKey;
+export type MessageKey = CoreMessageKey | PanelMessageKey | ReportsMessageKey;
 
 /** Shape the Russian catalog must have: the same keys, and a plural entry wherever Uzbek has one. */
 export type RuCatalog = {
@@ -26,6 +30,11 @@ export type RuCatalog = {
 /** The same rule for the web panel's catalog. */
 export type RuPanelCatalog = {
   [K in PanelMessageKey]: (typeof uzPanel)[K] extends string ? string : RuPlural;
+};
+
+/** And for the reports' catalog. */
+export type RuReportsCatalog = {
+  [K in ReportsMessageKey]: (typeof uzReports)[K] extends string ? string : RuPlural;
 };
 
 export const LANGUAGES = ["uz", "ru"] as const;

@@ -185,10 +185,12 @@ describe("there is no confirming of an entry (BR-10)", () => {
       }),
     );
 
-  it.each(["uz", "ru"] as Language[])("offers nothing on an entry but disputing it and taking the dispute back (%s)", async (language) => {
+  it.each(["uz", "ru"] as Language[])("offers nothing on an entry but disputing it, taking the dispute back, and asking for a later date (%s)", async (language) => {
     await open(backend(EVERYTHING), language);
     const allowed =
-      language === "uz" ? ["E'tiroz bildirish", "E'tirozni qaytarib olish"] : ["Возразить", "Отозвать возражение"];
+      language === "uz"
+        ? ["E'tiroz bildirish", "E'tirozni qaytarib olish", "Muddatni kechroq so'rash"]
+        : ["Возразить", "Отозвать возражение", "Попросить срок попозже"];
     const offered = entryRows().flatMap((row) =>
       [...within(row).queryAllByRole("button"), ...within(row).queryAllByRole("link"), ...within(row).queryAllByRole("checkbox")].map(
         (control) => control.textContent ?? "",
@@ -223,6 +225,8 @@ describe("which entries are offered a dispute", () => {
     disputed: false,
     dispute: null,
     lines: [],
+    promises: [],
+    dateRequest: null,
     ...overrides,
   });
   const closed = { id: DISPUTE_ID, reason: "x", declineReason: null };
