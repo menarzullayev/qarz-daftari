@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     # files, and the key that encrypts the administrators' second-factor secrets. Empty: no link is given,
     # no file is served, and the administrator's API is not served.
     secrets_key: str = Field(default="", repr=False)
+    # The server secret that was in use before the current one, set only while a rotation is under way
+    # (runbook 4). File links signed with it are honoured until they expire, and second-factor secrets
+    # still encrypted with it can be read; nothing new is signed or encrypted with it. Empty otherwise.
+    secrets_key_previous: str = Field(default="", repr=False)
     # Bearer token the monitoring system sends to read /metrics. Empty: the endpoint is not served.
     metrics_token: str = ""
     # Online payment of the subscription. Empty until provider contracts exist; even when set, the

@@ -166,6 +166,16 @@ UZ = {
         "Endi faqat do'kon egasi ma'lumotlarni ko'ra oladi va eksport qila oladi."
     ),
     "shop_unsuspended": "«{shop}» do'koni yana ishlamoqda: to'xtatish bekor qilindi. Izoh: {reason}",
+    # To an account that may be in someone else's hands: the bare fact and nothing else.
+    "owner_reassigned_old": "«{shop}» do'konining egaligi xizmat ma'muriyati tomonidan o'zgartirildi.",
+    "owner_reassigned_new": (
+        "Xizmat ma'muriyati qaroriga ko'ra endi siz «{shop}» do'konining egasisiz. Do'kon panelda ochiladi."
+    ),
+    "owner_reassigned_new_deletion": (
+        "Xizmat ma'muriyati qaroriga ko'ra endi siz «{shop}» do'konining egasisiz. Do'kon panelda ochiladi.\n"
+        "Diqqat: do'kon o'chirishni kutmoqda, {due} kuni butunlay o'chiriladi. "
+        "Buni panelda bekor qilishingiz mumkin."
+    ),
     "support_opened": (
         "«{shop}»: xizmat ma'muri yordam berish uchun do'kon ma'lumotlarini ko'rish ruxsatini ochdi. "
         "Sabab: {reason}\n"
@@ -486,6 +496,15 @@ RU = {
         "Теперь только владелец может просматривать и выгружать данные."
     ),
     "shop_unsuspended": "Магазин «{shop}» снова работает: приостановка снята. Комментарий: {reason}",
+    "owner_reassigned_old": "Владелец магазина «{shop}» изменён администрацией сервиса.",
+    "owner_reassigned_new": (
+        "По решению администрации сервиса вы теперь владелец магазина «{shop}». Магазин открывается в панели."
+    ),
+    "owner_reassigned_new_deletion": (
+        "По решению администрации сервиса вы теперь владелец магазина «{shop}». Магазин открывается в панели.\n"
+        "Внимание: магазин ожидает удаления и будет удалён полностью {due}. "
+        "Вы можете отменить это в панели."
+    ),
     "support_opened": (
         "«{shop}»: администратор сервиса открыл доступ к просмотру данных магазина, чтобы помочь. "
         "Причина: {reason}\n"

@@ -29,7 +29,9 @@ def build(settings: Settings | None = None) -> FastAPI:
     # of the API does not exist. A malformed list or key refuses to start instead.
     allowed = settings.admin_allow_list()
     admin = (
-        AdminAccess(database, allowed_tg_ids=allowed, cipher=SecretBox(settings.secrets_key))
+        AdminAccess(
+            database, allowed_tg_ids=allowed, cipher=SecretBox(settings.secrets_key, settings.secrets_key_previous)
+        )
         if allowed and settings.secrets_key
         else None
     )
@@ -42,6 +44,7 @@ def build(settings: Settings | None = None) -> FastAPI:
         # A store that is named but misconfigured stops the start; none at all only refuses receipts.
         file_store=build_file_store(settings, max_object_bytes=MAX_EXPORT_BYTES),
         secrets_key=settings.secrets_key or None,
+        previous_secrets_key=settings.secrets_key_previous or None,
         telegram_files=TelegramFileFetcher.for_token(settings.bot_token) if settings.bot_token else None,
         metrics_token=settings.metrics_token or None,
         payment_keys=PaymentKeys(

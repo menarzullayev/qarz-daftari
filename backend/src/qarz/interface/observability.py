@@ -58,6 +58,17 @@ SECURITY_BAD_SECOND_FACTOR = "bad_second_factor"
 SECURITY_SUPPORT_ACCESS_OPENED = "support_access_opened"
 # An administrator asked for a shop's data without an open support access, and was refused.
 SECURITY_SUPPORT_ACCESS_REQUIRED = "admin_without_support_access"
+# An administrator gave a shop to another person (runbook 7). Rare, and each one should be known about.
+SECURITY_OWNER_REASSIGNED = "owner_reassigned"
+EVERY_SECURITY_KIND = (
+    SECURITY_SHOP_NOT_MEMBER,
+    SECURITY_BAD_SIGN_IN,
+    SECURITY_BAD_WEBHOOK_SECRET,
+    SECURITY_BAD_SECOND_FACTOR,
+    SECURITY_SUPPORT_ACCESS_OPENED,
+    SECURITY_SUPPORT_ACCESS_REQUIRED,
+    SECURITY_OWNER_REASSIGNED,
+)
 
 _INTERNAL_ERROR = "Xatolik yuz berdi."
 
@@ -105,7 +116,10 @@ class Metrics:
         self._requests: dict[tuple[str, str, int], int] = {}
         self._buckets: dict[tuple[str, str], list[int]] = {}
         self._sums: dict[tuple[str, str], float] = {}
-        self._security: dict[str, int] = {}
+        # Every kind is exposed from the start, at zero: the alert rules read `increase(...)`, which sees
+        # nothing in a series whose first sample is already 1, so the first event after a restart
+        # would pass unnoticed.
+        self._security: dict[str, int] = dict.fromkeys(EVERY_SECURITY_KIND, 0)
 
     def observe(self, method: str, route: str, status: int, ms: float) -> None:
         self._requests[(method, route, status)] = self._requests.get((method, route, status), 0) + 1

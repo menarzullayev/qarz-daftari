@@ -122,6 +122,34 @@ tests:
           - exp_labels: {severity: day, channel: operator-telegram}
             exp_annotations: {summary: "The restore test has not passed in 8 days"}
 
+  # An administrator reassigned a shop's owner. The application exposes the counter at zero from its
+  # start, so the first event is an increase. Nothing before it, an alert after it, nothing once the
+  # ten minutes have passed with the counter standing still.
+  - name: an owner reassignment is seen once
+    interval: 1m
+    input_series:
+      - series: 'qd_security_events_total{kind="owner_reassigned"}'
+        values: '0x5 1x40'
+    alert_rule_test:
+      - {eval_time: 5m, alertname: ShopOwnerReassigned, exp_alerts: []}
+      - eval_time: 8m
+        alertname: ShopOwnerReassigned
+        exp_alerts:
+          - exp_labels: {severity: sight, channel: operator-telegram, kind: owner_reassigned}
+            exp_annotations: {summary: "An administrator reassigned the ownership of a shop"}
+      - {eval_time: 30m, alertname: ShopOwnerReassigned, exp_alerts: []}
+
+  # Negative: other security events are not a reassignment.
+  - name: another security event is not a reassignment
+    interval: 1m
+    input_series:
+      - series: 'qd_security_events_total{kind="owner_reassigned"}'
+        values: '0x40'
+      - series: 'qd_security_events_total{kind="support_access_opened"}'
+        values: '0x5 1x40'
+    alert_rule_test:
+      - {eval_time: 8m, alertname: ShopOwnerReassigned, exp_alerts: []}
+
   # Negative: the scripts report nothing at all (never installed, or the collector lost its directory).
   - name: no figures
     interval: 1m

@@ -358,3 +358,14 @@ def test_the_health_figures_tell_how_long_the_oldest_receipt_has_awaited_a_decis
         "UPDATE subscription_receipt SET status = 'rejected', reject_reason = 'test' WHERE status = 'submitted'"
     )
     assert waited() is None
+
+
+def test_every_security_event_is_exposed_at_zero_from_the_start() -> None:
+    """The alert rules read increases: a counter that first appears at 1 would hide the first event."""
+    from qarz.interface import observability
+
+    text = Metrics().render()
+    kinds = {value for name, value in vars(observability).items() if name.startswith("SECURITY_")}
+    assert set(observability.EVERY_SECURITY_KIND) == kinds, "a new kind must be exposed from the start too"
+    for kind in kinds:
+        assert f'qd_security_events_total{{kind="{kind}"}} 0' in text

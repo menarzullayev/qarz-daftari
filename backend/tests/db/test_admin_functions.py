@@ -40,6 +40,8 @@ FUNCTIONS = [
     "admin_shop_activity(uuid, uuid, text, uuid)",
     # Settings (migration 0027); what it does is tested in test_security_review_db.py.
     "admin_set_platform_setting(uuid, text, jsonb, text, jsonb, timestamptz)",
+    # Reassigning a shop's owner (migration 0028).
+    "admin_reassign_owner(uuid, uuid, bigint, text, timestamptz)",
 ]
 SEARCH = "SELECT * FROM admin_shop_search(%s, %s, %s, %s, %s, %s, %s, %s)"
 SEARCH_COLUMNS = [
@@ -534,3 +536,117 @@ def test_erase_shop_still_pins_its_search_path_and_is_for_the_application_only(o
         "has_function_privilege('public', oid, 'EXECUTE') FROM pg_proc WHERE oid = 'erase_shop(uuid)'::regprocedure"
     ).fetchone()
     assert row == (True, ["search_path=public, pg_temp"], True, False)
+
+
+# --- reassigning a shop's owner (migration 0028) --------------------------------------------------------
+
+REASSIGN = "SELECT outcome FROM admin_reassign_owner(%s, %s, %s, %s, now())"
+
+
+def _elevated(owner: psycopg.Connection) -> uuid.UUID:
+    """An administrator who proved the second factor and holds an open admin session."""
+    admin = _admin(owner)
+    owner.execute("UPDATE admin_account SET confirmed_at = now() WHERE user_id = %s", (admin,))
+    owner.execute(
+        "INSERT INTO admin_session (id, token_hash, user_id, expires_at) "
+        "VALUES (%s, %s, %s, now() + interval '1 hour')",
+        (uuid.uuid4(), uuid.uuid4().bytes * 2, admin),
+    )
+    return admin
+
+
+def _owners(owner: psycopg.Connection, shop: Shop) -> list[Any]:
+    return owner.execute(
+        "SELECT user_id FROM membership WHERE shop_id = %s AND role = 'owner' AND status = 'active'", (shop.shop_id,)
+    ).fetchall()
+
+
+def _tg_of(owner: psycopg.Connection, user: uuid.UUID) -> int:
+    row = owner.execute("SELECT tg_id FROM app_user WHERE id = %s", (user,)).fetchone()
+    assert row is not None
+    return int(row[0])
+
+
+def test_without_the_function_the_application_cannot_touch_a_shops_memberships_from_outside(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+) -> None:
+    """Why the function exists: with no tenant the application role sees and changes no membership."""
+    with as_app(None) as conn:
+        assert conn.execute("SELECT count(*) FROM membership WHERE shop_id = %s", (shop_a.shop_id,)).fetchone() == (0,)
+        changed = conn.execute(
+            "UPDATE membership SET role = 'manager' WHERE shop_id = %s RETURNING id", (shop_a.shop_id,)
+        ).fetchall()
+        assert changed == []
+    with pytest.raises(errors.InsufficientPrivilege), as_app(None) as conn:
+        conn.execute(
+            "INSERT INTO membership (id, shop_id, user_id, role) VALUES (%s, %s, %s, 'seller')",
+            (uuid.uuid4(), shop_a.shop_id, _user(owner)),
+        )
+    assert _owners(owner, shop_a) == [(shop_a.user_id,)]
+
+
+def test_reassigning_leaves_exactly_one_owner_and_writes_the_audit_and_the_activity_together(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+) -> None:
+    admin, person = _elevated(owner), _user(owner)
+    with as_app(None) as conn:
+        assert conn.execute(REASSIGN, (admin, shop_a.shop_id, _tg_of(owner, person), "Lost account")).fetchall() == [
+            ("reassigned",)
+        ]
+    assert _owners(owner, shop_a) == [(person,)]
+    assert owner.execute(
+        "SELECT role, status FROM membership WHERE shop_id = %s AND user_id = %s", (shop_a.shop_id, shop_a.user_id)
+    ).fetchone() == ("manager", "suspended")
+    assert _owners(owner, shop_b) == [(shop_b.user_id,)], "no other shop is touched"
+    assert owner.execute(
+        "SELECT admin_id, reason, detail->>'previous_owner', detail->>'new_owner' FROM admin_audit "
+        "WHERE target_shop = %s AND action = 'shop.owner_reassigned'",
+        (shop_a.shop_id,),
+    ).fetchall() == [(admin, "Lost account", str(shop_a.user_id), str(person))]
+    assert owner.execute(
+        "SELECT actor_kind, actor_id FROM activity WHERE shop_id = %s AND action = 'ownership.reassigned_by_admin'",
+        (shop_a.shop_id,),
+    ).fetchall() == [("admin", None)]
+
+
+def test_a_reassignment_whose_transaction_fails_leaves_nothing_behind(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+) -> None:
+    """All or nothing: the caller's transaction ending badly takes every part of the change with it."""
+    admin, person = _elevated(owner), _user(owner)
+    with pytest.raises(RuntimeError, match="stop"), as_app(None) as conn:
+        assert conn.execute(REASSIGN, (admin, shop_a.shop_id, _tg_of(owner, person), "Lost account")).fetchall() == [
+            ("reassigned",)
+        ]
+        raise RuntimeError("stop")
+    assert _owners(owner, shop_a) == [(shop_a.user_id,)]
+    assert owner.execute(
+        "SELECT count(*) FROM admin_audit WHERE target_shop = %s AND action = 'shop.owner_reassigned'",
+        (shop_a.shop_id,),
+    ).fetchone() == (0,)
+
+
+def test_reassigning_is_refused_to_anyone_but_an_elevated_administrator_and_for_a_dead_shop(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+) -> None:
+    admin, person = _elevated(owner), _user(owner)
+    tg = _tg_of(owner, person)
+    unconfirmed = _admin(owner)
+    no_session = _admin(owner)
+    owner.execute("UPDATE admin_account SET confirmed_at = now() WHERE user_id = %s", (no_session,))
+    owner.execute("UPDATE shop SET status = 'erased' WHERE id = %s", (shop_b.shop_id,))
+    with as_app(None) as conn:
+        for caller in (_user(owner), shop_a.user_id, _admin(owner, "disabled"), unconfirmed, no_session):
+            assert conn.execute(REASSIGN, (caller, shop_a.shop_id, tg, "Lost account")).fetchall() == [("refused",)]
+        assert conn.execute(REASSIGN, (admin, shop_a.shop_id, tg, None)).fetchall() == [("refused",)]
+        assert conn.execute(REASSIGN, (admin, shop_b.shop_id, tg, "Lost account")).fetchall() == [("no_shop",)]
+        assert conn.execute(REASSIGN, (admin, uuid.uuid4(), tg, "Lost account")).fetchall() == [("no_shop",)]
+        assert conn.execute(REASSIGN, (admin, shop_a.shop_id, 5, "Lost account")).fetchall() == [("no_user",)]
+        mine = _tg_of(owner, shop_a.user_id)
+        assert conn.execute(REASSIGN, (admin, shop_a.shop_id, mine, "Lost account")).fetchall() == [("same_owner",)]
+    assert _owners(owner, shop_a) == [(shop_a.user_id,)]
+    assert _owners(owner, shop_b) == [(shop_b.user_id,)]
+    assert owner.execute(
+        "SELECT count(*) FROM admin_audit WHERE action = 'shop.owner_reassigned' AND target_shop IN (%s, %s)",
+        (shop_a.shop_id, shop_b.shop_id),
+    ).fetchone() == (0,)

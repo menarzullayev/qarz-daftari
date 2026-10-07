@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from qarz.application.account import AccountService, ActivityService
 from qarz.application.admin import AdminService
 from qarz.application.admin_access import AdminAccess
+from qarz.application.admin_ownership import AdminOwnershipService
 from qarz.application.admin_receipts import AdminReceiptService
 from qarz.application.auth import AuthService
 from qarz.application.catalog import CatalogService
@@ -108,6 +109,7 @@ def create_app(
     monotonic: Callable[[], float] = time.monotonic,
     metrics_token: str | None = None,
     secrets_key: str | None = None,
+    previous_secrets_key: str | None = None,
 ) -> FastAPI:
     """Build the application.
 
@@ -152,7 +154,11 @@ def create_app(
         response.status_code = 404 if code == "NOT_FOUND" else exc.status_code
         return response
 
-    files = None if storage is None else FileService(storage, file_store, link_secret=secrets_key)
+    files = (
+        None
+        if storage is None
+        else FileService(storage, file_store, link_secret=secrets_key, previous_link_secret=previous_secrets_key)
+    )
     # Who is told that a subscription receipt waits: the administrators on the allow-list.
     reviewers: Container[int] = () if admin is None else admin.allowed_tg_ids
     if files is not None:
@@ -232,6 +238,7 @@ def create_app(
                 storage.user_language,
                 None if limiter is None else (lambda user_id: counted.check(user_id, None)),
                 AdminReceiptService(storage, files, now),
+                AdminOwnershipService(storage, admin, now),
             )
             add_admin_support_routes(app, support, admin_user)
 

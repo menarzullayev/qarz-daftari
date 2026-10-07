@@ -553,6 +553,23 @@ class ReceiptCopy:
 
 
 @dataclass(frozen=True)
+class OwnerReassignment:
+    """What `admin_reassign_owner` answered. Everything but `outcome` is set only as far as it got."""
+
+    outcome: str
+    audit_id: UUID | None
+    shop_name: str | None
+    shop_lang: str | None
+    deletion_due: datetime | None
+    previous_owner: UUID | None
+    previous_owner_tg: int | None
+    previous_owner_lang: str | None
+    new_owner: UUID | None
+    new_owner_lang: str | None
+    transfer_cancelled: bool
+
+
+@dataclass(frozen=True)
 class LockedSubscription:
     """A shop's subscription row, locked for the transaction, and where to reach its owner."""
 
@@ -1458,6 +1475,22 @@ class PlatformSession(Protocol):
 
     async def admin_lock_subscription(self, admin_id: UUID, shop_id: UUID) -> LockedSubscription | None: ...
 
+    async def admin_reassign_owner(
+        self, admin_id: UUID, shop_id: UUID, *, new_owner_tg: int, reason: str, now: datetime
+    ) -> OwnerReassignment:
+        """Give the shop to the person with this Telegram identifier, with the audit row and the line in
+        the shop's activity, all or nothing. The database checks the administrator itself."""
+        ...
+
+    async def admin_secrets(self) -> list[tuple[UUID, bytes]]:
+        """Every administrator's stored second-factor secret, still encrypted, each row locked until
+        the transaction ends."""
+        ...
+
+    async def replace_admin_secret(self, user_id: UUID, *, old: bytes, new: bytes) -> bool:
+        """Store `new` where `old` is stored. False, and nothing changed, when it is not."""
+        ...
+
     async def admin_store_subscription(
         self,
         admin_id: UUID,
@@ -1582,6 +1615,15 @@ class SecretCipher(Protocol):
 
     def decrypt(self, ciphertext: bytes, context: bytes) -> bytes:
         """Raises SecretUnreadable."""
+        ...
+
+
+class RotatingCipher(Protocol):
+    """A cipher that knows the server secret in use and the one before it (runbook 4)."""
+
+    def reseal(self, ciphertext: bytes, context: bytes) -> bytes | None:
+        """The same secret under the current key; None when the current key already reads it. Raises
+        SecretUnreadable when neither key does."""
         ...
 
 

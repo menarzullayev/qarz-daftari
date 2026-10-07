@@ -13,6 +13,7 @@ import { NotFoundScreen } from "../shared/screens";
 import { Confirm, Empty, Failure, FieldError, formatInstant, Loading } from "../shared/workspace/parts";
 import type { AdminApi, AdminShop, AdminShopDetail, AuditRow, SubscriptionAction, SubscriptionReceipt, SubscriptionState } from "./adminApi";
 import "./messages";
+import { OwnerSection } from "./OwnerSection";
 import { cleanReason, dateInRange, dateRange, isChangeRefusal, offeredActions, REASON_MAX, REASON_MIN, shortId } from "./rules";
 import { known, NONE, stateText } from "./ShopsScreen";
 import { SupportSection, type Who } from "./SupportSection";
@@ -297,6 +298,15 @@ function Detail({ api, loaded, now, who, reload }: { api: AdminApi; loaded: Admi
         )}
       </section>
 
+      <OwnerSection
+        api={api}
+        shop={shop}
+        deletionPending={loaded.deletionDue !== null}
+        onChanged={(changed) => {
+          setShop(changed);
+          reload();
+        }}
+      />
       <SupportSection api={api} shop={shop} now={now} who={who} />
       <section aria-labelledby="shop-receipts">
         <h2 id="shop-receipts">{t("admin.shop.receipts")}</h2>

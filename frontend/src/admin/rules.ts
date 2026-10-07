@@ -147,6 +147,26 @@ export function isChangeRefusal(value: unknown): value is ChangeRefusal {
   return CHANGE_REFUSALS.some((reason) => reason === value);
 }
 
+// --- the shop's owner ------------------------------------------------------------------------------------
+
+/** A Telegram user identifier as typed: digits only, a positive whole number JavaScript holds exactly. */
+export function telegramId(text: string): number | null {
+  const typed = text.trim();
+  if (!/^[1-9][0-9]{0,15}$/.test(typed)) {
+    return null;
+  }
+  const id = Number(typed);
+  return Number.isSafeInteger(id) ? id : null;
+}
+
+/** Why the server refused to give a shop to a person (`fields.reason` of OWNER_REASSIGNMENT_REFUSED). */
+export const OWNER_REFUSALS = ["unknown_user", "already_owner", "shop_limit"] as const;
+export type OwnerRefusal = (typeof OWNER_REFUSALS)[number];
+
+export function isOwnerRefusal(value: unknown): value is OwnerRefusal {
+  return OWNER_REFUSALS.some((reason) => reason === value);
+}
+
 // --- support access --------------------------------------------------------------------------------------
 
 /** How long a support access may last, in whole hours (backend/src/qarz/domain/support_access.py, BR-31). */
