@@ -14,7 +14,7 @@ import { known, NONE } from "./ShopsScreen";
  * The groups the audit can be filtered by. Each is the start of the action names the server records
  * ("subscription" matches "subscription.suspended"), which is how the API filters.
  */
-export const AUDIT_GROUPS = ["admin", "shop", "subscription", "setting"] as const;
+export const AUDIT_GROUPS = ["admin", "shop", "subscription", "setting", "support"] as const;
 
 /** What an action changed, as the server recorded it. It is data, shown as it is, not interface text. */
 export function detailText(detail: Readonly<Record<string, unknown>>): string {
@@ -24,33 +24,67 @@ export function detailText(detail: Readonly<Record<string, unknown>>): string {
 
 /**
  * Everything administrators did, newest first (REQ-058): who, what, about which shop or setting, why,
- * and what changed. It can be narrowed to one kind of action and to one shop. Nothing here can be
- * changed: the audit is the server's, and insert-only.
+ * and what changed. It can be narrowed to one kind of action, to one shop and to one administrator.
+ * Nothing here can be changed: the audit is the server's, and insert-only.
  */
 export function AuditScreen({ api, shopId }: { api: AdminApi; /** The shop the address narrows the audit to. */ shopId: string | null }) {
   const { t, language } = useI18n();
   const [group, setGroup] = useState("");
   const [shopText, setShopText] = useState(shopId ?? "");
+  // The address changed under the screen (a link to another shop's audit): the field follows it.
+  const [seenShop, setSeenShop] = useState(shopId);
+  if (seenShop !== shopId) {
+    setSeenShop(shopId);
+    setShopText(shopId ?? "");
+  }
   const [problem, setProblem] = useState<string | null>(null);
+  // The administrator the audit is narrowed to: a full identifier, which is what the API filters by.
+  const [adminId, setAdminId] = useState<string | null>(null);
+  const [adminText, setAdminText] = useState("");
+  const [adminProblem, setAdminProblem] = useState<string | null>(null);
   const list = usePagedList(
-    (cursor, signal) => api.listAudit({ shopId, action: group || null, cursor }, signal),
-    [api, shopId, group],
+    (cursor, signal) => api.listAudit({ shopId, action: group || null, adminId, cursor }, signal),
+    [api, shopId, group, adminId],
   );
+  const onlyAdmin = (id: string) => {
+    setAdminText(id);
+    setAdminProblem(null);
+    setAdminId(id);
+  };
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     const typed = shopText.trim();
-    if (typed !== "" && !isUuid(typed)) {
-      setProblem(t("admin.audit.shop.invalid"));
+    const typedAdmin = adminText.trim();
+    const shopWrong = typed !== "" && !isUuid(typed);
+    const adminWrong = typedAdmin !== "" && !isUuid(typedAdmin);
+    setProblem(shopWrong ? t("admin.audit.shop.invalid") : null);
+    setAdminProblem(adminWrong ? t("admin.audit.adminFilter.invalid") : null);
+    if (shopWrong || adminWrong) {
       return;
     }
+    setAdminId(typedAdmin === "" ? null : typedAdmin.toLowerCase());
     // The shop is part of the address, so a filtered audit can be linked to and returned to.
     navigate(typed === "" ? "/audit" : `/audit/${typed.toLowerCase()}`);
   };
 
   const columns: Column<AuditRow>[] = [
     { id: "at", header: t("admin.audit.at"), rowHeader: true, cell: (row) => formatInstant(row.at, language) },
-    { id: "admin", header: t("admin.audit.admin"), cell: (row) => shortId(row.adminId) },
+    {
+      id: "admin",
+      header: t("admin.audit.admin"),
+      // Nobody types an identifier they have only seen the end of: a row narrows the audit to its administrator.
+      cell: (row) => (
+        <span className="table__actions">
+          {shortId(row.adminId)}
+          {adminId === row.adminId ? null : (
+            <button type="button" className="button button--small" onClick={() => onlyAdmin(row.adminId)}>
+              {t("admin.audit.adminOnly")}
+            </button>
+          )}
+        </span>
+      ),
+    },
     { id: "action", header: t("admin.audit.action"), cell: (row) => known("admin.action", row.action, t) },
     {
       id: "target",
@@ -116,6 +150,23 @@ export function AuditScreen({ api, shopId }: { api: AdminApi; /** The shop the a
             }}
           />
           <FieldError id="audit-shop-error" message={problem} />
+        </div>
+        <div className="field field--inline">
+          <label htmlFor="audit-admin">{t("admin.audit.adminFilter")}</label>
+          <input
+            id="audit-admin"
+            className="input"
+            autoComplete="off"
+            value={adminText}
+            maxLength={36}
+            aria-invalid={adminProblem !== null}
+            aria-describedby="audit-admin-error"
+            onChange={(event) => {
+              setAdminText(event.target.value);
+              setAdminProblem(null);
+            }}
+          />
+          <FieldError id="audit-admin-error" message={adminProblem} />
         </div>
         <p className="actions">
           <button type="submit" className="button">

@@ -15,6 +15,7 @@ export type WorkspaceRoute =
   | { screen: "paymentNotices" }
   | { screen: "dateRequests" }
   | { screen: "reports" }
+  | { screen: "exports" }
   | { screen: "catalog" }
   | { screen: "reminders" }
   | { screen: "subscription" }
@@ -57,6 +58,9 @@ export function matchWorkspaceRoute(path: string): WorkspaceMatch | null {
       return { route: { screen: "dateRequests" }, sectionPath: "/disputes", titleKey: "dates.title" };
     case "/reports":
       return { route: { screen: "reports" }, sectionPath: "/reports", titleKey: "nav.reports" };
+    // Export is ready; import, the other half of the section, is not, and the screen says so.
+    case "/import-export":
+      return { route: { screen: "exports" }, sectionPath: "/import-export", titleKey: "nav.importExport" };
     case "/new":
       return { route: { screen: "pickCustomer" }, sectionPath: "/new", titleKey: "nav.newEntry" };
     case "/catalog":

@@ -5,6 +5,7 @@ import type { Language } from "../i18n/types";
 import type { ApiError } from "../shared/api";
 import { formatFullDate } from "../shared/format";
 import { useSubmit } from "../shared/hooks";
+import { Link } from "../shared/router";
 import { useWorkspace } from "../shared/workspace/context";
 import { Confirm, errorText, Failure, FieldError, Loading } from "../shared/workspace/parts";
 import type { Deletion } from "./backoffice";
@@ -154,6 +155,11 @@ function DeleteShop() {
       <h2 id="deletion-title">{t("deletion.title")}</h2>
       <p>{t("deletion.explain.wait", { days: WAITING_DAYS })}</p>
       <p>{t("deletion.explain.erased")}</p>
+      {/* What is erased cannot be brought back: the way to keep a copy is offered before the request (REQ-048). */}
+      <p className="notice">
+        <span>{t("deletion.export")}</span>{" "}
+        <Link to="/import-export">{t("deletion.export.open")}</Link>
+      </p>
       {stale ? <Failure error={stale} /> : null}
       {deletion.status === "loading" ? <Loading /> : null}
       {deletion.status === "error" ? <Failure error={deletion.error} onRetry={reloadDeletion} /> : null}

@@ -61,6 +61,8 @@ function backend(role: Role | null, accounts: unknown[] = []) {
         return ok({ items: [] });
       case `${SHOP_BASE}/date-requests`:
         return ok({ items: [openDateRequestBody()] });
+      case `${SHOP_BASE}/exports`:
+        return ok({ items: [] });
       case `${SHOP_BASE}/reports/period`:
         return ok(periodReportBody());
       case `${SHOP_BASE}/reports/overdue`:
@@ -101,10 +103,25 @@ describe("reports and date requests in the workspace", () => {
     expect(within(screen.getByRole("navigation")).getByRole("link", { name: "Hisobotlar" }).getAttribute("aria-current")).toBe("page");
   });
 
-  it("keeps import and export as a placeholder", async () => {
-    await start(backend("owner"), "#/import-export");
+  it.each(["manager", "owner"] as const)("opens the export for a %s at import and export, and keeps import as a placeholder", async (role) => {
+    const server = backend(role);
+    await start(server, "#/import-export");
     expect(heading()).toBe("Import va eksport");
-    expect(screen.getByText("Bu bo'lim tez orada tayyor bo'ladi.")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Eksport so'rash" })).toBeTruthy();
+    expect(await screen.findByText("Hali eksport so'ralmagan.")).toBeTruthy();
+    expect(server.sent.filter((sent) => sent.path.includes("/exports")).map((sent) => `${sent.method} ${sent.path}`)).toEqual([`GET ${SHOP_BASE}/exports`]);
+    // Import is another story: its half of the section waits, under its own heading.
+    const waiting = screen.getByRole("region", { name: "Import" });
+    expect(within(waiting).getByText("Bu bo'lim tez orada tayyor bo'ladi.")).toBeTruthy();
+    expect(within(screen.getByRole("navigation")).getByRole("link", { name: "Import va eksport" }).getAttribute("aria-current")).toBe("page");
+  });
+
+  it("gives a seller the not-found screen at import and export, and asks nothing", async () => {
+    const server = backend("seller");
+    await start(server, "#/import-export");
+    expect(heading()).toBe("Sahifa topilmadi");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(server.sent.filter((sent) => sent.path.includes("/exports"))).toEqual([]);
   });
 
   it("reaches the date requests from the disputes, in the same section, and back", async () => {

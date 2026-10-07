@@ -15,6 +15,7 @@ import type { AdminApi, AdminShop, AdminShopDetail, AuditRow, SubscriptionAction
 import "./messages";
 import { cleanReason, dateInRange, dateRange, isChangeRefusal, offeredActions, REASON_MAX, REASON_MIN, shortId } from "./rules";
 import { known, NONE, stateText } from "./ShopsScreen";
+import { SupportSection, type Who } from "./SupportSection";
 
 const ACTION_LABELS: Readonly<Record<SubscriptionAction, MessageKey>> = {
   trial: "admin.change.trial",
@@ -196,7 +197,7 @@ function Subscription({ subscription }: { subscription: SubscriptionState }) {
   );
 }
 
-function Detail({ api, loaded, now, reload }: { api: AdminApi; loaded: AdminShopDetail; now: () => Date; reload: () => void }) {
+function Detail({ api, loaded, now, who, reload }: { api: AdminApi; loaded: AdminShopDetail; now: () => Date; who: Who; reload: () => void }) {
   const { t, language } = useI18n();
   // The subscription as the last change answered it; the page is read again for its history.
   const [shop, setShop] = useState<AdminShop>(loaded);
@@ -291,6 +292,7 @@ function Detail({ api, loaded, now, reload }: { api: AdminApi; loaded: AdminShop
         )}
       </section>
 
+      <SupportSection api={api} shop={shop} now={now} who={who} />
       <section aria-labelledby="shop-receipts">
         <h2 id="shop-receipts">{t("admin.shop.receipts")}</h2>
         {loaded.receipts.length === 0 ? (
@@ -320,9 +322,10 @@ function Detail({ api, loaded, now, reload }: { api: AdminApi; loaded: AdminShop
 /**
  * One shop as an administrator sees it (REQ-058): its subscription, how many people it has, the
  * receipts of its subscription and the changes administrators made, with the changes the API offers.
- * Each look is recorded by the server. Nothing of the shop's customers or entries is shown (REQ-059).
+ * Each look is recorded by the server. Nothing of the shop's customers or entries is shown here: the
+ * support access opened on this page leads to screens of their own for that (REQ-059).
  */
-export function ShopScreen({ api, shopId, now }: { api: AdminApi; shopId: string; now: () => Date }) {
+export function ShopScreen({ api, shopId, now, who }: { api: AdminApi; shopId: string; now: () => Date; who: Who }) {
   const { state, reload } = useLoad((signal) => api.readShop(shopId, signal), [api, shopId]);
   // The page keeps showing what it had while it is read again after a change.
   const [last, setLast] = useState<AdminShopDetail | null>(null);
@@ -333,5 +336,5 @@ export function ShopScreen({ api, shopId, now }: { api: AdminApi; shopId: string
     return state.error.code === "NOT_FOUND" ? <NotFoundScreen /> : <Failure error={state.error} onRetry={reload} />;
   }
   const shown = state.status === "ready" ? state.data : last;
-  return shown === null ? <Loading /> : <Detail key={shown.id} api={api} loaded={shown} now={now} reload={reload} />;
+  return shown === null ? <Loading /> : <Detail key={shown.id} api={api} loaded={shown} now={now} who={who} reload={reload} />;
 }

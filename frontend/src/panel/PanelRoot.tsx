@@ -8,11 +8,12 @@ import { useHashPath } from "../shared/router";
 import { BOT_USERNAME } from "../shared/settings";
 import { Shell } from "../shared/Shell";
 import { type PanelParts, StaffWorkspace } from "../shared/StaffRoot";
+import SupportAccessSection from "../shared/support/SupportAccessSection";
 import { errorText } from "../shared/workspace/parts";
 import { ActivityScreen } from "./ActivityScreen";
 import { DeletionSection } from "./DeletionSection";
 import "./messages";
-import { OfficeProvider } from "./office";
+import { OfficeProvider, useOffice } from "./office";
 import { OfficeBanner } from "./OfficeBanner";
 import { OwnerTotals } from "./OwnerTotals";
 import "./panel.css";
@@ -21,12 +22,26 @@ import { StaffScreen } from "./StaffScreen";
 import { DesktopLayout } from "./tables";
 import { type LoginWidgetProps, TelegramLogin } from "./TelegramLogin";
 
+/**
+ * Under the shop's settings, the owner's alone: support access, whose ending here also takes the notice
+ * off every screen, and the deletion of the shop.
+ */
+function SettingsExtra() {
+  const { reloadSupport } = useOffice();
+  return (
+    <>
+      <SupportAccessSection onChanged={reloadSupport} />
+      <DeletionSection />
+    </>
+  );
+}
+
 /** What the web panel adds to the shared workspace: the owner's back office (REQ-050). */
 export const PANEL_EXTENSION: WorkspaceExtension = {
   Provider: OfficeProvider,
   Banner: OfficeBanner,
   sections: { staff: StaffScreen, activityLog: ActivityScreen },
-  SettingsExtra: DeletionSection,
+  SettingsExtra,
   OverviewExtra: OwnerTotals,
 };
 

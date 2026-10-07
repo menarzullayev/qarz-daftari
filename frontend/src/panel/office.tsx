@@ -3,6 +3,8 @@ import { createContext, type ReactNode, useContext, useMemo } from "react";
 import type { Translate } from "../i18n/I18nProvider";
 import { type Loaded, useLoad } from "../shared/hooks";
 import { canManage, type Role } from "../shared/navigation";
+import "../shared/support/messages";
+import { type SupportAccess, supportOf } from "../shared/support/supportApi";
 import { useWorkspace } from "../shared/workspace/context";
 import { type Backoffice, backoffice, type Deletion, type Transfer } from "./backoffice";
 import "./messages";
@@ -15,6 +17,12 @@ type Office = {
   /** The ownership offer that waits for an answer. Read for the owner and managers; null for a seller. */
   transfer: Loaded<Transfer | null>;
   reloadTransfer: () => void;
+  /**
+   * The shop's newest support accesses (REQ-059), among them any that lets an administrator read the
+   * shop right now. Read for the owner only; empty for everyone else, who may not know of them.
+   */
+  support: Loaded<SupportAccess[]>;
+  reloadSupport: () => void;
 };
 
 const OfficeContext = createContext<Office | null>(null);
@@ -35,6 +43,12 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
     (signal) => (canManage(role) ? office.readTransfer(signal) : Promise.resolve(null)),
     [office, role],
   );
+  // The newest accesses, open or not: which of them is open is asked of the clock when the notice is drawn.
+  // An open one is always among them, since an administrator who has one open cannot open another.
+  const support = useLoad(
+    (signal) => (role === "owner" ? supportOf(api).list(null, signal).then((page) => page.items) : Promise.resolve([])),
+    [api, role],
+  );
   const value = useMemo(
     () => ({
       office,
@@ -42,8 +56,10 @@ export function OfficeProvider({ children }: { children: ReactNode }) {
       reloadDeletion: deletion.reload,
       transfer: transfer.state,
       reloadTransfer: transfer.reload,
+      support: support.state,
+      reloadSupport: support.reload,
     }),
-    [office, deletion.state, deletion.reload, transfer.state, transfer.reload],
+    [office, deletion.state, deletion.reload, transfer.state, transfer.reload, support.state, support.reload],
   );
   return <OfficeContext.Provider value={value}>{children}</OfficeContext.Provider>;
 }

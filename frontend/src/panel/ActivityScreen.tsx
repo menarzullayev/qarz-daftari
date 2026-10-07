@@ -30,6 +30,8 @@ export const ACTION_GROUPS = [
   "dispute",
   "counter_code",
   "subscription",
+  "export",
+  "support_access",
 ] as const;
 type ActionGroup = (typeof ACTION_GROUPS)[number];
 
@@ -130,6 +132,12 @@ function Log() {
   const who = (row: Activity): string => {
     if (row.actorKind === "customer") {
       return t("activity.actor.customer");
+    }
+    // A platform administrator, acting under a support access (REQ-059): told apart by a code, as staff are.
+    if (row.actorKind === "admin") {
+      return row.actorId === null
+        ? t("activity.actor.admin")
+        : t("staff.member.label", { role: t("activity.actor.admin"), code: memberCode(row.actorId) });
     }
     if (row.actorKind !== "staff" || row.actorId === null) {
       return t("activity.actor.system");

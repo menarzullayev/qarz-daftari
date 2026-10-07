@@ -1,0 +1,57 @@
+import type { UzPlural } from "../types";
+
+/**
+ * Uzbek text of the export screen only. It is kept apart from the main catalog and added by the export
+ * module when that is first opened (`addMessages`), so the first load of the Mini App does not carry it
+ * (NFR-010). The rules of the main catalog hold: this file defines the keys, Russian mirrors them.
+ */
+export const uzExports = {
+  "exports.title": "Eksport",
+  "exports.explain": "Do'konning butun daftari bitta Excel fayliga (.xlsx) yoziladi. Faylda besh varaq bo'ladi:",
+  "exports.sheet.summary": "Xulosa — do'kon nomi, mijozlar va qarzdorlar soni, jami qarz, oylar bo'yicha yig'indi.",
+  "exports.sheet.customers": "Mijozlar — har bir mijozning ismi, telefoni, holati va qarzi.",
+  "exports.sheet.ledger": "Daftar — barcha nasiya, to'lov va bekor qilish yozuvlari.",
+  "exports.sheet.promises": "Muddatlar — har bir yozuvning to'lash muddatlari tarixi.",
+  "exports.sheet.goods": "Tovarlar — yozuvlardagi tovar qatorlari.",
+  "exports.personal":
+    "Diqqat: faylda mijozlarning ismlari va telefon raqamlari bor. Uni faqat ishonchli joyda saqlang va begonalarga yubormang.",
+  "exports.limits": "Fayl {days} kun saqlanadi, so'ng o'chiriladi. Bir kunda ko'pi bilan {limit} marta eksport so'rash mumkin.",
+  "exports.request": "Eksport so'rash",
+  "exports.requested": "So'rov qabul qilindi. Fayl tayyor bo'lgach, shu ro'yxatda ko'rinadi.",
+  "exports.refused.in_progress": "Avvalgi eksport hali tayyorlanmoqda. U tugagach, yangisini so'rang.",
+  "exports.refused.daily_limit": "Bugungi eksport soni tugadi (kuniga {limit} ta). Ertaga qayta so'rang.",
+  "exports.suspended": "Do'kon to'xtatilgan. Bu holatda eksportni faqat do'kon egasi oladi.",
+  "exports.list": "Oxirgi eksportlar",
+  "exports.none": "Hali eksport so'ralmagan.",
+  "exports.col.asked": "So'ralgan",
+  "exports.col.by": "Kim so'ragan",
+  "exports.col.state": "Holat",
+  "exports.col.file": "Fayl",
+  "exports.by.you": "Siz",
+  "exports.by.member": "Xodim · {code}",
+  "exports.state.queued": "Navbatda",
+  "exports.state.running": "Tayyorlanmoqda",
+  "exports.state.done": "Tayyor",
+  "exports.state.failed": "Tayyorlanmadi",
+  "exports.state.expired": "Fayl muddati o'tgan",
+  "exports.rows": { other: "{count} qator" },
+  "exports.keptUntil": "Fayl {date} gacha saqlanadi, so'ng o'chiriladi.",
+  "exports.expired.note": "Fayl o'chirilgan. Kerak bo'lsa, yangi eksport so'rang.",
+  "exports.waiting.note": "Holat o'zi yangilanib turadi.",
+  "exports.failed.interrupted": "Tayyorlash uzilib qoldi. Qayta so'rang.",
+  "exports.failed.timeout": "Tayyorlash juda uzoq davom etdi va to'xtatildi. Qayta so'rang.",
+  "exports.failed.file_store": "Faylni saqlab bo'lmadi. Birozdan so'ng qayta so'rang.",
+  "exports.failed.internal": "Tayyorlashda xato yuz berdi. Qayta so'rang.",
+  "exports.failed.other": "Fayl tayyorlanmadi. Qayta so'rang.",
+  "exports.link.get": "Yuklab olish havolasini olish",
+  "exports.link.open": "Faylni yuklab olish",
+  "exports.link.valid": "Havola 5 daqiqa, {date} gacha amal qiladi. Ochilmasa, yangisini oling.",
+  "exports.link.again": "Yangi havola olish",
+  "exports.notReady.queued": "Fayl hali navbatda. Tayyor bo'lishini kuting.",
+  "exports.notReady.running": "Fayl hali tayyorlanmoqda. Tayyor bo'lishini kuting.",
+  "exports.notReady.failed": "Bu eksport tayyorlanmadi. Yangisini so'rang.",
+  "exports.notReady.expired": "Fayl muddati o'tgan va o'chirilgan. Yangi eksport so'rang.",
+  "exports.stale": "Holatni yangilab bo'lmadi.",
+  "exports.refresh": "Yangilash",
+  "exports.import.title": "Import",
+} satisfies Record<string, string | UzPlural>;

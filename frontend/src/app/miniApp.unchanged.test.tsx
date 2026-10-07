@@ -93,6 +93,9 @@ function backend(shops: unknown) {
         return ok(subscriptionBody());
       case `${SHOP_BASE}/reminders`:
         return ok(remindersBody());
+      // Asked by the owner's settings since the support-access story (REQ-059): a deliberate addition.
+      case `${SHOP_BASE}/support-access`:
+        return ok({ items: [], next_cursor: null });
       default:
         // Anything the Mini App did not ask before this story is refused, and shows in the snapshot.
         return refusal(404, "NOT_FOUND", "Topilmadi.");

@@ -929,7 +929,20 @@ async function errorFrom(response: Response): Promise<ApiError> {
 }
 
 /** The response readers, for modules that add calls of their own (see `call`). */
-export const reading = { record, text, textOrNull, whole, wholeOrNull, flag, list, page, items };
+export const reading = {
+  record,
+  text,
+  textOrNull,
+  whole,
+  wholeOrNull,
+  flag,
+  list,
+  page,
+  items,
+  /** A customer as a list names one, and with the entries of their page: read by more than one API. */
+  customer,
+  customerDetail,
+};
 
 // --- requests ----------------------------------------------------------------------------------------
 

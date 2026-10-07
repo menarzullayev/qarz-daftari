@@ -162,23 +162,23 @@ describe("asking for the shop to be deleted", () => {
     const view = renderOffice(<DeletionSection />, { fetch: server.fetch });
     const field = (await nameField()) as HTMLInputElement;
     const stops = tabStops(view.container);
-    // Tab reaches the field, then the button, in that order, and nothing takes focus out of turn.
-    expect(stops.map((stop) => stop.tagName)).toEqual(["INPUT", "BUTTON"]);
+    // Tab reaches the way to an export first, then the field, then the button, and nothing takes focus out of turn.
+    expect(stops.map((stop) => stop.tagName)).toEqual(["A", "INPUT", "BUTTON"]);
     expect(stops.every((stop) => stop.tabIndex === 0)).toBe(true);
-    stops[0]?.focus();
+    stops[1]?.focus();
     expect(document.activeElement).toBe(field);
     fireEvent.change(field, { target: { value: "Baraka savdo" } });
     // Enter in the field submits the form it belongs to.
-    expect(field.form).toBe(stops[1]?.closest("form"));
-    expect((stops[1] as HTMLButtonElement).type).toBe("submit");
+    expect(field.form).toBe(stops[2]?.closest("form"));
+    expect((stops[2] as HTMLButtonElement).type).toBe("submit");
     fireEvent.submit(field.form as HTMLFormElement);
     const cancel = await screen.findByRole("button", { name: "O'chirishni bekor qilish" });
     expect(server.writes()).toHaveLength(1);
-    // The waiting state is keyboard-reachable too: cancel, then the two answers.
-    expect(tabStops(view.container)).toEqual([cancel]);
+    // The waiting state is keyboard-reachable too: the export, cancel, then the two answers.
+    expect(tabStops(view.container)).toEqual([screen.getByRole("link", { name: "Eksportga o'tish" }), cancel]);
     cancel.focus();
     fireEvent.click(cancel);
-    expect(tabStops(view.container).map((stop) => stop.textContent)).toEqual(["Ha, bekor qilinsin", "Yo'q"]);
+    expect(tabStops(view.container).map((stop) => stop.textContent)).toEqual(["Eksportga o'tish", "Ha, bekor qilinsin", "Yo'q"]);
   });
 });
 

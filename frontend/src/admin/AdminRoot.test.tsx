@@ -418,14 +418,12 @@ describe("behind the door", () => {
     expect(screen.getByText("Admin sessiyasi 2026-yil 6-oktabr, 20:00 gacha amal qiladi.")).toBeTruthy();
   });
 
-  it("keeps the sections of other stories as placeholders that ask nothing", async () => {
+  it("keeps the section of another story as a placeholder that asks nothing", async () => {
     const server = await inside();
     const before = server.sent.length;
-    for (const [hash, title] of [["#/receipts", "To'lov cheklari"], ["#/support-access", "Yordam uchun kirish"]] as const) {
-      go(hash);
-      expect(heading()).toBe(title);
-      expect(screen.getByText("Bu bo'lim tez orada tayyor bo'ladi.")).toBeTruthy();
-    }
+    go("#/receipts");
+    expect(heading()).toBe("To'lov cheklari");
+    expect(screen.getByText("Bu bo'lim tez orada tayyor bo'ladi.")).toBeTruthy();
     expect(server.sent).toHaveLength(before);
   });
 
