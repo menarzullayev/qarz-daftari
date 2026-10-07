@@ -1,13 +1,15 @@
 """Encryption of secrets the application stores in the database (specification, "Security": the
 administrator's second-factor secret is encrypted at rest).
 
-AES-256-GCM with a random nonce per value. The key comes from the environment (`QD_SECRETS_KEY`) and
-never reaches the database, so a copy of the database alone yields no second factor. The stored form is
-one version byte, the 12-byte nonce, then the ciphertext with its tag.
+AES-256-GCM with a random nonce per value. The key is derived from the server secret in the environment
+(`QD_SECRETS_KEY`) for this purpose alone: the same secret also gives the key that signs file links
+(`qarz.domain.file_links`), and neither key is the secret itself or the other key. Nothing of it reaches
+the database, so a copy of the database alone yields no second factor. The stored form is one version
+byte, the 12-byte nonce, then the ciphertext with its tag.
 """
 
-import base64
-import binascii
+import hashlib
+import hmac
 import secrets
 
 from cryptography.exceptions import InvalidTag
@@ -15,20 +17,23 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from qarz.application.ports import SecretUnreadable
 
-KEY_BYTES = 32
+# Says what the derived key is for, so that the same server secret used for another purpose gives another key.
+KEY_LABEL = b"qarz-daftari/admin-second-factor/v1"
+MIN_SECRET_LENGTH = 16
 _NONCE_BYTES = 12
-_VERSION = b"\x01"
+_VERSION = b""
+
+
+def derive_key(secret: str) -> bytes:
+    """The 32-byte key that encrypts second-factor secrets, derived from the server secret."""
+    if len(secret) < MIN_SECRET_LENGTH:
+        raise ValueError("the server secret is too short to encrypt stored secrets")
+    return hmac.new(secret.encode("utf-8"), KEY_LABEL, hashlib.sha256).digest()
 
 
 class SecretBox:
-    def __init__(self, key_base64: str) -> None:
-        try:
-            key = base64.b64decode(key_base64, validate=True)
-        except (binascii.Error, ValueError) as error:
-            raise ValueError("the secrets key must be base64") from error
-        if len(key) != KEY_BYTES:
-            raise ValueError(f"the secrets key must be {KEY_BYTES} bytes, base64-encoded")
-        self._aead = AESGCM(key)
+    def __init__(self, server_secret: str) -> None:
+        self._aead = AESGCM(derive_key(server_secret))
 
     def encrypt(self, plaintext: bytes, context: bytes) -> bytes:
         nonce = secrets.token_bytes(_NONCE_BYTES)

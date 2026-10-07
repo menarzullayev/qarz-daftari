@@ -1,7 +1,6 @@
 """Production wiring: what the deployed application exposes for a given configuration."""
 
 import asyncio
-import base64
 import uuid
 
 import pytest
@@ -123,7 +122,7 @@ def test_the_worker_refuses_to_start_without_a_bot_token() -> None:
 
 # --- the administrator's side (ADR-017) -------------------------------------------------------------
 
-SECRETS_KEY = base64.b64encode(bytes(range(32))).decode()
+SECRETS_KEY = "a-server-secret-for-wiring-tests-0123456789"
 
 
 def _admin_paths(**admin: str) -> set[str]:
@@ -161,9 +160,9 @@ def test_a_malformed_allow_list_refuses_to_start(ids: str) -> None:
         build(Settings(database_url=DB, bot_token="123:test", admin_tg_ids=ids, secrets_key=SECRETS_KEY))
 
 
-@pytest.mark.parametrize("key", ["not base64 !!", base64.b64encode(bytes(16)).decode()])
-def test_a_malformed_secrets_key_refuses_to_start(key: str) -> None:
-    with pytest.raises(ValueError, match="secrets key"):
+@pytest.mark.parametrize("key", ["short", "x" * 15])
+def test_a_server_secret_that_is_too_short_refuses_to_start(key: str) -> None:
+    with pytest.raises(ValueError, match="too short"):
         build(Settings(database_url=DB, bot_token="123:test", admin_tg_ids="1001", secrets_key=key))
 
 

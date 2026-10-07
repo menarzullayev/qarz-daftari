@@ -1,19 +1,19 @@
-"""The administrator's side: second factor, admin sessions, audit, cross-shop functions.
+"""Chat questions for payment notices, and indexes for notices and stored files.
 
-Revision ID: 0016
-Revises: 0012
+Revision ID: 0012
+Revises: 0020
 """
 
 from pathlib import Path
 
 from alembic import op
 
-revision = "0016"
-down_revision = "0012"
+revision = "0012"
+down_revision = "0020"
 branch_labels = None
 depends_on = None
 
-_SQL = Path(__file__).resolve().parent.parent / "sql" / "0016_admin.sql"
+_SQL = Path(__file__).resolve().parent.parent / "sql" / "0012_payment_notices.sql"
 
 
 def upgrade() -> None:

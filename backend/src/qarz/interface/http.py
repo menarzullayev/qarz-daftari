@@ -3,7 +3,7 @@
 import hmac
 import time
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -24,11 +24,13 @@ from qarz.application.customers import CustomerService
 from qarz.application.date_requests import DateRequestService
 from qarz.application.disputes import DisputeService
 from qarz.application.errors import AppError, Unauthenticated
+from qarz.application.files import FileService
 from qarz.application.ledger_service import LedgerService
 from qarz.application.links import LinkService
 from qarz.application.online_payment import OnlinePaymentService, PaymentKeys
 from qarz.application.ownership import OwnershipService
-from qarz.application.ports import Storage
+from qarz.application.payment_notices import PaymentNoticeService
+from qarz.application.ports import FileStore, Storage, TelegramFiles
 from qarz.application.reminders import ReminderService
 from qarz.application.reports import ReportService
 from qarz.application.shop_deletion import ShopDeletionService
@@ -50,6 +52,7 @@ from qarz.interface.links_api import add_link_routes
 from qarz.interface.me_api import add_me_routes
 from qarz.interface.observability import Metrics, Observe
 from qarz.interface.online_payment_api import add_online_order_routes, add_provider_routes
+from qarz.interface.payment_notices_api import RECEIPT_UPLOAD, add_file_route, add_payment_notice_routes
 from qarz.interface.rate_limit import RateLimiter, RateLimits
 from qarz.interface.reminders_api import add_reminder_routes
 from qarz.interface.reports_api import add_report_routes
@@ -89,19 +92,23 @@ def create_app(
     authenticator: Authenticator | None = None,
     webhook_secret: str | None = None,
     now: Callable[[], datetime] | None = None,
+    file_store: FileStore | None = None,
+    telegram_files: TelegramFiles | None = None,
     payment_keys: PaymentKeys | None = None,
     rate_limits: RateLimits | None = None,
     monotonic: Callable[[], float] = time.monotonic,
     metrics_token: str | None = None,
+    secrets_key: str | None = None,
 ) -> FastAPI:
     """Build the application.
 
     With only a health check it serves `/healthz`. With storage and an auth service it serves the API,
     authenticating through Telegram-backed sessions; `authenticator` replaces that only in tests, and `now`
     replaces the clock of the ledger only in tests. `rate_limits` are applied to signed-in callers; the
-    deployed application always has them, and most tests leave them out. The administrator's side is
-    served only when `admin` is given, which production does only with an allow-list and a key for the
-    second-factor secrets.
+    deployed application always has them, and most tests leave them out. Without a `file_store`
+    receipts are refused; without `telegram_files` a receipt sent to the bot cannot be fetched. The
+    administrator's side is served only when `admin` is given, which production does only with an
+    allow-list and the server secret.
     """
     app = FastAPI(title="Qarz Daftari", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -118,7 +125,7 @@ def create_app(
         return {"status": "ok"}
 
     # An oversized body is refused before any route, handler or sign-in sees it.
-    app.add_middleware(BodyLimit)
+    app.add_middleware(BodyLimit, allowances=(RECEIPT_UPLOAD,))
     app.add_exception_handler(AppError, app_error_handler)
 
     @app.exception_handler(RequestValidationError)
@@ -136,13 +143,17 @@ def create_app(
         response.status_code = 404 if code == "NOT_FOUND" else exc.status_code
         return response
 
+    files = None if storage is None else FileService(storage, file_store, link_secret=secrets_key)
+    if files is not None:
+        # Served whoever asks: a link is given only after authorization and works for five minutes.
+        add_file_route(app, files, now or (lambda: datetime.now(UTC)))
     payments = None if storage is None else OnlinePaymentService(storage, payment_keys or PaymentKeys(), now)
     if payments is not None:
         # Served whatever the configuration, so that a provider is always answered: "disabled" until
         # the platform switch is on and that provider's key is set (ADR-019).
         add_provider_routes(app, payments)
 
-    if storage is not None and auth is not None and payments is not None:
+    if storage is not None and auth is not None and payments is not None and files is not None:
         resolver: Authenticator = authenticator or SessionAuthenticator(auth)
         limiter = None if rate_limits is None else RateLimiter(rate_limits, monotonic)
 
@@ -186,6 +197,7 @@ def create_app(
         add_reminder_routes(app, ReminderService(storage, now), current_user)
         add_report_routes(app, ReportService(storage, now), current_user)
         add_dispute_routes(app, DisputeService(storage, now), current_user)
+        add_payment_notice_routes(app, PaymentNoticeService(storage, files, now), current_user)
         add_date_request_routes(app, DateRequestService(storage, now), current_user)
         add_customer_routes(app, CustomerService(storage, now), LedgerService(storage, now), current_user)
         add_catalog_routes(app, CatalogService(storage, now), current_user)
@@ -204,8 +216,8 @@ def create_app(
             )
 
     if webhook_secret is not None and storage is not None:
-        chat = ChatService(storage, ShopService(storage, now), StaffService(storage, now), now)
-        add_webhook_route(app, UpdateProcessor(storage, chat), webhook_secret)
+        chat = ChatService(storage, ShopService(storage, now), StaffService(storage, now), now, files)
+        add_webhook_route(app, UpdateProcessor(storage, chat, telegram_files), webhook_secret)
 
     metrics = Metrics()
     if metrics_token is not None:

@@ -4,13 +4,13 @@ Only authentication is replaced: until story S2.1 delivers Telegram sign-in, a t
 the caller's user identifier from a header. It exists only in the test suite.
 """
 
-import base64
 import hashlib
 import os
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -22,14 +22,14 @@ from qarz.application.admin_access import AdminAccess
 from qarz.application.auth import AuthService
 from qarz.domain import totp
 from qarz.infrastructure.db import Database
+from qarz.infrastructure.file_store import FilesystemFileStore
 from qarz.infrastructure.secret_box import SecretBox
 from qarz.interface.http import create_app
 
 TEST_USER_HEADER = "X-Test-User"
 WEBHOOK_SECRET = "test-webhook-secret-0123456789"
 TEST_BOT_TOKEN = "1234567890:TEST-ONLY-token-not-a-real-bot"
-# Encrypts second-factor secrets in tests only; it protects nothing real.
-TEST_SECRETS_KEY = base64.b64encode(b"test-only-secrets-key-32-bytes!!").decode()
+TEST_SECRETS_KEY = "test-only-server-secret-0123456789"
 ADMIN_API = "/api/admin/v1"
 ADMIN_COOKIE = "qd_admin"
 
@@ -88,8 +88,49 @@ def admin_env(_settings_cleaner: psycopg.Connection) -> Iterator[AdminEnv]:
     _settings_cleaner.execute("DELETE FROM platform_setting WHERE updated_by ~ '^[0-9a-f]{8}-[0-9a-f-]{27}$'")
 
 
+class FakeTelegramFiles:
+    """Stands in for the Bot API's getFile: a test puts content under a file identifier."""
+
+    def __init__(self) -> None:
+        self.files: dict[str, bytes] = {}
+        self.asked: list[str] = []
+
+    async def fetch(self, file_id: str, max_bytes: int) -> bytes | None:
+        self.asked.append(file_id)
+        content = self.files.get(file_id)
+        return content if content is not None and len(content) <= max_bytes else None
+
+
+# Where the file store of the running test keeps its objects, for code that seeds a file without a fixture.
+_file_root: list[Path] = []
+
+
+def current_file_root() -> Path:
+    return _file_root[-1]
+
+
 @pytest.fixture
-def client(app_database_url: str, admin_env: AdminEnv) -> Iterator[TestClient]:
+def file_root(tmp_path: Path) -> Iterator[Path]:
+    """The directory of the test file store; empty until a file is kept."""
+    root = tmp_path / "file-store"
+    _file_root.append(root)
+    yield root
+    _file_root.remove(root)
+
+
+@pytest.fixture
+def telegram_files() -> FakeTelegramFiles:
+    return FakeTelegramFiles()
+
+
+def stored_objects(root: Path) -> list[Path]:
+    return sorted(path for path in root.rglob("*") if path.is_file())
+
+
+@pytest.fixture
+def client(
+    app_database_url: str, file_root: Path, telegram_files: FakeTelegramFiles, admin_env: AdminEnv
+) -> Iterator[TestClient]:
     database = Database(app_database_url)
     auth = AuthService(database, TEST_BOT_TOKEN)
     admin = AdminAccess(database, allowed_tg_ids=admin_env.allowed, cipher=admin_env.box, now=admin_env.clock.now)
@@ -101,6 +142,9 @@ def client(app_database_url: str, admin_env: AdminEnv) -> Iterator[TestClient]:
         authenticator=HeaderAuthenticator(),
         webhook_secret=WEBHOOK_SECRET,
         now=admin_env.clock.now,
+        file_store=FilesystemFileStore(file_root),
+        telegram_files=telegram_files,
+        secrets_key=TEST_SECRETS_KEY,
     )
     with TestClient(app) as test_client:
         yield test_client

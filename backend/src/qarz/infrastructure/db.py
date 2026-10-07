@@ -38,6 +38,7 @@ from qarz.application.ports import (
     MyShop,
     OnlinePayment,
     OutboxMessage,
+    PaymentNoticeRecord,
     PeriodTotals,
     PromiseRecord,
     ReminderCandidate,
@@ -48,6 +49,7 @@ from qarz.application.ports import (
     ShopTotals,
     StaffFigures,
     StaffInvitation,
+    StoredFileRecord,
     SubscriptionToReview,
     TransferRecord,
     UncoveredDebt,
@@ -273,6 +275,28 @@ _ADMIN_ACCOUNT = (
     "FROM admin_account WHERE user_id = :id"
 )
 _ADMIN_ACCOUNT_LOCKED = f"{_ADMIN_ACCOUNT} FOR UPDATE"
+
+_FILE_COLUMNS = "f.id, f.purpose, f.object_key, f.sha256, f.size_bytes, f.mime, f.delete_after"
+_FILE_BY_ID = f"SELECT {_FILE_COLUMNS} FROM stored_file f WHERE f.id = :id"
+_DUE_RECEIPT_FILES = (
+    f"SELECT {_FILE_COLUMNS} FROM stored_file f "
+    "WHERE f.purpose = 'payment_notice' AND f.delete_after <= :now ORDER BY f.delete_after, f.id LIMIT :limit"
+)
+_NOTICE_SELECT = (
+    "SELECT n.id, n.customer_id, n.amount, n.file_id, n.status, n.payment_entry, e.amount AS recorded_amount, "
+    "n.decline_reason, n.created_at, n.closed_at, c.display_name, "
+    # Row-level security keeps this inside the shop: another shop's file with the same content is not seen.
+    "EXISTS (SELECT 1 FROM stored_file f JOIN stored_file g ON g.sha256 = f.sha256 "
+    "AND (g.created_at, g.id) < (f.created_at, f.id) WHERE f.id = n.file_id) AS receipt_seen_before "
+    "FROM payment_notice n JOIN customer c ON c.id = n.customer_id LEFT JOIN ledger_entry e ON e.id = n.payment_entry "
+)
+_NOTICE_BY_ID = f"{_NOTICE_SELECT} WHERE n.id = :id"
+_NOTICES_OF_CUSTOMER = f"{_NOTICE_SELECT} WHERE n.customer_id = :id ORDER BY n.created_at DESC, n.id LIMIT :limit"
+# A customer whose data was removed is nobody a payment can be recorded for; their notices only expire.
+_OPEN_NOTICES = (
+    f"{_NOTICE_SELECT} WHERE n.status = 'sent' AND n.created_at >= :since AND c.status <> 'anonymized' "
+    "ORDER BY n.created_at, n.id"
+)
 
 
 def _like_pattern(part: str) -> str:
@@ -1323,6 +1347,19 @@ class PgTenantSession:
             text("UPDATE invitation SET status = 'cancelled' WHERE customer_id = :id AND status = 'issued'"),
             {"id": customer_id},
         )
+        # Receipts the customer sent (BR-32): unreachable from now on, and due for deletion at once. The
+        # objects themselves are deleted by the retention cleanup, which cannot run inside this transaction.
+        await self._conn.execute(
+            text(
+                "UPDATE stored_file SET delete_after = :now WHERE id IN "
+                "(SELECT file_id FROM payment_notice WHERE customer_id = :id AND file_id IS NOT NULL)"
+            ),
+            {"id": customer_id, "now": now},
+        )
+        await self._conn.execute(
+            text("UPDATE payment_notice SET file_id = NULL WHERE customer_id = :id AND file_id IS NOT NULL"),
+            {"id": customer_id},
+        )
         # The person's Telegram identity is forgotten too when nothing else refers to them.
         for user_id in {row.user_id for row in users if row.user_id is not None}:
             await self._conn.execute(text("SELECT forget_user_if_unused(:user_id)"), {"user_id": user_id})
@@ -1453,6 +1490,181 @@ class PgTenantSession:
     async def open_date_requests(self) -> list[DateRequestRecord]:
         rows = (await self._conn.execute(text(_OPEN_DATE_REQUESTS))).all()
         return [self._date_request(row) for row in rows]
+
+    # --- stored files and payment notices -------------------------------------------------------------
+
+    @staticmethod
+    def _file(row: Any) -> StoredFileRecord:
+        return StoredFileRecord(
+            row.id,
+            str(row.purpose),
+            str(row.object_key),
+            bytes(row.sha256),
+            int(row.size_bytes),
+            str(row.mime),
+            row.delete_after,
+        )
+
+    async def add_stored_file(
+        self,
+        *,
+        file_id: UUID,
+        purpose: str,
+        object_key: str,
+        sha256: bytes,
+        size_bytes: int,
+        mime: str,
+        now: datetime,
+        delete_after: datetime | None,
+    ) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO stored_file (id, shop_id, purpose, object_key, sha256, size_bytes, mime, created_at, "
+                "delete_after) VALUES (:id, :shop_id, :purpose, :object_key, :sha256, :size_bytes, :mime, :now, "
+                ":delete_after)"
+            ),
+            {
+                "id": file_id,
+                "shop_id": self._shop_id,
+                "purpose": purpose,
+                "object_key": object_key,
+                "sha256": sha256,
+                "size_bytes": size_bytes,
+                "mime": mime,
+                "now": now,
+                "delete_after": delete_after,
+            },
+        )
+
+    async def get_stored_file(self, file_id: UUID) -> StoredFileRecord | None:
+        row = (await self._conn.execute(text(_FILE_BY_ID), {"id": file_id})).first()
+        return None if row is None else self._file(row)
+
+    async def shorten_file_retention(self, file_id: UUID, delete_after: datetime) -> None:
+        await self._conn.execute(
+            text(
+                "UPDATE stored_file SET delete_after = least(coalesce(delete_after, :delete_after), :delete_after) "
+                "WHERE id = :id"
+            ),
+            {"id": file_id, "delete_after": delete_after},
+        )
+
+    async def due_receipt_files(self, now: datetime, limit: int) -> list[StoredFileRecord]:
+        rows = (await self._conn.execute(text(_DUE_RECEIPT_FILES), {"now": now, "limit": limit})).all()
+        return [self._file(row) for row in rows]
+
+    async def remove_stored_file(self, file_id: UUID) -> None:
+        await self._conn.execute(text("UPDATE payment_notice SET file_id = NULL WHERE file_id = :id"), {"id": file_id})
+        await self._conn.execute(
+            text("DELETE FROM stored_file WHERE id = :id AND purpose = 'payment_notice'"), {"id": file_id}
+        )
+
+    async def stored_object_keys(self) -> list[str]:
+        rows = (await self._conn.execute(text("SELECT object_key FROM stored_file ORDER BY created_at, id"))).all()
+        return [str(row.object_key) for row in rows]
+
+    @staticmethod
+    def _notice(row: Any) -> PaymentNoticeRecord:
+        return PaymentNoticeRecord(
+            row.id,
+            row.customer_id,
+            int(row.amount),
+            row.file_id,
+            str(row.status),
+            row.payment_entry,
+            None if row.recorded_amount is None else int(row.recorded_amount),
+            row.decline_reason,
+            row.created_at,
+            row.closed_at,
+            bool(row.receipt_seen_before),
+        )
+
+    async def add_payment_notice(
+        self, *, notice_id: UUID, customer_id: UUID, amount: int, file_id: UUID | None, now: datetime
+    ) -> PaymentNoticeRecord:
+        await self._conn.execute(
+            text(
+                "INSERT INTO payment_notice (id, shop_id, customer_id, amount, file_id, status, created_at) "
+                "VALUES (:id, :shop_id, :customer_id, :amount, :file_id, 'sent', :now)"
+            ),
+            {
+                "id": notice_id,
+                "shop_id": self._shop_id,
+                "customer_id": customer_id,
+                "amount": amount,
+                "file_id": file_id,
+                "now": now,
+            },
+        )
+        row = (await self._conn.execute(text(_NOTICE_BY_ID), {"id": notice_id})).one()
+        return self._notice(row)
+
+    async def get_payment_notice(self, notice_id: UUID) -> PaymentNoticeRecord | None:
+        row = (await self._conn.execute(text(_NOTICE_BY_ID), {"id": notice_id})).first()
+        return None if row is None else self._notice(row)
+
+    async def notices_of_customer(self, customer_id: UUID, limit: int) -> list[PaymentNoticeRecord]:
+        rows = (await self._conn.execute(text(_NOTICES_OF_CUSTOMER), {"id": customer_id, "limit": limit})).all()
+        return [self._notice(row) for row in rows]
+
+    async def count_open_notices(self, customer_id: UUID) -> int:
+        row = (
+            await self._conn.execute(
+                text("SELECT count(*) AS waiting FROM payment_notice WHERE customer_id = :id AND status = 'sent'"),
+                {"id": customer_id},
+            )
+        ).one()
+        return int(row.waiting)
+
+    async def open_payment_notices(self, since: datetime) -> list[tuple[PaymentNoticeRecord, str]]:
+        rows = (await self._conn.execute(text(_OPEN_NOTICES), {"since": since})).all()
+        return [(self._notice(row), str(row.display_name)) for row in rows]
+
+    async def close_payment_notice(
+        self,
+        notice_id: UUID,
+        *,
+        status: str,
+        payment_entry: UUID | None,
+        decline_reason: str | None,
+        decided_by: UUID | None,
+        now: datetime,
+    ) -> PaymentNoticeRecord:
+        await self._conn.execute(
+            text(
+                "UPDATE payment_notice SET status = :status, payment_entry = :payment_entry, "
+                "decline_reason = :decline_reason, decided_by = :decided_by, closed_at = :now "
+                "WHERE id = :id AND status = 'sent'"
+            ),
+            {
+                "id": notice_id,
+                "status": status,
+                "payment_entry": payment_entry,
+                "decline_reason": decline_reason,
+                "decided_by": decided_by,
+                "now": now,
+            },
+        )
+        row = (await self._conn.execute(text(_NOTICE_BY_ID), {"id": notice_id})).one()
+        return self._notice(row)
+
+    async def expire_payment_notices(
+        self, *, before: datetime, now: datetime, customer_id: UUID | None, files_delete_after: datetime
+    ) -> int:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "UPDATE payment_notice SET status = 'expired', closed_at = :now "
+                    "WHERE status = 'sent' AND created_at < :before "
+                    "AND (CAST(:customer_id AS uuid) IS NULL OR customer_id = CAST(:customer_id AS uuid)) "
+                    "RETURNING file_id"
+                ),
+                {"before": before, "now": now, "customer_id": customer_id},
+            )
+        ).all()
+        for file_id in [row.file_id for row in rows if row.file_id is not None]:
+            await self.shorten_file_retention(file_id, files_delete_after)
+        return len(rows)
 
     async def staff_recipients(self, roles: list[str]) -> list[tuple[int, str]]:
         rows = (
@@ -1890,6 +2102,15 @@ class PgPlatformSession:
         rows = (
             await self._conn.execute(
                 text("SELECT shop_id FROM shops_due_for_reminders(CAST(:hour AS smallint))"), {"hour": hour}
+            )
+        ).all()
+        return [row.shop_id for row in rows]
+
+    async def shops_with_receipt_work(self, stale_before: datetime, now: datetime) -> list[UUID]:
+        rows = (
+            await self._conn.execute(
+                text("SELECT shop_id FROM shops_with_receipt_work(:stale_before, :now)"),
+                {"stale_before": stale_before, "now": now},
             )
         ).all()
         return [row.shop_id for row in rows]

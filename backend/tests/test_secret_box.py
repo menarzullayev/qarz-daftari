@@ -1,14 +1,13 @@
 """Secrets stored in the database are unreadable without the key and cannot be moved between rows."""
 
-import base64
-
 import pytest
 
 from qarz.application.ports import SecretUnreadable
-from qarz.infrastructure.secret_box import SecretBox
+from qarz.domain import file_links
+from qarz.infrastructure.secret_box import SecretBox, derive_key
 
-KEY = base64.b64encode(bytes(range(32))).decode()
-OTHER_KEY = base64.b64encode(bytes(range(1, 33))).decode()
+KEY = "a-server-secret-for-tests-0123456789"
+OTHER_KEY = "another-server-secret-0123456789"
 SECRET = b"12345678901234567890"
 
 
@@ -48,10 +47,23 @@ def test_bytes_that_were_never_ours_are_refused(stored: bytes) -> None:
         SecretBox(KEY).decrypt(stored, b"user-1")
 
 
-@pytest.mark.parametrize(
-    "key",
-    ["", "not base64 !!", base64.b64encode(bytes(31)).decode(), base64.b64encode(bytes(33)).decode()],
-)
-def test_a_key_that_is_not_32_bytes_of_base64_refuses_to_start(key: str) -> None:
-    with pytest.raises(ValueError, match="secrets key"):
-        SecretBox(key)
+@pytest.mark.parametrize("secret", ["", "short", "x" * 15])
+def test_a_server_secret_that_is_too_short_refuses_to_start(secret: str) -> None:
+    with pytest.raises(ValueError, match="too short"):
+        SecretBox(secret)
+
+
+def test_a_sixteen_character_secret_is_accepted() -> None:
+    box = SecretBox("x" * 16)
+    assert box.decrypt(box.encrypt(SECRET, b"u"), b"u") == SECRET
+
+
+def test_the_encryption_key_is_derived_for_this_purpose_only() -> None:
+    """One server secret serves file links and stored secrets; neither may be given the other's key."""
+    encryption, links = derive_key(KEY), file_links.derive_key(KEY)
+    assert len(encryption) == 32
+    assert encryption != links
+    assert encryption != KEY.encode()
+    assert KEY.encode() not in encryption
+    assert derive_key(KEY) == encryption, "the same secret always gives the same key"
+    assert derive_key(OTHER_KEY) != encryption

@@ -210,6 +210,49 @@ UZ = {
     ),
     "shop_deletion_cancelled": "«{shop}» do'konini o'chirish bekor qilindi. Do'kon avvalgidek ishlaydi.",
     "shop_erased": "«{shop}» do'koni va uning barcha ma'lumotlari o'chirildi.",
+    # --- payment notices (REQ-060, REQ-061) ---
+    "notice_choose_shop": "Qaysi do'konga to'lov qilganingizni bildirasiz?",
+    "notice_shop_button": "{shop}: {balance}",
+    "notice_nothing_owed": "«{shop}» do'konida qarzingiz yo'q.",
+    "ask_notice_amount": (
+        "«{shop}» do'konidagi qarzingiz: {balance}\nQancha to'ladingiz? Faqat summani yozing, masalan: 50000"
+    ),
+    "notice_amount_invalid": (
+        "Faqat summani yozing, masalan: 50000 yoki 50 000. Summa butun so'mda, 100 so'mdan 100 000 000 so'mgacha."
+    ),
+    "notice_amount_exceeds": "Summa qarzingizdan katta bo'lishi mumkin emas. Qarzingiz: {balance}",
+    "ask_notice_receipt": (
+        "To'lov: {amount}\nChekingiz bo'lsa, uning rasmini yoki PDF faylini shu yerga yuboring. "
+        "Chek bo'lmasa, tugmani bosing."
+    ),
+    "notice_without_receipt": "Cheksiz yuborish",
+    "notice_receipt_hint": "Chek rasmini yoki PDF faylini yuboring yoki tugmalardan birini bosing.",
+    "notice_receipt_invalid": (
+        "Bu faylni qabul qila olmadim. Chek JPEG, PNG yoki WebP rasm yoki PDF bo'lishi va 5 MB dan oshmasligi "
+        "kerak. Qaytadan yuboring yoki tugmalardan birini bosing."
+    ),
+    "notice_sent": (
+        "✅ {amount} to'lov haqidagi xabaringiz «{shop}» do'koniga yuborildi. Do'kon qabul qilgach, qarzingiz kamayadi."
+    ),
+    "s_notice": "💵 {shop}\n{name} {amount} to'laganini bildirdi.\nHozirgi qarzi: {balance}",
+    "s_notice_receipt": (
+        "💵 {shop}\n{name} {amount} to'laganini bildirdi.\nHozirgi qarzi: {balance}\n"
+        "📎 Chek ilova qilingan: uni ilovada ko'rishingiz mumkin."
+    ),
+    "s_receipt_seen_before": "⚠️ Aynan shu chek bu do'konga avval ham yuborilgan.",
+    "notice_accept_button": "✅ Qabul qilish",
+    "notice_accepted_staff": "✅ {shop}\n{name}: to'lov {amount} qabul qilindi.\nQolgan qarzi: {balance}",
+    "notice_declined_staff": "To'lov xabari rad etildi. Mijozga sababi bilan xabar yuborildi.",
+    "n_notice_accepted": "{shop}\n{amount} to'lov haqidagi xabaringiz qabul qilindi.",
+    "n_notice_corrected": (
+        "{shop}\n{amount} to'lov haqidagi xabaringiz qabul qilindi, lekin to'lov {recorded} deb yozildi."
+    ),
+    "n_notice_declined": "{shop}\n{amount} to'lov haqidagi xabaringiz rad etildi.\nSabab: {reason}",
+    "PAYMENT_NOTICE_NOT_ALLOWED": (
+        "Ko'rib chiqilmagan to'lov xabarlaringiz juda ko'p. Avval do'kon ularga javob berishini kuting."
+    ),
+    "PAYMENT_NOTICE_NOT_OPEN": "Bu to'lov xabari allaqachon ko'rib chiqilgan yoki muddati o'tgan.",
+    "FILE_STORE_UNAVAILABLE": "Fayllarni saqlash hozir ishlamayapti. Birozdan keyin qayta urinib ko'ring.",
     "currency": "so'm",
 }
 
@@ -410,6 +453,48 @@ RU = {
     ),
     "shop_deletion_cancelled": "Удаление магазина «{shop}» отменено. Магазин работает как раньше.",
     "shop_erased": "Магазин «{shop}» и все его данные удалены.",
+    # --- payment notices (REQ-060, REQ-061) ---
+    "notice_choose_shop": "Какому магазину сообщить об оплате?",
+    "notice_shop_button": "{shop}: {balance}",
+    "notice_nothing_owed": "В магазине «{shop}» у вас нет долга.",
+    "ask_notice_amount": (
+        "Ваш долг в магазине «{shop}»: {balance}\nСколько вы оплатили? Напишите только сумму, например: 50000"
+    ),
+    "notice_amount_invalid": (
+        "Напишите только сумму, например: 50000 или 50 000. Сумма в целых сумах, от 100 до 100 000 000 сумов."
+    ),
+    "notice_amount_exceeds": "Сумма не может быть больше вашего долга. Ваш долг: {balance}",
+    "ask_notice_receipt": (
+        "Оплата: {amount}\nЕсли есть чек, пришлите сюда его фото или PDF-файл. Если чека нет, нажмите кнопку."
+    ),
+    "notice_without_receipt": "Отправить без чека",
+    "notice_receipt_hint": "Пришлите фото чека или PDF-файл либо нажмите одну из кнопок.",
+    "notice_receipt_invalid": (
+        "Не удалось принять этот файл. Чек должен быть изображением JPEG, PNG или WebP либо PDF и не больше "
+        "5 МБ. Пришлите ещё раз или нажмите одну из кнопок."
+    ),
+    "notice_sent": (
+        "✅ Сообщение об оплате {amount} отправлено в магазин «{shop}». Когда магазин его примет, ваш долг уменьшится."
+    ),
+    "s_notice": "💵 {shop}\n{name} сообщает об оплате {amount}.\nТекущий долг: {balance}",
+    "s_notice_receipt": (
+        "💵 {shop}\n{name} сообщает об оплате {amount}.\nТекущий долг: {balance}\n"
+        "📎 Приложен чек: его можно посмотреть в приложении."
+    ),
+    "s_receipt_seen_before": "⚠️ Точно такой же чек уже присылали в этот магазин.",
+    "notice_accept_button": "✅ Принять",
+    "notice_accepted_staff": "✅ {shop}\n{name}: оплата {amount} принята.\nОстаток долга: {balance}",
+    "notice_declined_staff": "Сообщение об оплате отклонено. Клиенту отправлено сообщение с причиной.",
+    "n_notice_accepted": "{shop}\nВаше сообщение об оплате {amount} принято.",
+    "n_notice_corrected": (
+        "{shop}\nВаше сообщение об оплате {amount} принято, но оплата записана на сумму {recorded}."
+    ),
+    "n_notice_declined": "{shop}\nВаше сообщение об оплате {amount} отклонено.\nПричина: {reason}",
+    "PAYMENT_NOTICE_NOT_ALLOWED": (
+        "У вас слишком много нерассмотренных сообщений об оплате. Дождитесь ответа магазина."
+    ),
+    "PAYMENT_NOTICE_NOT_OPEN": "Это сообщение об оплате уже рассмотрено или его срок истёк.",
+    "FILE_STORE_UNAVAILABLE": "Хранилище файлов сейчас недоступно. Попробуйте ещё раз чуть позже.",
     "currency": "сум",
 }
 

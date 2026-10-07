@@ -51,6 +51,9 @@ _STATUS = {
     "ADMIN_ALREADY_ENROLLED": 409,
     "ADMIN_NOT_ENROLLED": 409,
     "SUBSCRIPTION_CHANGE_REFUSED": 409,
+    "PAYMENT_NOTICE_NOT_ALLOWED": 409,
+    "PAYMENT_NOTICE_NOT_OPEN": 409,
+    "FILE_STORE_UNAVAILABLE": 503,
 }
 
 _MESSAGES = {
@@ -97,6 +100,9 @@ _MESSAGES = {
         "ADMIN_ALREADY_ENROLLED": "Ikkinchi omil allaqachon ulangan. Almashtirish uchun operatorga murojaat qiling.",
         "ADMIN_NOT_ENROLLED": "Avval ikkinchi omilni (autentifikator ilovasini) ulang.",
         "SUBSCRIPTION_CHANGE_REFUSED": "Obunaning hozirgi holatida bu o'zgarishni qilib bo'lmaydi.",
+        "PAYMENT_NOTICE_NOT_ALLOWED": "Ko'rib chiqilmagan to'lov xabarlaringiz juda ko'p. Do'kon javobini kuting.",
+        "PAYMENT_NOTICE_NOT_OPEN": "Bu to'lov xabari allaqachon ko'rib chiqilgan yoki muddati o'tgan.",
+        "FILE_STORE_UNAVAILABLE": "Fayllarni saqlash hozir ishlamayapti. Birozdan keyin qayta urinib ko'ring.",
         "ONLINE_PAY_OFF": "Onlayn to'lov hozircha yoqilmagan. Karta orqali to'lash: /obuna",
         "RATE_LIMITED": "So'rovlar juda ko'p. Biroz kutib, qayta urinib ko'ring.",
         "TIMEOUT": "So'rov juda uzoq davom etdi va to'xtatildi. Hech narsa saqlanmadi. Qayta urinib ko'ring.",
@@ -145,6 +151,9 @@ _MESSAGES = {
         "ADMIN_ALREADY_ENROLLED": "Второй фактор уже подключён. Чтобы заменить его, обратитесь к оператору.",
         "ADMIN_NOT_ENROLLED": "Сначала подключите второй фактор (приложение-аутентификатор).",
         "SUBSCRIPTION_CHANGE_REFUSED": "При текущем состоянии подписки это изменение невозможно.",
+        "PAYMENT_NOTICE_NOT_ALLOWED": "У вас слишком много нерассмотренных сообщений об оплате. Дождитесь ответа.",
+        "PAYMENT_NOTICE_NOT_OPEN": "Это сообщение об оплате уже рассмотрено или его срок истёк.",
+        "FILE_STORE_UNAVAILABLE": "Хранилище файлов сейчас недоступно. Попробуйте ещё раз чуть позже.",
         "ONLINE_PAY_OFF": "Онлайн-оплата пока не включена. Оплата переводом на карту: /obuna",
         "RATE_LIMITED": "Слишком много запросов. Подождите немного и повторите.",
         "TIMEOUT": "Запрос выполнялся слишком долго и был остановлен. Ничего не сохранено. Повторите попытку.",

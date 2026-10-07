@@ -16,8 +16,20 @@ class Settings(BaseSettings):
     # Telegram identifiers of the people who may be administrators (ADR-017), separated by commas.
     # Empty means nobody: the administrator's API is then not served at all.
     admin_tg_ids: str = Field(default="", repr=False)
-    # Key that encrypts secrets stored in the database (the administrators' second-factor secrets):
-    # 32 random bytes, base64. Without it the administrator's API is not served.
+    # Where files are kept (ADR-020): "filesystem" (development, tests) or "s3" (production). Empty means
+    # no store is configured and every file is refused.
+    file_store: str = ""
+    # Directory of the filesystem store.
+    file_root: str = ""
+    # The S3-compatible store: scheme://host[:port], bucket, signing region and credentials.
+    s3_endpoint: str = ""
+    s3_bucket: str = ""
+    s3_region: str = "us-east-1"
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    # Server secret from which purpose-specific keys are derived: the key that signs links to stored
+    # files, and the key that encrypts the administrators' second-factor secrets. Empty: no link is given,
+    # no file is served, and the administrator's API is not served.
     secrets_key: str = Field(default="", repr=False)
     # Bearer token the monitoring system sends to read /metrics. Empty: the endpoint is not served.
     metrics_token: str = ""

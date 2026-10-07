@@ -29,6 +29,7 @@ from qarz.application.date_requests import accept_in as accept_date_request_in
 from qarz.application.date_requests import decline_in as decline_date_request_in
 from qarz.application.disputes import DECLINE_DISPUTE, DisputeService, decline_in
 from qarz.application.errors import AlreadyMember, AppError, ForbiddenRole, NotFound, ValidationFailed
+from qarz.application.files import FileService
 from qarz.application.ledger_service import (
     CHOOSE_PROMISE,
     RECORD_ENTRY,
@@ -39,12 +40,15 @@ from qarz.application.ledger_service import (
     reverse_entry_in,
 )
 from qarz.application.links import COUNTER_PREFIX, PERSONAL_PREFIX
-from qarz.application.ports import Membership, MyShop, PlatformSession, Storage, TenantSession
+from qarz.application.payment_notices import ACCEPT_NOTICE, DECLINE_NOTICE, PaymentNoticeService
+from qarz.application.payment_notices import accept_in as accept_notice_in
+from qarz.application.payment_notices import decline_in as decline_notice_in
+from qarz.application.ports import CustomerAccount, Membership, MyShop, PlatformSession, Storage, TenantSession
 from qarz.application.shops import ShopService, require_member
 from qarz.application.staff import StaffService, token_hash
 from qarz.application.subscription import SubscriptionService
 from qarz.domain.access import Capability, allows
-from qarz.domain.chat_entry import ParsedEntry, ParseError, ParseErrorCode, parse_entry
+from qarz.domain.chat_entry import ParsedEntry, ParseError, ParseErrorCode, parse_amount, parse_entry
 from qarz.domain.disputes import clean_reason
 from qarz.domain.ledger import EntryKind
 from qarz.domain.promise import QuickChoice, parse_day_month, quick_choice_date, tashkent_date
@@ -69,7 +73,7 @@ _PARSE_TEXTS = {
     ParseErrorCode.AMOUNT_TOO_SMALL: "amount_range",
     ParseErrorCode.AMOUNT_TOO_LARGE: "amount_range",
 }
-_LATER_COMMANDS = frozenset({"/ilova", "/toladim"})
+_LATER_COMMANDS = frozenset({"/ilova"})
 MOVE_DATE_ACTION = "dmv"
 # Why a customer's request to move a date was refused, in words of its own where there are any.
 _DATE_REQUEST_TEXTS = {
@@ -180,6 +184,7 @@ class ChatService:
         shops: ShopService,
         staff: StaffService,
         now: Callable[[], datetime] | None = None,
+        files: FileService | None = None,
     ) -> None:
         self._storage = storage
         self._shops = shops
@@ -187,6 +192,8 @@ class ChatService:
         self._accounts_service = CustomerAccountService(storage, now)
         self._disputes = DisputeService(storage, now)
         self._subscriptions = SubscriptionService(storage, now)
+        # Without a file service a notice can still be sent; only a receipt is refused.
+        self._notices = PaymentNoticeService(storage, files or FileService(storage, None), now)
         self._date_requests = DateRequestService(storage, now)
         self._now = now or (lambda: datetime.now(UTC))
 
@@ -199,6 +206,8 @@ class ChatService:
         replies = Replies(session, incoming)
         text = text.strip()
         if text.startswith("/"):
+            # A command ends an unfinished payment notice: what is typed next is not its amount.
+            await session.drop_pending(incoming.user_id, "notice")
             await self._command(session, incoming, replies, text)
             return
 
@@ -214,6 +223,14 @@ class ChatService:
         asked = await session.current_pending(incoming.user_id, "decline", self._now())
         if asked is not None:
             await self._decline_reason(session, incoming, replies, asked[1], text)
+            return
+        asked = await session.current_pending(incoming.user_id, "notice_decline", self._now())
+        if asked is not None:
+            await self._notice_decline_reason(session, incoming, replies, asked[1], text)
+            return
+        asked = await session.current_pending(incoming.user_id, "notice", self._now())
+        if asked is not None:
+            await self._notice_text(session, incoming, replies, asked[1], text)
             return
         asked = await session.current_pending(incoming.user_id, "date_request", self._now())
         if asked is not None:
@@ -317,6 +334,8 @@ class ChatService:
                     await replies.send(await self._subscriptions.chat_text(incoming.user_id, shop.shop_id, lang))
                 except AppError as error:
                     await replies.send(self._error_text(lang, error))
+        elif command == "/toladim":
+            await self._notice_start(session, incoming, replies)
         elif command == "/yordam":
             await replies.send(say(lang, "help"))
         elif command in _LATER_COMMANDS:
@@ -412,6 +431,27 @@ class ChatService:
                 await replies.show(say(lang, "expired"))
                 return
             await replies.show(say(lang, "unlinked", shop=accounts[shop_id].shop_name))
+        elif action == "pn" and arguments:
+            await self._notice_shop(session, incoming, replies, arguments[0])
+        elif action in ("pns", "pnx"):
+            await self._notice_finish(session, incoming, replies, action)
+        elif action in ("pna", "pnd") and arguments:
+            notice_id = _uuid(arguments[0])
+            if notice_id is None:
+                await replies.buttons(None)
+            elif action == "pna":
+                await self._notice_accept(session, incoming, replies, notice_id)
+            else:
+                await session.drop_pending(incoming.user_id, "notice_decline")
+                await session.put_pending(
+                    pending_id=self._pending_id(incoming),
+                    user_id=incoming.user_id,
+                    kind="notice_decline",
+                    payload={"notice": notice_id.hex},
+                    now=self._now(),
+                    expires_at=self._now() + PENDING_LIFETIME,
+                )
+                await replies.send(say(lang, "ask_decline_reason"))
         elif action in ("nc", "pk", "x") and arguments:
             await self._pending_entry(session, incoming, replies, action, arguments)
         elif action in ("pd", "rv", "rvok", "keep") and arguments:
@@ -640,6 +680,254 @@ class ChatService:
             await replies.send(say(lang, "dispute_declined_staff"))
             return
         await replies.send(say(lang, "not_found"))
+
+    # --- payment notices ----------------------------------------------------------------------------
+
+    @staticmethod
+    def _receipt_buttons(lang: str) -> Keyboard:
+        return [[(say(lang, "notice_without_receipt"), callback("pns"))], [(say(lang, "cancel"), callback("pnx"))]]
+
+    async def _notice_start(self, session: PlatformSession, incoming: Incoming, replies: Replies) -> None:
+        """/toladim: choose the shop when linked to several, then the amount, then the receipt (REQ-060)."""
+        lang = incoming.lang
+        accounts = await session.my_accounts(incoming.user_id)
+        if not accounts:
+            await replies.send(say(lang, "no_accounts"))
+        elif len(accounts) == 1:
+            await self._notice_ask_amount(session, incoming, replies, accounts[0])
+        else:
+            await replies.send(
+                say(lang, "notice_choose_shop"),
+                [
+                    [
+                        (
+                            say(
+                                lang, "notice_shop_button", shop=account.shop_name, balance=money(lang, account.balance)
+                            ),
+                            callback("pn", account.link_id.hex),
+                        )
+                    ]
+                    for account in accounts[:20]
+                ],
+            )
+
+    async def _notice_shop(self, session: PlatformSession, incoming: Incoming, replies: Replies, link_hex: str) -> None:
+        link_id = _uuid(link_hex)
+        accounts = {account.link_id: account for account in await session.my_accounts(incoming.user_id)}
+        if link_id is None or link_id not in accounts:
+            await replies.show(say(incoming.lang, "expired"))
+            return
+        await self._notice_ask_amount(session, incoming, replies, accounts[link_id])
+
+    async def _notice_ask_amount(
+        self, session: PlatformSession, incoming: Incoming, replies: Replies, account: CustomerAccount
+    ) -> None:
+        lang = incoming.lang
+        await session.drop_pending(incoming.user_id, "notice")
+        if account.balance <= 0:
+            await replies.show(say(lang, "notice_nothing_owed", shop=account.shop_name))
+            return
+        await session.put_pending(
+            pending_id=self._pending_id(incoming),
+            user_id=incoming.user_id,
+            kind="notice",
+            payload={"link": account.link_id.hex},
+            now=self._now(),
+            expires_at=self._now() + PENDING_LIFETIME,
+        )
+        await replies.show(
+            say(lang, "ask_notice_amount", shop=account.shop_name, balance=money(lang, account.balance)),
+            [[(say(lang, "cancel"), callback("pnx"))]],
+        )
+
+    @staticmethod
+    async def _notice_account(
+        session: PlatformSession, incoming: Incoming, payload: dict[str, Any]
+    ) -> CustomerAccount | None:
+        """The caller's own account the question was about; a link that has ended since is gone."""
+        link_id = _uuid(str(payload.get("link", "")))
+        accounts = await session.my_accounts(incoming.user_id)
+        return next((account for account in accounts if account.link_id == link_id), None)
+
+    async def _notice_text(
+        self, session: PlatformSession, incoming: Incoming, replies: Replies, payload: dict[str, Any], text: str
+    ) -> None:
+        """What a customer types after /toladim: the amount, and nothing but the amount."""
+        lang = incoming.lang
+        account = await self._notice_account(session, incoming, payload)
+        if account is None:
+            await session.drop_pending(incoming.user_id, "notice")
+            await replies.send(say(lang, "expired"))
+            return
+        if "amount" in payload:
+            await replies.send(say(lang, "notice_receipt_hint"), self._receipt_buttons(lang))
+            return
+        amount = parse_amount(text)
+        if isinstance(amount, ParseError):
+            await replies.send(say(lang, "notice_amount_invalid"))
+            return
+        if amount > account.balance:
+            await replies.send(say(lang, "notice_amount_exceeds", balance=money(lang, account.balance)))
+            return
+        await session.drop_pending(incoming.user_id, "notice")
+        await session.put_pending(
+            pending_id=self._pending_id(incoming),
+            user_id=incoming.user_id,
+            kind="notice",
+            payload={"link": account.link_id.hex, "amount": amount},
+            now=self._now(),
+            expires_at=self._now() + PENDING_LIFETIME,
+        )
+        await replies.send(say(lang, "ask_notice_receipt", amount=money(lang, amount)), self._receipt_buttons(lang))
+
+    async def awaits_receipt(self, session: PlatformSession, user_id: UUID) -> bool:
+        """Whether a file from this person would be the receipt of a payment notice they are sending."""
+        asked = await session.current_pending(user_id, "notice", self._now())
+        return asked is not None and "amount" in asked[1]
+
+    async def handle_file(self, session: PlatformSession, incoming: Incoming, content: bytes | None) -> None:
+        """A photo or a document. `content` is None when it could not be had or is too large.
+
+        Only a payment notice waiting for its receipt has any use for a file.
+        """
+        replies = Replies(session, incoming)
+        lang = incoming.lang
+        asked = await session.current_pending(incoming.user_id, "notice", self._now())
+        if asked is None or "amount" not in asked[1]:
+            await replies.send(say(lang, "only_text"))
+        elif content is None:
+            await replies.send(say(lang, "notice_receipt_invalid"), self._receipt_buttons(lang))
+        else:
+            await self._notice_send(session, incoming, replies, asked[1], content)
+
+    async def _notice_finish(self, session: PlatformSession, incoming: Incoming, replies: Replies, action: str) -> None:
+        lang = incoming.lang
+        asked = await session.current_pending(incoming.user_id, "notice", self._now())
+        if asked is None or (action == "pns" and "amount" not in asked[1]):
+            await replies.show(say(lang, "expired"))
+        elif action == "pnx":
+            await session.drop_pending(incoming.user_id, "notice")
+            await replies.show(say(lang, "cancelled"))
+        else:
+            await self._notice_send(session, incoming, replies, asked[1], None)
+
+    async def _notice_send(
+        self,
+        session: PlatformSession,
+        incoming: Incoming,
+        replies: Replies,
+        payload: dict[str, Any],
+        receipt: bytes | None,
+    ) -> None:
+        lang = incoming.lang
+        account = await self._notice_account(session, incoming, payload)
+        amount = payload.get("amount")
+        if account is None or not isinstance(amount, int):
+            await session.drop_pending(incoming.user_id, "notice")
+            await replies.show(say(lang, "expired"))
+            return
+        try:
+            await self._notices.send(incoming.user_id, account.link_id, amount, receipt, update_key=incoming.key)
+        except AppError as error:
+            if isinstance(error, ValidationFailed) and "receipt" in error.fields:
+                # The question stays open: another photo may follow.
+                await replies.show(say(lang, "notice_receipt_invalid"), self._receipt_buttons(lang))
+                return
+            if error.code != "FILE_STORE_UNAVAILABLE":
+                await session.drop_pending(incoming.user_id, "notice")
+            await replies.show(self._error_text(lang, error))
+            return
+        await session.drop_pending(incoming.user_id, "notice")
+        await replies.show(say(lang, "notice_sent", shop=account.shop_name, amount=money(lang, amount)))
+
+    async def _shop_of_notice(self, shops: list[MyShop], notice_id: UUID) -> MyShop | None:
+        """Which of the caller's shops holds the notice. Only a lookup, like `_shop_of_entry`."""
+        for shop in shops:
+            async with self._storage.tenant(shop.shop_id) as tenant:
+                if await tenant.get_payment_notice(notice_id) is not None:
+                    return shop
+        return None
+
+    async def _notice_accept(
+        self, session: PlatformSession, incoming: Incoming, replies: Replies, notice_id: UUID
+    ) -> None:
+        """A staff member accepts a notice from its message: a payment of the stated amount (BR-14)."""
+        lang = incoming.lang
+        shop = await self._shop_of_notice(await session.my_memberships(incoming.user_id), notice_id)
+        if shop is None:
+            await replies.show(say(lang, "not_found"))
+            return
+        try:
+            async with self._storage.tenant(shop.shop_id) as tenant:
+                actor = await require_member(tenant, incoming.user_id, ACCEPT_NOTICE)
+                await require_writable(tenant, self._today(), new_credit=False)
+
+                async def apply() -> dict[str, Any]:
+                    return await accept_notice_in(tenant, actor, notice_id, None, self._now())
+
+                body = await idempotency.run_once(
+                    tenant,
+                    key=incoming.key,
+                    operation="chat.payment_notice.accept",
+                    user_id=incoming.user_id,
+                    request={"notice": str(notice_id)},
+                    action=apply,
+                )
+        except AppError as error:
+            await replies.send(self._error_text(lang, error))
+            if error.code == "PAYMENT_NOTICE_NOT_OPEN":
+                # Nothing is left to decide. After any other refusal the notice can still be declined.
+                await replies.buttons(None)
+            return
+        await replies.show(
+            say(
+                lang,
+                "notice_accepted_staff",
+                shop=shop.name,
+                name=body["customer"]["display_name"],
+                amount=money(lang, body["entry"]["amount"]),
+                balance=money(lang, body["customer"]["balance"]),
+            )
+        )
+
+    async def _notice_decline_reason(
+        self, session: PlatformSession, incoming: Incoming, replies: Replies, payload: dict[str, Any], text: str
+    ) -> None:
+        """A staff member's next message after pressing "decline" is the reason given to the customer."""
+        lang = incoming.lang
+        notice_id = _uuid(str(payload.get("notice", "")))
+        await session.drop_pending(incoming.user_id, "notice_decline")
+        reason = clean_reason(text)
+        if notice_id is None:
+            await replies.send(say(lang, "expired"))
+            return
+        if reason is None:
+            await replies.send(say(lang, "reason_invalid"))
+            return
+        shop = await self._shop_of_notice(await session.my_memberships(incoming.user_id), notice_id)
+        if shop is None:
+            await replies.send(say(lang, "not_found"))
+            return
+        try:
+            async with self._storage.tenant(shop.shop_id) as tenant:
+                actor = await require_member(tenant, incoming.user_id, DECLINE_NOTICE)
+                await require_writable(tenant, self._today(), new_credit=False)
+
+                async def apply() -> dict[str, Any]:
+                    return await decline_notice_in(tenant, actor, notice_id, reason, self._now())
+
+                await idempotency.run_once(
+                    tenant,
+                    key=incoming.key,
+                    operation="chat.payment_notice.decline",
+                    user_id=incoming.user_id,
+                    request={"notice": str(notice_id), "reason": reason},
+                    action=apply,
+                )
+        except AppError as error:
+            await replies.send(self._error_text(lang, error))
+            return
+        await replies.send(say(lang, "notice_declined_staff"))
 
     # --- date change requests ------------------------------------------------------------------------
 
