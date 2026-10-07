@@ -136,7 +136,7 @@ class Metrics:
             lines.append(f'qd_security_events_total{{kind="{kind}"}} {count}')
         for name, values in sorted((gauges or {}).items()):
             lines.append(f"# TYPE {name} gauge")
-            label = "channel" if "outbox" in name else "job"
+            label = "channel" if "outbox" in name else "status" if "receipts" in name else "job"
             for key, value in sorted(values.items()):
                 lines.append(f'{name}{{{label}="{key}"}} {value:.0f}')
         return "\n".join(lines) + "\n"

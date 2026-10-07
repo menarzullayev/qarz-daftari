@@ -18,8 +18,9 @@ into a real monitoring system: there are no servers yet, so no alert has been tr
   - `qd_requests_total{method,route,status}` and `qd_request_duration_ms` (histogram) by route template.
   - `qd_security_events_total{kind}`: `shop_not_member`, `bad_sign_in`, `bad_webhook_secret`, `bad_second_factor`,
     `support_access_opened`, `admin_without_support_access`.
-  - `qd_outbox_oldest_due_seconds{channel}` and `qd_job_last_finished_seconds{job}`, read from the
-    database when the metrics are read.
+  - `qd_outbox_oldest_due_seconds{channel}`, `qd_job_last_finished_seconds{job}` and
+    `qd_receipts_oldest_waiting_seconds{status="submitted"}`, read from the database when the metrics
+    are read. The last is absent while no subscription receipt awaits a decision.
 - **Alert rules.** `alerts.yml`, written against those metrics with the thresholds of the operations
   document.
 
@@ -34,7 +35,7 @@ Counters live in the memory of the process that served the requests and start fr
 | Replication lag, log archive age, backup | Not collected; they belong to the database hosts, which do not exist |
 | Disk, memory, connections, certificate | Not collected; host-level |
 | Repeated failed administrator second factor | Counted as `qd_security_events_total{kind="bad_second_factor"}` with the rule `AdminSecondFactorRepeated`; nothing delivers the alert yet, like every rule here |
-| Receipts awaiting decision | Not built (story S17.2) |
+| Receipts awaiting decision | `qd_receipts_oldest_waiting_seconds` with the rule `ReceiptsWaiting` (older than 24 hours); nothing delivers the alert yet, like every rule here |
 | Daily digest and dashboards | Not built |
 | Delivery of alerts to the operator's Telegram chat and phone | Not configured |
 | Logs from the proxy, 30-day retention | No proxy and no hosts yet |

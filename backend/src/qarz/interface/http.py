@@ -2,7 +2,7 @@
 
 import hmac
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Container
 from datetime import UTC, datetime
 from typing import Protocol
 from uuid import UUID
@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from qarz.application.account import AccountService, ActivityService
 from qarz.application.admin import AdminService
 from qarz.application.admin_access import AdminAccess
+from qarz.application.admin_receipts import AdminReceiptService
 from qarz.application.auth import AuthService
 from qarz.application.catalog import CatalogService
 from qarz.application.chat import ChatService
@@ -38,6 +39,7 @@ from qarz.application.shop_deletion import ShopDeletionService
 from qarz.application.shops import ShopService
 from qarz.application.staff import StaffService
 from qarz.application.subscription import SubscriptionService
+from qarz.application.subscription_receipts import SubscriptionReceiptService
 from qarz.application.support_access import SupportAccessService
 from qarz.application.telegram_updates import UpdateProcessor
 from qarz.interface.account_api import add_account_routes
@@ -63,6 +65,7 @@ from qarz.interface.shop_deletion_api import add_shop_deletion_routes
 from qarz.interface.shops_api import add_shop_routes
 from qarz.interface.staff_api import add_staff_routes
 from qarz.interface.subscription_api import add_subscription_routes
+from qarz.interface.subscription_receipts_api import SUBSCRIPTION_RECEIPT_UPLOAD, add_subscription_receipt_routes
 from qarz.interface.support_api import add_admin_support_routes, add_owner_support_routes
 from qarz.interface.telegram_webhook import add_webhook_route
 
@@ -129,7 +132,7 @@ def create_app(
         return {"status": "ok"}
 
     # An oversized body is refused before any route, handler or sign-in sees it.
-    app.add_middleware(BodyLimit, allowances=(RECEIPT_UPLOAD,))
+    app.add_middleware(BodyLimit, allowances=(RECEIPT_UPLOAD, SUBSCRIPTION_RECEIPT_UPLOAD))
     app.add_exception_handler(AppError, app_error_handler)
 
     @app.exception_handler(RequestValidationError)
@@ -148,6 +151,8 @@ def create_app(
         return response
 
     files = None if storage is None else FileService(storage, file_store, link_secret=secrets_key)
+    # Who is told that a subscription receipt waits: the administrators on the allow-list.
+    reviewers: Container[int] = () if admin is None else admin.allowed_tg_ids
     if files is not None:
         # Served whoever asks: a link is given only after authorization and works for five minutes.
         add_file_route(app, files, now or (lambda: datetime.now(UTC)))
@@ -197,6 +202,9 @@ def create_app(
         add_shop_deletion_routes(app, ShopDeletionService(storage, now), current_user)
         add_subscription_routes(app, SubscriptionService(storage, now), current_user)
         add_online_order_routes(app, payments, current_user)
+        add_subscription_receipt_routes(
+            app, SubscriptionReceiptService(storage, files, now, admin_tg_ids=reviewers), current_user
+        )
         add_credit_routes(app, CreditService(storage, now), current_user)
         add_reminder_routes(app, ReminderService(storage, now), current_user)
         support = SupportAccessService(storage, now)
@@ -220,11 +228,12 @@ def create_app(
                 resolver.user_id,
                 storage.user_language,
                 None if limiter is None else (lambda user_id: counted.check(user_id, None)),
+                AdminReceiptService(storage, files, now),
             )
             add_admin_support_routes(app, support, admin_user)
 
     if webhook_secret is not None and storage is not None:
-        chat = ChatService(storage, ShopService(storage, now), StaffService(storage, now), now, files)
+        chat = ChatService(storage, ShopService(storage, now), StaffService(storage, now), now, files, reviewers)
         add_webhook_route(app, UpdateProcessor(storage, chat, telegram_files), webhook_secret)
 
     metrics = Metrics()

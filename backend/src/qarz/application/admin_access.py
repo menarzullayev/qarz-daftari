@@ -100,6 +100,11 @@ class AdminAccess:
         self._cipher = cipher
         self._now = now or (lambda: datetime.now(UTC))
 
+    @property
+    def allowed_tg_ids(self) -> Container[int]:
+        """The allow-list: who is told about what waits for an administrator."""
+        return self._allowed
+
     # --- who may come in --------------------------------------------------------------------------------
 
     async def _candidate(self, session: PlatformSession, user_id: UUID) -> AdminAccount | None:

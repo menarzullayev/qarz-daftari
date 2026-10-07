@@ -444,6 +444,54 @@ class AdminReceiptRow:
 
 
 @dataclass(frozen=True)
+class SubscriptionReceiptRecord:
+    """A subscription receipt as its own shop sees it (DOM-019)."""
+
+    receipt_id: UUID
+    stated_amount: int
+    stated_months: int | None
+    status: str
+    months: int | None  # what the administrator recorded on approval
+    reject_reason: str | None
+    created_at: datetime
+    decided_at: datetime | None
+    file_id: UUID | None
+
+
+@dataclass(frozen=True)
+class AdminReceipt:
+    """A subscription receipt as an administrator sees it, with its shop's name. `copies` is how many
+    other receipts, of any shop, carry a file with the same content."""
+
+    receipt_id: UUID
+    shop_id: UUID
+    shop_name: str
+    stated_amount: int
+    stated_months: int | None
+    status: str
+    months: int | None
+    reject_reason: str | None
+    created_at: datetime
+    decided_at: datetime | None
+    decided_by: UUID | None
+    has_file: bool
+    copies: int = 0
+    file: StoredFileRecord | None = None  # filled only when one receipt is read
+
+
+@dataclass(frozen=True)
+class ReceiptCopy:
+    """Another receipt whose file has the same content."""
+
+    receipt_id: UUID
+    shop_id: UUID
+    shop_name: str
+    stated_amount: int
+    status: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class LockedSubscription:
     """A shop's subscription row, locked for the transaction, and where to reach its owner."""
 
@@ -812,11 +860,29 @@ class TenantSession(Protocol):
         ...
 
     async def due_receipt_files(self, now: datetime, limit: int) -> list[StoredFileRecord]:
-        """Payment-notice receipts whose retention has run out, oldest first."""
+        """Receipts of payment notices and of the subscription whose retention has run out, oldest first."""
         ...
 
     async def remove_stored_file(self, file_id: UUID) -> None:
-        """Forget a file whose object has been deleted, and whatever notice still pointed to it."""
+        """Forget a receipt file whose object has been deleted. Whatever pointed to it has no file now."""
+        ...
+
+    async def add_subscription_receipt(
+        self, *, receipt_id: UUID, stated_amount: int, stated_months: int, file_id: UUID, now: datetime
+    ) -> SubscriptionReceiptRecord: ...
+
+    async def subscription_receipts(self, limit: int) -> list[SubscriptionReceiptRecord]:
+        """The shop's own receipts, newest first."""
+        ...
+
+    async def count_waiting_receipts(self) -> int: ...
+
+    async def subscription_receipt_copies(self, file_id: UUID) -> int:
+        """How many other subscription receipts, of any shop, have a file with the same content."""
+        ...
+
+    async def admin_recipients(self) -> list[tuple[int, str]]:
+        """Telegram chat and language of every administrator whose account is active and confirmed."""
         ...
 
     async def stored_object_keys(self) -> list[str]:
@@ -965,8 +1031,8 @@ class TenantSession(Protocol):
         """As `subscription`, holding the row until the transaction ends."""
         ...
 
-    async def pay_subscription(self, paid_through: date, now: datetime) -> None:
-        """Set the paid-through date. The shop becomes active unless an administrator suspended it."""
+    async def pay_subscription(self, *, state: str, paid_through: date, prior_state: str | None, now: datetime) -> None:
+        """Store what `qarz.domain.subscription.after_payment` worked out."""
         ...
 
     async def create_online_payment(self, *, order_id: UUID, months: int, amount: int) -> OnlinePayment: ...
@@ -1037,7 +1103,8 @@ class PlatformSession(Protocol):
 
     async def health_figures(self) -> dict[str, dict[str, float]]:
         """Numbers for monitoring: how long the oldest due message of each channel has waited, in
-        seconds, and how long ago each scheduled job last finished. No identifiers."""
+        seconds, how long ago each scheduled job last finished, and how long the oldest subscription
+        receipt has awaited a decision. No identifiers."""
         ...
 
     async def online_payment_shop(self, order_id: UUID) -> UUID | None:
@@ -1188,6 +1255,32 @@ class PlatformSession(Protocol):
     ) -> list[AdminShopRow]: ...
 
     async def admin_shop_receipts(self, admin_id: UUID, shop_id: UUID) -> list[AdminReceiptRow]: ...
+
+    async def admin_receipts(
+        self, admin_id: UUID, *, status: str, after: tuple[datetime, UUID] | None, limit: int
+    ) -> list[AdminReceipt]:
+        """Subscription receipts of one status across shops, oldest first."""
+        ...
+
+    async def admin_receipt(self, admin_id: UUID, receipt_id: UUID, *, lock: bool) -> AdminReceipt | None:
+        """One receipt with its file's record. With `lock` it is held until the transaction ends."""
+        ...
+
+    async def admin_receipt_copies(self, admin_id: UUID, receipt_id: UUID) -> list[ReceiptCopy]: ...
+
+    async def admin_decide_receipt(
+        self, admin_id: UUID, receipt_id: UUID, *, status: str, months: int | None, reason: str | None, now: datetime
+    ) -> bool:
+        """Approve or reject a receipt that is still waiting. False when it was not waiting any more."""
+        ...
+
+    async def admin_shop_activity(self, admin_id: UUID, shop_id: UUID, *, action: str, subject_id: UUID) -> bool:
+        """A line in the shop's activity for what an administrator did to it."""
+        ...
+
+    async def record_shop_measure(self, shop_id: UUID, *, kind: str, entry_ref: UUID, amount: int) -> None:
+        """As a shop's `record_measure`, from outside the shop: no name, phone or identity."""
+        ...
 
     async def admin_lock_subscription(self, admin_id: UUID, shop_id: UUID) -> LockedSubscription | None: ...
 

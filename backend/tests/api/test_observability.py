@@ -4,6 +4,7 @@ import json
 import logging
 import uuid
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -297,4 +298,45 @@ def test_the_alert_rules_name_routes_jobs_and_events_that_exist(observed: TestCl
         "qd_security_events_total",
         "qd_outbox_oldest_due_seconds",
         "qd_job_last_finished_seconds",
+        "qd_receipts_oldest_waiting_seconds",
     }
+
+
+def test_the_health_figures_tell_how_long_the_oldest_receipt_has_awaited_a_decision(
+    observed: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    """Operations document, monitoring: "receipts awaiting decision, older than 24 hours"."""
+
+    def receipt(shop: Any, status: str, hours: int) -> None:
+        owner.execute(
+            "INSERT INTO subscription_receipt (id, shop_id, stated_amount, stated_months, status, months, created_at) "
+            "VALUES (gen_random_uuid(), %s, 100000, 1, %s, %s, now() - make_interval(hours => %s))",
+            (shop, status, 1 if status == "approved" else None, hours),
+        )
+
+    def waited() -> float | None:
+        values = dict(line.rsplit(" ", 1) for line in metrics(observed).splitlines() if not line.startswith("#"))
+        value = values.get('qd_receipts_oldest_waiting_seconds{status="submitted"}')
+        return None if value is None else float(value)
+
+    # The database is shared with other tests: what they left waiting is decided first.
+    owner.execute(
+        "UPDATE subscription_receipt SET status = 'rejected', reject_reason = 'test' WHERE status = 'submitted'"
+    )
+    assert waited() is None, "nothing waits, so there is nothing to be late with"
+    receipt(world.shop_a, "approved", 90)
+    receipt(world.shop_a, "rejected", 80)
+    assert waited() is None, "a decided receipt does not wait"
+    receipt(world.shop_a, "submitted", 2)
+    receipt(world.shop_b, "submitted", 30)
+    age = waited()
+    assert age is not None and 30 * 3600 <= age < 30 * 3600 + 120, "the oldest one, of any shop"
+    text = metrics(observed)
+    assert str(world.shop_a) not in text and str(world.shop_b) not in text and "Shop" not in text
+    # The rule that watches it fires above a day, which this is.
+    rules = (Path(__file__).resolve().parents[3] / "deploy" / "monitoring" / "alerts.yml").read_text(encoding="utf-8")
+    assert "expr: qd_receipts_oldest_waiting_seconds > 86400" in rules
+    owner.execute(
+        "UPDATE subscription_receipt SET status = 'rejected', reject_reason = 'test' WHERE status = 'submitted'"
+    )
+    assert waited() is None

@@ -7,7 +7,7 @@ been checked, so nobody can make the service hold more than one receipt's worth 
 
 import json
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
 from datetime import datetime
 from email import policy
 from email.parser import BytesParser
@@ -73,7 +73,7 @@ async def read_limited(request: Request, limit: int) -> bytes:
     return b"".join(chunks)
 
 
-def parse_form(content_type: str, body: bytes) -> dict[str, bytes]:
+def parse_form(content_type: str, body: bytes, allowed: Collection[str] = _FIELDS) -> dict[str, bytes]:
     """The parts of a `multipart/form-data` body by field name, each as the bytes that were sent.
 
     Parsed with the standard library's MIME parser. A part's own file name and content type are ignored:
@@ -89,8 +89,8 @@ def parse_form(content_type: str, body: bytes) -> dict[str, bytes]:
     for part in message.iter_parts():
         name = part.get_param("name", header="content-disposition")
         content = part.get_payload(decode=True)
-        if not isinstance(name, str) or name not in _FIELDS or name in fields or not isinstance(content, bytes):
-            raise ValidationFailed({"_": "the form has the fields amount and receipt, each at most once"})
+        if not isinstance(name, str) or name not in allowed or name in fields or not isinstance(content, bytes):
+            raise ValidationFailed({"_": f"the form has the fields {', '.join(sorted(allowed))}, each at most once"})
         fields[name] = content
     return fields
 

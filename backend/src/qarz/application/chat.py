@@ -8,7 +8,7 @@ platform transaction failed after the shop's transaction had committed.
 Every action is authorized again when a button is pressed: callback data is only an identifier.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Container
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -47,11 +47,13 @@ from qarz.application.ports import CustomerAccount, Membership, MyShop, Platform
 from qarz.application.shops import ShopService, require_member
 from qarz.application.staff import StaffService, token_hash
 from qarz.application.subscription import SubscriptionService
+from qarz.application.subscription_receipts import SubscriptionReceiptService
 from qarz.domain.access import Capability, allows
 from qarz.domain.chat_entry import ParsedEntry, ParseError, ParseErrorCode, parse_amount, parse_entry
 from qarz.domain.disputes import clean_reason
 from qarz.domain.ledger import EntryKind
 from qarz.domain.promise import QuickChoice, parse_day_month, quick_choice_date, tashkent_date
+from qarz.domain.subscription_receipts import OFFERED_MONTHS, expected_amount
 
 CALLBACK_VERSION = "v2"
 PENDING_LIFETIME = timedelta(minutes=15)
@@ -185,6 +187,7 @@ class ChatService:
         staff: StaffService,
         now: Callable[[], datetime] | None = None,
         files: FileService | None = None,
+        admin_tg_ids: Container[int] = (),
     ) -> None:
         self._storage = storage
         self._shops = shops
@@ -194,6 +197,9 @@ class ChatService:
         self._subscriptions = SubscriptionService(storage, now)
         # Without a file service a notice can still be sent; only a receipt is refused.
         self._notices = PaymentNoticeService(storage, files or FileService(storage, None), now)
+        self._receipts = SubscriptionReceiptService(
+            storage, files or FileService(storage, None), now, admin_tg_ids=admin_tg_ids
+        )
         self._date_requests = DateRequestService(storage, now)
         self._now = now or (lambda: datetime.now(UTC))
 
@@ -206,8 +212,10 @@ class ChatService:
         replies = Replies(session, incoming)
         text = text.strip()
         if text.startswith("/"):
-            # A command ends an unfinished payment notice: what is typed next is not its amount.
+            # A command ends an unfinished payment notice: what is typed next is not its amount. It ends
+            # a subscription receipt that was being sent as well.
             await session.drop_pending(incoming.user_id, "notice")
+            await session.drop_pending(incoming.user_id, "sub_receipt")
             await self._command(session, incoming, replies, text)
             return
 
@@ -330,10 +338,7 @@ class ChatService:
             elif shop is None:
                 await replies.send(say(lang, "choose_shop"), self._shop_buttons(shops))
             else:
-                try:
-                    await replies.send(await self._subscriptions.chat_text(incoming.user_id, shop.shop_id, lang))
-                except AppError as error:
-                    await replies.send(self._error_text(lang, error))
+                await self._subscription_offer(incoming, replies, shop)
         elif command == "/toladim":
             await self._notice_start(session, incoming, replies)
         elif command == "/yordam":
@@ -435,6 +440,11 @@ class ChatService:
             await self._notice_shop(session, incoming, replies, arguments[0])
         elif action in ("pns", "pnx"):
             await self._notice_finish(session, incoming, replies, action)
+        elif action == "srm" and len(arguments) == 2:
+            await self._sub_receipt_start(session, incoming, replies, arguments[0], arguments[1])
+        elif action == "srx":
+            await session.drop_pending(incoming.user_id, "sub_receipt")
+            await replies.show(say(lang, "cancelled"))
         elif action in ("pna", "pnd") and arguments:
             notice_id = _uuid(arguments[0])
             if notice_id is None:
@@ -783,7 +793,10 @@ class ChatService:
     async def awaits_receipt(self, session: PlatformSession, user_id: UUID) -> bool:
         """Whether a file from this person would be the receipt of a payment notice they are sending."""
         asked = await session.current_pending(user_id, "notice", self._now())
-        return asked is not None and "amount" in asked[1]
+        if asked is not None and "amount" in asked[1]:
+            return True
+        # Or the receipt of a subscription payment, after a period was chosen under /obuna.
+        return await session.current_pending(user_id, "sub_receipt", self._now()) is not None
 
     async def handle_file(self, session: PlatformSession, incoming: Incoming, content: bytes | None) -> None:
         """A photo or a document. `content` is None when it could not be had or is too large.
@@ -793,7 +806,10 @@ class ChatService:
         replies = Replies(session, incoming)
         lang = incoming.lang
         asked = await session.current_pending(incoming.user_id, "notice", self._now())
-        if asked is None or "amount" not in asked[1]:
+        paying = await session.current_pending(incoming.user_id, "sub_receipt", self._now())
+        if (asked is None or "amount" not in asked[1]) and paying is not None:
+            await self._sub_receipt_send(session, incoming, replies, paying[1], content)
+        elif asked is None or "amount" not in asked[1]:
             await replies.send(say(lang, "only_text"))
         elif content is None:
             await replies.send(say(lang, "notice_receipt_invalid"), self._receipt_buttons(lang))
@@ -839,6 +855,107 @@ class ChatService:
             return
         await session.drop_pending(incoming.user_id, "notice")
         await replies.show(say(lang, "notice_sent", shop=account.shop_name, amount=money(lang, amount)))
+
+    # --- paying the subscription by card transfer (REQ-054) -------------------------------------------
+
+    async def _subscription_offer(
+        self, incoming: Incoming, replies: Replies, shop: MyShop, *, months: int | None = None
+    ) -> tuple[str, int] | None:
+        """Show `/obuna` with the periods to pay for, or return the shop's name and price for a chosen one."""
+        lang = incoming.lang
+        try:
+            text, name, price = await self._subscriptions.chat_offer(incoming.user_id, shop.shop_id, lang)
+        except AppError as error:
+            await replies.show(self._error_text(lang, error))
+            return None
+        if months is not None:
+            if price is None:
+                await replies.show(text)
+                return None
+            return name, price
+        if price is None:
+            await replies.send(text)
+            return None
+        await replies.send(
+            text + "\n" + say(lang, "sub_choose_months"),
+            [
+                [
+                    (
+                        say(lang, "sub_months_button", months=count, amount=money(lang, expected_amount(price, count))),
+                        callback("srm", shop.shop_id.hex, count),
+                    )
+                ]
+                for count in OFFERED_MONTHS
+            ],
+        )
+        return None
+
+    async def _sub_receipt_start(
+        self, session: PlatformSession, incoming: Incoming, replies: Replies, shop_hex: str, months_text: str
+    ) -> None:
+        """A period was chosen under `/obuna`: remember it and ask for the receipt."""
+        lang = incoming.lang
+        shop_id = _uuid(shop_hex)
+        mine = {shop.shop_id: shop for shop in await session.my_memberships(incoming.user_id)}
+        months = int(months_text) if months_text.isascii() and months_text.isdigit() else 0
+        if shop_id is None or shop_id not in mine or months not in OFFERED_MONTHS:
+            await replies.show(say(lang, "expired"))
+            return
+        offer = await self._subscription_offer(incoming, replies, mine[shop_id], months=months)
+        if offer is None:
+            return
+        name, price = offer
+        amount = expected_amount(price, months)
+        for kind in ("notice", "sub_receipt"):
+            await session.drop_pending(incoming.user_id, kind)
+        await session.put_pending(
+            pending_id=self._pending_id(incoming),
+            user_id=incoming.user_id,
+            kind="sub_receipt",
+            payload={"shop": shop_id.hex, "months": months, "amount": amount},
+            now=self._now(),
+            expires_at=self._now() + PENDING_LIFETIME,
+        )
+        await replies.show(
+            say(lang, "ask_sub_receipt", shop=name, months=months, amount=money(lang, amount)),
+            [[(say(lang, "cancel"), callback("srx"))]],
+        )
+
+    async def _sub_receipt_send(
+        self,
+        session: PlatformSession,
+        incoming: Incoming,
+        replies: Replies,
+        payload: dict[str, Any],
+        content: bytes | None,
+    ) -> None:
+        lang = incoming.lang
+        cancel: Keyboard = [[(say(lang, "cancel"), callback("srx"))]]
+        shop_id = _uuid(str(payload.get("shop", "")))
+        mine = {shop.shop_id: shop for shop in await session.my_memberships(incoming.user_id)}
+        amount, months = payload.get("amount"), payload.get("months")
+        if shop_id is None or shop_id not in mine or not isinstance(amount, int) or not isinstance(months, int):
+            await session.drop_pending(incoming.user_id, "sub_receipt")
+            await replies.send(say(lang, "expired"))
+            return
+        if content is None:
+            # It could not be had or is too large. The question stays open: another file may follow.
+            await replies.send(say(lang, "sub_receipt_invalid"), cancel)
+            return
+        try:
+            await self._receipts.submit(incoming.user_id, shop_id, amount, months, content, update_key=incoming.key)
+        except AppError as error:
+            if isinstance(error, ValidationFailed) and "receipt" in error.fields:
+                await replies.send(say(lang, "sub_receipt_invalid"), cancel)
+                return
+            if error.code != "FILE_STORE_UNAVAILABLE":
+                await session.drop_pending(incoming.user_id, "sub_receipt")
+            await replies.send(self._error_text(lang, error))
+            return
+        await session.drop_pending(incoming.user_id, "sub_receipt")
+        await replies.send(
+            say(lang, "sub_receipt_sent", shop=mine[shop_id].name, months=months, amount=money(lang, amount))
+        )
 
     async def _shop_of_notice(self, shops: list[MyShop], notice_id: UUID) -> MyShop | None:
         """Which of the caller's shops holds the notice. Only a lookup, like `_shop_of_entry`."""
