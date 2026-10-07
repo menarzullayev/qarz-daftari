@@ -96,6 +96,9 @@ function backend(shops: unknown) {
       // Asked by the owner's settings since the support-access story (REQ-059): a deliberate addition.
       case `${SHOP_BASE}/support-access`:
         return ok({ items: [], next_cursor: null });
+      // Asked by the owner's subscription screen since receipts are sent from it (REQ-054): a deliberate addition.
+      case `${SHOP_BASE}/subscription/receipts`:
+        return ok({ items: [] });
       default:
         // Anything the Mini App did not ask before this story is refused, and shows in the snapshot.
         return refusal(404, "NOT_FOUND", "Topilmadi.");

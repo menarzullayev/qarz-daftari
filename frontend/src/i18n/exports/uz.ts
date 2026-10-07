@@ -53,5 +53,4 @@ export const uzExports = {
   "exports.notReady.expired": "Fayl muddati o'tgan va o'chirilgan. Yangi eksport so'rang.",
   "exports.stale": "Holatni yangilab bo'lmadi.",
   "exports.refresh": "Yangilash",
-  "exports.import.title": "Import",
 } satisfies Record<string, string | UzPlural>;

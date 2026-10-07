@@ -955,6 +955,10 @@ export type Call<T> = {
   body?: unknown;
   /** A multipart form in place of a JSON body: the browser writes its content type and boundary. */
   form?: FormData;
+  /** A file as the whole request body, for the one route that takes it so (the import's upload). */
+  raw?: Blob;
+  /** The answer is a file, not JSON: `read` is given its `Blob` (the import's template). */
+  binary?: boolean;
   idempotencyKey?: string;
   signal?: AbortSignal | undefined;
   read: (value: unknown) => T;
@@ -992,6 +996,8 @@ export async function call<T>(transport: Transport, request: Call<T>): Promise<T
   };
   if (request.form !== undefined) {
     init.body = request.form;
+  } else if (request.raw !== undefined) {
+    init.body = request.raw;
   } else if (request.body !== undefined) {
     headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(request.body);
@@ -1025,6 +1031,9 @@ export async function call<T>(transport: Transport, request: Call<T>): Promise<T
     throw failure;
   }
   try {
+    if (request.binary) {
+      return request.read(await response.blob());
+    }
     return request.read(response.status === 204 ? null : await response.json());
   } catch (error) {
     if (isAbort(error)) {

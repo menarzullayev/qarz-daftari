@@ -1,6 +1,8 @@
 import type { uzAdmin } from "./admin/uz";
 import type { uzExports } from "./exports/uz";
+import type { uzImports } from "./imports/uz";
 import type { uzPanel } from "./panel/uz";
+import type { uzReceipts } from "./receipts/uz";
 import type { uzReports } from "./reports/uz";
 import type { uzSupport } from "./support/uz";
 import type { uz } from "./uz";
@@ -25,6 +27,12 @@ export type ReportsMessageKey = keyof typeof uzReports;
 /** Keys of the export screen's own catalog, added when that screen is first opened (see `addMessages`). */
 export type ExportsMessageKey = keyof typeof uzExports;
 
+/** Keys of the import screen's own catalog, added when that screen is first opened (see `addMessages`). */
+export type ImportsMessageKey = keyof typeof uzImports;
+
+/** Keys of the owner's subscription receipts, added when the subscription screen asks for them. */
+export type ReceiptsMessageKey = keyof typeof uzReceipts;
+
 /** Keys of the owner's view of support access: added by the web panel, and by the Mini App on demand. */
 export type SupportMessageKey = keyof typeof uzSupport;
 
@@ -37,6 +45,8 @@ export type MessageKey =
   | PanelMessageKey
   | ReportsMessageKey
   | ExportsMessageKey
+  | ImportsMessageKey
+  | ReceiptsMessageKey
   | SupportMessageKey
   | AdminMessageKey;
 
@@ -58,6 +68,16 @@ export type RuReportsCatalog = {
 /** And for the export screen's catalog. */
 export type RuExportsCatalog = {
   [K in ExportsMessageKey]: (typeof uzExports)[K] extends string ? string : RuPlural;
+};
+
+/** And for the import screen's catalog. */
+export type RuImportsCatalog = {
+  [K in ImportsMessageKey]: (typeof uzImports)[K] extends string ? string : RuPlural;
+};
+
+/** And for the owner's subscription receipts. */
+export type RuReceiptsCatalog = {
+  [K in ReceiptsMessageKey]: (typeof uzReceipts)[K] extends string ? string : RuPlural;
 };
 
 /** And for the owner's view of support access. */

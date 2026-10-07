@@ -93,6 +93,34 @@ export const platformBody = (overrides: Record<string, unknown> = {}, settings: 
   ...overrides,
 });
 
+export const RECEIPT_ID = "55555555-5555-4555-8555-555555555552";
+export const OTHER_RECEIPT = "55555555-5555-4555-8555-555555555553";
+
+/** A subscription receipt as the administrator reads one: waiting, sent an hour before `NOW`, with its file. */
+export const receiptBody = (overrides: Record<string, unknown> = {}) => ({
+  id: RECEIPT_ID,
+  shop_id: SHOP_ID,
+  shop_name: "Baraka savdo",
+  stated_amount: 200000,
+  stated_months: 2,
+  status: "submitted",
+  months: null,
+  reject_reason: null,
+  created_at: "2026-10-06T06:00:00+00:00",
+  decided_at: null,
+  decided_by: null,
+  has_file: true,
+  ...overrides,
+});
+
+/** GET /receipts/{id}: the receipt with a link to its file and no other receipt carrying the same file. */
+export const receiptDetailBody = (overrides: Record<string, unknown> = {}) => ({
+  ...receiptBody(),
+  file: { url: "/files/receipt.token", expires_at: "2026-10-06T07:05:00+00:00" },
+  copies: [],
+  ...overrides,
+});
+
 export const OTHER_ADMIN = "77777777-7777-4777-8777-777777d4e5f6";
 export const ACCESS_ID = "88888888-8888-4888-8888-888888888881";
 

@@ -148,7 +148,8 @@ describe("someone who is not an administrator", () => {
     expect(screen.getByText("Bunday sahifa yo'q yoki sizda unga ruxsat yo'q.")).toBeTruthy();
     expect(screen.queryByRole("navigation")).toBeNull();
     expect(view.container.textContent).not.toMatch(ADMIN_WORDS);
-    expect(document.title).toBe("Sahifa topilmadi — Qarz Daftari");
+    // The title is set in an effect, after the heading is drawn: it is waited for, not read at once.
+    await waitFor(() => expect(document.title).toBe("Sahifa topilmadi — Qarz Daftari"));
     expect(screen.queryByLabelText("6 xonali kod")).toBeNull();
     expect(screen.queryByRole("button", { name: "Maxfiy kalit yaratish" })).toBeNull();
   });
@@ -418,13 +419,19 @@ describe("behind the door", () => {
     expect(screen.getByText("Admin sessiyasi 2026-yil 6-oktabr, 20:00 gacha amal qiladi.")).toBeTruthy();
   });
 
-  it("keeps the section of another story as a placeholder that asks nothing", async () => {
+  it("opens the queue of receipts at its address, and one receipt under it: neither is a placeholder any more", async () => {
     const server = await inside();
     const before = server.sent.length;
     go("#/receipts");
     expect(heading()).toBe("To'lov cheklari");
-    expect(screen.getByText("Bu bo'lim tez orada tayyor bo'ladi.")).toBeTruthy();
-    expect(server.sent).toHaveLength(before);
+    expect(screen.queryByText("Bu bo'lim tez orada tayyor bo'ladi.")).toBeNull();
+    await waitFor(() => expect(server.sent.slice(before).map((sent) => `${sent.method} ${sent.path}`)).toEqual(["GET /api/admin/v1/receipts"]));
+    go("#/receipts/55555555-5555-4555-8555-555555555551");
+    expect(heading()).toBe("Obuna to'lovi cheki");
+    await waitFor(() => expect(server.sent.at(-1)?.path).toBe("/api/admin/v1/receipts/55555555-5555-4555-8555-555555555551"));
+    expect(within(screen.getByRole("navigation")).getByRole("link", { name: "To'lov cheklari" }).getAttribute("aria-current")).toBe("page");
+    go("#/receipts/not-a-receipt");
+    expect(heading()).toBe("Sahifa topilmadi");
   });
 
   it("opens no staff address and no malformed one", async () => {

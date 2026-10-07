@@ -1,0 +1,31 @@
+import type { RuReceiptsCatalog } from "../types";
+
+/** Russian text of the owner's subscription receipts; the same keys as `receipts/uz.ts`. */
+export const ruReceipts: RuReceiptsCatalog = {
+  "receipts.title": "Отправить чек",
+  "receipts.explain": "Переведя оплату на карту выше, отправьте чек здесь. После проверки администратором срок подписки будет продлён.",
+  "receipts.months": "За сколько месяцев вы оплатили",
+  "receipts.months.hint": "От 1 до {max}.",
+  "receipts.months.invalid": "Число месяцев — целое, от 1 до {max}.",
+  "receipts.amount": "Переведённая сумма",
+  "receipts.amount.hint": "Рассчитано по цене: за месяцы ({months}) — {amount}. Если вы перевели другую сумму, исправьте.",
+  "receipts.amount.invalid": "Сумма — от {min} до {max}, в целых сумах.",
+  "receipts.file": "Чек",
+  "receipts.file.required": "Выберите файл чека.",
+  "receipts.send": "Отправить чек",
+  "receipts.sent": "Чек отправлен. После проверки администратором результат появится в этом списке.",
+  "receipts.tooManyWaiting": "Непроверенных чеков уже {max}: больше отправить нельзя. Дождитесь ответа администратора.",
+  "receipts.storeDown": "Сейчас сохранить чек не удалось. Повторите попытку немного позже.",
+  "receipts.history": "Отправленные чеки",
+  "receipts.none": "Чеки ещё не отправлялись.",
+  "receipts.col.sent": "Отправлен",
+  "receipts.col.amount": "Сумма",
+  "receipts.col.months": "Месяцы",
+  "receipts.col.state": "Состояние",
+  "receipts.state.submitted": "Ждёт проверки",
+  "receipts.state.approved": "Подтверждён. Засчитано месяцев: {months}",
+  "receipts.state.approved.plain": "Подтверждён",
+  "receipts.state.rejected": "Отклонён. Причина: {reason}",
+  "receipts.state.rejected.plain": "Отклонён",
+  "receipts.stated": { one: "за {count} месяц", few: "за {count} месяца", many: "за {count} месяцев" },
+};

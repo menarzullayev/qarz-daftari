@@ -9,6 +9,8 @@ export type Sent = {
   body: unknown;
   /** The fields of a multipart form, when the request carried one instead of JSON. */
   form?: Record<string, FormDataEntryValue>;
+  /** The file sent as the whole body, when the request carried one (the import's upload). */
+  raw?: Blob;
 };
 
 /** What the fake server answers: a status with a JSON body, or "offline" for a request that never arrives. */
@@ -40,6 +42,9 @@ export function fakeServer(handler: (sent: Sent, index: number) => Reply) {
     };
     if (init.body instanceof FormData) {
       request.form = Object.fromEntries(init.body.entries());
+    }
+    if (init.body instanceof Blob) {
+      request.raw = init.body;
     }
     sent.push(request);
     const reply = await handler(request, sent.length - 1);
@@ -419,6 +424,69 @@ export function supportAccessBody(overrides: Record<string, unknown> = {}) {
     ends_at: "2026-10-06T08:00:00+00:00",
     closed_at: null,
     closed_by: null,
+    ...overrides,
+  };
+}
+
+export const IMPORT_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+
+/** An import as GET /shops/{id}/imports lists one: checked half an hour before `NOON`, waiting to be applied. */
+export function importBody(overrides: Record<string, unknown> = {}) {
+  return {
+    id: IMPORT_ID,
+    status: "validated",
+    format: "xlsx",
+    author_id: MEMBERSHIP_ID,
+    created_at: "2026-10-06T06:30:00+00:00",
+    applied_at: null,
+    undo_until: null,
+    rows: 3,
+    file_problem: null,
+    errors: [],
+    applied: null,
+    undone: null,
+    refused: null,
+    ...overrides,
+  };
+}
+
+/** What applying that import would do: a new customer, a row added to them, and a row for a customer of the shop. */
+export function importPreviewBody(overrides: Record<string, unknown> = {}) {
+  const row = { phone: null, promised_date: null, note: null, matched_by: null, same_as_row: null, customer: null };
+  return {
+    plan: "plan-0001",
+    errors: [],
+    counts: { new_customers: 1, existing_customers: 1, entries: 3, amount: 450000 },
+    rows: [
+      { ...row, row: 2, name: "Sardor Aliyev", phone: "+998901112233", amount: 200000, promised_date: "2026-10-20", note: "eski daftar", action: "create" },
+      { ...row, row: 3, name: "Sardor Aliyev", amount: 50000, action: "same_as_row", matched_by: "phone", same_as_row: 2 },
+      {
+        ...row,
+        row: 4,
+        name: "Ali Valiyev",
+        amount: 200000,
+        action: "existing",
+        matched_by: "name",
+        customer: { id: CUSTOMER_ID, display_name: "Ali Valiyev", phone: null, balance: 120000 },
+      },
+    ],
+    ...overrides,
+  };
+}
+
+export const OWN_RECEIPT_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+
+/** A subscription receipt as its owner's history lists one: sent an hour before `NOON`, still waiting. */
+export function ownReceiptBody(overrides: Record<string, unknown> = {}) {
+  return {
+    id: OWN_RECEIPT_ID,
+    stated_amount: 200000,
+    stated_months: 2,
+    status: "submitted",
+    months: null,
+    reject_reason: null,
+    created_at: "2026-10-06T06:00:00+00:00",
+    decided_at: null,
     ...overrides,
   };
 }

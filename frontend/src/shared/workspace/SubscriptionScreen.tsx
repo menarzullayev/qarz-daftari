@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 
 import { useI18n } from "../../i18n/I18nProvider";
 import type { MessageKey } from "../../i18n/types";
@@ -23,6 +23,9 @@ const MODE_TEXT: Readonly<Record<ShopMode, MessageKey>> = {
   limited: "subscription.banner.limited",
   suspended: "subscription.banner.suspended",
 };
+
+// Sending a receipt is done now and then, by the owner alone: its code and text are loaded on demand.
+const ReceiptSection = lazy(() => import("../receipts/ReceiptSection"));
 
 type Copied = "idle" | "done" | "failed";
 const COPY_LABELS: Readonly<Record<Copied, MessageKey>> = {
@@ -95,9 +98,13 @@ function Details({ subscription }: { subscription: Subscription }) {
         ) : (
           <Card number={subscription.cardNumber} />
         )}
-        {/* There is no upload here: the receipt goes to the bot, which is where it is checked. */}
+        {/* The bot takes a receipt too; the section below sends one from here. */}
         <p className="hint">{t("subscription.receipt")}</p>
       </section>
+
+      <Suspense fallback={<Loading />}>
+        <ReceiptSection priceUzs={subscription.priceUzs} />
+      </Suspense>
 
       <section aria-labelledby="subscription-limited-title">
         <h2 id="subscription-limited-title">{t("subscription.limited.title")}</h2>

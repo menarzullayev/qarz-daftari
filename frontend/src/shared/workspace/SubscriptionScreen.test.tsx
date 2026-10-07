@@ -136,11 +136,10 @@ describe("the owner's subscription screen (REQ-053, REQ-054)", () => {
     expect(screen.queryByRole("button", { name: "Nusxalash" })).toBeNull();
   });
 
-  it("sends the receipt to the Telegram chat with /obuna and has no upload", async () => {
+  it("says the receipt may go to the Telegram chat with /obuna, and offers to send one from here: nothing is sent by opening", async () => {
     const server = await open();
     expect(screen.getByText("To'lovdan keyin chekni Telegramdagi do'kon botiga /obuna buyrug'i orqali yuboring.")).toBeTruthy();
-    expect(document.querySelector("input")).toBeNull();
-    expect(document.querySelector("form")).toBeNull();
+    expect(await screen.findByRole("form", { name: "Chek yuborish" })).toBeTruthy();
     expect(server.writes()).toHaveLength(0);
   });
 

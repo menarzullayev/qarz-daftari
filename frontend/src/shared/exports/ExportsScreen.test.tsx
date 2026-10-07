@@ -130,9 +130,13 @@ describe("what an export is", () => {
     expect(screen.getByRole("button", { name: "Получить ссылку для скачивания" })).toBeTruthy();
   });
 
-  it("keeps import, the other half of the section, as a placeholder under its own heading", () => {
-    show(shop());
-    expect(within(screen.getByRole("region", { name: "Import" })).getByText("Bu bo'lim tez orada tayyor bo'ladi.")).toBeTruthy();
+  it("shows the other half of the section, which it is given, after the export; and to nobody who gets the not-found screen", () => {
+    const half = <p>import-half</p>;
+    const first = renderScreen(<ExportsScreen pollMs={FAST} after={half} />, { fetch: shop().fetch, role: "manager" });
+    expect(screen.getByText("import-half").compareDocumentPosition(screen.getByRole("region", { name: "Eksport" })) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    first.unmount();
+    renderScreen(<ExportsScreen pollMs={FAST} after={half} />, { fetch: shop().fetch, role: "seller" });
+    expect(screen.queryByText("import-half")).toBeNull();
   });
 });
 

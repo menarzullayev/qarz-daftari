@@ -172,6 +172,30 @@ export function isOpenAccess(access: { state: string; endsAt: string }, now: Dat
   return access.state === "active" && !Number.isNaN(ends) && ends > now.getTime();
 }
 
+// --- subscription receipts -----------------------------------------------------------------------------
+
+/** The statuses a receipt has, as the queue filters by them (backend/src/qarz/domain/subscription_receipts.py). */
+export const RECEIPT_STATUSES = ["submitted", "approved", "rejected"] as const;
+export const RECEIPT_MONTHS_MAX = 36;
+
+/** The months an approval counts: a whole number from 1 to 36 in plain digits, or null. */
+export function parseReceiptMonths(input: string): number | null {
+  const typed = input.trim();
+  if (!/^[0-9]{1,2}$/.test(typed)) {
+    return null;
+  }
+  const months = Number(typed);
+  return months >= 1 && months <= RECEIPT_MONTHS_MAX ? months : null;
+}
+
+/** An approval's note: none when nothing is written, otherwise a reason like any other; `false` when it does not fit. */
+export function cleanNote(raw: string): string | null | false {
+  if (raw.trim() === "") {
+    return null;
+  }
+  return cleanReason(raw) ?? false;
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function isUuid(text: string): boolean {

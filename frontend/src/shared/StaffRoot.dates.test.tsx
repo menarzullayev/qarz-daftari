@@ -62,6 +62,7 @@ function backend(role: Role | null, accounts: unknown[] = []) {
       case `${SHOP_BASE}/date-requests`:
         return ok({ items: [openDateRequestBody()] });
       case `${SHOP_BASE}/exports`:
+      case `${SHOP_BASE}/imports`:
         return ok({ items: [] });
       case `${SHOP_BASE}/reports/period`:
         return ok(periodReportBody());
@@ -103,16 +104,18 @@ describe("reports and date requests in the workspace", () => {
     expect(within(screen.getByRole("navigation")).getByRole("link", { name: "Hisobotlar" }).getAttribute("aria-current")).toBe("page");
   });
 
-  it.each(["manager", "owner"] as const)("opens the export for a %s at import and export, and keeps import as a placeholder", async (role) => {
+  it.each(["manager", "owner"] as const)("opens the export and the import for a %s at import and export", async (role) => {
     const server = backend(role);
     await start(server, "#/import-export");
     expect(heading()).toBe("Import va eksport");
     expect(await screen.findByRole("button", { name: "Eksport so'rash" })).toBeTruthy();
     expect(await screen.findByText("Hali eksport so'ralmagan.")).toBeTruthy();
     expect(server.sent.filter((sent) => sent.path.includes("/exports")).map((sent) => `${sent.method} ${sent.path}`)).toEqual([`GET ${SHOP_BASE}/exports`]);
-    // Import is another story: its half of the section waits, under its own heading.
-    const waiting = screen.getByRole("region", { name: "Import" });
-    expect(within(waiting).getByText("Bu bo'lim tez orada tayyor bo'ladi.")).toBeTruthy();
+    // Import is the other half of the section, under its own heading, loaded apart.
+    const half = await screen.findByRole("region", { name: "Import" });
+    expect(within(half).getByRole("button", { name: "Faylni yuklash" })).toBeTruthy();
+    expect(screen.queryByText("Bu bo'lim tez orada tayyor bo'ladi.")).toBeNull();
+    await waitFor(() => expect(server.sent.filter((sent) => sent.path.includes("/imports")).map((sent) => `${sent.method} ${sent.path}`)).toEqual([`GET ${SHOP_BASE}/imports`]));
     expect(within(screen.getByRole("navigation")).getByRole("link", { name: "Import va eksport" }).getAttribute("aria-current")).toBe("page");
   });
 
@@ -121,7 +124,7 @@ describe("reports and date requests in the workspace", () => {
     await start(server, "#/import-export");
     expect(heading()).toBe("Sahifa topilmadi");
     await new Promise((resolve) => setTimeout(resolve, 30));
-    expect(server.sent.filter((sent) => sent.path.includes("/exports"))).toEqual([]);
+    expect(server.sent.filter((sent) => sent.path.includes("/exports") || sent.path.includes("/imports"))).toEqual([]);
   });
 
   it("reaches the date requests from the disputes, in the same section, and back", async () => {

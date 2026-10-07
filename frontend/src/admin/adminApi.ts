@@ -65,6 +65,41 @@ export type SubscriptionReceipt = {
   decidedAt: string | null;
 };
 
+/**
+ * A subscription receipt as the administrator's queue has it (backend/src/qarz/application/
+ * admin_receipts.py, `receipt_body`): the shop, what its owner stated, and what was decided. Nothing of
+ * a shop's customers is in it.
+ */
+export type AdminReceipt = {
+  id: string;
+  shopId: string;
+  shopName: string;
+  statedAmount: number | null;
+  statedMonths: number | null;
+  /** The server's word: "submitted", "approved" or "rejected". */
+  status: string;
+  months: number | null;
+  rejectReason: string | null;
+  createdAt: string;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  hasFile: boolean;
+};
+
+/** `copies`: how many other receipts, of any shop, carry the same file. */
+export type QueuedReceipt = AdminReceipt & { copies: number };
+
+export type ReceiptCopy = { id: string; shopId: string; shopName: string; statedAmount: number | null; status: string; createdAt: string };
+
+export type AdminReceiptDetail = AdminReceipt & {
+  /** Where the file can be opened for five minutes; null when there is none or it cannot be served now. */
+  file: { url: string; expiresAt: string } | null;
+  copies: ReceiptCopy[];
+};
+
+/** A decided receipt; an approval also says where the shop's subscription now stands. */
+export type DecidedReceipt = AdminReceipt & { subscription: { state: string; paidThrough: string } | null };
+
 export type AuditRow = {
   id: string;
   at: string;
@@ -182,6 +217,57 @@ function supportAccess(value: unknown): SupportAccess {
     endsAt: text(body["ends_at"]),
     closedAt: textOrNull(body["closed_at"]),
     closedBy: textOrNull(body["closed_by"]),
+  };
+}
+
+function adminReceipt(value: unknown): AdminReceipt {
+  const body = record(value);
+  return {
+    id: text(body["id"]),
+    shopId: text(body["shop_id"]),
+    shopName: text(body["shop_name"]),
+    statedAmount: wholeOrNull(body["stated_amount"]),
+    statedMonths: wholeOrNull(body["stated_months"]),
+    status: text(body["status"]),
+    months: wholeOrNull(body["months"]),
+    rejectReason: textOrNull(body["reject_reason"]),
+    createdAt: text(body["created_at"]),
+    decidedAt: textOrNull(body["decided_at"]),
+    decidedBy: textOrNull(body["decided_by"]),
+    hasFile: flag(body["has_file"]),
+  };
+}
+
+function queuedReceipt(value: unknown): QueuedReceipt {
+  return { ...adminReceipt(value), copies: whole(record(value)["copies"]) };
+}
+
+function receiptDetail(value: unknown): AdminReceiptDetail {
+  const body = record(value);
+  const file = body["file"] === null ? null : record(body["file"]);
+  return {
+    ...adminReceipt(body),
+    file: file === null ? null : { url: text(file["url"]), expiresAt: text(file["expires_at"]) },
+    copies: list(body["copies"], (element) => {
+      const copy = record(element);
+      return {
+        id: text(copy["id"]),
+        shopId: text(copy["shop_id"]),
+        shopName: text(copy["shop_name"]),
+        statedAmount: wholeOrNull(copy["stated_amount"]),
+        status: text(copy["status"]),
+        createdAt: text(copy["created_at"]),
+      };
+    }),
+  };
+}
+
+function decidedReceipt(value: unknown): DecidedReceipt {
+  const body = record(value);
+  const after = body["subscription"] === undefined || body["subscription"] === null ? null : record(body["subscription"]);
+  return {
+    ...adminReceipt(body),
+    subscription: after === null ? null : { state: text(after["state"]), paidThrough: text(after["paid_through"]) },
   };
 }
 
@@ -319,6 +405,54 @@ export function createAdminApi(options: {
         body,
         idempotencyKey,
         read: adminShop,
+      });
+    },
+
+    /** Receipts of one status across all shops, oldest first; those awaiting a decision by default. */
+    listReceipts(params: { status?: string | null; cursor?: string | null }, signal?: AbortSignal): Promise<Page<QueuedReceipt>> {
+      return call(transport, {
+        method: "GET",
+        path: `${BASE}/receipts`,
+        query: { status: params.status, cursor: params.cursor },
+        signal,
+        read: reading.page(queuedReceipt),
+      });
+    },
+
+    /**
+     * One receipt, the receipts that carry the same file, and a link to the file valid five minutes.
+     * The server records that it was looked at.
+     */
+    readReceipt(receiptId: string, signal?: AbortSignal): Promise<AdminReceiptDetail> {
+      return call(transport, { method: "GET", path: `${BASE}/receipts/${segment(receiptId)}`, signal, read: receiptDetail });
+    },
+
+    /** Approves a waiting receipt for `months`; the note, when one is written, goes to the audit. */
+    approveReceipt(receiptId: string, input: { months: number; note: string | null }, idempotencyKey: string): Promise<DecidedReceipt> {
+      if (!Number.isSafeInteger(input.months)) {
+        throw new RangeError("months must be a whole number");
+      }
+      const body: Record<string, unknown> = { months: input.months };
+      if (input.note !== null) {
+        body["reason"] = input.note;
+      }
+      return call(transport, {
+        method: "POST",
+        path: `${BASE}/receipts/${segment(receiptId)}/approve`,
+        body,
+        idempotencyKey,
+        read: decidedReceipt,
+      });
+    },
+
+    /** Rejects a waiting receipt. The reason is told to the shop's owner. */
+    rejectReceipt(receiptId: string, reason: string, idempotencyKey: string): Promise<DecidedReceipt> {
+      return call(transport, {
+        method: "POST",
+        path: `${BASE}/receipts/${segment(receiptId)}/reject`,
+        body: { reason },
+        idempotencyKey,
+        read: decidedReceipt,
       });
     },
 
