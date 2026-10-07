@@ -9,7 +9,7 @@ from qarz.application import idempotency
 from qarz.application.errors import AppError, NotFound
 from qarz.application.operations import operation
 from qarz.application.ports import Storage, TransferRecord
-from qarz.application.shops import require_member
+from qarz.application.shops import refuse_suspended, require_member
 from qarz.domain.access import Capability, Role
 
 START_TRANSFER = operation("ownership.transfer.start", Capability.ADMINISTER_SHOP)
@@ -57,6 +57,7 @@ class OwnershipService:
     async def start(self, user_id: UUID, shop_id: UUID, to_membership: UUID, request_key: str | None) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, START_TRANSFER)
+            await refuse_suspended(session)
             key = idempotency.validate_key(request_key)
 
             async def apply() -> dict[str, Any]:
@@ -104,6 +105,7 @@ class OwnershipService:
         op = CANCEL_TRANSFER if by_owner else (ACCEPT_TRANSFER if accept else DECLINE_TRANSFER)
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, op)
+            await refuse_suspended(session)
             key = idempotency.validate_key(request_key)
 
             async def apply() -> dict[str, Any]:

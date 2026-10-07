@@ -5,6 +5,25 @@ Requirements: REQ-N11, REQ-N12, NFR-013. Launch criterion 7 (`OUTPUT.md`, "Produ
 
 This document reports what was read, what was run, and what was found. It does not state that the service is safe to launch. Launch criterion 7 asks for a manual attempt to break tenant isolation and, if affordable, an outside reviewer; a person still has to do both. Nothing here was tested against a deployed system, because none exists.
 
+## What has been done about the findings since
+
+The review below is kept as it was written. This section is added by the build and records what changed afterwards; each fix turned the review's test for it from an expected failure into an ordinary test.
+
+| Finding | State | How |
+|---|---|---|
+| 1 | Fixed | The membership lookup names the shop itself, as well as row-level security. No start-up check of the database role was added |
+| 2 | Fixed | A trigger holds the waiting period: the application role cannot ask for deletion with a due time less than 30 days ahead by the database's clock, bring a due time forward, mark a shop erased, or bring an erased shop back |
+| 3 | Fixed | Every function that runs with its owner's rights has the temporary schema last in its search path; a test fails for any new one that does not |
+| 4 | Fixed in the application | Bodies over one mebibyte are refused with 413 before anything is read or parsed. The proxy's own limit still does not exist |
+| 5 | Fixed | The nine operations are refused in a suspended shop. Asking for and cancelling deletion were left as they are, as the review suggests, for the founder to decide |
+| 6 | Fixed | The signature is compared as bytes |
+| 7 | Fixed | Statement parameters are kept out of database errors |
+| 8 | Fixed | Rate limits per user and per shop (pull request 39) |
+| P39-1 | Fixed | Answers a stranger can get (404, 422) do not count against a shop |
+| 10 | Fixed | Chat request keys contain colons, which an API key may not. Opening a shop from the chat keeps an API-shaped key |
+| 9, 11, 12, 13, P39-2, the notes | Open | Not addressed |
+| P36-1 to P36-3 | Open | To be settled in pull request 36 before it is merged |
+
 ## Scope and method
 
 Reviewed: branch `main` at commit `1bf48b9` (after pull request 38), plus the diffs of the open pull requests 36 (payment notices and the file store), 39 (rate limits) and 40 (web panel sign-in, sign-in part only).

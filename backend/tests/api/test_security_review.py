@@ -32,7 +32,6 @@ _update_ids = itertools.count(8_100_000_000)
 # --- finding 1: the role check is not independent of row-level security -----------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="security review finding 1")
 def test_a_stranger_is_refused_even_when_the_database_role_bypasses_row_level_security(
     database_url: str, world: World
 ) -> None:
@@ -73,7 +72,6 @@ SUSPENDED_WRITES = [
 ]
 
 
-@pytest.mark.xfail(strict=True, reason="security review finding 5")
 @pytest.mark.parametrize(("op_name", "caller"), SUSPENDED_WRITES)
 def test_a_suspended_shop_accepts_no_change(
     client: TestClient, world: World, owner: psycopg.Connection, op_name: str, caller: str
@@ -108,7 +106,6 @@ NON_ASCII_SIGNATURES = [
 ]
 
 
-@pytest.mark.xfail(strict=True, reason="security review finding 6")
 @pytest.mark.parametrize(("path", "body"), NON_ASCII_SIGNATURES, ids=["webapp", "login"])
 def test_a_signature_with_a_non_ascii_character_is_refused_not_crashed_on(
     client: TestClient, path: str, body: dict[str, Any]
@@ -135,7 +132,6 @@ def test_an_ascii_signature_that_is_wrong_is_refused_with_401(client: TestClient
 # --- finding 4: nothing limits the size of a request body ------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="security review finding 4")
 def test_an_oversized_body_from_nobody_is_refused_before_it_is_read(client: TestClient, world: World) -> None:
     """Three megabytes of JSON, no credentials. The body is read and parsed in full before the caller is
     even asked who they are; the answer is 401, not 413. No proxy configuration exists in the repository
@@ -170,7 +166,6 @@ def _chat_entry(client: TestClient, owner: psycopg.Connection, world: World, upd
     return int(recorded[0])
 
 
-@pytest.mark.xfail(strict=True, reason="security review finding 10")
 def test_an_api_request_key_cannot_block_a_colleagues_chat_entry(
     client: TestClient, world: World, owner: psycopg.Connection
 ) -> None:

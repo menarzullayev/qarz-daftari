@@ -8,7 +8,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from zoneinfo import ZoneInfo
 
 from qarz.application import idempotency
-from qarz.application.errors import ForbiddenRole, NotFound, ValidationFailed
+from qarz.application.errors import AppError, ForbiddenRole, NotFound, ValidationFailed
 from qarz.application.operations import Operation, operation, self_operation
 from qarz.application.ports import Membership, ShopSettings, Storage, TenantSession
 from qarz.domain.access import Capability, Role, allows, lowest_role_with
@@ -36,6 +36,17 @@ async def require_member(session: TenantSession, user_id: UUID, op: Operation) -
     if not allows(membership.role, op.capability):
         raise ForbiddenRole(lowest_role_with(op.capability))
     return membership
+
+
+class ShopSuspended(AppError):
+    code = "SHOP_SUSPENDED"
+
+
+async def refuse_suspended(session: TenantSession) -> None:
+    """BR-30: in a suspended shop nothing is changed; only its owner may still look and export."""
+    stored = await session.subscription()
+    if stored is not None and stored[0] == "suspended":
+        raise ShopSuspended()
 
 
 @dataclass(frozen=True)
@@ -135,6 +146,7 @@ class ShopService:
         async with self._storage.tenant(shop_id) as session:
             # Authorize before validating, so a non-member learns nothing about what the shop accepts.
             membership = await require_member(session, user_id, UPDATE_SHOP)
+            await refuse_suspended(session)
             key = idempotency.validate_key(request_key)
             change.validate()
 
