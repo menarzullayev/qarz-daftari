@@ -1,0 +1,15 @@
+{
+  "event_id": "a5898cbfdd76",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-07T18:32:35+00:00",
+  "path": "docs\\evidence\\EVID-072.md",
+  "stage": "09-development-plan",
+  "title": "Deployment files and the backup schedule pass CI on main",
+  "claim": "Dockerfiles, an nginx proxy, a Compose file and deploy, rollback and smoke scripts (pull request 60), and the backup schedule, an automatic restore test and backup monitoring (pull request 61), passed CI on main in the run for commit 8684219, including jobs that build the images and check the files. Both were proven only in containers on one developer machine with a self-signed certificate: nothing ran on a server, no timer ran under systemd, and no backup crossed between two hosts",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/60 ; https://github.com/menarzullayev/qarz-daftari/pull/61 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37642615202",
+  "date": "2026-10-07",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-072"
+}

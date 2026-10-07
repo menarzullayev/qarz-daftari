@@ -1,0 +1,15 @@
+{
+  "event_id": "31687f0d3ff0",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-07T18:32:35+00:00",
+  "path": "docs\\evidence\\EVID-073.md",
+  "stage": "09-development-plan",
+  "title": "A class of timing-dependent front-end tests was fixed after it turned main red",
+  "claim": "The CI run on main for commit 014015c failed on one front-end test that read the loading indicator instead of the outcome; two tests of the same kind had failed once each before. Nineteen such assertions were made to wait for the text they expect (pull request 62), and main passed in the run for commit 6586b2a",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/62 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37632629036 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37645928641",
+  "date": "2026-10-07",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-073"
+}

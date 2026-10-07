@@ -1,0 +1,15 @@
+{
+  "event_id": "209ef0478b25",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-07T18:32:35+00:00",
+  "path": "docs\\evidence\\EVID-074.md",
+  "stage": "09-development-plan",
+  "title": "Security review findings 9, 11, 12 and 13 are settled in part and pass CI on main",
+  "claim": "Signed sign-in data is accepted once and expired sessions are purged; the application role keeps on each platform table only what the application does, and settings are written through a database function that checks the administrator; API answers carry no-store; a person may own at most five shops and gets one trial (pull request 63). CI passed on main in the run for commit e2d8a45. Findings 9, 11 and 13 are settled only in part: one database role still serves the API, the administrators' side and the worker",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/63 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37649205599",
+  "date": "2026-10-07",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-074"
+}

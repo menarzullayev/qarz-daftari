@@ -1,0 +1,21 @@
+{
+  "event_id": "c988b6e016ac",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-07T18:32:35+00:00",
+  "path": ".project-alpha\\decisions\\DEC-058.md",
+  "stage": "04-prd",
+  "title": "nginx and Docker Compose for deployment; what to prepare for production",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-058",
+  "decision": "The proxy is nginx and the application is run with Docker Compose, where the approved architecture names Caddy. The founder also chose what to prepare before production: deployment files, the backup schedule and restore test, security findings 9 and 11 to 13, reassigning ownership and rotating the server secret, and a test of the front end and back end together; and to remove merged worktrees, branches and test databases",
+  "context": "Answered by the founder on 2026-10-07 when asked by the agent in the working session",
+  "chosen_option": "nginx with Docker Compose",
+  "rationale": "The founder chose it when asked; the architecture document still says Caddy and is to be amended by him",
+  "impact": "Medium",
+  "reversibility": "High",
+  "evidence": "EVID-072",
+  "approval_required": "yes",
+  "approval_status": "approved",
+  "approver": "founder",
+  "approved_at": "2026-10-07"
+}
