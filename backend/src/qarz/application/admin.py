@@ -461,8 +461,16 @@ class AdminService:
     # --- audit ------------------------------------------------------------------------------------------
 
     async def list_audit(
-        self, admin_id: UUID, *, shop_id: UUID | None, action: str | None, cursor: str | None, limit: int
+        self,
+        admin_id: UUID,
+        *,
+        shop_id: UUID | None,
+        action: str | None,
+        cursor: str | None,
+        limit: int,
+        by: UUID | None = None,
     ) -> dict[str, Any]:
+        """The audit, newest first, optionally of one shop, one kind of action, or one administrator."""
         fields: dict[str, str] = {}
         if not 1 <= limit <= MAX_PAGE:
             fields["limit"] = f"must be between 1 and {MAX_PAGE}"
@@ -472,7 +480,9 @@ class AdminService:
             raise ValidationFailed(fields)
         before = _decode_cursor(cursor) if cursor else None
         async with self._storage.platform() as session:
-            rows = await session.list_admin_audit(shop_id=shop_id, action_prefix=action, before=before, limit=limit + 1)
+            rows = await session.list_admin_audit(
+                shop_id=shop_id, action_prefix=action, before=before, limit=limit + 1, admin_id=by
+            )
         page, more = rows[:limit], len(rows) > limit
         return {
             "items": [audit_body(row) for row in page],

@@ -154,7 +154,28 @@ def _last_week(shop: uuid.UUID) -> str:
     return f"/api/v1/shops/{shop}/reports/period?from={last - timedelta(days=6)}&to={last}"
 
 
+def _support_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-support:{world.shop_a}")
+
+
+def _open_support(owner: psycopg.Connection, world: World) -> None:
+    """The world's administrator holds an open support access to shop A, opened a minute ago."""
+    owner.execute(
+        "INSERT INTO support_access (id, shop_id, admin_id, reason, starts_at, ends_at) "
+        "VALUES (%s, %s, %s, 'Suite uchun', now() - interval '1 minute', now() + interval '1 hour')",
+        (_support_id(world), world.shop_a, world.admin),
+    )
+
+
 CALLS: dict[str, Call] = {
+    "shop.support_access.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/support-access"),
+    "shop.support_access.end": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/support-access/{_support_id(w)}/end",
+        None,
+        True,
+        prepare=_open_support,
+    ),
     "shop.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}"),
     "shop.update": Call("PATCH", lambda w, shop: f"/api/v1/shops/{shop}", {"name": "Renamed"}, changes_data=True),
     "staff.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/staff"),
@@ -364,6 +385,9 @@ CALLS: dict[str, Call] = {
 # Written by hand from REQ-033 and the specification's authorization table; deliberately not derived
 # from the code under test.
 ALLOWED_ROLES: dict[str, set[Role]] = {
+    # Who may look at the shop's data is the owner's to see and to stop (REQ-059).
+    "shop.support_access.list": {Role.OWNER},
+    "shop.support_access.end": {Role.OWNER},
     "shop.read": {Role.MANAGER, Role.OWNER},
     "shop.update": {Role.OWNER},
     "staff.list": {Role.OWNER},
@@ -613,6 +637,11 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID) -> tuple[Any, ...]:
         ).fetchone(),
         # Measurement rows carry no shop identifier; tests run one at a time, so a total is enough.
         owner.execute("SELECT count(*) FROM measure.event").fetchone(),
+        owner.execute(
+            "SELECT id, admin_id, reason, starts_at, ends_at, closed_at, closed_by FROM support_access "
+            "WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
         owner.execute(
             "SELECT id, customer_id, amount, file_id, status, payment_entry, decline_reason, decided_by, closed_at "
             "FROM payment_notice WHERE shop_id = %s ORDER BY id",
@@ -875,6 +904,24 @@ def _suspended(owner: psycopg.Connection, world: World) -> None:
 
 
 ADMIN_CALLS: dict[str, AdminCall] = {
+    "admin.support.open": AdminCall(
+        "POST",
+        lambda w: f"{ADMIN_API}/shops/{w.shop_a}/support-access",
+        lambda w: {"reason": "Egasi yordam so'radi", "hours": 2},
+        True,
+        201,
+    ),
+    "admin.support.close": AdminCall(
+        "POST", lambda w: f"{ADMIN_API}/shops/{w.shop_a}/support-access/close", None, True, prepare=_open_support
+    ),
+    "admin.support.list": AdminCall("GET", lambda w: f"{ADMIN_API}/support-access"),
+    # The two reads of a shop's data. With the access open, so that only the caller decides the answer.
+    "admin.support.customers.list": AdminCall(
+        "GET", lambda w: f"{ADMIN_API}/shops/{w.shop_a}/customers", prepare=_open_support
+    ),
+    "admin.support.customers.read": AdminCall(
+        "GET", lambda w: f"{ADMIN_API}/shops/{w.shop_a}/customers/{w.customer_a}", prepare=_open_support
+    ),
     "admin.session.close": AdminCall("DELETE", lambda w: f"{ADMIN_API}/auth/session", ok_status=204),
     "admin.shops.list": AdminCall("GET", lambda w: f"{ADMIN_API}/shops?q=Shop"),
     "admin.shops.read": AdminCall("GET", lambda w: f"{ADMIN_API}/shops/{w.shop_a}"),
@@ -1160,3 +1207,122 @@ def test_the_door_is_there_for_an_allow_listed_person_but_opens_nothing_without_
     # And having knocked, they are still outside.
     inside = _admin_request(client, world, ADMIN_CALLS["admin.shops.list"], headers)
     assert inside.status_code == 404
+
+
+# --- support access: the only way an administrator sees a shop's data, and it changes nothing ---------
+
+SUPPORT_READS = ["admin.support.customers.list", "admin.support.customers.read"]
+
+
+def test_the_reads_under_support_access_are_exactly_these(client: TestClient) -> None:
+    """Every administrator route that answers with a shop's customers or entries is named here, and each
+    is a read. A route added later under a shop's customers must be added too, or this fails."""
+    assert set(SUPPORT_READS) <= set(ADMIN_OPS)
+    under_customers = {
+        route.name: route.methods
+        for route in client.app.routes  # type: ignore[attr-defined]
+        if isinstance(route, APIRoute) and route.path.startswith(ADMIN_API) and "/customers" in route.path
+    }
+    assert set(under_customers) == set(SUPPORT_READS)
+    assert all(methods == {"GET"} for methods in under_customers.values())
+
+
+@pytest.mark.parametrize("op_name", SUPPORT_READS)
+def test_an_administrator_without_support_access_is_refused_a_shops_data_and_the_attempt_is_audited(
+    client: TestClient, world: World, owner: psycopg.Connection, admin_env: AdminEnv, op_name: str
+) -> None:
+    call = ADMIN_CALLS[op_name]
+    headers = _admin_caller("administrator", client, world, owner, admin_env)
+    before = _admin_snapshot(owner, world)
+    response = _admin_request(client, world, call, headers)
+    assert response.status_code == 403, response.text
+    assert response.json()["error"]["code"] == "SUPPORT_ACCESS_REQUIRED"
+    for hidden in ("Ali", "50000", str(world.customer_a), str(world.entry_a)):
+        assert hidden not in response.text
+    after = _admin_snapshot(owner, world)
+    audit = owner.execute(
+        "SELECT action, target_shop FROM admin_audit WHERE admin_id = %s AND action = 'support.refused'",
+        (world.admin,),
+    ).fetchall()
+    assert audit == [("support.refused", world.shop_a)]
+    # Nothing but that audit row: the count of audit rows is the fifth item of the snapshot.
+    assert after[:4] + after[5:] == before[:4] + before[5:]
+
+
+@pytest.mark.parametrize("op_name", SUPPORT_READS)
+@pytest.mark.parametrize(
+    "state", ["of another shop", "of another administrator", "expired", "not started", "closed by the owner"]
+)
+def test_only_the_administrators_own_current_access_to_that_shop_opens_its_data(
+    client: TestClient, world: World, owner: psycopg.Connection, admin_env: AdminEnv, op_name: str, state: str
+) -> None:
+    call = ADMIN_CALLS[op_name]
+    headers = _admin_caller("administrator", client, world, owner, admin_env)
+    _open_support(owner, world)
+    change = {
+        "of another shop": ("shop_id = %s", world.shop_b),
+        "of another administrator": ("admin_id = %s", world.owner_b),
+        "expired": ("starts_at = now() - interval '2 hours', ends_at = %s", datetime.now(UTC) - timedelta(seconds=1)),
+        "not started": ("starts_at = %s", datetime.now(UTC) + timedelta(minutes=5)),
+        "closed by the owner": ("closed_by = 'owner', closed_at = %s", datetime.now(UTC)),
+    }[state]
+    owner.execute(f"UPDATE support_access SET {change[0]} WHERE id = %s", (change[1], _support_id(world)))
+    response = _admin_request(client, world, call, headers)
+    assert (response.status_code, response.json()["error"]["code"]) == (403, "SUPPORT_ACCESS_REQUIRED")
+
+
+@pytest.mark.parametrize("op_name", SHOP_OPS)
+def test_support_access_opens_none_of_the_shops_own_operations(
+    client: TestClient, world: World, owner: psycopg.Connection, admin_env: AdminEnv, op_name: str
+) -> None:
+    """With an open support access and the second factor passed, the administrator is still an outsider
+    to every operation of the shop itself: nothing a member can do, read or write, is theirs."""
+    call = CALLS[op_name]
+    _prepare(owner, world, call)
+    if call.prepare is not _open_support:
+        _open_support(owner, world)
+    headers = _admin_caller("administrator", client, world, owner, admin_env)
+    before = _snapshot(owner, world.shop_a)
+    response = _invoke(client, world, call, world.shop_a, headers)
+    assert response.status_code == 404, response.text
+    assert response.json()["error"]["code"] == "NOT_FOUND"
+    assert _snapshot(owner, world.shop_a) == before
+
+
+def test_no_administrator_route_under_a_shop_writes_to_its_ledger_or_customers(
+    client: TestClient, world: World, owner: psycopg.Connection, admin_env: AdminEnv
+) -> None:
+    """Every administrator operation is run with support access open; the shop's ledger, goods, customers,
+    catalog and staff must be byte for byte what they were."""
+
+    def shop_data() -> tuple[Any, ...]:
+        tables = ("ledger_entry", "goods_line", "promise", "customer", "catalog_item", "membership", "dispute")
+        return tuple(
+            owner.execute(
+                f"SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) FROM {table} t "
+                "WHERE shop_id = %s",
+                (world.shop_a,),
+            ).fetchone()
+            for table in tables
+        )
+
+    headers = _admin_caller("administrator", client, world, owner, admin_env)
+    before = shop_data()
+    for name in ADMIN_OPS:
+        if name == "admin.session.close":
+            continue  # it would end the session the other calls need
+        call = ADMIN_CALLS[name]
+        # Each call meets the shop as the world made it: in its trial, not suspended.
+        owner.execute(
+            "UPDATE subscription SET state = 'trial', trial_ends = %s, paid_through = NULL, prior_state = NULL "
+            "WHERE shop_id = %s",
+            (_tashkent_today() + timedelta(days=30), world.shop_a),
+        )
+        if call.prepare is not None and call.prepare is not _open_support:
+            call.prepare(owner, world)
+        owner.execute("DELETE FROM support_access WHERE shop_id = %s", (world.shop_a,))
+        if call.prepare is _open_support or name in SUPPORT_READS:
+            _open_support(owner, world)
+        response = _admin_request(client, world, call, headers)
+        assert response.status_code == call.ok_status, (name, response.text)
+    assert shop_data() == before

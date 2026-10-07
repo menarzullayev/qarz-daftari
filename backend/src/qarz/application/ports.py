@@ -402,6 +402,32 @@ class LockedSubscription:
 
 
 @dataclass(frozen=True)
+class SupportAccessRow:
+    """One support access (BR-31). `shop_name` is given only where the reader sees more than one shop."""
+
+    access_id: UUID
+    shop_id: UUID
+    admin_id: UUID
+    reason: str
+    starts_at: datetime
+    ends_at: datetime
+    closed_at: datetime | None
+    closed_by: str | None
+    shop_name: str | None = None
+
+
+@dataclass(frozen=True)
+class SupportChange:
+    """What opening or closing a support access found: the access, and where to reach the shop's owner."""
+
+    access_id: UUID
+    shop_name: str
+    owner_tg: int | None
+    owner_lang: str | None
+    already_open: bool = False
+
+
+@dataclass(frozen=True)
 class AdminAuditRow:
     audit_id: UUID
     at: datetime
@@ -817,6 +843,20 @@ class TenantSession(Protocol):
 
     async def record_system_activity(self, *, action: str, subject_id: UUID) -> None: ...
 
+    async def record_admin_activity(self, *, admin_id: UUID, action: str, subject_type: str, subject_id: UUID) -> None:
+        """What an administrator did in this shop under a support access, for the owner's activity log."""
+        ...
+
+    async def support_accesses(self, *, before: tuple[datetime, UUID] | None, limit: int) -> list[SupportAccessRow]:
+        """This shop's support accesses, newest first."""
+        ...
+
+    async def support_access(self, access_id: UUID, *, for_update: bool) -> SupportAccessRow | None: ...
+
+    async def end_support_access(self, access_id: UUID, now: datetime) -> None:
+        """Marks it closed by the owner."""
+        ...
+
     async def subscription_locked(self) -> tuple[str, date | None, date | None] | None:
         """As `subscription`, holding the row until the transaction ends."""
         ...
@@ -983,8 +1023,39 @@ class PlatformSession(Protocol):
     ) -> UUID: ...
 
     async def list_admin_audit(
-        self, *, shop_id: UUID | None, action_prefix: str | None, before: tuple[datetime, UUID] | None, limit: int
+        self,
+        *,
+        shop_id: UUID | None,
+        action_prefix: str | None,
+        before: tuple[datetime, UUID] | None,
+        limit: int,
+        admin_id: UUID | None = None,
     ) -> list[AdminAuditRow]: ...
+
+    async def admin_open_shop(self, admin_id: UUID, shop_id: UUID, now: datetime) -> tuple[UUID, datetime] | None:
+        """The administrator's current support access for the shop (its identifier and end), if any."""
+        ...
+
+    async def admin_support_open(
+        self, admin_id: UUID, shop_id: UUID, *, access_id: UUID, reason: str, now: datetime, ends_at: datetime
+    ) -> SupportChange | None:
+        """None when there is no such shop for an administrator. Also writes the shop's activity log."""
+        ...
+
+    async def admin_support_close(self, admin_id: UUID, shop_id: UUID, now: datetime) -> SupportChange | None:
+        """None when the administrator has no open support access for the shop."""
+        ...
+
+    async def admin_support_list(
+        self,
+        admin_id: UUID,
+        *,
+        shop_id: UUID | None,
+        open_only: bool,
+        now: datetime,
+        after: tuple[datetime, UUID] | None,
+        limit: int,
+    ) -> list[SupportAccessRow]: ...
 
     async def lock_admin_request_key(self, admin_id: UUID, key: str) -> None: ...
 
