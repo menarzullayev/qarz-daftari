@@ -25,6 +25,13 @@ Streams:
 - reads in the large shop at `--large-read-rate`, and across the other shops at `--read-rate`:
   the customer list, search by name and by phone, the overview, the debtors lists, one customer's page;
 - the one-year period report and the overdue report of the large shop, one every `--report-every` seconds.
+
+The servers run with the application's own settings, read from the environment: the default rate limits
+(QD_RATE_*) and the default statement timeout (QD_STATEMENT_TIMEOUT_MS) unless the environment says
+otherwise. The load is spread over thousands of staff members, as real load is, so the default limits do
+not hold it back; a request that is held back is answered 429 and counted on its own, neither as an
+answer nor as an error. Each server process keeps its own counters, so with several processes a caller
+is allowed the rate once per process.
 """
 
 import argparse
@@ -52,6 +59,7 @@ from loadtest import report
 from loadtest.dataset import FIRST_NAMES, GOODS, SURNAMES, session_token
 from loadtest.load import ADMIN_URL_VARIABLE, BACKEND, app_url, database_url, read_manifest
 from qarz.domain.promise import tashkent_date
+from qarz.infrastructure.settings import Settings
 
 WEBHOOK_SECRET = "loadtest-webhook-secret-0123456789"  # noqa: S105  (for the throwaway server only)
 BOT_TOKEN = "1234567890:LOADTEST-ONLY-token-not-a-real-bot"  # noqa: S105
@@ -319,6 +327,8 @@ class Driver:
                 outcome = "ok"
             else:
                 outcome = "error" if response.status_code >= 500 else "refused"
+                if response.status_code == 429:
+                    outcome = "limited"
                 detail = str(response.status_code)
                 with contextlib.suppress(ValueError, KeyError, TypeError):
                     detail = f"{response.status_code} {response.json()['error']['code']}"
@@ -335,6 +345,8 @@ class Driver:
             samples.ok_ms.append(elapsed_ms)
         elif outcome == "refused":
             samples.refused[detail] += 1
+        elif outcome == "limited":
+            samples.limited += 1
         else:
             samples.errors[detail] += 1
 
@@ -457,6 +469,18 @@ def _machine(conn: psycopg.Connection[Any]) -> dict[str, Any]:
     }
 
 
+def _application_settings() -> dict[str, int]:
+    """The limits the started servers run with: they read the same environment as this process."""
+    settings = Settings()
+    return {
+        "rate_user_per_minute": settings.rate_user_per_minute,
+        "rate_user_burst": settings.rate_user_burst,
+        "rate_shop_per_minute": settings.rate_shop_per_minute,
+        "rate_shop_burst": settings.rate_shop_burst,
+        "statement_timeout_ms": settings.statement_timeout_ms,
+    }
+
+
 def verify(results: dict[tuple[str, str], report.Samples], recorded: dict[str, int]) -> dict[str, Any]:
     """Compare what the database gained with what the server said it saved.
 
@@ -538,6 +562,7 @@ async def measure(arguments: argparse.Namespace, admin_url: str) -> dict[str, An
         if servers
         else f"already running at {base_urls[0]}",
         "machine": machine,
+        "application_settings": _application_settings() if servers else "those of the server that was driven",
         "dataset": manifest,
         "shops_driven": {"large": len(world.large), "other": len(world.other)},
         "requests_sent": driver.sent,

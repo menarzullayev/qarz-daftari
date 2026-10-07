@@ -1,6 +1,7 @@
 # Load test with generated data (S19.1, REQ-N13)
 
-Status: the tooling exists and has been run once, on a developer machine. This is a first signal and a
+Status: the tooling exists and has been run on a developer machine: one 30-minute run, and one 5-minute
+run after later changes of the main branch were merged in (see "Which numbers come from which run"). This is a first signal and a
 proof that the script works. **It is not launch criterion 6**: that needs the same run on the staging
 server (docs/10-operations/OUTPUT.md, "Test strategy" and launch criterion 6). A laptop-class machine
 with PostgreSQL in Docker is not the production server, and nothing here says how the real servers behave.
@@ -23,7 +24,7 @@ Everything is under `backend/loadtest/`; nothing in `backend/src/qarz` imports i
 
 Tests: `backend/tests/test_loadtest_dataset.py` (no database) and `backend/tests/db/test_loadtest_load.py`
 (loads a tiny set into a database of its own and drives the real application for a few seconds). They run
-in CI with the rest and take about seven seconds together.
+in CI with the rest and take about ten seconds together.
 
 ## How to run it
 
@@ -73,9 +74,20 @@ in one process the driver and the application share one event loop and one core,
 the driver's own work, and no HTTP is parsed. Separate processes cost a loopback round trip, which a real
 client pays too. The in-process form is used only in the test suite, where the point is correctness.
 
+## Which numbers come from which run
+
+| Run | Code and schema | Length | What it is used for here |
+|---|---|---|---|
+| A, "first run" | Main as of pull request 37, before the fixes of this story | 90 seconds | "What the first run found" |
+| B, "the 30-minute run" | The same with this story's fixes: migrations up to 0018, plus 0020. No rate limits and no statement timeout existed yet. | 30 minutes | The results table and every figure in "Targets", unless run C is named |
+| C, "the confirmation run" | Main as of pull request 45 merged in (migrations 0011, 0019, 0021, then 0020; rate limits; the security fixes) and the statement timeout of this story. Default rate limits and the default 5-second statement timeout in force. A database loaded afresh at that schema. | 5 minutes | "The confirmation run on the merged code" only |
+
+Run B was not repeated after the merge. Run C is too short to replace it: it shows that nothing broke and
+roughly where the figures are, not a 30-minute result.
+
 ## The machine it ran on
 
-7 October 2026 (Tashkent date), one run.
+7 October 2026 (Tashkent date). The same machine and settings for all three runs.
 
 | | |
 |---|---|
@@ -91,7 +103,7 @@ four, which flatters the result; every query crossed Docker Desktop's port forwa
 opposite; there was no proxy, no TLS, no worker sending the outbox, no replication to a standby, and no
 network between client and server.
 
-## Results
+## Results (run B)
 
 30 minutes, 182,558 requests, 92,597 entries recorded (51.4 a second), no request abandoned.
 
@@ -140,9 +152,66 @@ Checks on the run itself:
   delay was 658 ms, and several operations show a maximum near 700 to 750 ms at once, which looks like
   one stall of the machine or the database rather than a slow operation. The cause was not found.
 
+## The confirmation run on the merged code (run C)
+
+5 minutes at the same rates, 30,434 requests, 15,337 entries recorded (51.1 a second). No request failed,
+none was refused, **none was answered 429** and none was cancelled by the statement timeout. Every
+acknowledged write is in the ledger (9,235 API calls and 6,102 chat messages against 15,337 new entries).
+
+| Operation | Shop | Calls | p50 ms | p95 ms | p99 ms | Target (p95) | Result |
+|---|---|---:|---:|---:|---:|---|---|
+| chat_credit | large / other | 92 / 4,446 | 56 / 52 | 82 / 69 | 211 / 110 | 500 ms (NFR-001) | met |
+| chat_payment | large / other | 24 / 1,540 | 55 / 50 | 72 / 66 | 97 / 95 | 500 ms (NFR-001) | met |
+| api_credit | large / other | 77 / 3,864 | 37 / 34 | 46 / 48 | 54 / 63 | - | no target |
+| api_payment | large / other | 56 / 3,034 | 35 / 32 | 51 / 46 | 55 / 65 | - | no target |
+| api_itemized_10 | large / other | 49 / 2,155 | 52 / 47 | 69 / 64 | 84 / 96 | 400 ms (NFR-009) | met |
+| customers_list | large / other | 88 / 2,158 | 36 / 23 | 49 / 33 | 279 / 45 | 300 ms (NFR-005) | met |
+| customers_search | large / other | 187 / 4,483 | 34 / 22 | 47 / 32 | 58 / 44 | 300 ms (NFR-005) | met |
+| customers_search_phone | large / other | 29 / 720 | 22 / 22 | 34 / 33 | 60 / 50 | 300 ms (NFR-005) | met |
+| overview | large | 103 | 303 | 401 | 426 | 300 ms (NFR-005) | NOT met |
+| overview | other | 2,174 | 24 | 36 | 47 | 300 ms (NFR-005) | met |
+| debtors | large | 61 | 369 | 453 | 893 | 300 ms (NFR-005) | NOT met |
+| debtors | other | 1,406 | 26 | 39 | 50 | 300 ms (NFR-005) | met |
+| debtors_overdue | large | 29 | 380 | 519 | 1,146 | 300 ms (NFR-005) | NOT met |
+| debtors_overdue | other | 708 | 26 | 40 | 58 | 300 ms (NFR-005) | met |
+| customer_page | large / other | 109 / 2,837 | 30 / 25 | 45 / 39 | 81 / 55 | - | no target |
+| report_period_year | large | 1 | 2,006 | 2,006 | 2,006 | 5,000 ms (NFR-011) | met (one call) |
+| report_overdue | large | 4 | 365 | 415 | 415 | - | no target |
+
+The same targets are met and missed as in run B. Most percentiles are 15 to 30 percent higher than in
+run B. Whether that is the merged code (each request now also passes the rate limiter, the body limit
+and a stricter membership lookup), a database that had been loaded minutes before, or the other work on
+the machine was not separated; a 30-minute run on the merged code would be needed to say.
+
+## Rate limits and the statement timeout during a run
+
+**Rate limits.** The application limits each signed-in user to 120 requests a minute (burst 60) and each
+shop to 600 a minute (burst 200). The load test runs with these defaults in force and does not raise
+them: its load is spread over 9,006 staff members and 5,000 shops, as real load is. The busiest shop gets
+about 183 requests a minute from 8 staff members, a third of its limit. A request that is held back is
+answered 429; the driver counts those in a column of their own, apart from refusals and errors, and
+counts each against the target of its operation. Run C had none. Two things to know: the chat webhook is
+not a signed-in caller and is not limited by these settings; and each API process keeps its own
+counters, so with the four processes of this test a caller is in fact allowed four times the rate
+(finding P39-2 of the security review). To run with other limits, set `QD_RATE_USER_PER_MINUTE`,
+`QD_RATE_USER_BURST`, `QD_RATE_SHOP_PER_MINUTE` and `QD_RATE_SHOP_BURST` in the environment of the driver
+(the servers it starts inherit it) or of the server driven with `--base-url`; the result file records the
+values used.
+
+**Statement timeout.** Run A showed that a few slow queries of one shop can stop the service for all.
+The application now sets `statement_timeout` on every connection it opens: 5 seconds for the API
+(`QD_STATEMENT_TIMEOUT_MS`), 60 seconds for the worker (`QD_WORKER_STATEMENT_TIMEOUT_MS`), 0 for no limit.
+It is a setting of the application's connections, not of the role, so migrations, the test suite's own
+connections and this loader are not limited. A cancelled statement rolls its transaction back and the
+caller is answered 503 with the code `TIMEOUT`; in the chat the seller is told nothing was recorded.
+The slowest call of run B, the one-year report, took 2 seconds, so the default leaves room; in run C
+nothing was cancelled. What this does not do: the queries that stopped run A ran for 16 to 60 seconds
+each, so with the timeout each would have been cut off at 5 seconds and retried by whoever waits for it.
+It bounds the damage of a bad plan. It does not remove the bad plan.
+
 ## Targets: met, not met, not measured
 
-| Target | State after this run | Why |
+| Target | State after run B | Why |
 |---|---|---|
 | NFR-001 chat recording within 500 ms | **Met for the part measured**: webhook receipt to the reply being queued, p95 56 ms. | The reply being *sent* was not measured: that is the worker and Telegram, and no external service was called. |
 | NFR-002 notification leaves the outbox within 10 s | **Not measured** | Needs the worker and a Telegram endpoint (or a stand-in for one). |
@@ -155,7 +224,7 @@ Checks on the run itself:
 Also not measured: the worker's jobs (reminders over all shops, subscription review, weekly figures,
 shop erasure) running beside the load; the customer's own pages; catalog search; the activity list; staff
 and settings calls; sign-in; a cold cache after a restart; growth over weeks; more than one shop of the
-large size; a shop larger than NFR-005 names; rate limiting (not implemented yet); failover under load.
+large size; a shop larger than NFR-005 names; a load that reaches the rate limits; failover under load.
 
 ## What the first run found, and what was changed
 
@@ -209,7 +278,7 @@ Two more things a reader should know:
 - **The planner's blindness to the shop is not cured, only worked around** in the places this run
   exercised. Any other query that is cheap for an average shop and expensive for a large one can fail the
   same way, and a few slow queries from one large shop were enough to stop the service for all 5,000.
-  A statement timeout for the application role would contain that; none is set today.
+  The statement timeout added with this story contains that (above); it does not prevent it.
 - **Recording loads the whole account** of the customer (`entries_of`), so its cost grows with the
   account. In the large shop, where the longest account has 1,153 entries, it was 40 ms at p95. Accounts of
   many thousands of entries were not generated.
@@ -229,6 +298,10 @@ Two more things a reader should know:
 | How is a target judged when calls fail? | Each failed call counts as slower than the target | Otherwise a server that drops requests looks fast. |
 | The goods-line time-limit trigger during the load | Switched off while copying, on again after; its rules are checked on the loaded data | It compares the sale's date with the clock at insert time, so no history can pass it. |
 | Measurement events (`measure.event`) | Not generated | They are read only by the weekly job, which was not run. |
+| Rate limits during the run | The defaults, in force; 429 counted separately | Raising them would measure a server that is not the one deployed, and the design load does not reach them. |
+| How long may a statement run? | 5 s for the API, 60 s for the worker, both settable | The slowest API call measured took 2 s; the worker's jobs read across shops. Neither figure comes from a requirement. |
+| What does a caller get when a statement is cancelled? | 503 with code `TIMEOUT` | Nothing was saved and trying again is right; 500 would say the server is broken. |
+| Online payments (`online_payment`, migration 0019) | Not generated, not driven | The switch is off by default and no target names them. |
 
 ## Before this can count as launch criterion 6
 
@@ -237,4 +310,5 @@ Two more things a reader should know:
 2. Decide what to do about the overview in large shops (above), then run again.
 3. Add the outbox leg (NFR-001 end to end, NFR-002) with a stand-in for Telegram.
 4. Run the worker's jobs during the load.
-5. Set and test a statement timeout for the application role.
+5. Repeat the 30-minute run on the merged code (run C was 5 minutes), with the rate limits and the
+   statement timeout as they will be deployed and the number of API processes that will be deployed.

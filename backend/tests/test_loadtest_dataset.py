@@ -279,6 +279,17 @@ def test_failed_calls_count_against_a_target() -> None:
     assert report.summarize("chat_credit", "other", nothing).verdict == report.MISSED
 
 
+def test_rate_limited_calls_are_counted_apart_and_count_against_a_target() -> None:
+    samples = report.Samples(ok_ms=[50.0] * 90, limited=10)
+    line = report.summarize("overview", "other", samples)
+    assert (line.limited, line.errors, line.refused, line.verdict) == (10, 0, 0, report.MISSED)
+    assert report.summarize("overview", "other", report.Samples(ok_ms=[50.0] * 99, limited=1)).verdict == report.MET
+    assert report.Samples.from_json(samples.as_json()).limited == 10
+    # A result file written before the count existed still reads.
+    assert report.Samples.from_json({"ok_ms": [], "refused": {}, "errors": {}}).limited == 0
+    assert "| overview | other | 90 | 50 | 50 | 50 | 50 | 0 | 10 | 0 |" in report.markdown([line])
+
+
 def test_an_operation_without_a_target_or_without_calls_says_so() -> None:
     assert report.summarize("customer_page", "large", report.Samples(ok_ms=[900.0])).verdict == report.NO_TARGET
     assert report.summarize("overview", "large", report.Samples()).verdict == report.NO_DATA
@@ -288,7 +299,7 @@ def test_every_target_belongs_to_a_reported_operation_and_the_table_shows_it() -
     assert set(report.TARGETS) <= set(report.OPERATIONS)
     results = {("overview", "large"): report.Samples(ok_ms=[120.0, 480.0]), ("api_credit", "other"): report.Samples()}
     table = report.markdown(report.lines(results))
-    assert "| overview | large | 2 | 120 | 480 | 480 | 480 | 0 | 0 | 300 ms (NFR-005) | NOT met |" in table
-    assert "| api_credit | other | 0 | - | - | - | - | 0 | 0 | - | no target |" in table
+    assert "| overview | large | 2 | 120 | 480 | 480 | 480 | 0 | 0 | 0 | 300 ms (NFR-005) | NOT met |" in table
+    assert "| api_credit | other | 0 | - | - | - | - | 0 | 0 | 0 | - | no target |" in table
     again = report.Samples.from_json(results[("overview", "large")].as_json())
     assert again.ok_ms == [120.0, 480.0]

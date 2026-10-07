@@ -5,17 +5,17 @@ next use of a pooled connection, and the row-level security policies hide every 
 """
 
 import json
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from qarz.application.errors import AlreadyMember
+from qarz.application.errors import AlreadyMember, StorageTimeout
 from qarz.application.ports import (
     ActivityRow,
     CatalogItemRecord,
@@ -268,6 +268,24 @@ _WEEK_FIGURES = (
 def _like_pattern(part: str) -> str:
     escaped = part.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
+
+
+_QUERY_CANCELED = "57014"  # SQLSTATE query_canceled: what a statement over `statement_timeout` ends with
+
+
+@contextmanager
+def _timeouts() -> Iterator[None]:
+    """Turn a statement the database cancelled for running too long into the application's own error.
+
+    The transaction it ran in is rolled back by the block inside; the connection goes back to the pool
+    and serves the next request.
+    """
+    try:
+        yield
+    except DBAPIError as error:
+        if getattr(error.orig, "sqlstate", None) == _QUERY_CANCELED:
+            raise StorageTimeout() from error
+        raise
 
 
 def _async_url(url: str) -> str:
@@ -2192,7 +2210,17 @@ class PgPlatformSession:
 class Database:
     """Connection pool for the application role, which cannot bypass row-level security."""
 
-    def __init__(self, url: str, *, pool_size: int = 5, max_overflow: int = 5) -> None:
+    def __init__(self, url: str, *, pool_size: int = 5, max_overflow: int = 5, statement_timeout_ms: int = 0) -> None:
+        """`statement_timeout_ms` is the longest one statement may run on these connections; 0 is no limit.
+
+        It is a setting of each connection this pool opens, not of the role: the migration owner and
+        anything else that connects as `qd_app` by other means is unaffected.
+        """
+        if statement_timeout_ms < 0:
+            raise ValueError("the statement timeout cannot be negative")
+        connect_args: dict[str, Any] = {}
+        if statement_timeout_ms and _async_url(url).startswith("postgresql+asyncpg://"):
+            connect_args["server_settings"] = {"statement_timeout": str(statement_timeout_ms)}
         self._engine: AsyncEngine = create_async_engine(
             _async_url(url),
             pool_pre_ping=True,
@@ -2200,23 +2228,27 @@ class Database:
             max_overflow=max_overflow,
             # Errors are logged with their text; without this it would hold names and phone numbers.
             hide_parameters=True,
+            connect_args=connect_args,
         )
 
     @asynccontextmanager
     async def tenant(self, shop_id: UUID) -> AsyncIterator[PgTenantSession]:
-        async with self._engine.begin() as conn:
-            # is_local = true: the setting ends with this transaction.
-            await conn.execute(text("SELECT set_config('qd.shop_id', :shop_id, true)"), {"shop_id": str(shop_id)})
-            yield PgTenantSession(conn, shop_id)
+        with _timeouts():
+            async with self._engine.begin() as conn:
+                # is_local = true: the setting ends with this transaction.
+                await conn.execute(text("SELECT set_config('qd.shop_id', :shop_id, true)"), {"shop_id": str(shop_id)})
+                yield PgTenantSession(conn, shop_id)
 
     @asynccontextmanager
     async def platform(self) -> AsyncIterator[PgPlatformSession]:
-        async with self._engine.begin() as conn:
-            yield PgPlatformSession(conn)
+        with _timeouts():
+            async with self._engine.begin() as conn:
+                yield PgPlatformSession(conn)
 
     async def user_language(self, user_id: UUID) -> str | None:
-        async with self._engine.connect() as conn:
-            row = (await conn.execute(text("SELECT lang FROM app_user WHERE id = :id"), {"id": user_id})).first()
+        with _timeouts():
+            async with self._engine.connect() as conn:
+                row = (await conn.execute(text("SELECT lang FROM app_user WHERE id = :id"), {"id": user_id})).first()
         return None if row is None else str(row.lang)
 
     async def reachable(self) -> bool:

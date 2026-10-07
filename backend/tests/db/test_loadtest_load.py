@@ -27,7 +27,9 @@ from psycopg import errors
 
 from qarz.application.auth import AuthService
 from qarz.infrastructure.db import Database
+from qarz.infrastructure.settings import Settings
 from qarz.interface.http import create_app
+from qarz.interface.rate_limit import Limit, RateLimits
 
 pytestmark = pytest.mark.db
 
@@ -193,52 +195,75 @@ def test_the_database_checks_notice_a_broken_rule(conn: psycopg.Connection[Any],
 # --- the driver against the real application ---------------------------------------------------------------
 
 
-def test_the_driver_sends_only_requests_the_application_accepts(loaded: Loaded) -> None:
-    async def run() -> tuple[drive.Driver, dict[str, int]]:
-        with psycopg.connect(loaded.url, autocommit=True) as connection:
-            world = drive.load_world(connection, SEED, TINY.large_shops)
-        database = Database(app_url(loaded.admin_url, loaded.name))
-        # The production wiring: sessions, not a test authenticator, and the restricted role.
-        app = create_app(
-            database.reachable,
-            database,
-            auth=AuthService(database, drive.BOT_TOKEN),
-            webhook_secret=drive.WEBHOOK_SECRET,
-        )
-        started = datetime.now(UTC)
-        try:
-            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://loadtest") as client:
-                driver = drive.Driver([client], world, random.Random(3), warmup=0)  # noqa: S311
-                # A gentle load in short rounds, until every operation has been sent at least once: the
-                # point here is that the requests are right, and a slow machine must not turn that into
-                # a test of speed.
-                for _ in range(15):
-                    await driver.run(
-                        duration=2, rate=8, large_write_rate=8, read_rate=8, large_read_rate=8, report_every=0.5
-                    )
-                    if world_is_covered(driver.results):
-                        break
-        finally:
-            await database.dispose()
-        with psycopg.connect(loaded.url, autocommit=True) as connection:
-            return driver, drive._counts(connection, started)
+async def _drive(
+    loaded: Loaded, rate_limits: RateLimits | None, rounds: int, until_covered: bool
+) -> tuple[drive.Driver, dict[str, int]]:
+    with psycopg.connect(loaded.url, autocommit=True) as connection:
+        world = drive.load_world(connection, SEED, TINY.large_shops)
+    database = Database(app_url(loaded.admin_url, loaded.name), statement_timeout_ms=Settings().statement_timeout_ms)
+    # The production wiring: sessions, not a test authenticator, the restricted role, the statement limit.
+    app = create_app(
+        database.reachable,
+        database,
+        auth=AuthService(database, drive.BOT_TOKEN),
+        webhook_secret=drive.WEBHOOK_SECRET,
+        rate_limits=rate_limits,
+    )
+    started = datetime.now(UTC)
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://loadtest") as client:
+            driver = drive.Driver([client], world, random.Random(3), warmup=0)  # noqa: S311
+            # A gentle load in short rounds: the point here is that the requests are right, and a slow
+            # machine must not turn that into a test of speed.
+            for _ in range(rounds):
+                await driver.run(
+                    duration=2, rate=8, large_write_rate=8, read_rate=8, large_read_rate=8, report_every=0.5
+                )
+                if until_covered and world_is_covered(driver.results):
+                    break
+    finally:
+        await database.dispose()
+    with psycopg.connect(loaded.url, autocommit=True) as connection:
+        return driver, drive._counts(connection, started)
 
-    driver, recorded = asyncio.run(run())
+
+def _recorded_by(results: dict[tuple[str, str], report.Samples]) -> int:
+    return sum(len(samples.ok_ms) for (name, _), samples in results.items() if name.startswith(("api_", "chat_")))
+
+
+def test_the_driver_sends_only_requests_the_application_accepts(loaded: Loaded) -> None:
+    # Until every operation has been sent at least once.
+    driver, recorded = asyncio.run(_drive(loaded, None, rounds=15, until_covered=True))
     results = driver.results
     assert world_is_covered(results), sorted(results)
     for key, samples in results.items():
         assert not samples.errors, (key, samples.errors)
         assert not samples.refused, (key, samples.refused)
+        assert not samples.limited, key
         assert samples.ok_ms, key
     # Every write the server acknowledged is in the ledger, the chat messages included.
     checks = drive.verify(results, recorded)
     assert checks["chat_messages_answered_200"] > 0
     assert checks["chat_entries_in_database"] == checks["chat_messages_answered_200"]
-    assert checks["entries_in_database"] == sum(
-        len(samples.ok_ms) for (name, _), samples in results.items() if name.startswith(("api_", "chat_"))
-    )
+    assert checks["entries_in_database"] == _recorded_by(results)
     with psycopg.connect(loaded.url) as connection:
         assert database_problems(connection) == []
+
+
+def test_the_driver_counts_rate_limited_requests_apart_from_errors(loaded: Loaded) -> None:
+    """With limits far below the load, most API requests are answered 429: counted as such, not as faults."""
+    tight = RateLimits(user=Limit(per_minute=1, burst=1), shop=Limit(per_minute=1, burst=1))
+    driver, recorded = asyncio.run(_drive(loaded, tight, rounds=2, until_covered=False))
+    results = driver.results
+    assert sum(samples.limited for samples in results.values()) > 20
+    for key, samples in results.items():
+        assert not samples.errors, (key, samples.errors)
+        assert not samples.refused, (key, samples.refused)
+    # The webhook is not a signed-in caller and is not limited here; a limited API request saved nothing.
+    assert not any(samples.limited for (name, _), samples in results.items() if name.startswith("chat_"))
+    assert recorded.get("credit", 0) + recorded.get("payment", 0) == _recorded_by(results)
+    limited_line = report.summarize("customers_list", "large", results[("customers_list", "large")])
+    assert limited_line.verdict == report.MISSED
 
 
 def world_is_covered(results: dict[tuple[str, str], report.Samples]) -> bool:
