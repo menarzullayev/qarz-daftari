@@ -39,6 +39,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=None,
         help="run the tests in an order fixed by SEED instead of the order of collection (before --shard)",
     )
+    parser.addoption(
+        "--app-per-test",
+        action="store_true",
+        default=False,
+        help="build the application for each API test instead of once for the session (tests/api/conftest.py)",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:

@@ -15,7 +15,7 @@ from typing import Any
 
 import psycopg
 import pytest
-from fastapi import Request
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from qarz.application.admin_access import AdminAccess
@@ -26,6 +26,7 @@ from qarz.infrastructure.db import Database
 from qarz.infrastructure.file_store import FilesystemFileStore
 from qarz.infrastructure.secret_box import SecretBox
 from qarz.interface.http import create_app
+from qarz.interface.observability import Metrics
 
 TEST_USER_HEADER = "X-Test-User"
 WEBHOOK_SECRET = "test-webhook-secret-0123456789"
@@ -147,8 +148,185 @@ def stored_objects(root: Path) -> list[Path]:
     return sorted(path for path in root.rglob("*") if path.is_file())
 
 
+# --- one application for the whole session, with every test's own things behind it -------------------------
+#
+# Building the application costs more than anything else a test does before its first request: FastAPI
+# works out the parameters of some 130 routes again each time (about 80 ms of the 90 ms the `client`
+# fixture took). The routes do not differ from test to test; only what the application works with does:
+# the two database connections, the clock, the allow-list, the cipher, the file store and the two Telegram
+# fakes. So the application is built once, around stand-ins for those seven things, and each test puts its
+# own behind the stand-ins before its first request and takes them away after its last.
+#
+# What makes this safe, and what holds it to that (test_shared_app.py):
+#
+# - nothing of one test is shared with the next but the application object itself. The database engines,
+#   their connections and the event loop they belong to are made for each test and ended with it, as
+#   before, and so is the `TestClient` with its cookies;
+# - a stand-in resolves its target when it is called, never when it is asked for a method, so a method
+#   the application took hold of while it was built (`storage.user_language`) still reaches the running
+#   test's database. The application is built with nothing behind the stand-ins: anything that called
+#   through one at that moment would fail there;
+# - a stand-in hands out the methods of its kind and nothing else: reading a plain attribute through it is
+#   an error, not a value of some other test;
+# - the application object keeps one store of its own between requests, the request counters of
+#   `Metrics`; they are set back before each test. test_shared_app.py walks everything the application
+#   holds and fails for any other object that could change, so a cache added to a service is noticed;
+# - `pytest --app-per-test` builds the application for each test, in the same way, as it was before.
+
+
+class NothingBehind(RuntimeError):
+    """A stand-in was called while no test had put anything behind it."""
+
+
+class StandIn:
+    """What the shared application holds in the place of one object that every test has of its own."""
+
+    def __init__(self, what: str, kind: type) -> None:
+        self._what = what
+        self._kind = kind
+        self._target: Any = None
+
+    def _behind(self) -> Any:
+        if self._target is None:
+            raise NothingBehind(f"no test has put its {self._what} behind the application")
+        return self._target
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_") or not callable(getattr(self._kind, name, None)):
+            raise AttributeError(f"the stand-in for the {self._what} hands out methods only, not {name!r}")
+
+        def forward(*args: Any, **kwargs: Any) -> Any:
+            return getattr(self._behind(), name)(*args, **kwargs)
+
+        forward.__name__ = name
+        return forward
+
+    def __repr__(self) -> str:
+        return f"<stand-in for the {self._what}>"
+
+
+class AllowListStandIn:
+    """The allow-list of the running test: the application only ever asks whether somebody is on it."""
+
+    def __init__(self, stage: "Stage") -> None:
+        self._stage = stage
+
+    def __contains__(self, tg_id: object) -> bool:
+        return tg_id in self._stage.admin_env().allowed
+
+
+class Stage:
+    """Everything one test puts behind the application, and takes away again."""
+
+    def __init__(self) -> None:
+        self.database = StandIn("database connection", Database)
+        self.admin_database = StandIn("administrators' database connection", Database)
+        self.file_store = StandIn("file store", FilesystemFileStore)
+        self.telegram_files = StandIn("Telegram files fake", FakeTelegramFiles)
+        self.telegram_members = StandIn("Telegram members fake", FakeChatMembers)
+        self.cipher = StandIn("cipher", SecretBox)
+        self.allowed = AllowListStandIn(self)
+        self._admin_env: AdminEnv | None = None
+
+    def admin_env(self) -> AdminEnv:
+        if self._admin_env is None:
+            raise NothingBehind("no test has put its clock and allow-list behind the application")
+        return self._admin_env
+
+    def now(self) -> datetime:
+        return self.admin_env().clock.now()
+
+    def _stand_ins(self) -> tuple[StandIn, ...]:
+        return (
+            self.database,
+            self.admin_database,
+            self.file_store,
+            self.telegram_files,
+            self.telegram_members,
+            self.cipher,
+        )
+
+    def empty(self) -> bool:
+        return self._admin_env is None and all(stand_in._target is None for stand_in in self._stand_ins())
+
+    def put(
+        self,
+        *,
+        database: Database,
+        admin_database: Database,
+        file_store: FilesystemFileStore,
+        telegram_files: FakeTelegramFiles,
+        telegram_members: FakeChatMembers,
+        admin_env: AdminEnv,
+    ) -> None:
+        if not self.empty():
+            raise RuntimeError("another test's things are still behind the application")
+        targets = (database, admin_database, file_store, telegram_files, telegram_members, admin_env.box)
+        for stand_in, target in zip(self._stand_ins(), targets, strict=True):
+            if not isinstance(target, stand_in._kind):
+                raise TypeError(f"the {stand_in._what} must be a {stand_in._kind.__name__}")
+            stand_in._target = target
+        self._admin_env = admin_env
+
+    def clear(self) -> None:
+        for stand_in in self._stand_ins():
+            stand_in._target = None
+        self._admin_env = None
+
+
+def build_app(stage: Stage) -> FastAPI:
+    """The application as the `client` fixture always built it, around the stand-ins of the stage."""
+    if not stage.empty():
+        raise RuntimeError("the application is built with nothing behind the stand-ins")
+    # As deployed: the ordinary side connects as qd_app and the administrators' side as qd_admin.
+    auth = AuthService(stage.database, TEST_BOT_TOKEN)
+    admin = AdminAccess(stage.admin_database, allowed_tg_ids=stage.allowed, cipher=stage.cipher, now=stage.now)
+    return create_app(
+        stage.database.reachable,
+        stage.database,
+        auth=auth,
+        admin=admin,
+        admin_storage=stage.admin_database,
+        authenticator=HeaderAuthenticator(),
+        webhook_secret=WEBHOOK_SECRET,
+        now=stage.now,
+        file_store=stage.file_store,
+        telegram_files=stage.telegram_files,
+        telegram_members=stage.telegram_members,
+        secrets_key=TEST_SECRETS_KEY,
+    )
+
+
+def metrics_of(app: FastAPI) -> Metrics:
+    """The one store the application object keeps between requests: its request counters."""
+    found = [m.kwargs["metrics"] for m in app.user_middleware if isinstance(m.kwargs.get("metrics"), Metrics)]
+    if len(found) != 1:
+        raise RuntimeError(f"expected the application to have one Metrics, found {len(found)}")
+    return found[0]
+
+
+def as_new(app: FastAPI) -> None:
+    """Set back what the application object itself remembers from earlier requests."""
+    metrics = metrics_of(app)
+    vars(metrics).clear()
+    vars(metrics).update(vars(Metrics()))
+
+
+@dataclass(frozen=True)
+class SharedApp:
+    app: FastAPI
+    stage: Stage
+
+
+@pytest.fixture(scope="session")
+def shared_app() -> SharedApp:
+    stage = Stage()
+    return SharedApp(build_app(stage), stage)
+
+
 @pytest.fixture
 def client(
+    request: pytest.FixtureRequest,
     app_database_url: str,
     admin_database_url: str,
     file_root: Path,
@@ -156,29 +334,30 @@ def client(
     telegram_members: FakeChatMembers,
     admin_env: AdminEnv,
 ) -> Iterator[TestClient]:
-    # As deployed: the ordinary side connects as qd_app and the administrators' side as qd_admin.
+    if request.config.getoption("--app-per-test"):
+        stage = Stage()
+        app = build_app(stage)
+    else:
+        shared: SharedApp = request.getfixturevalue("shared_app")
+        app, stage = shared.app, shared.stage
+        as_new(app)
     database = Database(app_database_url)
     admin_database = Database(admin_database_url)
-    auth = AuthService(database, TEST_BOT_TOKEN)
-    admin = AdminAccess(admin_database, allowed_tg_ids=admin_env.allowed, cipher=admin_env.box, now=admin_env.clock.now)
-    app = create_app(
-        database.reachable,
-        database,
-        auth=auth,
-        admin=admin,
-        admin_storage=admin_database,
-        authenticator=HeaderAuthenticator(),
-        webhook_secret=WEBHOOK_SECRET,
-        now=admin_env.clock.now,
+    stage.put(
+        database=database,
+        admin_database=admin_database,
         file_store=FilesystemFileStore(file_root),
         telegram_files=telegram_files,
         telegram_members=telegram_members,
-        secrets_key=TEST_SECRETS_KEY,
+        admin_env=admin_env,
     )
-    with TestClient(app) as test_client:
-        yield test_client
-        test_client.portal.call(database.dispose)  # type: ignore[union-attr]
-        test_client.portal.call(admin_database.dispose)  # type: ignore[union-attr]
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+            test_client.portal.call(database.dispose)  # type: ignore[union-attr]
+            test_client.portal.call(admin_database.dispose)  # type: ignore[union-attr]
+    finally:
+        stage.clear()
 
 
 @dataclass(frozen=True)
