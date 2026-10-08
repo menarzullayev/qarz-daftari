@@ -379,8 +379,10 @@ for name, size in (("receipts/2026/a-receipt.jpg", 30000), ("receipts/2026/b-rec
   step files-health-when-the-copy-is-old 1 dc exec -T -e QD_FILES_INTERVAL=-40 files-backup /opt/qarz-single/files-health.sh
   objects_after="$(bucket 'rc lsf -R --files-only "qdr2:$QD_R2_BUCKET/crypt" | wc -l' | tr -d '\r ')"
   expect "the bucket holds three more objects ($objects_before before, $objects_after after)" [ "$((objects_after - objects_before))" = 3 ]
+  # Whole path components are compared, not fragments: an encrypted name is a long run of letters and
+  # digits, and "csv" or "jpg" turns up inside one by chance (it failed a run on main that way).
   expect "no object in the bucket has a name of theirs, or says what it is" \
-    bucket 'names="$(rc lsf -R "qdr2:$QD_R2_BUCKET/crypt")"; [ -n "$names" ] && ! grep -q -i -e receipt -e import -e jpg -e csv -e current -e removed -e monthly -e dump <<< "$names"'
+    bucket 'names="$(rc lsf -R "qdr2:$QD_R2_BUCKET/crypt")"; [ -n "$names" ] && ! tr "/" "\n" <<< "$names" | grep -q -i -x -E "receipts|imports|2026|[abc]-(receipt|import)[.](jpg|csv)|current|removed|monthly"'
   expect "and none has their content: the marker written into every file is not in the bucket" \
     bucket 'd="$(mktemp -d)"; rc copy "qdr2:$QD_R2_BUCKET/crypt" "$d" 2>/dev/null; [ "$(find "$d" -type f | wc -l)" -ge 3 ] && ! grep -rlqa -e QDPROOFPLAINTEXT -e PGDMP "$d"; code=$?; rm -rf "$d"; exit $code'
   dc exec -T api sh -c 'rm /var/lib/qarz/files/receipts/2026/a-receipt.jpg /var/lib/qarz/files/receipts/2026/b-receipt.jpg'
