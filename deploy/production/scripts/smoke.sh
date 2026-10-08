@@ -8,7 +8,14 @@
 #
 # Environment:
 #   SMOKE_INSECURE=1     accept a certificate that cannot be verified (the local proof only)
-#   SMOKE_AUTH_BURST=10  the burst of the sign-in limit in nginx/conf.d/qarz.conf
+#   SMOKE_AUTH_BURST=10  the burst of the sign-in limit in nginx/snippets/app-server.conf
+#   SMOKE_VIA_TUNNEL=<address>
+#                        the origin is the proxy as a Cloudflare Tunnel reaches it (the single-host
+#                        deployment): plain HTTP inside the Compose network, with what Cloudflare adds
+#                        to every request, the visitor's address in CF-Connecting-IP (the one given
+#                        here) and the visitor's scheme in X-Forwarded-Proto. Give the same origin
+#                        twice: smoke.sh http://proxy:8080 http://proxy:8080. Run from the tunnel's
+#                        container; from anywhere else the proxy believes neither header.
 #   SMOKE_AUTH_WAIT=22   seconds to let the sign-in limit refill before testing it (an earlier run on
 #                        the same address may have used it up); 0 to skip the wait
 # Exit status 0 only when every check passed.
@@ -20,8 +27,16 @@ HTTP="${2:-http://${HTTPS#https://}}"
 HTTP="${HTTP%/}"
 AUTH_BURST="${SMOKE_AUTH_BURST:-10}"
 AUTH_WAIT="${SMOKE_AUTH_WAIT:-22}"
+# Given to every request (the name is from when this was only about the certificate).
 TLS=()
 if [ "${SMOKE_INSECURE:-0}" = "1" ]; then TLS=(--insecure); fi
+# Behind the tunnel "over HTTPS" and "over plain HTTP" are the same origin and differ in what
+# Cloudflare says about the visitor's scheme.
+PLAIN=()
+if [ -n "${SMOKE_VIA_TUNNEL:-}" ]; then
+  TLS+=(-H "CF-Connecting-IP: $SMOKE_VIA_TUNNEL" -H "X-Forwarded-Proto: https")
+  PLAIN=(-H "CF-Connecting-IP: $SMOKE_VIA_TUNNEL" -H "X-Forwarded-Proto: http")
+fi
 
 MIB=1048576
 UUID=00000000-0000-4000-8000-000000000000
@@ -42,6 +57,13 @@ probe() {
   STATUS="$(printf '%s\n' "$HEADERS" | grep -E '^HTTP/' | tail -n 1 | awk '{print $2}' || true)"
 }
 body() { curl -sS --max-time 30 "${TLS[@]}" "$@" 2>/dev/null || true; }
+# probe, as a visitor who used plain HTTP.
+probe_plain() {
+  local every=("${TLS[@]}")
+  if [ -n "${SMOKE_VIA_TUNNEL:-}" ]; then TLS=("${PLAIN[@]}"); fi
+  probe "$@"
+  TLS=("${every[@]}")
+}
 header() { printf '%s\n' "$HEADERS" | grep -i "^$1:" | sed 's/^[^:]*: *//' || true; }
 header_once() { [ "$(printf '%s\n' "$HEADERS" | grep -ci "^$1:" || true)" = "1" ]; }
 header_has() { header "$1" | grep -qF -- "$2"; }
@@ -74,10 +96,10 @@ check "/healthz answers 200" status_is 200
 check "/healthz says ok" contains "$(body "$HTTPS/healthz")" '"ok"'
 
 echo "# plain HTTP"
-probe "$HTTP/healthz"
+probe_plain "$HTTP/healthz"
 check "HTTP is redirected (301)" status_is 301
 check "the redirect goes to HTTPS" header_has Location "https://"
-probe "$HTTP/api/v1/me"
+probe_plain "$HTTP/api/v1/me"
 check "HTTP serves no API (301)" status_is 301
 
 echo "# security headers"
@@ -153,7 +175,9 @@ check "the 413 is the API's error shape" contains "$(zeros $((MIB + 1)) | body "
 # The same over HTTP/2 with the size announced and no Expect, which is how a browser sends it. nginx then
 # checks the size a second time inside its own error location; unless that location allows any size the
 # answer is its stock HTML page. Skipped, and said so, where curl has no HTTP/2.
-if curl --version | grep -qw HTTP2; then
+if [ -n "${SMOKE_VIA_TUNNEL:-}" ]; then
+  printf 'skip  %s\n' "HTTP/2: the 413's shape (the tunnel speaks HTTP/1.1 to the proxy)"
+elif curl --version | grep -qw HTTP2; then
   big2=(--http2 -X POST -H "Content-Type: application/json" -H "Expect:" --data-binary @-)
   probe "${big2[@]}" "$HTTPS/api/v1/me" < <(zeros $((MIB + 1)))
   check "HTTP/2: 1 MiB + 1 byte answers 413" status_is 413
@@ -178,9 +202,9 @@ check "16 KiB + 1 byte on /pay/ answers 413" status_is 413
 echo "# opening the pages is not held to the API's limit by address"
 # One page is a document and a dozen files, and an office or a mobile operator puts many people behind
 # one address. 150 requests at once is a few people opening the panel in the same second.
-opened="$(seq 1 150 | xargs -P 25 -I{} curl -sS -o /dev/null -w '%{http_code}
-' --max-time 30 "${TLS[@]}"   "$HTTPS/panel/" 2>/dev/null | sort | uniq -c | tr -s ' 
-' ' ' || true)"
+# (curl on Windows ends the line it writes with a carriage return; it is dropped before counting.)
+opened="$(seq 1 150 | xargs -P 25 -I{} curl -sS -o /dev/null -w '%{http_code}\n' --max-time 30 "${TLS[@]}" \
+  "$HTTPS/panel/" 2>/dev/null | tr -d '\r' | sort | uniq -c | tr -s ' \n' ' ' || true)"
 check "150 page loads at once are all answered 200 (got:$opened)" [ "$opened" = " 150 200 " ]
 
 echo "# sign-in rate limit by address (burst $AUTH_BURST)"

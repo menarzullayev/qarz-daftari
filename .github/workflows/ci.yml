@@ -297,6 +297,84 @@ jobs:
           promtool check rules /rules/alerts.yml
           promtool test rules /rules/alerts.test.yml
 
+  # The single-host deployment (deploy/production/compose.single-host.yml): the whole service on one
+  # machine behind a Cloudflare Tunnel, with its backups in a bucket. The stack comes up on the runner
+  # with MinIO in the place of R2 and a stand-in in the place of the tunnel; nothing connects to
+  # Cloudflare or leaves the runner. The proof runs the smoke test from the tunnel's place, takes backups,
+  # destroys the database volume, restores it from the bucket and runs the restore test, with the
+  # refusals that must hold (a forged visitor address, a wrong passphrase, damaged data, a restore over
+  # a live database). The cloudflared service itself is checked statically and never started.
+  single-host:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      COMMIT: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Scripts
+        run: |
+          scripts="deploy/production/scripts/single-host.sh deploy/production/scripts/single-host-proof.sh
+            deploy/production/single-host/postgres/qd-entrypoint.sh
+            $(echo deploy/production/single-host/scripts/*.sh)"
+          # shellcheck disable=SC2086
+          shellcheck --external-sources --severity=style $scripts deploy/production/nginx/single-host-entrypoint.sh
+          for script in $scripts; do
+            bash -n "$script"
+            test -x "$script" || { echo "$script is not executable" >&2; exit 1; }
+          done
+          sh -n deploy/production/nginx/single-host-entrypoint.sh
+          test -x deploy/production/nginx/single-host-entrypoint.sh
+          python3 -m py_compile deploy/production/scripts/single_host_static.py
+          if grep -rIl $'\r' deploy/production; then
+            echo "carriage returns found" >&2
+            exit 1
+          fi
+      - name: The database image's tag is the content of its sources
+        id: pgbackup
+        run: |
+          tag="$(git rev-parse HEAD:deploy/backup/scripts HEAD:deploy/production/single-host | sha256sum | cut -c 1-16)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          load: true
+          tags: qarz-daftari/backend:${{ github.sha }}
+          cache-from: type=gha,scope=backend
+      - name: Proxy image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/production/nginx/Dockerfile
+          load: true
+          build-args: VITE_BOT_USERNAME=qd_local_proof_bot
+          tags: qarz-daftari/proxy:${{ github.sha }}
+          cache-from: type=gha,scope=proxy
+      - name: Database image
+        uses: docker/build-push-action@v6
+        with:
+          context: deploy
+          file: deploy/production/single-host/postgres/Dockerfile
+          load: true
+          tags: qarz-daftari/pgbackup:${{ steps.pgbackup.outputs.tag }}
+          cache-from: type=gha,scope=pgbackup
+          cache-to: type=gha,scope=pgbackup,mode=max
+      - name: The stack comes up
+        run: |
+          test "$(git rev-parse HEAD)" = "$COMMIT"
+          deploy/production/scripts/single-host-proof.sh up
+      - name: The proof
+        run: deploy/production/scripts/single-host-proof.sh run
+      - name: Logs when it failed
+        if: failure()
+        run: |
+          deploy/production/scripts/single-host-proof.sh logs 60 || true
+          tail -n 40 deploy/production/.local-single/out/*.err || true
+      - name: Remove the stack
+        if: always()
+        run: deploy/production/scripts/single-host-proof.sh down || true
+
   documents:
     runs-on: ubuntu-latest
     steps:

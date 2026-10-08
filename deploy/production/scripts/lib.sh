@@ -88,6 +88,34 @@ require_images() {
   have_image "$(proxy_image "$commit")" || die "no proxy image for $commit on this host"
 }
 
+# --- The single host's database image (compose.single-host.yml), for single-host.sh and its proof ----
+# Its tag is the content of its two source directories at a commit, so the database is restarted by a
+# release only when that release changes them.
+pgbackup_tag() {
+  git -C "$REPO_DIR" rev-parse "$1:deploy/backup/scripts" "$1:deploy/production/single-host" \
+    | sha256sum | cut -c 1-16
+}
+pgbackup_image() { printf '%s:%s' "$(env_value DEPLOY_PGBACKUP_IMAGE qarz-daftari/pgbackup)" "$DEPLOY_PGBACKUP_TAG"; }
+
+ensure_pgbackup_image() {
+  local commit="$1" image source
+  image="$(pgbackup_image)"
+  if have_image "$image"; then
+    say "database image: already on this host"
+    return
+  fi
+  say "database image: building from commit $commit"
+  source="$(mktemp -d)"
+  (
+    trap 'rm -rf "$source"' EXIT
+    git -C "$REPO_DIR" archive --format=tar "$commit" deploy/backup/scripts deploy/production/single-host \
+      | tar -x -C "$source"
+    docker build --quiet --label "org.opencontainers.image.revision=$commit" \
+      -f "$(native_path "$source/deploy/production/single-host/postgres/Dockerfile")" \
+      -t "$image" "$(native_path "$source/deploy")"
+  )
+}
+
 current_release() { cat "$STATE_DIR/current" 2>/dev/null || true; }
 
 record_release() {
