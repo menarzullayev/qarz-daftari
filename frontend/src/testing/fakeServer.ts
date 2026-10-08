@@ -1,4 +1,4 @@
-import type { Fetch } from "../shared/api";
+import type { Fetch, Wire } from "../shared/api";
 
 /** One request as the application sent it. */
 export type Sent = {
@@ -79,7 +79,7 @@ export function deferred<T>() {
 }
 
 export function customerBody(overrides: Record<string, unknown> = {}) {
-  return {
+  const body: Wire["Customer"] = {
     id: "11111111-1111-4111-8111-111111111111",
     display_name: "Ali Valiyev",
     phone: "+998901234567",
@@ -87,8 +87,8 @@ export function customerBody(overrides: Record<string, unknown> = {}) {
     reminders_off: false,
     credit_limit: null,
     balance: 120000,
-    ...overrides,
   };
+  return { ...body, ...overrides };
 }
 
 /** GET /shops/{id}/credit-settings: no default limit, and a seller is stopped at a customer's limit. */
@@ -128,7 +128,7 @@ export function subscriptionBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
-export const NO_OVERDUE = { amount: 0, since: null, days: 0, due_today: 0 };
+export const NO_OVERDUE: Wire["Overdue"] = { amount: 0, since: null, days: 0, due_today: 0 };
 
 export const CUSTOMER_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -192,7 +192,7 @@ export const FIVE_ITEMS = [
 
 /** One saved goods line as the ledger API writes it; the quantity is a decimal string. */
 export function lineBody(overrides: Record<string, unknown> = {}) {
-  return {
+  const body: Wire["EntryLine"] = {
     line_no: 1,
     catalog_item_id: ITEM_ID,
     name: "Non",
@@ -200,13 +200,14 @@ export function lineBody(overrides: Record<string, unknown> = {}) {
     unit: "dona",
     unit_price: 4000,
     line_total: 8000,
-    ...overrides,
   };
+  return { ...body, ...overrides };
 }
 
 /** GET /shops/{id}: the shop's own settings. */
 export function settingsBody(overrides: Record<string, unknown> = {}) {
-  return { id: SHOP_ID, name: "Baraka savdo", lang: "uz", default_promise_days: 30, ...overrides };
+  const body: Wire["Shop"] = { id: SHOP_ID, name: "Baraka savdo", lang: "uz", default_promise_days: 30 };
+  return { ...body, ...overrides };
 }
 
 /** GET /customers/{id}/link for a customer nobody has connected yet. */
@@ -275,14 +276,15 @@ export function openDisputeBody(overrides: Record<string, unknown> = {}) {
 
 /** One promised date in an entry's history (ledger_service.promise_body). */
 export function promiseBody(overrides: Record<string, unknown> = {}) {
-  return { promised_date: "2026-11-05", actor: "default", reason: null, created_at: "2026-10-05T19:30:00+00:00", ...overrides };
+  const body: Wire["Promise"] = { promised_date: "2026-11-05", actor: "default", reason: null, created_at: "2026-10-05T19:30:00+00:00" };
+  return { ...body, ...overrides };
 }
 
 export const DATE_REQUEST_ID = "99999999-9999-4999-8999-999999999999";
 
 /** A customer's request to move the date of `entryBody()` from 5 to 20 November, still open. */
 export function dateRequestBody(overrides: Record<string, unknown> = {}) {
-  return {
+  const body: Wire["DateRequest"] = {
     id: DATE_REQUEST_ID,
     entry_id: "22222222-2222-4222-8222-222222222222",
     status: "open",
@@ -291,8 +293,8 @@ export function dateRequestBody(overrides: Record<string, unknown> = {}) {
     decline_reason: null,
     created_at: "2026-10-06T05:10:00+00:00",
     closed_at: null,
-    ...overrides,
   };
+  return { ...body, ...overrides };
 }
 
 /** One row of GET /shops/{id}/date-requests. */

@@ -43,6 +43,20 @@ npm ci
 npm run lint && npm run typecheck && npm test && npm run build
 ```
 
+### API description and the front end's types
+
+The back end writes its API description from its own code, without a server or a database, to `backend/openapi.json`. The front end's types of the API are generated from that file into `frontend/src/shared/api.generated.ts`. Both files are committed, so building the front end needs no Python. After changing a request or response shape:
+
+```bash
+cd backend && .venv/bin/python -m qarz.interface.api_description   # writes openapi.json
+cd ../frontend && npm run api:types                                # writes src/shared/api.generated.ts
+npm run typecheck                                                  # shows what the front end must follow
+```
+
+CI regenerates both and fails when a committed file differs (`python -m qarz.interface.api_description --check` in the backend job, `npm run api:check` in the frontend job). Routes kept out of the schema (provider callbacks, the Telegram webhook, metrics, file links) are not described, and the running application still serves no description.
+
+A route's answer is typed in the description only when the route has a response model from `backend/src/qarz/interface/answers.py`; the others answer with an open object. Only reads carry one, because a write may answer with a stored result of an older shape. The models are closed and strict, so they refuse an answer they do not describe instead of changing it; `backend/tests/api/test_typed_answers.py` compares the bytes with and without a model. In the front end, `Wire` (`frontend/src/shared/api.ts`) names the generated shapes, and the readers and request builders are checked against them with `fieldsOf<Wire["..."]>`.
+
 The database tests create a throwaway database, apply the real migrations, and exercise the schema's rules as the restricted application role. They fail, and are not skipped, when no database is configured.
 
 ## Dependencies

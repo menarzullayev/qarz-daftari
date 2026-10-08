@@ -22,6 +22,7 @@ from qarz.application.ownership import (
     START_TRANSFER,
     OwnershipService,
 )
+from qarz.interface.answers import MyShops
 from qarz.interface.shops_api import IdempotencyKey
 
 CurrentUser = Callable[..., Awaitable[UUID]]
@@ -49,7 +50,7 @@ def add_account_routes(
 ) -> None:
     user = Annotated[UUID, Depends(current_user)]
 
-    @app.get("/api/v1/me/shops", name=LIST_MY_SHOPS.name)
+    @app.get("/api/v1/me/shops", name=LIST_MY_SHOPS.name, response_model=MyShops)
     async def my_shops(user_id: user) -> dict[str, Any]:
         return await account.my_shops(user_id)
 
