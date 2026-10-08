@@ -339,3 +339,5 @@ Launch criterion 6 is as open as it was.
 4. Run the worker's jobs during the load.
 5. Repeat the 30-minute run on the merged code (run C was 5 minutes), with the rate limits and the
    statement timeout as they will be deployed and the number of API processes that will be deployed.
+
+<!-- probe: CI scope, not to be merged -->

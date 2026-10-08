@@ -677,3 +677,5 @@ byte for byte (`deploy/production/scripts/single-host-proof.sh`, sections 8 and 
 **Not proven:** any of it on a second real machine, against the real bucket, by a person, with a clock.
 Of the "On the same machine" commands, only the copy of a volume was tried (on the proof's own volume: the
 same number of files, the same owner); the sequence as a whole has never been run.
+
+<!-- probe: CI scope, not to be merged -->
