@@ -159,6 +159,11 @@ Each is implemented. If one is rejected, the named story must be revisited.
 | DEC-069 | SMS in release 1 through Eskiz (the founder's) | Reminders |
 | DEC-070 | One host, Cloudflare Tunnel, backups to R2 (the founder's; replaces two servers) | Deployment |
 | DEC-071 | Support access stays as built: a reason, read-only, visible to the owner | Administration |
+| DEC-072 | The repository is public (decided by the founder) | Development |
+| DEC-073 | Eskiz sender: what counts as sent, failed and retried | Reminders |
+| DEC-074 | Generated API types: six read operations typed, the rest open | Development |
+| DEC-075 | Single host: data leaves the country, one passphrase, no failover figure, no alerts | Deployment |
+| DEC-076 | CI in four test jobs; documents-only runs; superseded runs cancelled | Development |
 | DEC-068 | Three database roles, one for each part of the application; what each is granted; sign out everywhere | S19.2 |
 
 Decided by the founder on 2026-10-07, and so not awaiting review: DEC-058 (nginx and Docker Compose, where the architecture document names Caddy; what to prepare before production); DEC-051 (buttons in the review group, honoured for platform administrators only, as the agent understood him), DEC-052 (no fresh code to decide a receipt), DEC-053 (store open debts).
