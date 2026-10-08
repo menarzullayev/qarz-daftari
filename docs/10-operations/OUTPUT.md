@@ -7,6 +7,8 @@ This document defines how release 1 is tested, released, watched, and recovered.
 
 Scale assumed: one operator, two servers in Uzbekistan, design capacity of 5,000 shops (REQ-N13).
 
+**Amended on 2026-10-08 (changed by the founder on 2026-10-08, DEC-058/DEC-070).** For lack of budget there are no servers. The service runs on **one computer** the founder already has, reached through a Cloudflare Tunnel, with encrypted backups in Cloudflare R2, and the proxy is nginx. Wherever this document says "both servers", "the standby", "the primary", "failover" or "replication", it describes the two-server design, which is kept for when there are two servers and is **not what runs now**. What runs now is in the passages marked "one host" below, in `deploy/production/SINGLE-HOST.md`, and in runbooks 14 and 15. Text marked "proposed, awaiting the founder" is a proposal and not yet a rule.
+
 ## Test strategy
 
 | Level | What | How | Gate |
@@ -69,6 +71,19 @@ Verified so far: the release 1 schema was executed in PostgreSQL 16 and ten cons
 
 A daily digest reports counts, so that silence can be told from health. Dashboards are kept to one page per area: traffic, ledger, messaging, database, subscription.
 
+**Monitoring on one host (changed by the founder on 2026-10-08, DEC-070).** There is no monitoring system. Stated plainly, signal by signal:
+
+| Signal | On one host |
+|---|---|
+| External check of `/healthz` | Not set up. It is the only way to learn that the machine is off or offline, because nothing on the machine can say so. The founder can add one at no cost (any uptime service that notifies a phone) and Cloudflare's "Tunnel Health Alert" notification; both are described in `deploy/production/SINGLE-HOST.md` and created by nobody but him |
+| Error rate, latency, outbox age, SMS, security events, receipts, scheduler | The API serves the figures at `/metrics` inside the Compose network and the rules exist (`deploy/monitoring/alerts.yml`); nothing reads the one or evaluates the other |
+| Webhook backlog reported by Telegram | Not collected |
+| Replication lag | Does not exist: there is no replica |
+| Log archive age; backup failed or missing; restore test | Checked every five minutes by the `backup` container, which turns **unhealthy** in `docker ps` when the newest archived WAL segment is older than 5 minutes, the newest backup older than 26 hours, or the newest full backup older than 8 days. Every job writes a line to that container's log, and the figures are files in a volume. **Nobody is told**; a person has to look (`single-host.sh status`) |
+| Disk, memory, connections | Shown by `single-host.sh status` (disk) and `docker stats`. Nobody is told |
+| Certificate | Not the service's: Cloudflare holds and renews the public certificate |
+| A process that died | Restarted by Docker. A process that runs but is unhealthy is not restarted and nobody is told |
+
 ## Logging
 
 - Structured JSON from proxy, API, and worker with a shared request identifier.
@@ -86,6 +101,8 @@ A daily digest reports counts, so that silence can be told from health. Dashboar
 
 Every alert is triggered deliberately once before launch. There is one operator and no rotation; outside shop hours no response is promised. A second person able to act must be named before launch (Development Plan, open question 2).
 
+**Alerting on one host (changed by the founder on 2026-10-08, DEC-070).** No alert of the table above is delivered to anybody: there is nothing to evaluate the rules and nothing to send. What can exist without a monitoring system is the two outside checks named under Monitoring, which cover "service down" only. "Archive stale", "backup failed" and "disk" reach the operator only when he looks. Launch criterion 9 cannot be met in this state.
+
 ## Backup
 
 Implements the archiving decision (ADR-015) and the file store decision (ADR-020).
@@ -100,9 +117,40 @@ Implements the archiving decision (ADR-015) and the file store decision (ADR-020
 | Verification | Automated restore test of the latest backup into staging weekly; full timed rehearsal quarterly |
 | Not backed up | Logs; images (rebuilt); environment files (operator's password manager) |
 
+**Backup on one host (changed by the founder on 2026-10-08, DEC-070).** Implemented in `deploy/production/compose.single-host.yml`; the detail, and the comparison with the table above line by line, is in `deploy/production/SINGLE-HOST.md`, "Backups".
+
+| Item | One host |
+|---|---|
+| Database | No replica. Write-ahead log archived to Cloudflare R2 within about a minute of a write (`archive_timeout` 60 seconds and a heartbeat); weekly full and daily differential backups with pgBackRest, to the same bucket |
+| Files | Kept in a volume of the machine; copied to the bucket every five minutes; a file removed here is kept there 30 more days. Not included in a weekly archive |
+| Encryption | Everything is encrypted on the machine before it is sent: the database and its log by pgBackRest (AES-256), the files and the monthly dumps by rclone's crypt, file names included, with one passphrase. A working copy of the passphrase is on the machine, because the machine encrypts with it; **the two copies that count are off the machine** |
+| Location | **One: the R2 bucket, outside Uzbekistan.** No standby and no third location. Losing the machine and the bucket, or the machine and the passphrase, loses everything |
+| Retention | Unchanged: point-in-time recovery for 14 to 21 days; weekly backups for 8 weeks; monthly dumps for 12 months |
+| Verification | Automated restore test of the latest backup weekly, into a throwaway instance on the same machine, and by command. A timed restore onto a **second machine** has never been done and is what the proposed launch criterion 8 asks for |
+| Schedule | A scheduler container, because the host has no systemd; a backup missed while the machine was off is taken when it starts |
+| Not backed up | Logs; images (rebuilt); the env file (the founder's password manager, which must hold a copy of it) |
+
 ## Disaster recovery
 
 Targets (NFR-004): service restored within 1 hour; at most 5 minutes of entries lost.
+
+**Disaster recovery on one host (changed by the founder on 2026-10-08, DEC-070).** The two targets above belong to the two-server design and are not met. What one machine gives is proposed in the Technical Specification under NFR-003 and NFR-004 (proposed, awaiting the founder): no availability percentage; no recovery time until one has been measured; at most 5 minutes of entries lost with the machine's disk while the archive to R2 is healthy, and no bound while the machine cannot reach R2. The scenarios, for one host:
+
+| Scenario | Recovery on one host |
+|---|---|
+| Process crash | Docker restarts it; Telegram redelivers; the outbox resumes |
+| The computer was off, lost power, or Windows restarted | Nothing is lost. The service is down until the machine is up and Docker runs; then everything starts by itself, the tunnel reconnects and a missed backup is taken. Runbook 14 |
+| Internet link down | The service is unreachable although it runs; nothing is lost; entries cannot be recorded meanwhile. The write-ahead log waits on the disk (up to 4 GiB, then the oldest is dropped so that the database keeps running) and is sent when the link returns |
+| Bad release | Redeploy the previous images; no data change needed |
+| Operator or software damages data | A point-in-time copy from R2 beside the live database (`single-host.sh pitr`), never over it; affected shops told which minutes to re-enter. Runbook 3 |
+| The machine or its disk is lost | Another machine, the env file from the password manager, a restore from R2, start. The tunnel's token and the public name are unchanged, so nothing changes in Cloudflare or Telegram. What had not reached R2 is lost. Runbook 15 |
+| Docker's data is wiped (a prune with volumes, a factory reset, a reinstall) | The same as a lost disk: the database is a Docker volume |
+| The R2 bucket or the Cloudflare account is lost | The service keeps running without backups until a new bucket is set up; if the tunnel's account is lost, the service is unreachable until a new way in exists. The machine is then the only copy |
+| The machine **and** the bucket are lost | The data is gone |
+| Backup passphrase lost | The backups are unusable; prevention only: two copies off the machine |
+| Tunnel token leaked | Whoever has it can receive the service's traffic: delete the tunnel in Cloudflare, create a new one, put the new token in the env file. Runbook 4 |
+| Bot token or session secret leaked; administrator account compromised | As in the table above |
+| Operator unavailable | The service runs until something stops; then it is down until he is back. Nobody else can act unless a second person has the machine's sign-in, the env file and runbooks 14 and 15 |
 
 | Scenario | Recovery |
 |---|---|
@@ -135,6 +183,10 @@ Written during M8, each executed once before launch:
 11. Suspected data exposure.
 12. Switch on SMS or online payment for one shop, then for all.
 13. Onboard a shop, including importing its paper ledger.
+14. "The computer was off": power loss, a restart, Docker not running (changed by the founder on 2026-10-08, DEC-070).
+15. Move the service to another machine from R2 alone (changed by the founder on 2026-10-08, DEC-070).
+
+Runbooks 1 to 5 have a part for one host (changed by the founder on 2026-10-08, DEC-070); on one host runbook 2 is not a failover but points at 14 and 15.
 
 ## Incident readiness
 
@@ -182,10 +234,12 @@ Each production release: tagged commit with green CI and a staging soak → rest
 | 6 | Load test meets the performance targets at design capacity, or the capacity claim is lowered to what was measured | Not started |
 | 7 | Security review done and its findings fixed or accepted in writing | Not started |
 | 8 | Failover and point-in-time restore rehearsed within the targets, times recorded | Not started |
+| 8, one host (changed by the founder on 2026-10-08, DEC-070; proposed, awaiting the founder) | *Proposed text:* A restore of the whole service from R2 alone onto a **second machine**, by runbook 15, done once by the founder with a clock running, the data checked against the first machine and the time recorded; a point-in-time copy to a chosen minute (runbook 3) done once on the real machine, time recorded; "the computer was off" (runbook 14) done once by cutting the power, time until the service answers recorded. There is no failover to rehearse and no target to be within: the recorded times become the stated recovery times | Not started. The mechanism is proven in CI with a stand-in for R2; nothing was done on the real machine |
 | 9 | Every alert triggered once and received | Not started |
 | 10 | Runbooks 1 to 11 each executed once | Not started |
 | 11 | Usability sessions show recording is not slower than the notebook for the sellers tested | Not started |
 | 12 | Two servers at two providers or facilities in Uzbekistan in use; backup key stored off both | Not chosen |
+| 12, one host (changed by the founder on 2026-10-08, DEC-070; proposed, awaiting the founder) | *Proposed text:* The service runs on the one machine as `deploy/production/SINGLE-HOST.md` describes, with its preparation done (starts after a power cut, never sleeps, no restart for updates in shop hours, disk encrypted, on a UPS); backups and the write-ahead log arrive in the R2 bucket and the restore test has passed on the real bucket; the backup passphrase and a copy of the env file are kept in **two places that are not that machine**, and the founder has read the passphrase back from each; an outside check of `/healthz` notifies his phone; and the founder has accepted in writing that there is no failover and that backups and traffic leave Uzbekistan, or the legal review (criterion 2) has answered that they may | Not started |
 | 13 | A second person able to fail over and post notices is named and has done it once | Not named |
 | 14 | Both languages reviewed by native speakers | Not started |
 | 15 | Before the first payment is accepted: the card-transfer process, review group, and receipt handling have been run end to end with a test shop | Not started |
@@ -221,4 +275,5 @@ No operational evidence exists: no test run, deployment, failover, restore, or a
 |---|---|---|
 | DEC-011 / APR-011 | Version 1 operations definition | Superseded |
 | DEC-019 | Version 2 operations definition: test strategy with a blocking tenant suite, staged releases with backward-compatible migrations, monitoring and alerting, replication with point-in-time recovery, recovery targets of 1 hour and 5 minutes, runbooks, and sixteen launch criteria | Approved 2026-10-06 (APR-019) |
+| DEC-058, DEC-070 | nginx as the proxy; one host behind a Cloudflare Tunnel with encrypted backups to Cloudflare R2, in place of two servers | Decided by the founder (2026-10-07, 2026-10-08); this document amended 2026-10-08. The one-host text of launch criteria 8 and 12, and the recovery objectives (Technical Specification, NFR-003 and NFR-004), are proposed, awaiting the founder |
 | Production launch approval | Launch criterion 16 | Not requested; cannot be given until criteria 1 to 15 are met |

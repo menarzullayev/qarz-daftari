@@ -4,6 +4,23 @@ The files that put Qarz Daftari on the application host: one image for the API, 
 migrations, one image for the proxy with the three front-end entries, a compose file, and scripts to
 deploy, roll back and check.
 
+> **Two ways to run it; one is current.**
+>
+> - **The current deployment is one machine**, by the founder's decision of 2026-10-08 (DEC-070): this
+>   directory's `compose.yml` plus `compose.single-host.yml`, which adds PostgreSQL, a Cloudflare Tunnel
+>   and backups to Cloudflare R2. Its guide, with the founder's checklist for the first deployment, is
+>   **[SINGLE-HOST.md](SINGLE-HOST.md)**. Start there.
+> - **The rest of this file describes `compose.yml` on its own: the application host of the two-server
+>   design** (ADR-014), with a certificate, published ports 80 and 443, and PostgreSQL and the file store
+>   on separate database hosts. No such servers exist. It is kept as the design for when there are two
+>   servers, and because the local proof (`scripts/local.sh`) and the end-to-end suite (`e2e/`) run this
+>   form. Where a section below says "the host", "a server" or "the database hosts", it means that
+>   design, not the machine the service runs on today.
+>
+> Both forms use the same two images, the same `deploy.sh`, `rollback.sh` and `smoke.sh`, and the same
+> nginx limits, routes and headers (`nginx/snippets/`); they differ in what stands in front of nginx and
+> in where the database is.
+
 **What has been proven.** Only this: on a developer machine (Docker Desktop on Windows), with a
 self-signed certificate, a throwaway PostgreSQL and a directory in place of the file store, the stack
 comes up through `deploy.sh`, `smoke.sh` passes, `rollback.sh` brings the previous images back, and the
@@ -16,8 +33,11 @@ a real certificate, a real bot or a real database host. See "Not proven" at the 
 |---|---|
 | `backend/Dockerfile` | Python 3.12 slim, two stages. Installs the runtime part of `requirements.lock` with `--require-hashes` (selected by `backend/scripts/runtime_requirements.py`); no pip, compiler, tests or development tools in the final image; runs as user 10001. Default command is the API, with a health check on `/healthz`. |
 | `nginx/Dockerfile` | Builds the three entries with `npm ci` and `npm run build`, then copies them and the configuration into `nginx:1.30-alpine`. `nginx -t` runs during the build. Runs as user 101 on ports 8080 and 8443. Build context is the repository root. |
-| `nginx/nginx.conf`, `nginx/conf.d/qarz.conf`, `nginx/snippets/` | TLS, redirect, headers, limits, routing, the access log. |
+| `nginx/nginx.conf`, `nginx/conf.d/qarz.conf` | The form that ends TLS itself: certificate, redirect from port 80. |
+| `nginx/snippets/` | Shared by both forms: the limits by address (`limit-zones.conf`), the routes, body limits and error answers (`app-server.conf`), the headers, the access log (`http-common.conf`). |
+| `nginx/nginx.single-host.conf`, `nginx/single-host.d/`, `nginx/single-host-entrypoint.sh` | The form behind a Cloudflare Tunnel ([SINGLE-HOST.md](SINGLE-HOST.md)). In the image, unused unless `compose.single-host.yml` starts it. |
 | `compose.yml` | `proxy`, `api`, `worker`, `migrate`. Only the proxy publishes ports. |
+| `compose.single-host.yml`, `single-host.env.example`, `single-host/`, `scripts/single-host.sh` | The single-host deployment ([SINGLE-HOST.md](SINGLE-HOST.md)). |
 | `compose.local.yml` | Overlay for the local proof only: PostgreSQL and a volume for files. |
 | `compose.e2e.yml` | Overlay for the end-to-end suite only: closes the API's and the worker's way out. |
 | `.env.example` | Every name the services read, by service, without values. |
@@ -151,7 +171,7 @@ three are open.
 
 | Subject | Decision | Why |
 |---|---|---|
-| Proxy | nginx, not the Caddy named in `docs/06-architecture` | The founder's choice for this task; the architecture document is not changed here. |
+| Proxy | nginx | The founder's choice (DEC-058). The architecture document named Caddy and was amended to say nginx on 2026-10-08. |
 | Paths | `/app/`, `/panel/`, `/admin/`, `/assets/` static; `/api/`, `/tg/webhook`, `/pay/`, `/files/`, `/healthz` to the API; `/` redirects to `/panel/`; everything else 404 (the API's `/docs` and `/openapi.json` included) | The build's own layout and the specification's paths. |
 | `/metrics` | 404 from outside, in every spelling | Read it inside the compose network: `api:8000/metrics` with the bearer token. No monitoring system is attached yet. |
 | Body limits | 1 MiB default; 5 MiB + 16 KiB on the two receipt routes; 5 MiB on the import route; 16 KiB on `/pay/` | The application's own numbers and route patterns, byte for byte. nginx cannot tie a size to a method, so a non-POST request on an upload route passes the proxy and is held to 1 MiB by the application. |
@@ -166,7 +186,7 @@ three are open.
 | Caching | `no-store` for HTML, the API and files; one year `immutable` for `/assets/` | Asset names carry a content hash. |
 | Compression | gzip for static text files only; none for the API; no brotli | Brotli is not in the stock image. API answers are small, and compressing answers that carry secrets is avoidable. |
 | Request identifier | Always made by the proxy (32 hexadecimal characters); one sent by a caller is ignored | So a caller cannot choose what appears in the logs. |
-| Forwarded headers | `X-Forwarded-For` is the caller's address only; the API trusts forwarded headers from any peer | The proxy is the first hop, and the API is reachable only on a network with no other member. |
+| Forwarded headers | `X-Forwarded-For` is the caller's address only; the API trusts forwarded headers from any peer | The proxy is the first hop, and the API is reachable only on a network with no other member. Behind the Cloudflare Tunnel the proxy is the second hop, and takes the visitor's address and scheme from Cloudflare's headers only when the peer is the tunnel's container ([SINGLE-HOST.md](SINGLE-HOST.md), "The proxy behind the tunnel"). |
 | Timeouts | 3 s to connect to the API, 20 s between reads or writes, 15 s for a client's body, 10 s for its headers | The API cancels a statement at 5 s; a request may be several statements or an upload. |
 | Host names | `server_name _`: any host name is answered | The public name is not known yet. Restrict it when it is. |
 | Containers | read-only root, all capabilities dropped, `no-new-privileges`, tmpfs `/tmp`; limits: API 1 CPU / 512 MB, worker 1 CPU / 768 MB, proxy 1 CPU / 192 MB, migration 1 CPU / 256 MB | Starting points, not measured under load. |
@@ -243,6 +263,11 @@ e2e/stack.sh down                  # containers, networks, volumes, images, gene
 
 ## Not covered here
 
+This list is about `compose.yml` on its own, the two-server design. On the single host the database,
+its backups, the file store and the way in are covered by `compose.single-host.yml`
+([SINGLE-HOST.md](SINGLE-HOST.md)); what stays uncovered there is in that file's "What is watched" and
+"Not proven".
+
 - The database hosts: PostgreSQL primary and standby, replication, failover (ADR-014, ADR-015;
   `deploy/rehearsal/` is a rehearsal on one machine).
 - Backups and restore: `deploy/backup/` (configuration and scripts for the database hosts; proven in
@@ -273,7 +298,9 @@ e2e/stack.sh down                  # containers, networks, volumes, images, gene
   bot's domain.
 - That the proxy sees callers' real addresses. On Docker Desktop every caller appears as the bridge's
   gateway; on a Linux host with published ports the real address is expected, and the limits by address
-  mean nothing until that is checked in the access log.
+  mean nothing until that is checked in the access log. (Behind the tunnel the address comes from
+  Cloudflare's header instead; that path is proven with a stand-in for the tunnel, not with Cloudflare:
+  [SINGLE-HOST.md](SINGLE-HOST.md).)
 - The S3 file store path: the local proof uses a directory.
 - A release with a migration deployed and rolled back against a database with data.
 - The resource limits and the rate numbers: none was tuned against a measurement.
