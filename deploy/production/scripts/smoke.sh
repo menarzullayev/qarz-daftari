@@ -175,6 +175,14 @@ check "one byte more on the notice upload route answers 413" status_is 413
 probe "${big[@]}" "$HTTPS/pay/payme" < <(zeros $((16 * 1024 + 1)))
 check "16 KiB + 1 byte on /pay/ answers 413" status_is 413
 
+echo "# opening the pages is not held to the API's limit by address"
+# One page is a document and a dozen files, and an office or a mobile operator puts many people behind
+# one address. 150 requests at once is a few people opening the panel in the same second.
+opened="$(seq 1 150 | xargs -P 25 -I{} curl -sS -o /dev/null -w '%{http_code}
+' --max-time 30 "${TLS[@]}"   "$HTTPS/panel/" 2>/dev/null | sort | uniq -c | tr -s ' 
+' ' ' || true)"
+check "150 page loads at once are all answered 200 (got:$opened)" [ "$opened" = " 150 200 " ]
+
 echo "# sign-in rate limit by address (burst $AUTH_BURST)"
 if [ "$AUTH_WAIT" != "0" ]; then sleep "$AUTH_WAIT"; fi
 let_through=0
