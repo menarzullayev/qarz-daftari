@@ -388,6 +388,7 @@ def test_a_refused_repeat_leaves_one_session_and_one_record(
     tg_id = next(_tg_ids)
     data = webapp_init_data(tg_id, token=TEST_BOT_TOKEN, auth_date=_signed_at())
     before = owner.execute("SELECT count(*) FROM signin_replay").fetchone()
+    known = {bytes(row[0]) for row in owner.execute("SELECT payload_hash FROM signin_replay").fetchall()}
     for _ in range(3):
         session_client.http.post(_WEBAPP, json={"init_data": data})
     after = owner.execute("SELECT count(*) FROM signin_replay").fetchone()
@@ -396,8 +397,15 @@ def test_a_refused_repeat_leaves_one_session_and_one_record(
     ).fetchone()
     assert before is not None and after is not None
     assert (after[0] - before[0], sessions) == (1, (1,))
-    kept = owner.execute("SELECT min(expires_at) > now() + interval '30 minutes' FROM signin_replay").fetchone()
-    assert kept == (True,), "a record is kept for as long as its data would still be accepted"
+    # Of the record this sign-in left, not of the oldest in the table, which is some earlier test's.
+    kept = [
+        row[1]
+        for row in owner.execute(
+            "SELECT payload_hash, expires_at > now() + interval '30 minutes' FROM signin_replay"
+        ).fetchall()
+        if bytes(row[0]) not in known
+    ]
+    assert kept == [True], "a record is kept for as long as its data would still be accepted"
 
 
 def test_the_worker_purges_dead_sessions_and_used_sign_in_data_once_an_hour(

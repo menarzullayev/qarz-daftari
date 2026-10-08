@@ -219,9 +219,13 @@ def test_configuring_logs_twice_adds_one_handler() -> None:
     before = list(root.handlers)
     level = root.level
     try:
+        # From a logger that was never configured, whatever ran before in this process: a test that
+        # built the application the way the server does has left its handler there.
+        root.handlers[:] = [handler for handler in before if not isinstance(handler.formatter, JsonFormatter)]
+        unconfigured = list(root.handlers)
         configure_logging()
         configure_logging()
-        added = [handler for handler in root.handlers if handler not in before]
+        added = [handler for handler in root.handlers if handler not in unconfigured]
         assert len(added) == 1 and isinstance(added[0].formatter, JsonFormatter)
         assert logging.getLogger("uvicorn.access").disabled
     finally:
