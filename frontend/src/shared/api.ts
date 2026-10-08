@@ -1,3 +1,4 @@
+import type { components } from "./api.generated";
 import { lineTotal, MAX_LINES, qtyToApi, readServerQty } from "./goods";
 import { isRole, type Role } from "./navigation";
 
@@ -9,6 +10,14 @@ import { isRole, type Role } from "./navigation";
  */
 
 export type Fetch = (input: string, init: RequestInit) => Promise<Response>;
+
+/**
+ * The API's own shapes, as sent (snake_case), generated from the back end's description: the request
+ * bodies, and the answers the description names field by field. The screens use the types below; the
+ * readers and the request builders in this module are checked against these, so a field the back end
+ * renames, removes or retypes fails the type check here once the types are regenerated.
+ */
+export type Wire = components["schemas"];
 
 /**
  * The Mini App holds a bearer token in memory. The web panel relies on the HTTP-only session cookie and
@@ -417,47 +426,70 @@ function list<T>(value: unknown, item: (element: unknown) => T): T[] {
   return value.map(item);
 }
 
-function customer(value: unknown): Customer {
+/**
+ * Reads one answer field by field against `T`, its shape in the API's description. The field must be one
+ * the back end declares, and `get` also needs a reader that takes everything the back end may send for
+ * it: `text` for a field that may be null, or for a number, does not compile. What arrives is still
+ * checked as it is read; the description is not taken on trust.
+ */
+function fieldsOf<T>(value: unknown) {
   const body = record(value);
   return {
-    id: text(body["id"]),
-    displayName: text(body["display_name"]),
-    phone: textOrNull(body["phone"]),
-    status: text(body["status"]),
-    remindersOff: flag(body["reminders_off"]),
-    creditLimit: wholeOrNull(body["credit_limit"]),
-    balance: whole(body["balance"]),
+    get<K extends keyof T & string, R extends (value: unknown) => unknown>(
+      key: K,
+      // `never` when the reader does not take everything the API sends for this field.
+      read: R & (T[K] extends ReturnType<R> ? unknown : never),
+    ): ReturnType<R> {
+      return read(body[key]) as ReturnType<R>;
+    },
+    /** A field with a reader of its own (a nested shape, a list, a closed set of words): only its name is checked. */
+    raw<K extends keyof T & string>(key: K): unknown {
+      return body[key];
+    },
+  };
+}
+
+function customer(value: unknown): Customer {
+  const body = fieldsOf<Wire["Customer"]>(value);
+  return {
+    id: body.get("id", text),
+    displayName: body.get("display_name", text),
+    phone: body.get("phone", textOrNull),
+    status: body.get("status", text),
+    remindersOff: body.get("reminders_off", flag),
+    creditLimit: body.get("credit_limit", wholeOrNull),
+    balance: body.get("balance", whole),
   };
 }
 
 function overdue(value: unknown): Overdue {
-  const body = record(value);
+  const body = fieldsOf<Wire["Overdue"]>(value);
   return {
-    amount: whole(body["amount"]),
-    since: textOrNull(body["since"]),
-    days: whole(body["days"]),
-    dueToday: whole(body["due_today"]),
+    amount: body.get("amount", whole),
+    since: body.get("since", textOrNull),
+    days: body.get("days", whole),
+    dueToday: body.get("due_today", whole),
   };
 }
 
 function debtor(value: unknown): Debtor {
-  return { ...customer(value), overdue: overdue(record(value)["overdue"]) };
+  return { ...customer(value), overdue: overdue(fieldsOf<Wire["Debtor"]>(value).raw("overdue")) };
 }
 
 function goodsLine(value: unknown): GoodsLine {
-  const body = record(value);
-  const qty = readServerQty(text(body["qty"]));
+  const body = fieldsOf<Wire["EntryLine"]>(value);
+  const qty = readServerQty(body.get("qty", text));
   if (qty === null) {
     throw new Malformed();
   }
   return {
-    lineNo: whole(body["line_no"]),
-    catalogItemId: textOrNull(body["catalog_item_id"]),
-    name: text(body["name"]),
+    lineNo: body.get("line_no", whole),
+    catalogItemId: body.get("catalog_item_id", textOrNull),
+    name: body.get("name", text),
     qty,
-    unit: text(body["unit"]),
-    unitPrice: whole(body["unit_price"]),
-    lineTotal: whole(body["line_total"]),
+    unit: body.get("unit", text),
+    unitPrice: body.get("unit_price", whole),
+    lineTotal: body.get("line_total", whole),
   };
 }
 
@@ -467,12 +499,12 @@ function goodsLines(value: unknown): GoodsLine[] {
 }
 
 function promiseRecord(value: unknown): PromiseRecord {
-  const body = record(value);
+  const body = fieldsOf<Wire["Promise"]>(value);
   return {
-    promisedDate: text(body["promised_date"]),
-    actor: text(body["actor"]),
-    reason: textOrNull(body["reason"]),
-    createdAt: text(body["created_at"]),
+    promisedDate: body.get("promised_date", text),
+    actor: body.get("actor", text),
+    reason: body.get("reason", textOrNull),
+    createdAt: body.get("created_at", text),
   };
 }
 
@@ -482,16 +514,16 @@ function promiseRecords(value: unknown): PromiseRecord[] {
 }
 
 function dateRequest(value: unknown): DateRequest {
-  const body = record(value);
+  const body = fieldsOf<Wire["DateRequest"]>(value);
   return {
-    id: text(body["id"]),
-    entryId: text(body["entry_id"]),
-    status: text(body["status"]),
-    requestedDate: text(body["requested_date"]),
-    reason: textOrNull(body["reason"]),
-    declineReason: textOrNull(body["decline_reason"]),
-    createdAt: text(body["created_at"]),
-    closedAt: textOrNull(body["closed_at"]),
+    id: body.get("id", text),
+    entryId: body.get("entry_id", text),
+    status: body.get("status", text),
+    requestedDate: body.get("requested_date", text),
+    reason: body.get("reason", textOrNull),
+    declineReason: body.get("decline_reason", textOrNull),
+    createdAt: body.get("created_at", text),
+    closedAt: body.get("closed_at", textOrNull),
   };
 }
 
@@ -522,22 +554,22 @@ function changedPromise(value: unknown): ChangedPromise {
 }
 
 function entry(value: unknown): Entry {
-  const body = record(value);
+  const body = fieldsOf<Wire["Entry"]>(value);
   return {
-    id: text(body["id"]),
-    seq: whole(body["seq"]),
-    kind: text(body["kind"]),
-    amount: whole(body["amount"]),
-    note: textOrNull(body["note"]),
-    createdAt: text(body["created_at"]),
-    promisedDate: textOrNull(body["promised_date"]),
-    reversesId: textOrNull(body["reverses_id"]),
-    reversed: flag(body["reversed"]),
-    disputed: flag(body["disputed"]),
-    authorId: textOrNull(body["author_id"]),
-    lines: goodsLines(body["lines"]),
-    promises: promiseRecords(body["promises"]),
-    dateRequest: dateRequestOrNull(body["date_request"]),
+    id: body.get("id", text),
+    seq: body.get("seq", whole),
+    kind: body.get("kind", text),
+    amount: body.get("amount", whole),
+    note: body.get("note", textOrNull),
+    createdAt: body.get("created_at", text),
+    promisedDate: body.get("promised_date", textOrNull),
+    reversesId: body.get("reverses_id", textOrNull),
+    reversed: body.get("reversed", flag),
+    disputed: body.get("disputed", flag),
+    authorId: body.get("author_id", textOrNull),
+    lines: goodsLines(body.raw("lines")),
+    promises: promiseRecords(body.raw("promises")),
+    dateRequest: dateRequestOrNull(body.raw("date_request")),
   };
 }
 
@@ -545,40 +577,41 @@ function paymentHistory(value: unknown): PaymentHistory | null {
   if (value === null || value === undefined) {
     return null;
   }
-  const body = record(value);
+  const body = fieldsOf<Wire["PaymentHistory"]>(value);
   return {
-    onTimePercent: whole(body["on_time_percent"]),
-    onTimeAmount: whole(body["on_time_amount"]),
-    dueAmount: whole(body["due_amount"]),
-    longestDelayDays: whole(body["longest_delay_days"]),
+    onTimePercent: body.get("on_time_percent", whole),
+    onTimeAmount: body.get("on_time_amount", whole),
+    dueAmount: body.get("due_amount", whole),
+    longestDelayDays: body.get("longest_delay_days", whole),
   };
 }
 
 function customerDetail(value: unknown): CustomerDetail {
-  const body = record(value);
+  const body = fieldsOf<Wire["CustomerDetail"]>(value);
   return {
-    ...customer(body),
-    overdue: overdue(body["overdue"]),
-    paymentHistory: paymentHistory(body["payment_history"]),
-    entries: list(body["entries"], entry),
-    entriesTotal: whole(body["entries_total"]),
-    paymentNotices: paymentNotices(body["payment_notices"]),
+    ...customer(value),
+    overdue: overdue(body.raw("overdue")),
+    paymentHistory: paymentHistory(body.raw("payment_history")),
+    entries: list(body.raw("entries"), entry),
+    entriesTotal: body.get("entries_total", whole),
+    paymentNotices: paymentNotices(body.raw("payment_notices")),
   };
 }
 
+/** Checked against the notice as staff are sent it; a customer's own has no `receipt_seen_before`. */
 function paymentNotice(value: unknown): PaymentNotice {
-  const body = record(value);
+  const body = fieldsOf<Wire["StaffPaymentNotice"]>(value);
   return {
-    id: text(body["id"]),
-    status: text(body["status"]),
-    amount: whole(body["amount"]),
-    recordedAmount: wholeOrNull(body["recorded_amount"]),
-    hasReceipt: flag(body["has_receipt"]),
-    declineReason: textOrNull(body["decline_reason"]),
-    createdAt: text(body["created_at"]),
-    closedAt: textOrNull(body["closed_at"]),
-    expiresAt: text(body["expires_at"]),
-    receiptSeenBefore: body["receipt_seen_before"] === true,
+    id: body.get("id", text),
+    status: body.get("status", text),
+    amount: body.get("amount", whole),
+    recordedAmount: body.get("recorded_amount", wholeOrNull),
+    hasReceipt: body.get("has_receipt", flag),
+    declineReason: body.get("decline_reason", textOrNull),
+    createdAt: body.get("created_at", text),
+    closedAt: body.get("closed_at", textOrNull),
+    expiresAt: body.get("expires_at", text),
+    receiptSeenBefore: body.raw("receipt_seen_before") === true,
   };
 }
 
@@ -602,22 +635,23 @@ function receiptLink(value: unknown): ReceiptLink {
   return { url: text(body["url"]), expiresAt: text(body["expires_at"]) };
 }
 
+/** Every page has the form of the customers' page, the one the description names. */
 function page<T>(item: (element: unknown) => T): (value: unknown) => Page<T> {
   return (value) => {
-    const body = record(value);
-    return { items: list(body["items"], item), nextCursor: textOrNull(body["next_cursor"]) };
+    const body = fieldsOf<Wire["CustomerPage"]>(value);
+    return { items: list(body.raw("items"), item), nextCursor: body.get("next_cursor", textOrNull) };
   };
 }
 
 function overview(value: unknown): Overview {
-  const body = record(value);
-  const late = record(body["overdue"]);
+  const body = fieldsOf<Wire["Overview"]>(value);
+  const late = fieldsOf<Wire["OverviewOverdue"]>(body.raw("overdue"));
   return {
-    outstanding: whole(body["outstanding"]),
-    debtors: whole(body["debtors"]),
-    overdueAmount: whole(late["amount"]),
-    overdueCustomers: whole(late["customers"]),
-    dueToday: whole(body["due_today"]),
+    outstanding: body.get("outstanding", whole),
+    debtors: body.get("debtors", whole),
+    overdueAmount: late.get("amount", whole),
+    overdueCustomers: late.get("customers", whole),
+    dueToday: body.get("due_today", whole),
   };
 }
 
@@ -747,17 +781,17 @@ function catalogItem(value: unknown): CatalogItem {
 }
 
 function shopSettings(value: unknown): ShopSettings {
-  const body = record(value);
+  const body = fieldsOf<Wire["Shop"]>(value);
   return {
-    id: text(body["id"]),
-    name: text(body["name"]),
-    lang: text(body["lang"]),
-    defaultPromiseDays: whole(body["default_promise_days"]),
+    id: body.get("id", text),
+    name: body.get("name", text),
+    lang: body.get("lang", text),
+    defaultPromiseDays: body.get("default_promise_days", whole),
   };
 }
 
 /** The request form of goods lines. Refuses, before anything is sent, a line the server would refuse. */
-function linesBody(lines: readonly NewLine[]): Json[] {
+function linesBody(lines: readonly NewLine[]): Wire["GoodsLine"][] {
   if (lines.length < 1 || lines.length > MAX_LINES) {
     throw new RangeError(`an entry takes 1 to ${MAX_LINES} goods lines`);
   }
@@ -765,13 +799,13 @@ function linesBody(lines: readonly NewLine[]): Json[] {
     if (lineTotal(line.qty, line.unitPrice) === null) {
       throw new RangeError("a goods line needs a quantity in thousandths and a whole price in UZS");
     }
-    const body: Json = { qty: qtyToApi(line.qty), unit_price: line.unitPrice };
+    const body: Wire["GoodsLine"] = { qty: qtyToApi(line.qty), unit_price: line.unitPrice };
     if ("catalogItemId" in line) {
-      body["catalog_item_id"] = line.catalogItemId;
+      body.catalog_item_id = line.catalogItemId;
     } else {
-      body["name"] = line.name;
+      body.name = line.name;
       if (line.unit !== null) {
-        body["unit"] = line.unit;
+        body.unit = line.unit;
       }
     }
     return body;
@@ -779,22 +813,22 @@ function linesBody(lines: readonly NewLine[]): Json[] {
 }
 
 function myShops(value: unknown): MyShops {
-  const body = record(value);
+  const body = fieldsOf<Wire["MyShops"]>(value);
   return {
-    items: list(body["items"], (element) => {
-      const shop = record(element);
-      const role = shop["role"];
+    items: list(body.raw("items"), (element) => {
+      const shop = fieldsOf<Wire["MyShop"]>(element);
+      const role = shop.raw("role");
       if (!isRole(role)) {
         throw new Malformed();
       }
       return {
-        shopId: text(shop["shop_id"]),
-        name: text(shop["name"]),
+        shopId: shop.get("shop_id", text),
+        name: shop.get("name", text),
         role,
-        membershipId: textOrNull(shop["membership_id"]),
+        membershipId: shop.get("membership_id", textOrNull),
       };
     }),
-    activeShop: textOrNull(body["active_shop"]),
+    activeShop: body.get("active_shop", textOrNull),
   };
 }
 
@@ -940,6 +974,7 @@ export const reading = {
   wholeOrNull,
   flag,
   list,
+  fieldsOf,
   page,
   items,
   /** A customer as a list names one, and with the entries of their page: read by more than one API. */
@@ -1086,9 +1121,9 @@ function shopApi(transport: Transport, shopId: string) {
     },
 
     createCustomer(input: { displayName: string; phone: string | null }, idempotencyKey: string): Promise<Customer> {
-      const body: Json = { display_name: input.displayName };
+      const body: Wire["NewCustomer"] = { display_name: input.displayName };
       if (input.phone !== null) {
-        body["phone"] = input.phone;
+        body.phone = input.phone;
       }
       return call(transport, { method: "POST", path: `${base}/customers`, body, idempotencyKey, read: customer });
     },
@@ -1103,21 +1138,21 @@ function shopApi(transport: Transport, shopId: string) {
     },
 
     updateCustomer(customerId: string, patch: CustomerPatch, idempotencyKey: string): Promise<Customer> {
-      const body: Json = {};
+      const body: Wire["CustomerPatch"] = {};
       if (patch.displayName !== undefined) {
-        body["display_name"] = patch.displayName;
+        body.display_name = patch.displayName;
       }
       if (patch.phone !== undefined) {
-        body["phone"] = patch.phone; // null removes the number
+        body.phone = patch.phone; // null removes the number
       }
       if (patch.remindersOff !== undefined) {
-        body["reminders_off"] = patch.remindersOff;
+        body.reminders_off = patch.remindersOff;
       }
       if (patch.creditLimit !== undefined) {
         if (patch.creditLimit !== null && !Number.isSafeInteger(patch.creditLimit)) {
           throw new RangeError("a credit limit must be a whole number of UZS");
         }
-        body["credit_limit"] = patch.creditLimit; // null removes the customer's own limit
+        body.credit_limit = patch.creditLimit; // null removes the customer's own limit
       }
       return call(transport, {
         method: "PATCH",
@@ -1138,22 +1173,22 @@ function shopApi(transport: Transport, shopId: string) {
     },
 
     recordEntry(customerId: string, input: NewEntry, idempotencyKey: string): Promise<RecordedEntry> {
-      const body: Json = { kind: input.kind };
+      const body: Wire["NewEntry"] = { kind: input.kind };
       if (input.lines !== undefined) {
         if (input.kind !== "credit") {
           throw new RangeError("only a credit sale has goods lines");
         }
-        body["lines"] = linesBody(input.lines);
+        body.lines = linesBody(input.lines);
       } else if (Number.isSafeInteger(input.amount)) {
-        body["amount"] = input.amount;
+        body.amount = input.amount;
       } else {
         throw new RangeError("amount must be a whole number of UZS");
       }
       if (input.note !== null) {
-        body["note"] = input.note;
+        body.note = input.note;
       }
       if (input.promisedDate !== null) {
-        body["promised_date"] = input.promisedDate;
+        body.promised_date = input.promisedDate;
       }
       return call(transport, {
         method: "POST",
@@ -1178,7 +1213,7 @@ function shopApi(transport: Transport, shopId: string) {
       return call(transport, {
         method: "POST",
         path: `${base}/entries/${segment(entryId)}/lines`,
-        body: { lines: linesBody(lines) },
+        body: { lines: linesBody(lines) } satisfies Wire["NewLines"],
         idempotencyKey,
         read: addedLines,
       });
@@ -1189,7 +1224,7 @@ function shopApi(transport: Transport, shopId: string) {
       return call(transport, {
         method: "POST",
         path: `${base}/entries/${segment(entryId)}/promise-choice`,
-        body: { promised_date: promisedDate },
+        body: { promised_date: promisedDate } satisfies Wire["PromiseChoice"],
         idempotencyKey,
         read: chosenPromise,
       });
@@ -1205,9 +1240,9 @@ function shopApi(transport: Transport, shopId: string) {
       reason: string | null,
       idempotencyKey: string,
     ): Promise<ChangedPromise> {
-      const body: Json = { promised_date: promisedDate };
+      const body: Wire["PromiseChange"] = { promised_date: promisedDate };
       if (reason !== null) {
-        body["reason"] = reason;
+        body.reason = reason;
       }
       return call(transport, {
         method: "POST",

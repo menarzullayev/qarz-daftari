@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "size": "npm run build && node scripts/size.ts"
+    "size": "npm run build && node scripts/size.ts",
+    "api:types": "node scripts/apiTypes.ts",
+    "api:check": "node scripts/apiTypes.ts --check"
   },
   "dependencies": {
     "lean-qr": "^2.7.4",
@@ -27,9 +29,15 @@
     "globals": "^17.13.0",
     "jsdom": "^29.1.1",
     "jsqr": "^1.4.0",
+    "openapi-typescript": "7.13.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.1",
     "vite": "^8.3.3",
     "vitest": "^5.0.3"
+  },
+  "overrides": {
+    "openapi-typescript": {
+      "typescript": "$typescript"
+    }
   }
 }
