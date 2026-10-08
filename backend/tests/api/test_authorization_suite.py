@@ -894,8 +894,9 @@ def test_staff_are_allowed_or_refused_by_role(
 @pytest.mark.parametrize("op_name", SHOP_OPS)
 @pytest.mark.parametrize("caller", OUTSIDERS)
 def test_outsiders_get_not_found_and_change_nothing(
-    client: TestClient, world: World, owner: psycopg.Connection, op_name: str, caller: str
+    client: TestClient, untouched_world: World, owner: psycopg.Connection, op_name: str, caller: str
 ) -> None:
+    world = untouched_world  # every call here is refused: the world stays as seeded
     call = CALLS[op_name]
     _prepare(owner, world, call)
     before = _snapshot(owner, world.shop_a)
@@ -953,7 +954,10 @@ def test_a_member_of_one_shop_cannot_reach_another(
 
 
 @pytest.mark.parametrize("op_name", SHOP_OPS)
-def test_refusals_are_indistinguishable_from_a_missing_shop(client: TestClient, world: World, op_name: str) -> None:
+def test_refusals_are_indistinguishable_from_a_missing_shop(
+    client: TestClient, untouched_world: World, op_name: str
+) -> None:
+    world = untouched_world  # every call here is refused: the world stays as seeded
     call = CALLS[op_name]
     outsider = _invoke(client, world, call, world.shop_a, as_user(world.owner_b))
     missing = _invoke(client, world, call, uuid.uuid4(), as_user(world.owner_b))
@@ -970,8 +974,9 @@ def test_refusals_are_indistinguishable_from_a_missing_shop(client: TestClient, 
 @pytest.mark.parametrize("op_name", SHOP_OPS)
 @pytest.mark.parametrize("headers", NO_CREDENTIALS, ids=["no credentials", "bad credentials"])
 def test_unauthenticated_shop_calls_are_refused(
-    client: TestClient, world: World, owner: psycopg.Connection, op_name: str, headers: dict[str, str]
+    client: TestClient, untouched_world: World, owner: psycopg.Connection, op_name: str, headers: dict[str, str]
 ) -> None:
+    world = untouched_world  # every call here is refused: the world stays as seeded
     call = CALLS[op_name]
     _prepare(owner, world, call)
     before = _snapshot(owner, world.shop_a)
@@ -983,8 +988,9 @@ def test_unauthenticated_shop_calls_are_refused(
 
 @pytest.mark.parametrize("op_name", [name for name in SHOP_OPS if CALLS[name].changes_data])
 def test_writes_need_an_idempotency_key_but_outsiders_still_see_not_found(
-    client: TestClient, world: World, owner: psycopg.Connection, op_name: str
+    client: TestClient, untouched_world: World, owner: psycopg.Connection, op_name: str
 ) -> None:
+    world = untouched_world  # every call here is refused: the world stays as seeded
     call = CALLS[op_name]
     _prepare(owner, world, call)
     before = _snapshot(owner, world.shop_a)
@@ -1010,7 +1016,7 @@ def _users(owner: psycopg.Connection, except_for: uuid.UUID | None = None) -> li
 @pytest.mark.parametrize("op_name", SELF_OPS)
 @pytest.mark.parametrize("headers", NO_CREDENTIALS, ids=["no credentials", "bad credentials"])
 def test_unauthenticated_self_calls_are_refused(
-    client: TestClient, world: World, owner: psycopg.Connection, op_name: str, headers: dict[str, str]
+    client: TestClient, untouched_world: World, owner: psycopg.Connection, op_name: str, headers: dict[str, str]
 ) -> None:
     call = SELF_CALLS[op_name]
     users, shops = _users(owner), owner.execute("SELECT count(*) FROM shop").fetchone()

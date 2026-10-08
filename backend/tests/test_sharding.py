@@ -14,7 +14,7 @@ from types import ModuleType
 
 import pytest
 
-from .sharding import Shard, parse_shard, shard_of, split
+from .sharding import Shard, parse_shard, shard_of, shuffled, split
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -221,3 +221,48 @@ def test_pytest_stops_on_a_malformed_shard_and_collects_nothing(small_suite: Pat
     assert code == 4, lines  # pytest's exit code for a usage error
     assert not any("::" in line for line in lines), lines
     assert any("--shard" in line for line in lines), lines
+
+
+# --- another order: --shuffle=SEED ----------------------------------------------------------------------
+
+
+def test_a_seed_fixes_one_order_of_all_the_tests() -> None:
+    order = shuffled(NODE_IDS, "7")
+    assert sorted(order) == list(range(len(NODE_IDS)))
+    assert order == shuffled(NODE_IDS, "7")
+    assert order != list(range(len(NODE_IDS)))
+    assert order != shuffled(NODE_IDS, "8")
+    # Written out for three tests, so that the order of a seed is the same everywhere and for good.
+    assert shuffled(["tests/a.py::test_a", "tests/a.py::test_b", "tests/b.py::test_c"], "1") == [2, 1, 0]
+    # The two files are mixed, not one after the other.
+    first_half = {NODE_IDS[position].split("::")[0] for position in order[: len(order) // 2]}
+    assert len(first_half) == 2
+
+
+def test_a_test_keeps_its_place_among_the_others_when_one_is_added() -> None:
+    order = [NODE_IDS[position] for position in shuffled(NODE_IDS, "7")]
+    grown = [*NODE_IDS, "tests/test_new.py::test_added"]
+    order_of_grown = [grown[position] for position in shuffled(grown, "7")]
+    assert [node_id for node_id in order_of_grown if node_id != "tests/test_new.py::test_added"] == order
+
+
+def test_pytest_runs_the_same_tests_in_the_order_of_the_seed(small_suite: Path) -> None:
+    check = _check_shards()
+    _, plain_lines = _collect(small_suite)
+    plain = check.node_ids("\n".join(plain_lines))
+    code, lines = _collect(small_suite, "--shuffle=7")
+    assert code == 0, lines
+    mixed = check.node_ids("\n".join(lines))
+    assert mixed == [plain[position] for position in shuffled(plain, "7")]
+    assert mixed != plain and sorted(mixed) == sorted(plain)
+    assert "shuffled with the seed '7'" in lines
+    assert check.node_ids("\n".join(_collect(small_suite, "--shuffle=7")[1])) == mixed
+    assert check.node_ids("\n".join(_collect(small_suite, "--shuffle=8")[1])) != mixed
+
+
+def test_a_shard_holds_the_same_tests_in_any_order(small_suite: Path) -> None:
+    check = _check_shards()
+    for index in range(1, 5):
+        plain = check.node_ids("\n".join(_collect(small_suite, f"--shard={index}/4")[1]))
+        mixed = check.node_ids("\n".join(_collect(small_suite, f"--shard={index}/4", "--shuffle=7")[1]))
+        assert sorted(mixed) == sorted(plain) and plain
