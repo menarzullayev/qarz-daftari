@@ -1305,7 +1305,8 @@ class PlatformSession(Protocol):
     async def health_figures(self) -> dict[str, dict[str, float]]:
         """Numbers for monitoring: how long the oldest due message of each channel has waited, in
         seconds, how long ago each scheduled job last finished, and how long the oldest subscription
-        receipt has awaited a decision. No identifiers."""
+        receipt has awaited a decision; and how many SMS of the last 24 hours were sent, failed, or wait
+        after an attempt that did not succeed. No identifiers."""
         ...
 
     async def online_payment_shop(self, order_id: UUID) -> UUID | None:
@@ -1696,6 +1697,12 @@ class RecipientBlocked(Exception):
 
 class SendFailed(Exception):
     """Any other delivery failure; worth retrying with backoff."""
+
+
+class SendRejected(Exception):
+    """The channel refused this one message for good: the number cannot receive it, the text is not
+    accepted, or the account cannot pay for it. Sending it again cannot help, so it is failed at once;
+    other messages to the same recipient are left alone."""
 
 
 class Sender(Protocol):

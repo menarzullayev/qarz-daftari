@@ -239,6 +239,8 @@ _DATE_REQUEST_BY_ID = f"{_DATE_REQUEST_SELECT} WHERE r.id = :id"
 _DATE_REQUESTS_OF_CUSTOMER = f"{_DATE_REQUEST_SELECT} WHERE e.customer_id = :id ORDER BY r.created_at, r.id"
 _OPEN_DATE_REQUESTS = f"{_DATE_REQUEST_SELECT} WHERE r.status = 'open' ORDER BY r.created_at, r.id"
 
+# What an SMS of the last day is counted as in the health figures (qd_sms_messages_last_day).
+SMS_STATES = ("sent", "failed", "retrying")
 
 _REMINDER_SETTINGS = (
     "SELECT name, lang, reminders_on, reminder_hour, reminder_tpl, sms_on FROM shop WHERE status <> 'erased'"
@@ -2668,7 +2670,22 @@ class PgPlatformSession:
         receipt = (
             await self._conn.execute(text("SELECT extract(epoch FROM now() - oldest_waiting_receipt()) AS seconds"))
         ).one()
+        # SMS of the last 24 hours by what became of them. `next_try_at` is moved at every attempt and
+        # stays where the last one left it, so it dates a message that is sent or failed as well. A
+        # pending message whose time has not come is waiting after an attempt that did not succeed (or,
+        # for a moment, is being sent). Served by the index outbox_sms_recent (migration 0032).
+        sms = (
+            await self._conn.execute(
+                text(
+                    "SELECT CASE WHEN status = 'pending' THEN 'retrying' ELSE status END AS state, count(*) AS n "
+                    "FROM outbox_message WHERE channel = 'sms' AND next_try_at > now() - interval '24 hours' "
+                    "AND (status <> 'pending' OR next_try_at > now()) GROUP BY 1"
+                )
+            )
+        ).all()
         return {
+            # Every state is there from the start, at zero: a rule cannot read what was never exposed.
+            "qd_sms_messages_last_day": dict.fromkeys(SMS_STATES, 0.0) | {str(row.state): float(row.n) for row in sms},
             "qd_outbox_oldest_due_seconds": {str(row.channel): float(row.seconds) for row in waiting},
             "qd_job_last_finished_seconds": {str(row.job): float(row.seconds) for row in jobs},
             # Absent when no receipt waits: there is then nothing to be late with.

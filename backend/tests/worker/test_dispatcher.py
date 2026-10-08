@@ -11,7 +11,7 @@ import psycopg
 import pytest
 
 from qarz.application.dispatch import GIVE_UP_AFTER, GLOBAL_PER_SECOND, LEASE_SECONDS, Dispatcher, backoff
-from qarz.application.ports import RecipientBlocked, RetryLater, SendFailed
+from qarz.application.ports import RecipientBlocked, RetryLater, SendFailed, SendRejected
 from qarz.infrastructure.db import Database
 
 pytestmark = pytest.mark.db
@@ -182,6 +182,26 @@ def test_a_message_that_keeps_failing_for_a_day_is_given_up(
     assert (still_trying.rescheduled, still_trying.failed) == (1, 0)
     assert given_up.failed == 1
     assert status_of(owner, "666") == [("failed", 1)]
+
+
+def test_a_refused_message_is_failed_at_once_and_alone(worker_database_url: str, owner: psycopg.Connection) -> None:
+    """Refused for good by the channel: no second attempt, and the recipient's other messages still go."""
+    recipient = str(uuid.uuid4().int % 10**15)  # the database is shared: nobody else's messages
+    sender, clock = FakeSender(failures={recipient: [SendRejected("rejected")]}), Clock()
+
+    async def scenario(database: Database) -> list[Any]:
+        await enqueue(database, recipient, "first")
+        await enqueue(database, recipient, "second")
+        dispatcher = Dispatcher(database, sender, clock.now)
+        first = await dispatcher.run_once()
+        clock.advance(hours=2)  # past any backoff: a message that was only put off would be sent now
+        return [first, await dispatcher.run_once()]
+
+    first, second = run(worker_database_url, scenario)
+    assert (first.failed, first.sent, first.rescheduled, first.blocked) == (1, 1, 0, 0)
+    assert (second.sent, second.failed, second.rescheduled) == (0, 0, 0), "nothing was left to try again"
+    assert status_of(owner, recipient) == [("failed", 0), ("sent", 0)]
+    assert sender.sent == [("telegram", recipient, {"text": "second"})]
 
 
 def test_a_blocked_recipient_fails_all_their_messages_and_their_links_become_unreachable(

@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     click_service_id: str = ""
     click_merchant_id: str = ""
     click_secret_key: str = ""
+    # SMS through Eskiz (eskiz.uz), read by the worker only: the account's e-mail and password, and the
+    # sender name registered for it ("4546" until an alpha name is). Empty until a contract exists. The
+    # sender is configured only when all three are set; even then the platform switch `sms_on` decides,
+    # and it is off unless an administrator turns it on.
+    eskiz_email: str = Field(default="", repr=False)
+    eskiz_password: str = Field(default="", repr=False)
+    eskiz_sender: str = ""
     # API rate limits for signed-in callers: a steady rate per minute and the burst allowed above it.
     rate_user_per_minute: int = 120
     rate_user_burst: int = 60

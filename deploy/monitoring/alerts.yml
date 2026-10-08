@@ -59,6 +59,23 @@ groups:
         labels: {severity: day, channel: operator-telegram}
         annotations: {summary: "The reminder job has not finished for over an hour"}
 
+      - alert: SmsRefused
+        # The number of SMS of the last 24 hours that ended as failed grew within the hour: Eskiz refused
+        # one for good (the number, a text without an approved template, an empty balance), or one was
+        # given up after a day of attempts. Runbook 12, "When SMS fail".
+        expr: delta(qd_sms_messages_last_day{status="failed"}[1h]) > 0
+        labels: {severity: day, channel: operator-telegram}
+        annotations: {summary: "An SMS was refused by the provider or given up"}
+
+      - alert: SmsNotGoingOut
+        # For half an hour some SMS has been waiting after an attempt that did not succeed: Eskiz does
+        # not answer or refuses the sign-in, the account is not configured, or the switch was turned off
+        # with messages still queued.
+        expr: qd_sms_messages_last_day{status="retrying"} > 0
+        for: 30m
+        labels: {severity: day, channel: operator-telegram}
+        annotations: {summary: "SMS are queued and not being accepted by the provider"}
+
   - name: qarz-subscription
     rules:
       - alert: ReceiptsWaiting

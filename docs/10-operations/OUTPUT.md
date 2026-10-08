@@ -30,7 +30,7 @@ Scale assumed: one operator, two servers in Uzbekistan, design capacity of 5,000
 | Usability sessions | Recording speed for amount-only and itemized entry (REQ-N02) on low-end phones | Timed sessions with real sellers | Before launch |
 | Smoke test | Core flows on production after each release | Scripted where possible, checklist otherwise | Each release |
 
-Stated gaps: payment and SMS adapters cannot be exercised in production while their switches are off; no test covers a compromised administrator; real-world behavior of Telegram delivery to servers in Uzbekistan is unknown until tried.
+Stated gaps: payment and SMS adapters cannot be exercised in production while their switches are off, and the SMS sender (Eskiz) has only ever met a fake transport; no test covers a compromised administrator; real-world behavior of Telegram delivery to servers in Uzbekistan is unknown until tried.
 
 Verified so far: the release 1 schema was executed in PostgreSQL 16 and ten constraint, trigger, permission, and isolation checks behaved as intended (Technical Specification).
 
@@ -57,6 +57,7 @@ Verified so far: the release 1 schema was executed in PostgreSQL 16 and ten cons
 | Latency 95th percentile on recording routes | Above the NFR targets for 15 minutes |
 | Webhook backlog reported by Telegram | Above 50 |
 | Outbox age, per channel | Older than 10 minutes |
+| SMS | One failed for good within the hour; any waiting after a failed attempt for 30 minutes |
 | Replication lag | Above 2 minutes |
 | Log archive age | Older than 5 minutes |
 | Backup | Failed or missing |

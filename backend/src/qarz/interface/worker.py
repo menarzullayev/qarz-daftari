@@ -24,7 +24,7 @@ from qarz.domain.exports import MAX_EXPORT_BYTES
 from qarz.infrastructure.db import Database
 from qarz.infrastructure.file_store import build_file_store
 from qarz.infrastructure.settings import Settings
-from qarz.infrastructure.sms_sender import ChannelSender, NoSmsProvider
+from qarz.infrastructure.sms_sender import ChannelSender, build_sms_provider, platform_switch
 from qarz.infrastructure.telegram_sender import TelegramSender
 from qarz.interface.observability import configure_logging
 
@@ -42,8 +42,10 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
     # administrators' side or of sign-in.
     database = Database(settings.worker_database_url, statement_timeout_ms=settings.worker_statement_timeout_ms)
     bot = Bot(settings.bot_token)
-    # No SMS provider is chosen yet: the SMS path exists, is switched off, and refuses to send.
-    dispatcher = Dispatcher(database, ChannelSender(telegram=TelegramSender(bot), sms=NoSmsProvider()))
+    # SMS goes through Eskiz when its account is configured and the platform switch `sms_on` is on at the
+    # moment of sending; otherwise the SMS path refuses to send. The switch is off by default.
+    sms = build_sms_provider(settings, switched_on=platform_switch(database))
+    dispatcher = Dispatcher(database, ChannelSender(telegram=TelegramSender(bot), sms=sms))
     file_store = build_file_store(settings, max_object_bytes=MAX_EXPORT_BYTES)
     files = FileService(database, file_store)
     scheduler = Scheduler(

@@ -19,7 +19,9 @@ PRODUCTION = REPO / "deploy" / "production"
 BACKEND = REPO / "backend"
 
 OWNER_URL = "QD_MIGRATION_URL"
-WORKER_ONLY = {"QD_WORKER_STATEMENT_TIMEOUT_MS", "QD_WORKER_DATABASE_URL"}
+# The SMS provider's account: the worker alone sends, so the API is never handed it.
+ESKIZ = {"QD_ESKIZ_EMAIL", "QD_ESKIZ_PASSWORD", "QD_ESKIZ_SENDER"}
+WORKER_ONLY = {"QD_WORKER_STATEMENT_TIMEOUT_MS", "QD_WORKER_DATABASE_URL"} | ESKIZ
 # The connection of each part's own database role (migration 0031): which service may hold which.
 CONNECTIONS = {
     "QD_DATABASE_URL": {"api"},
@@ -135,6 +137,22 @@ def test_a_connection_handed_to_the_wrong_service_is_reported(compose: str) -> N
 def test_a_setting_not_handed_to_the_api_is_reported(compose: str) -> None:
     without = compose.replace("      QD_METRICS_TOKEN: ${QD_METRICS_TOKEN:-}\n", "")
     assert setting_names() - WORKER_ONLY - handed(without, "api") == {"QD_METRICS_TOKEN"}
+
+
+def test_the_sms_account_goes_to_the_worker_alone(compose: str) -> None:
+    assert setting_names() >= ESKIZ and handed(compose, "worker") >= ESKIZ
+    for service in ("api", "migrate", "proxy"):
+        assert not ESKIZ & handed(compose, service), service
+
+
+def test_the_sms_account_handed_to_the_api_is_reported(compose: str) -> None:
+    to_the_api = compose.replace(
+        "      QD_WEBHOOK_SECRET: ${QD_WEBHOOK_SECRET:-}\n",
+        "      QD_WEBHOOK_SECRET: ${QD_WEBHOOK_SECRET:-}\n      QD_ESKIZ_PASSWORD: x\n",
+        1,
+    )
+    assert to_the_api != compose
+    assert ESKIZ & handed(to_the_api, "api") == {"QD_ESKIZ_PASSWORD"}
 
 
 def test_the_owner_connection_goes_to_the_migration_alone(compose: str) -> None:

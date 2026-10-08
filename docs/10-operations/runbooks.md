@@ -353,9 +353,103 @@ contract with the provider, and a registered entity.
    activity log.
 5. To switch off: the same setting. Provider calls are then answered "disabled".
 
-**SMS.** No provider is chosen and no sender exists in the code beyond a placeholder that refuses to send.
-**Not yet possible** until one is built: choosing a provider, the monthly quota (`sms_monthly_quota`) and
-the platform switch (`sms_on`) are settings; each shop then turns SMS on for itself.
+**SMS.** The provider is Eskiz (eskiz.uz; founder's decision of 2026-10-08) and the sender is built
+(`backend/src/qarz/infrastructure/eskiz_sms.py`). It was written from Eskiz's published Postman collection
+"СМС шлюз от Eskiz.uz" (https://documenter.getpostman.com/view/663428/RzfmES4z, as published 2023-11-13,
+read 2026-10-08) and **has never been run against Eskiz**: every test uses a fake transport. An SMS
+leaves only when all four hold: the Eskiz account is set in the worker's environment, the platform switch
+`sms_on` is on, the shop turned SMS on for itself, and the shop has quota left this month
+(`sms_monthly_quota`, 0 by default). Until then nothing is sent.
+
+1. **Contract.** A contract with Eskiz in the name of the registered entity, and money on its balance.
+   **Not yet possible:** there is no registered entity.
+2. **Sender name.** Eskiz sends from `4546` until an alpha name is registered with it. Decide the name,
+   register it in the Eskiz cabinet, and use it as `QD_ESKIZ_SENDER` once Eskiz confirms it; until then
+   the value is `4546`.
+3. **Templates.** Eskiz sends only texts that match a template it has approved. Register every text of
+   "Templates to register in the Eskiz cabinet" below and wait until each is approved as a service
+   message (not advertising). A reminder whose text has no approved template is refused and is not
+   retried.
+4. **Variables.** Set `QD_ESKIZ_EMAIL`, `QD_ESKIZ_PASSWORD` and `QD_ESKIZ_SENDER` in the worker's
+   environment (`deploy/production/.env.example`, "worker only"; the values live in the password
+   manager) and restart the worker. All three or none: with any of them empty the worker logs
+   `sms_partly_configured` once at start and sends nothing. The API is not given them. Nothing is sent
+   yet: the switch is still off.
+5. **Before the switch: one real message.** Eskiz's test mode accepts three fixed test texts only, so the
+   reminder texts cannot be tried there. The first real SMS is therefore sent in production, to a phone
+   the founder holds: set `sms_monthly_quota` to 1, and do steps 6 and 7 for a test shop only.
+6. **The switch. Only the founder does this.** In the admin panel, Settings: set `sms_monthly_quota` (the
+   number of SMS each shop may send a month), then turn `sms_on` on (the code is asked for again). It
+   applies to every shop that has turned SMS on for itself; there is no way to open it to one shop only
+   other than the shops' own switches, which are off by default.
+7. **Check one message end to end.** In the test shop, a customer with the founder's phone number and no
+   Telegram link, with something overdue; send a manual reminder. Check: the SMS arrives; its sender
+   name; its text against the template; in the Eskiz cabinet, how many parts it was charged as; the
+   worker's log has `sms_sent`; `qd_sms_messages_last_day{status="sent"}` is 1.
+8. **To switch off:** the same setting. The very next message is not sent. Messages already queued are
+   tried again with the outbox's backoff and given up after a day, so switching on again within that day
+   sends them late.
+9. **To change the Eskiz password:** change it in the cabinet, set `QD_ESKIZ_PASSWORD`, restart the
+   worker. The token Eskiz gives (30 days) is held only in the worker's memory: it is never logged and
+   never stored, and a restart obtains a new one with the first message.
+
+### When SMS fail
+
+The worker logs one line for each attempt, with no number, no text and no secret: `sms_sent`,
+`sms_rejected` (failed for good) or `sms_retry` (will be tried again), with `kind` and the HTTP `status`.
+`/metrics` gives `qd_sms_messages_last_day{status="sent"|"failed"|"retrying"}` and the rules `SmsRefused`
+and `SmsNotGoingOut` read it.
+
+| What happened | `kind` | Outcome in the outbox |
+|---|---|---|
+| Eskiz answered 2xx | (`sms_sent`) | Sent |
+| The number is not an Uzbek one (`+998` and nine digits) | `not_uzbek_number` | Failed at once; Eskiz is not asked |
+| Eskiz answered 400, 402, 403, 404, 422 or any other 4xx not named below, or 2xx with `"status": "error"` | `rejected` | Failed at once, not retried: the number, a text without an approved template, or an empty balance |
+| Eskiz answered 401 | - | One new sign-in and one more attempt; if that is 401 too: `unauthorized`, retried later, and no sign-in for 5 minutes |
+| Eskiz answered 429 | `rate_limited` | Retried with backoff (5 s, 10 s, 20 s ... up to 1 hour), given up after 24 hours |
+| Eskiz answered 408, 5xx or a redirect | `provider_unavailable` | The same |
+| No answer within 20 seconds; connection failed | `timeout`, `network` | The same |
+| The sign-in was refused (4xx) | `sign_in_refused` | The same; no sign-in is tried for 5 minutes (`sign_in_paused`), so a wrong password is not repeated for every message |
+| The sign-in failed otherwise | `sign_in_failed` | The same |
+| The account is not configured, or `sms_on` is off | (no line) | The same: nothing is sent |
+
+- `SmsRefused` with `kind="rejected"` in the log: look in the Eskiz cabinet for the reason. An empty
+  balance fails every reminder until it is topped up, and those reminders are not sent later: the shop
+  sees them as sent by SMS. A changed wording in the code needs its template approved first.
+- `SmsNotGoingOut`: Eskiz is unreachable, the password is wrong (`sign_in_refused`), or the switch was
+  turned off with messages queued.
+
+**Known limits, for the founder to decide on.**
+
+- Eskiz's document names no error answer, no rate limit and no answer for an expired token. The table
+  above is this code's reading of HTTP statuses and is unproven; correct it after the first real failures.
+- Delivery reports (`callback_url`) are not taken: "sent" means Eskiz accepted the message, not that the
+  phone received it. Eskiz's callback carries the phone number and is not signed.
+- A reminder that failed and is retried may be accepted hours later, outside the reminder hours (08:00 to
+  20:00): the outbox's retry does not know the hour. The same holds for Telegram.
+- A customer whose stored number is not an Uzbek one is still chosen for SMS and counted against the
+  quota; the message then fails at once.
+- The Russian texts, and any text with a customer or shop name in Cyrillic or with `ʻ`, `ў`, `ғ`, are sent
+  as Unicode: 70 characters a part instead of 160, so most are charged as two parts.
+
+### Templates to register in the Eskiz cabinet
+
+The SMS texts are a short fixed form in each language, whatever wording the shop chose for Telegram
+(DEC-035). These are all the texts the code can send by SMS, exactly as it produces them
+(`backend/src/qarz/application/chat_texts.py`; `backend/tests/test_sms_templates.py` fails when this
+table and the code differ). `{shop}` is the shop's name, `{name}` the customer's name as the shop wrote
+it, `{amount}` an amount such as `70 000 so'm` or `1 250 000 сум`: digits in groups of three separated by
+ordinary spaces, then the currency word of the language. How Eskiz wants a variable part written in a
+template is not in its document: ask Eskiz when registering.
+
+| Text | Language | Template |
+|---|---|---|
+| `sms_due_today` | uz | `{shop}: {name}, bugun {amount} to'lash kuni. Rahmat.` |
+| `sms_overdue` | uz | `{shop}: {name}, {amount} qarz muddati o'tgan. Iltimos, to'lab qo'ying.` |
+| `sms_due_today` | ru | `{shop}: {name}, сегодня срок оплаты {amount}. Спасибо.` |
+| `sms_overdue` | ru | `{shop}: {name}, срок оплаты долга {amount} прошёл. Пожалуйста, оплатите.` |
+
+The wordings themselves are agent drafts awaiting the founder's review (DEC-035).
 
 ## 13. Onboard a shop, including its paper ledger
 
