@@ -1635,6 +1635,10 @@ export function createApi(transport: {
     shop(shopId: string): ShopApi {
       return shopApi(transport, shopId);
     },
+    /** Ends every session of the signed-in person, on every device, this one included. */
+    signOutEverywhere(): Promise<void> {
+      return call(transport, { method: "POST", path: "/api/v1/auth/sign-out-everywhere", read: () => undefined });
+    },
     /** The accounts where the signed-in person is a customer (REQ-019). */
     myAccounts(signal?: AbortSignal): Promise<MyAccount[]> {
       return call(transport, { method: "GET", path: "/api/v1/me/accounts", signal, read: items(myAccount) });

@@ -7,7 +7,15 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from qarz.application.auth import READ_ME, SIGN_IN_WEB, SIGN_IN_WEBAPP, SIGN_OUT, UPDATE_ME, AuthService
+from qarz.application.auth import (
+    READ_ME,
+    SIGN_IN_WEB,
+    SIGN_IN_WEBAPP,
+    SIGN_OUT,
+    SIGN_OUT_EVERYWHERE,
+    UPDATE_ME,
+    AuthService,
+)
 
 CurrentUser = Callable[..., Awaitable[UUID]]
 
@@ -90,6 +98,14 @@ def add_auth_routes(app: FastAPI, auth: AuthService, current_user: CurrentUser) 
         token = getattr(request.state, "session_token", None)
         if token is not None:
             await auth.sign_out(token)
+        response.delete_cookie(SESSION_COOKIE, path="/api")
+
+    @app.post("/api/v1/auth/sign-out-everywhere", name=SIGN_OUT_EVERYWHERE.name, status_code=204)
+    async def sign_out_everywhere(response: Response, user_id: user) -> None:
+        # Like sign-out: no Idempotency-Key, because a repeat finds nothing left to end, and the same
+        # answer whether one session was ended or ten. The caller's own session ends with the others,
+        # so the cookie of a web session is cleared too.
+        await auth.sign_out_everywhere(user_id)
         response.delete_cookie(SESSION_COOKIE, path="/api")
 
     @app.get("/api/v1/me", name=READ_ME.name)

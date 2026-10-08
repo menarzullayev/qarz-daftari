@@ -98,6 +98,13 @@ export const ru: RuCatalog = {
   "overdue.amount": "{amount} просрочено",
   "due.todayAmount": "К оплате сегодня: {amount}",
 
+  "session.everywhere.action": "Выйти на всех устройствах",
+  "session.everywhere.confirm":
+    "Сеансы будут завершены на всех устройствах: и в приложении Telegram, и в веб-панели. На этом устройстве тоже нужно будет войти заново.",
+  "session.everywhere.yes": "Да, выйти",
+  "session.everywhere.pending": "Выход…",
+  "session.everywhere.done": "Вы вышли на всех устройствах.",
+
   "shops.choose": "Выберите магазин",
   "shops.switch": "Перейти в другой магазин",
   "shops.none.title": "Нет магазина",

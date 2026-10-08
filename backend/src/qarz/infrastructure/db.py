@@ -2915,6 +2915,14 @@ class PgPlatformSession:
             {"token_hash": token_hash, "now": now},
         )
 
+    async def revoke_user_sessions(self, user_id: UUID, now: datetime) -> int:
+        # Named by the person, never by a token: Mini App and web sessions alike, on every device.
+        result = await self._conn.execute(
+            text("UPDATE user_session SET revoked_at = :now WHERE user_id = :user_id AND revoked_at IS NULL"),
+            {"user_id": user_id, "now": now},
+        )
+        return int(result.rowcount)
+
     async def platform_setting(self, key: str) -> Any | None:
         row = (
             await self._conn.execute(text("SELECT value FROM platform_setting WHERE key = :key"), {"key": key})

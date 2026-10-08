@@ -32,7 +32,7 @@ Conventions: timestamps stored in UTC and shown in Tashkent time (UTC+5). Money 
 
 | Resource | Operations | Roles | Requirements |
 |---|---|---|---|
-| `/auth/*`, `/me` | Sign in; profile, language, active shop, my shops and links | Any | REQ-050, REQ-051, REQ-064 |
+| `/auth/*`, `/me` | Sign in; sign out of this session, or of every session of the person on every device (`POST /auth/sign-out-everywhere`); profile, language, active shop, my shops and links | Any | REQ-050, REQ-051, REQ-064 |
 | `/shops` | Create shop | Any | REQ-001, REQ-052 |
 | `/shops/{id}` | Read, update settings, request deletion, cancel deletion | Owner; managers read | REQ-042, REQ-048 |
 | `/shops/{id}/staff`, `/staff/invitations`, `/ownership-transfer` | List, invite, change role, suspend, remove, transfer ownership | Owner | REQ-031 to REQ-036 |

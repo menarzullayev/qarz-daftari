@@ -609,6 +609,7 @@ SELF_CALLS: dict[str, PlainCall] = {
     "me.read": PlainCall("GET", "/api/v1/me"),
     "me.update": PlainCall("PATCH", "/api/v1/me", {"lang": "ru"}),
     "auth.sign_out": PlainCall("POST", "/api/v1/auth/sign-out", ok_status=204),
+    "auth.sign_out_everywhere": PlainCall("POST", "/api/v1/auth/sign-out-everywhere", ok_status=204),
     "shop.create": PlainCall(
         "POST", "/api/v1/shops", {"name": "My shop", "lang": "uz"}, 201, needs_key=True, returns_own_id=False
     ),

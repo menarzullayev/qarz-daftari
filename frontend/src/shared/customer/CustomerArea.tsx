@@ -111,13 +111,15 @@ export type CustomerAreaProps = {
   staffHome: boolean;
   /** The current instant; tests pass a fixed one. */
   now?: (() => Date) | undefined;
+  /** Shown under the person's accounts: what concerns the person and not one shop ("sign out everywhere"). */
+  accountsFooter?: ReactNode;
 };
 
 /**
  * The customer's own pages inside the shell: their accounts and one account. It is loaded on demand,
  * so a member of staff who is nobody's customer never downloads it.
  */
-export default function CustomerArea({ api, staffHome, now }: CustomerAreaProps) {
+export default function CustomerArea({ api, staffHome, now, accountsFooter }: CustomerAreaProps) {
   const { t } = useI18n();
   const path = useHashPath();
   const route = matchCustomerRoute(path, staffHome);
@@ -127,7 +129,12 @@ export default function CustomerArea({ api, staffHome, now }: CustomerAreaProps)
   let screen: ReactNode = <NotFoundScreen />;
   if (route?.screen === "accounts") {
     title = t("my.title");
-    screen = <Accounts api={api} now={now} />;
+    screen = (
+      <>
+        <Accounts api={api} now={now} />
+        {accountsFooter}
+      </>
+    );
   } else if (route?.screen === "account") {
     title = t("my.account.title");
     screen = <OneAccount key={route.linkId} api={api} linkId={route.linkId} now={now} />;

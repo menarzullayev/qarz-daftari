@@ -90,6 +90,13 @@ export const uz = {
   "overdue.amount": "{amount} muddati o'tgan",
   "due.todayAmount": "Bugun to'lanishi kerak: {amount}",
 
+  "session.everywhere.action": "Barcha qurilmalarda chiqish",
+  "session.everywhere.confirm":
+    "Hisobingiz barcha qurilmalarda yopiladi: Telegram ilovasida ham, veb-panelda ham. Bu qurilmada ham qaytadan kirishingiz kerak bo'ladi.",
+  "session.everywhere.yes": "Ha, chiqish",
+  "session.everywhere.pending": "Chiqilmoqda…",
+  "session.everywhere.done": "Barcha qurilmalarda hisobingizdan chiqdingiz.",
+
   "shops.choose": "Do'konni tanlang",
   "shops.switch": "Boshqa do'konga o'tish",
   "shops.none.title": "Do'kon yo'q",
