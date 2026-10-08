@@ -1,0 +1,19 @@
+{
+  "event_id": "3e68e30b205a",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-08T19:32:14+00:00",
+  "path": ".project-alpha\\decisions\\DEC-075.md",
+  "stage": "04-prd",
+  "title": "Single-host deployment choices",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-075",
+  "decision": "Traffic is decrypted at Cloudflare and backups rest, encrypted, in R2, so personal data leaves Uzbekistan, which REQ-N04 forbids as written: a question for legal review. Plain HTTP between the tunnel and the proxy inside one internal network. Stored files stay on the host and an encrypted copy is synchronised every five minutes, rather than the application writing to R2 in the clear. One passphrase protects every backup and must be kept in two places off the host. No failover and no availability or recovery-time figure; text for NFR-003, NFR-004 and launch criteria 8 and 12 is proposed and awaits the founder. Nothing alerts anyone: two free outside checks are described and not created. WAL beyond 4 GiB is dropped if R2 cannot be reached, so shops keep writing. ADR-014, ADR-015, ADR-020 and REQ-N08, REQ-N09 now disagree with the deployment and were not edited",
+  "context": "Decided by an agent while building what the founder asked for on 2026-10-08; implemented and awaiting his review",
+  "chosen_option": "As listed",
+  "rationale": "Each follows from one host behind a tunnel with a bucket as the only second place (DEC-070)",
+  "impact": "High",
+  "reversibility": "High",
+  "evidence": "EVID-081",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

@@ -1,0 +1,19 @@
+{
+  "event_id": "4f62023de116",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-08T19:32:14+00:00",
+  "path": ".project-alpha\\decisions\\DEC-074.md",
+  "stage": "04-prd",
+  "title": "Generated API types: what is typed and what is not",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-074",
+  "decision": "Types only, not a generated client; the existing request code is kept. Six read operations were given answer models, closed and strict, so an answer that does not match is an error rather than silently passing; writes were left untyped because a stored answer replayed for a repeated request may have an older shape (ADR-006); openapi-typescript 7.13.0 is used with an override because it does not yet name TypeScript 6 as supported",
+  "context": "Decided by an agent while building what the founder asked for on 2026-10-08; implemented and awaiting his review",
+  "chosen_option": "Types for six read operations; the rest left open",
+  "rationale": "Routes return untyped objects throughout; typing all of them is a larger change and needs a decision on stored answers first",
+  "impact": "Low",
+  "reversibility": "High",
+  "evidence": "EVID-080",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

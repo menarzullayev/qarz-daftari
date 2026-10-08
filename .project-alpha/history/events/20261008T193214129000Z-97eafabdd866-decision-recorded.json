@@ -1,0 +1,19 @@
+{
+  "event_id": "97eafabdd866",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-08T19:32:14+00:00",
+  "path": ".project-alpha\\decisions\\DEC-073.md",
+  "stage": "04-prd",
+  "title": "Eskiz sender choices",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-073",
+  "decision": "A message Eskiz refuses is failed at once and not retried, so reminders are lost while the balance is empty and the shop still sees them as sent by SMS; any 2xx answer counts as sent; the token is renewed after 25 days and a refused sign-in pauses sign-ins for five minutes; no delivery callback is accepted, so sent means accepted by Eskiz; non-breaking spaces in amounts are replaced so Uzbek texts stay in the short alphabet; four templates must be registered with Eskiz; transient failures are retried by the outbox, which the wording of the specification on SMS did not foresee",
+  "context": "Decided by an agent while building what the founder asked for on 2026-10-08; implemented and awaiting his review",
+  "chosen_option": "As listed",
+  "rationale": "Eskiz documents no error answers, so the mapping of failures is a reading by the agent and must be corrected after the first real ones",
+  "impact": "Medium",
+  "reversibility": "High",
+  "evidence": "EVID-079",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}
