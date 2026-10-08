@@ -1,0 +1,19 @@
+{
+  "event_id": "677514c4580e",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-08T19:32:14+00:00",
+  "path": ".project-alpha\\decisions\\DEC-076.md",
+  "stage": "04-prd",
+  "title": "CI: four test jobs, documents-only runs, cancelling superseded runs",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-076",
+  "decision": "Back-end tests are split over four jobs by a hash of the name of the test; a pull request that changes only Markdown under docs, the project records or the root runs the documents job alone, except documents a test reads (the runbooks and schema.sql), and every push to main runs everything; a new push cancels the earlier run of the same pull request",
+  "context": "Decided by an agent while building what the founder asked for on 2026-10-08; implemented and awaiting his review",
+  "chosen_option": "As listed",
+  "rationale": "The founder asked for every measure that shortens CI; these three carry little risk and a check in every run proves no test is lost",
+  "impact": "Low",
+  "reversibility": "High",
+  "evidence": "EVID-082",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}
