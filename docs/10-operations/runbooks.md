@@ -1,11 +1,20 @@
 # Runbooks
 
-The thirteen runbooks the operations document asks for (`OUTPUT.md`, "Runbooks"). They are written from the
-system as it is built on 2026-10-07. **None has been executed**: there are no servers, no monitoring
+The runbooks the operations document asks for (`OUTPUT.md`, "Runbooks"): its thirteen, and two for the
+single host (14 and 15). They are written from the system as it is built on 2026-10-07; the parts for the
+single host on 2026-10-08. **None has been executed**: there are no servers, no monitoring
 system and no production environment yet (the deployment files of `deploy/production/` have run only on
 a developer machine), so launch criterion 10 ("each executed once") is
 open. Where a step cannot be carried out with what exists, it says so in a line starting **Not yet
 possible**. A runbook is to be corrected the first time it is run for real.
+
+**One host (changed by the founder on 2026-10-08, DEC-070).** For lack of budget there are no servers: the service runs on one computer
+behind a Cloudflare Tunnel, with encrypted backups in Cloudflare R2 (`deploy/production/SINGLE-HOST.md`).
+Runbooks 1 to 5 were written for two servers; each now has a part headed **On the single host**, which
+is the one to follow today, and keeps its two-server text for the day there are two. Runbooks 14 and 15
+are new and exist only for the single host. Runbooks 6 to 13 do not depend on where the service runs.
+On the single host every command is `deploy/production/scripts/single-host.sh` (below: `single-host.sh`), run in Git Bash on the machine
+from a checkout of the repository; its env file is `~/.qarz/single-host.env`.
 
 Conventions used below:
 
@@ -70,9 +79,33 @@ is no image registry (images are built on the host), no staging, no restore poin
 update of the standby's images, all of which the operations document asks for. Step 6 needs a real bot
 and a monitoring system, and neither exists.
 
+**On the single host (changed by the founder on 2026-10-08, DEC-070).** Steps 1 to 3 are the same, with the state in `~/.qarz/deploy/` instead of
+`/var/lib/qarz/deploy/`. Then:
+
+4. Take a backup first, so that the moment before the release can be had back:
+   `single-host.sh backup diff`, and note the time. That is the restore point the operations document
+   asks for.
+5. `git pull` in the checkout so that it is at the commit to deploy, then `single-host.sh up`. It builds
+   the images of that commit, runs the migrations, sets the roles' passwords from the env file again,
+   restarts the worker, the API and the proxy (a few seconds without service), and leaves the database
+   running unless the release changed the database image itself.
+6. `single-host.sh smoke` (the public address, through Cloudflare) and `single-host.sh status`.
+7. Step 6 above by hand, and watch `single-host.sh logs proxy api worker` for fifteen minutes.
+
+Roll back: `single-host.sh rollback <previous-ref>`, then `single-host.sh smoke`. The note about migration
+`0031` above applies; the statement is run with
+`docker compose -p qarz exec db psql -U postgres -d qarz`.
+
+Not yet possible on the single host either: none of this has been done on the real machine.
+
 ## 2. Fail over to the standby; rebuild a standby
 
 **When.** The primary is lost or unreachable and will not come back within the recovery objective.
+
+**On the single host (changed by the founder on 2026-10-08, DEC-070) there is no standby and this runbook does not apply.** Nothing can be
+failed over to. If the machine is off or Docker is not running: runbook 14. If the machine or its disk is
+gone: runbook 15, which is a restore from R2 onto another machine and loses whatever had not been
+archived. The steps below are the two-server design's.
 
 1. Establish that the primary is really down, from a third place if possible. A broken link between the
    servers looks the same from the standby; if the primary still serves users, do not fail over.
@@ -123,6 +156,33 @@ instance. A red restore test means this runbook may not work when it is needed; 
 scripts (`deploy/backup/`) and were proven in containers on one machine; they are installed on no server,
 because no server exists. A point-in-time restore from a repository on a real standby has never been done.
 
+**On the single host (changed by the founder on 2026-10-08, DEC-070).** The repository is the R2 bucket, and the new instance is a second
+PostgreSQL container beside the live one, with its own volume and with archiving off.
+
+1. Stop the damage, as in step 1: `docker compose -p qarz stop worker api` (the database keeps running,
+   and keeps archiving).
+2. Find the moment, as in step 2. Look at what can be restored: `single-host.sh status` prints the ages
+   of the newest backup and of the newest archived WAL segment;
+   `docker compose -p qarz exec backup pgbackrest --stanza=qarz info` lists the backups. The moment must
+   lie after the end of a full backup whose WAL is still kept: the last 14 days at least.
+3. `single-host.sh pitr '2026-10-08 14:05:00+05'` (the moment, with the time zone). It restores from
+   the bucket into the volume `qarz_pgscratch` up to that moment and starts the copy. The live database
+   is not stopped, read or changed. Restoring over the live database is not offered: `single-host.sh
+   restore` refuses a volume that holds one.
+4. Compare, as in step 4: `docker compose -p qarz exec db-scratch psql -U postgres -d qarz` for the
+   copy, `... exec db psql ...` for the live database. What is copied back is decided with the founder
+   and done through the product, never by editing the ledger.
+5. `single-host.sh pitr-down` removes the copy and its volume. Start the API and the worker again
+   (`single-host.sh start`). Tell the affected shops which minutes to enter again.
+
+If the whole database must go back in time (not single shops), that is runbook 15 with
+`single-host.sh restore --time '<moment>'` on this same machine, after the damaged volume has been put
+aside by hand as that runbook says; everything recorded after the moment is then lost for every shop.
+
+Proven only in containers with a stand-in for R2 (`deploy/production/scripts/single-host-proof.sh`, section 13):
+a copy to a moment between two writes held the first and not the second. Never done on the real machine
+or bucket.
+
 ## 4. Rotate bot token, webhook secret, server secret, database passwords, backup key
 
 **When.** On a schedule, when a person with access leaves, or at once when a secret may have leaked.
@@ -135,6 +195,17 @@ because no server exists. A point-in-time restore from a repository on a real st
 | Database passwords | As the owner, for each role in turn: `ALTER ROLE qd_app PASSWORD ...` and `QD_DATABASE_URL`; `ALTER ROLE qd_admin PASSWORD ...` and `QD_ADMIN_DATABASE_URL`; `ALTER ROLE qd_worker PASSWORD ...` and `QD_WORKER_DATABASE_URL`. Each role has its own password. Restart the API after the first two and the worker after the third | Requests of that part fail between the change and the restart |
 | Metrics token (`QD_METRICS_TOKEN`) | Set a new value; restart the API; update the monitoring system | Scrapes fail until both are changed |
 | Backup key | See below | Losing the key loses the backups: keep it in two places off both servers |
+
+**On the single host (changed by the founder on 2026-10-08, DEC-070)** the secrets live in one env file, and `single-host.sh up` is what applies
+a changed value: it recreates the containers whose settings changed.
+
+| Secret | How, on the single host | What it breaks |
+|---|---|---|
+| Bot token, webhook secret, server secret, metrics token | As in the table above and the steps below; "restart" is `single-host.sh up`; the commands that need the API's settings are run as `docker compose -p qarz exec api ...` | As above |
+| Database passwords (`postgres`, `qd_app`, `qd_admin`, `qd_worker`) | Change the password **inside the connection string** in the env file (`QD_MIGRATION_URL`, `QD_DATABASE_URL`, `QD_ADMIN_DATABASE_URL`, `QD_WORKER_DATABASE_URL`; four different ones, 16 characters or more), then `single-host.sh up`. It sets each role's password from its connection string through the database's socket and restarts the services. No `ALTER ROLE` by hand | A few seconds without service |
+| Tunnel token (`CLOUDFLARE_TUNNEL_TOKEN`) | In Cloudflare, Zero Trust, the tunnel: refresh its token (the old one stops working), or delete the tunnel and create a new one with the same public hostname and service `http://proxy:8080`. Put the new token in the env file and the password manager; `single-host.sh up` | Between the refresh and `up` the service is unreachable. Whoever held the old token could receive the service's traffic while it was valid: treat a leak as runbook 11 |
+| R2 key (`DEPLOY_R2_ACCESS_KEY_ID`, `DEPLOY_R2_SECRET_ACCESS_KEY`) | In Cloudflare, create a new token limited to the bucket; put it in the env file and the password manager; `single-host.sh up` (the database restarts: its settings changed); `single-host.sh status` until the archive is fresh; then delete the old token | A few seconds without service. Between deleting an old token and `up`, nothing is archived |
+| Backup passphrase (`DEPLOY_BACKUP_PASSPHRASE`) | See "The backup key" below | Losing it loses the backups: keep it in two places **off the machine** |
 
 **The server secret needs care.** It derives the key that signs file links and the key that encrypts the
 administrators' second-factor secrets. Changed on its own it makes every stored second-factor secret
@@ -185,6 +256,24 @@ lives and what it protects: `deploy/backup/README.md`, "The key".
 
 **Not yet possible:** these steps have never been run; they are written from the tools' documentation.
 
+**The backup key on the single host (changed by the founder on 2026-10-08, DEC-070).** The passphrase of what is already in the bucket cannot
+be changed, by pgBackRest or by rclone. A new passphrase means a new, empty bucket:
+
+1. Generate the new passphrase (`openssl rand -hex 32`) and store it in the two places off the machine
+   **before** using it.
+2. In Cloudflare create a second bucket and a key limited to it.
+3. In the env file set `DEPLOY_R2_BUCKET`, the two key settings and `DEPLOY_BACKUP_PASSPHRASE` to the new
+   values; `single-host.sh up`. The database restarts, a repository is created in the new bucket, and
+   the write-ahead log goes there from that moment.
+4. At once: `single-host.sh backup full`, then `single-host.sh restore-test`. Until that full backup has
+   ended there is no usable backup under the new passphrase. The stored files are copied to the new
+   bucket by the next run of `files-backup` (five minutes).
+5. Keep the old bucket, its key and the old passphrase until what they hold has aged out (8 weeks; 12
+   months for the monthly dumps), then delete all three. The monthly dumps written before the change
+   are encrypted with the old passphrase wherever they are copied.
+
+Never run; written from the tools' documentation and from how the scripts behave with an empty bucket.
+
 After any rotation following a suspected leak: review the admin audit and the request log for the period
 of exposure, and treat it as runbook 11.
 
@@ -205,6 +294,20 @@ of exposure, and treat it as runbook 11.
    log. `503 TIMEOUT` means a statement ran longer than the limit (5 seconds); `429 RATE_LIMITED` means
    the user or the shop is over its rate.
 6. Tell shops when it is a general outage (the notice text is the founder's; none is written yet).
+
+**On the single host (changed by the founder on 2026-10-08, DEC-070)** there is one more layer in front, and one machine behind it:
+
+- `/healthz` from outside gives **no answer at all, or Cloudflare's own error page** (error 1033 or
+  530, "Argo Tunnel error", or a 502 from Cloudflare): the tunnel is not connected. Either the machine
+  is off, asleep or offline, or Docker is not running, or the `cloudflared` container is not: runbook
+  14. If the machine is fine and `docker compose -p qarz logs cloudflared` shows it connected, look at
+  Cloudflare's own status and at the tunnel's page in Zero Trust.
+- `/healthz` answers `down` (503 from the service itself): the API is up and the database is not.
+  `single-host.sh status`, then `single-host.sh logs db`. A full disk stops PostgreSQL: the status prints
+  the disk.
+- Step 2's "if the server itself is gone" is runbook 15, not runbook 2.
+- Steps 3 to 5 are unchanged; the logs are `single-host.sh logs api`, `... worker`, and the metrics are
+  read with `docker compose -p qarz exec api python -c ...` as `deploy/production/scripts/local.sh` does.
 
 ## 6. "An entry is wrong"
 
@@ -467,3 +570,110 @@ The wordings themselves are agent drafts awaiting the founder's review (DEC-035)
 **Not yet possible.** No real shop may be onboarded before the launch criteria are met and the founder
 approves the launch. The import screen was exercised against a fake server only. The template has not
 been opened in a spreadsheet program, nor a file written by one been read.
+
+## 14. "The computer was off": power loss, a restart, Docker not running
+
+For the single host only (changed by the founder on 2026-10-08, DEC-070). **When.** The service does not answer and the cause is the machine:
+the electricity went, Windows restarted (an update, a crash), somebody shut it down, or Docker Desktop is
+not running. Nothing has been lost in any of these: a recorded entry is on the disk before the seller is
+answered, and PostgreSQL repairs itself from its own log when it starts.
+
+1. Get the machine on. If it does not start by itself when the power returns, the BIOS setting of
+   `deploy/production/SINGLE-HOST.md`, step 2, is not set.
+2. Docker Desktop starts when somebody signs in to Windows (unless the automatic sign-in of that same
+   step was chosen). Sign in and wait until Docker says it is running.
+3. Do nothing else for two minutes. Every container of the project restarts by itself, in order: the
+   database, then the API and the worker, the proxy, the tunnel, the backups.
+4. `single-host.sh status`. Every service must be `Up`, the database, the API and the proxy `healthy`.
+   If some are missing or `Exited`: `single-host.sh start`, then status again.
+5. Open `https://<host>/healthz` from a phone on mobile data: `{"status":"ok"}`. Send `/start` to the
+   bot. Telegram delivers the updates it could not deliver while the machine was off, for as long as it
+   keeps them; `getWebhookInfo` shows how many are waiting and the last error.
+6. Backups catch up by themselves: the scheduler takes the backup that was due while the machine was
+   off, and the write-ahead log is sent again within minutes. `single-host.sh status` must show the
+   newest WAL segment younger than five minutes within a quarter of an hour; the `backup` container
+   turns healthy again when it does.
+7. Check the clock (`date` in Git Bash against a phone). After sleep or a long stop Docker's clock can
+   be behind, and sign-in then fails for everybody: restart Docker Desktop if it is.
+8. Write down when the outage began, when it ended and why. That list is the only availability
+   measurement there is.
+
+**If the database does not start** (`single-host.sh logs db` shows it failing again and again): do not
+delete anything, and do not run any "clean", "purge" or "reset" in Docker Desktop. Stop everything
+(`single-host.sh stop`) and go to runbook 15, "On the same machine".
+
+**If Docker Desktop itself does not start:** restart Windows once. If it still does not, its repair may
+offer to reset or delete its data: **that deletes the database**. Before accepting, treat the machine as
+lost and follow runbook 15 on another machine; the data in R2 is safe whatever is done here.
+
+**Never done.** No power cut has been tried on the real machine. In the proof the containers were
+stopped and started, not the machine.
+
+## 15. Move the service to another machine from R2 alone
+
+For the single host only (changed by the founder on 2026-10-08, DEC-070). **When.** The machine or its disk is lost, stolen or dead; or Docker's
+data was wiped; or the service is being moved on purpose. Everything needed is in two places: the R2
+bucket, and the founder's password manager. **Without the backup passphrase this runbook cannot be done
+and the data is gone.**
+
+What is lost: the entries whose write-ahead log had not reached R2 (normally the last minute or two; if
+the old machine's internet link was down before it died, everything since then), and the files stored
+in the last five minutes.
+
+1. **The old machine must not run the service at the same time.** If it still works, run
+   `single-host.sh stop` on it and do not start it again. Two machines with one tunnel token both receive
+   visitors, and two databases must never archive into one bucket.
+2. Prepare the new machine: Docker, Git and Git Bash (or any Linux with Docker and bash), and the
+   preparation of `deploy/production/SINGLE-HOST.md`, step 2.
+3. Clone the repository and check out the commit that was running (the newest of `main` if that is not
+   known; a newer release migrates the restored database forward when it starts).
+4. The env file, at `~/.qarz/single-host.env`, mode 600:
+   - if the password manager holds a copy of the whole file, use it as it is;
+   - if it holds only single secrets: `single-host.sh env-init`, then replace the generated
+     `DEPLOY_BACKUP_PASSPHRASE` with the **real** one, fill in the bucket, its key, the tunnel token
+     and the bot token, and replace `QD_SECRETS_KEY` and `QD_WEBHOOK_SECRET` with the real ones (with a
+     new server secret every administrator must enrol the second factor again, runbook 7; with a new
+     webhook secret the webhook must be set again). New database passwords are fine: they are set from
+     the file in step 7.
+5. `single-host.sh restore`. It builds the database image, checks that the data volume is empty, and
+   restores the newest backup and every archived WAL segment after it from the bucket. For a moment
+   earlier than the end of the archive: `single-host.sh restore --time '<moment with time zone>'`.
+6. `single-host.sh restore-files`: the stored files, from the bucket.
+7. `single-host.sh up`. The database replays the archive and opens; the passwords are set from the env
+   file; the migrations run (nothing to do when the release is the same); the API, the worker, the
+   proxy, the backups and the tunnel start. Nothing changes in Cloudflare or at Telegram: the tunnel's
+   token and the public name are the same.
+8. Check as in `SINGLE-HOST.md`, step 8: `single-host.sh status`, `single-host.sh smoke`, the bot, the
+   panel. Then `single-host.sh backup full` and `single-host.sh restore-test`: the restored database is
+   on a new timeline and needs a backup of its own.
+9. Find the last entry that came back (the newest `created_at` in the ledger, the shop's activity log)
+   and tell the shops from which minute they must enter again.
+10. Write down how long each step took. Until this has been done once on a second machine, nobody
+    knows the recovery time (launch criterion 8, proposed).
+
+**On the same machine** (the database volume is damaged, or the whole database must go back to an
+earlier moment): `single-host.sh restore` refuses a volume that holds anything, on purpose. Put the old
+volume aside by hand first, so that nothing is destroyed before the restore has worked:
+
+```sh
+single-host.sh stop
+docker compose -p qarz rm -f db backup
+docker volume create qarz_pgdata_aside
+# a copy of the volume, file for file (MSYS_NO_PATHCONV: Git Bash must not rewrite the container's paths)
+MSYS_NO_PATHCONV=1 docker run --rm --user 0 --entrypoint cp \
+  -v qarz_pgdata:/from:ro -v qarz_pgdata_aside:/to postgres:16.15-bookworm -a /from/. /to/
+docker volume rm qarz_pgdata          # the original; from here only the copy and the bucket hold the data
+single-host.sh restore                # or: restore --time '<moment>'
+single-host.sh up
+```
+
+Remove `qarz_pgdata_aside` only when the restored service has been checked.
+
+**What has been proven and what has not.** In containers, with a MinIO server standing in for R2: the
+database volume was destroyed, `single-host.sh up` refused to start an empty database in front of the
+bucket's backups, a restore with a wrong passphrase restored nothing, `single-host.sh restore` and `up`
+brought back every row, those written after the last backup included, and the stored files came back
+byte for byte (`deploy/production/scripts/single-host-proof.sh`, sections 8 and 14; CI job `single-host`).
+**Not proven:** any of it on a second real machine, against the real bucket, by a person, with a clock.
+Of the "On the same machine" commands, only the copy of a volume was tried (on the proof's own volume: the
+same number of files, the same owner); the sequence as a whole has never been run.

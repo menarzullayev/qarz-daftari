@@ -4,6 +4,15 @@ What the application gives a monitoring system, and what is still missing. Nothi
 into a real monitoring system: there are no servers yet, so no alert has been triggered or received
 (launch criterion 9 is open).
 
+> **On the single host (the current deployment, DEC-070) there is no monitoring system at all.** The
+> rules of `alerts.yml` are loaded nowhere and nothing delivers an alert. What is and is not watched
+> there, and the two free checks from outside the machine that the founder can set up (Cloudflare's
+> tunnel notification, an uptime check of `/healthz`), is in `deploy/production/SINGLE-HOST.md`, "What is
+> watched, and what is not". The figures the backup jobs write are the same names as below, kept as
+> files in the `backup-state` volume, and the `backup` container's health in `docker ps` is the only
+> thing that reads them. The table "What is missing" below is written for the two-server design; its
+> rows about replication and "both servers" have no meaning on one machine.
+
 ## What exists
 
 - **Logs.** The API and the worker write one JSON object a line to standard error: time, level, logger,

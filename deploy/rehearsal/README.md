@@ -4,6 +4,8 @@ A Docker Compose stack that rehearses, on one machine, the database part of stor
 
 This is not a deployment. Nothing here orders, pays for, or touches a real server. All data and passwords are throwaway.
 
+> **A rehearsal of the two-server design, which is not the current deployment.** By the founder's decision of 2026-10-08 (DEC-070) the service runs on one machine with no standby, so there is no failover to rehearse today: `deploy/production/SINGLE-HOST.md`. What stands in its place there is a restore from the bucket, proven by `deploy/production/scripts/single-host-proof.sh`. This stack stays for the day there are two servers, and `deploy/backup/proof/` still runs on it.
+
 Measured results of the first rehearsal: `docs/10-operations/rehearsals/2026-10-06-local.md`.
 
 ## What is in the stack

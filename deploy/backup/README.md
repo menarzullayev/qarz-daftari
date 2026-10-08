@@ -5,6 +5,20 @@ The configuration and scripts that implement the "Backup" section of `docs/10-op
 a weekly restore test that checks the restored ledger, expiry, the figures and alert rules for
 monitoring, and the copy of the file store.
 
+> **This is the design for two servers, not the current deployment.** By the founder's decision of
+> 2026-10-08 (DEC-070) the service runs on one machine, and its backups go to a Cloudflare R2 bucket:
+> `deploy/production/SINGLE-HOST.md`, "Backups". There is no standby, so the configuration for two hosts
+> (`pgbackrest.conf`, `pgbackrest-primary.conf`, `postgresql-archive.conf`), the systemd units of
+> `systemd/` and `filestore-sync.sh` are **not installed anywhere and not used today**. They stay for
+> the day there are two servers.
+>
+> What the single host does use from here, unchanged, inside its database image: `scripts/backup.sh`,
+> `restore-test.sh`, `expire.sh`, `check.sh` (with `QD_REPO_LISTING=pgbackrest`, because its repository
+> is a bucket and not a directory), `monthly-archive.sh`, `archive-heartbeat.sh` and `lib.sh`. The
+> retention figures of `pgbackrest.conf` are the single host's too
+> (`backend/tests/test_single_host_files.py` fails if they drift apart), and the timers' calendars are
+> its scheduler's.
+
 **What has been proven.** Only this: on a developer machine (Docker Desktop on Windows), in containers,
 against the rehearsal stack of `deploy/rehearsal/`, the scripts take a full and a differential backup,
 the restore test passes on a database built by the repository's migrations and fails when it should,

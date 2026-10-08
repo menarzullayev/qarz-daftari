@@ -1,0 +1,338 @@
+# Overlay on compose.yml: the WHOLE service on one machine, behind a Cloudflare Tunnel, with its backups
+# in a Cloudflare R2 bucket (the founder's decision of 2026-10-08). Used through scripts/single-host.sh,
+# which adds it to compose.yml; deploy/production/SINGLE-HOST.md is the guide.
+#
+# What it adds to compose.yml, which stays as it is:
+#   db            PostgreSQL 16 on a named volume, archiving its write-ahead log to the bucket
+#   owner, roles  one-shots: the passwords of the database roles, from the connection settings
+#   cloudflared   the tunnel: the only way in. Nothing in this file publishes a port on the host.
+#   backup        the schedule: backups, expiry, the restore test, the checks (no systemd on this host)
+#   files-backup  the encrypted copy of the stored files, every five minutes
+#   restore, restore-files, db-scratch   started by hand through single-host.sh, never by `up`
+# and what it changes: the proxy loses its published ports and its certificate and listens to the
+# tunnel only; the API and the worker keep their files in a volume of this machine.
+#
+# Memory limits, in all: proxy 192 M, api 512 M, worker 768 M, db 1 G, backup 512 M, files-backup
+# 192 M, cloudflared 128 M: 3.3 G, plus 256 M while a migration or a restore runs. Starting points.
+
+x-single: &single
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  logging:
+    # As in compose.yml: rotated by size, so the logs cannot fill the disk. 5 files of 20 MB a service.
+    driver: json-file
+    options:
+      max-size: "20m"
+      max-file: "5"
+
+# One image for the database and every backup job (single-host/postgres/Dockerfile). Its tag is the
+# content of its sources, not the release: a release that does not touch them does not restart the
+# database. scripts/single-host.sh computes it and builds the image.
+x-pgbackup-image: &pgbackup-image
+  image: ${DEPLOY_PGBACKUP_IMAGE:-qarz-daftari/pgbackup}:${DEPLOY_PGBACKUP_TAG:?run scripts/single-host.sh, which sets DEPLOY_PGBACKUP_TAG}
+  build:
+    context: ..
+    dockerfile: production/single-host/postgres/Dockerfile
+
+# Where the backups go, and the passphrase everything is encrypted with before it leaves this machine.
+x-r2-env: &r2-env
+  QD_R2_ENDPOINT: ${DEPLOY_R2_ENDPOINT:?DEPLOY_R2_ENDPOINT is not set}
+  QD_R2_BUCKET: ${DEPLOY_R2_BUCKET:?DEPLOY_R2_BUCKET is not set}
+  QD_R2_REGION: ${DEPLOY_R2_REGION:-auto}
+  QD_R2_ACCESS_KEY_ID: ${DEPLOY_R2_ACCESS_KEY_ID:?DEPLOY_R2_ACCESS_KEY_ID is not set}
+  QD_R2_SECRET_ACCESS_KEY: ${DEPLOY_R2_SECRET_ACCESS_KEY:?DEPLOY_R2_SECRET_ACCESS_KEY is not set}
+  QD_BACKUP_PASSPHRASE: ${DEPLOY_BACKUP_PASSPHRASE:?DEPLOY_BACKUP_PASSPHRASE is not set}
+
+services:
+  db:
+    <<: [*single, *pgbackup-image]
+    command: ["postgres"]
+    restart: unless-stopped
+    stop_grace_period: 60s
+    # PostgreSQL's shared memory for parallel queries; Docker's default of 64 MB is too little.
+    shm_size: 256m
+    environment:
+      <<: *r2-env
+      POSTGRES_USER: postgres
+      POSTGRES_DB: qarz
+    healthcheck:
+      # Over TCP on purpose: during the very first start a temporary server answers on the socket only.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "qarz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      # A database that was restored, or that lost power, refuses connections until it has replayed
+      # its log to a consistent state; however long that takes, it is "starting", not "unhealthy".
+      start_period: 30m
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - pgsocket:/var/run/postgresql
+    networks: [egress]
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+          pids: 256
+
+  # One-shot, before the migrations: the owner's password, from QD_MIGRATION_URL. Through the
+  # database's socket and to nobody else (single-host/scripts/set-role-logins.sh).
+  owner:
+    <<: [*single, *pgbackup-image]
+    command: ["roles", "owner"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      QD_MIGRATION_URL: ${QD_MIGRATION_URL:?QD_MIGRATION_URL is not set}
+    volumes: &socket-only
+      - pgsocket:/var/run/postgresql
+    network_mode: none
+    deploy: &one-shot-limits
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+
+  migrate:
+    depends_on:
+      owner:
+        condition: service_completed_successfully
+
+  # One-shot, after the migrations (which create the three roles without a login): their passwords,
+  # each from the connection setting of the service that will use it.
+  roles:
+    <<: [*single, *pgbackup-image]
+    command: ["roles", "application"]
+    restart: "no"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      QD_DATABASE_URL: ${QD_DATABASE_URL:?QD_DATABASE_URL is not set}
+      QD_ADMIN_DATABASE_URL: ${QD_ADMIN_DATABASE_URL:-}
+      QD_WORKER_DATABASE_URL: ${QD_WORKER_DATABASE_URL:?QD_WORKER_DATABASE_URL is not set}
+    volumes: *socket-only
+    network_mode: none
+    deploy: *one-shot-limits
+
+  api:
+    depends_on:
+      roles:
+        condition: service_completed_successfully
+    environment:
+      # The files stay on this machine; their second copy is `files-backup`'s work.
+      QD_FILE_STORE: filesystem
+      QD_FILE_ROOT: /var/lib/qarz/files
+    volumes:
+      - files:/var/lib/qarz/files
+
+  worker:
+    depends_on:
+      roles:
+        condition: service_completed_successfully
+    environment:
+      QD_FILE_STORE: filesystem
+      QD_FILE_ROOT: /var/lib/qarz/files
+    volumes:
+      - files:/var/lib/qarz/files
+
+  proxy:
+    # The form behind the tunnel (nginx/single-host.d/qarz.conf): plain HTTP for one peer, no
+    # certificate, no published port.
+    command: ["/usr/local/bin/qd-single-host-proxy"]
+    environment:
+      QD_TUNNEL_PEER: ${DEPLOY_TUNNEL_PREFIX:-10.99.240}.2
+    ports: !reset []
+    volumes: !reset []
+    networks: !override
+      tunnel: {}
+      edge: {}
+
+  cloudflared:
+    <<: *single
+    image: cloudflare/cloudflared:2026.9.3
+    # A named tunnel run from its token. Where the tunnel sends a host name is set in Cloudflare
+    # (Zero Trust, the tunnel's public hostname): http://proxy:8080. The token is given in the
+    # environment, never on the command line, where `docker inspect` and `ps` would show it.
+    command: ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:20241", "run"]
+    restart: unless-stopped
+    depends_on:
+      proxy:
+        condition: service_healthy
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is not set}
+      # auto: QUIC, falling back to HTTP/2. Set http2 where UDP to Cloudflare is blocked or slow.
+      TUNNEL_TRANSPORT_PROTOCOL: ${DEPLOY_TUNNEL_PROTOCOL:-auto}
+    healthcheck:
+      # Healthy while the tunnel holds at least one connection to Cloudflare.
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:20241", "ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      # The address the proxy believes about visitors (QD_TUNNEL_PEER): fixed, so that it can be named.
+      tunnel:
+        ipv4_address: ${DEPLOY_TUNNEL_PREFIX:-10.99.240}.2
+      tunnel-out: {}
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 128M
+          pids: 128
+
+  backup:
+    <<: [*single, *pgbackup-image]
+    command: ["scheduler"]
+    restart: unless-stopped
+    stop_grace_period: 60s
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *r2-env
+      QD_CHECK_INTERVAL: ${DEPLOY_BACKUP_CHECK_INTERVAL:-300}
+    healthcheck:
+      # Healthy only while the newest backup and the newest archived WAL segment are recent
+      # (single-host/scripts/healthcheck.sh). The first full backup has to end before that is true.
+      test: ["CMD", "/opt/qarz-single/healthcheck.sh"]
+      interval: 60s
+      timeout: 10s
+      retries: 2
+      start_period: 15m
+    volumes:
+      # Read-only: a backup reads the data directory and never writes to it, and the restore test
+      # restores into the state volume, so no job of this container can damage the live database.
+      - pgdata:/var/lib/postgresql/data:ro
+      - pgsocket:/var/run/postgresql
+      - backup-state:/var/lib/qarz-backup
+    networks: [egress]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+          pids: 256
+
+  files-backup:
+    <<: [*single, *pgbackup-image]
+    command: ["files-loop"]
+    # The application's user: the stored files are readable by their owner only.
+    user: "10001:10001"
+    restart: unless-stopped
+    environment:
+      <<: *r2-env
+      QD_FILES_INTERVAL: ${DEPLOY_FILES_INTERVAL:-300}
+    healthcheck:
+      # Healthy only while the files were copied recently (single-host/scripts/files-health.sh).
+      test: ["CMD", "/opt/qarz-single/files-health.sh"]
+      interval: 60s
+      timeout: 10s
+      retries: 2
+      start_period: 5m
+    volumes:
+      - files:/var/lib/qarz/files:ro
+      - files-state:/var/lib/qarz-files-backup
+    networks: [egress]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 192M
+          pids: 128
+
+  # --- Started by hand (scripts/single-host.sh), never by `up` --------------------------------------
+  # Restores the bucket's repository into the EMPTY data volume. Refuses a volume that holds a database.
+  restore:
+    <<: [*single, *pgbackup-image]
+    profiles: ["restore"]
+    command: ["restore"]
+    restart: "no"
+    environment:
+      <<: *r2-env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [egress]
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 512M
+
+  # Copies the stored files back from the bucket. Deletes nothing.
+  restore-files:
+    <<: [*single, *pgbackup-image]
+    profiles: ["restore"]
+    command: ["/opt/qarz-single/files-sync.sh", "restore"]
+    user: "10001:10001"
+    restart: "no"
+    environment:
+      <<: *r2-env
+    volumes:
+      - files:/var/lib/qarz/files
+    networks: [egress]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+
+  # A point-in-time copy of the database beside the live one (runbook 3): its own volume, archiving
+  # off, reachable only with `docker compose exec db-scratch psql`. Removed with single-host.sh pitr-down.
+  db-scratch:
+    <<: [*single, *pgbackup-image]
+    profiles: ["scratch"]
+    command: ["scratch"]
+    restart: "no"
+    shm_size: 128m
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /var/run/postgresql:size=1m,uid=999,gid=999,mode=0775
+    environment:
+      <<: *r2-env
+      QD_PITR_TARGET: ${DEPLOY_PITR_TARGET:-}
+    healthcheck:
+      # Through the socket: healthy once the copy has been restored and has replayed the archive.
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "qarz"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 30m
+    volumes:
+      - pgscratch:/var/lib/postgresql/data
+    networks: [egress]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+networks:
+  # The tunnel and the proxy, and nobody else. Internal: it leads nowhere but between the two. Its
+  # range is fixed so that the tunnel's address can be: <prefix>.0/28, the tunnel at <prefix>.2. Set
+  # DEPLOY_TUNNEL_PREFIX (three numbers, e.g. 10.99.241) if another network of this machine has the range.
+  tunnel:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${DEPLOY_TUNNEL_PREFIX:-10.99.240}.0/28
+          # Addresses Docker hands out by itself come from the upper half, so the tunnel's fixed
+          # address in the lower half is never taken by another container.
+          ip_range: ${DEPLOY_TUNNEL_PREFIX:-10.99.240}.8/29
+  # The tunnel's way out to Cloudflare. Nothing else is on it.
+  tunnel-out: {}
+
+volumes:
+  pgdata: {}
+  pgsocket: {}
+  files: {}
+  backup-state: {}
+  files-state: {}
+  pgscratch: {}

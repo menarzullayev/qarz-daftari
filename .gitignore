@@ -36,3 +36,6 @@ deploy/production/.local-e2e/
 # End-to-end suite: reports and traces
 e2e/test-results/
 e2e/playwright-report/
+
+# Proof of the single-host deployment: generated env file, state, results
+deploy/production/.local-single/

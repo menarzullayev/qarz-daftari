@@ -8,6 +8,10 @@
 # not the database: it answers "what could be restored", whatever the primary believes it archived.
 # Also writes the figures for the monitoring system (qd_backup_repo.prom).
 #
+# Where the repository is not a directory of this host (an S3 bucket: the single-host deployment),
+# set QD_REPO_LISTING=pgbackrest. The newest WAL segment is then found by asking pgBackRest to list
+# the repository (`repo-ls`, three listings a run), and its age is the time the bucket received it.
+#
 # Thresholds (seconds), each changeable through the environment:
 #   QD_MAX_WAL_AGE_SECONDS     300     operations document, Monitoring: "Log archive age older than 5 minutes"
 #   QD_MAX_BACKUP_AGE_SECONDS  93600   a backup of any type is taken daily; 26 hours allows a slow night
@@ -30,11 +34,21 @@ info="$(repo_info)" || {
     note "ERROR: pgBackRest could not read the repository"
     exit 2
 }
+: "${QD_REPO_LISTING:=find}"
 archive_dir="$QD_REPO_PATH/archive/$QD_STANZA"
-[ -d "$archive_dir" ] || {
-    note "ERROR: $archive_dir is not a directory; check.sh runs on the repository host"
+case "$QD_REPO_LISTING" in
+find)
+    [ -d "$archive_dir" ] || {
+        note "ERROR: $archive_dir is not a directory; check.sh runs on the repository host"
+        exit 2
+    }
+    ;;
+pgbackrest) ;;
+*)
+    note "ERROR: QD_REPO_LISTING must be find or pgbackrest"
     exit 2
-}
+    ;;
+esac
 
 at="$(date +%s)"
 stale=0
@@ -75,8 +89,39 @@ judge "newest full backup" "$full_stop" "$QD_MAX_FULL_AGE_SECONDS" "$full_label"
 
 # WAL segments lie in <archive>/<stanza>/<version-id>/<16 hex digits>/<24 hex digits>-<checksum>[.ext].
 # The modification time of the newest one is when the repository received it.
-read -r wal_stop wal_name <<< "$(find "$archive_dir" -type f -name '????????????????????????-*' -printf '%T@ %f\n' \
-    | sort -n | tail -n 1 | awk '{ printf "%d %s", $1, substr($2, 1, 24) }')"
+newest_wal_in_directory() {
+    find "$archive_dir" -type f -name '????????????????????????-*' -printf '%T@ %f\n' \
+        | sort -n | tail -n 1 | awk '{ printf "%d %s", $1, substr($2, 1, 24) }'
+}
+# The same answer from a listing by pgBackRest: the newest archive of the stanza (<version>-<n>), its
+# newest directory of segments (16 hex digits) that holds one, and in it the segment stored last.
+newest_wal_listed() {
+    local base="archive/$QD_STANZA" id dir found
+    id="$(pgbr repo-ls --output=json "$base" | jq -r '
+        [to_entries[] | select(.value.type == "path" and (.key | test("^[0-9.]+-[0-9]+$"))) | .key]
+        | sort_by(split("-") | last | tonumber) | last // empty')"
+    [ -n "$id" ] || return 0
+    while IFS= read -r dir; do
+        found="$(pgbr repo-ls --output=json "$base/$id/$dir" | jq -r '
+            [to_entries[] | select(.value.type == "file" and (.key | test("^[0-9A-F]{24}-")))]
+            | max_by(.value.time) | if . == null then empty else "\(.value.time) \(.key[0:24])" end')"
+        if [ -n "$found" ]; then
+            printf '%s' "$found"
+            return 0
+        fi
+    done < <(pgbr repo-ls --output=json "$base/$id" | jq -r '
+        [to_entries[] | select(.value.type == "path" and (.key | test("^[0-9A-F]{16}$"))) | .key]
+        | sort | reverse | .[0:2] | .[]')
+}
+if [ "$QD_REPO_LISTING" = pgbackrest ]; then
+    wal_found="$(newest_wal_listed)" || {
+        note "ERROR: pgBackRest could not list the WAL archive"
+        exit 2
+    }
+else
+    wal_found="$(newest_wal_in_directory)"
+fi
+read -r wal_stop wal_name <<< "$wal_found"
 wal_stop="${wal_stop:-0}"
 judge "newest archived WAL segment" "$wal_stop" "$QD_MAX_WAL_AGE_SECONDS" "${wal_name:--}"
 

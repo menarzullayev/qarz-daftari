@@ -209,6 +209,16 @@ Consent text version 2, Uzbek, with a Russian equivalent to be written; an agent
 | NFR-012 | A changed platform switch takes effect within 60 seconds without a release | REQ-N14 |
 | NFR-013 | An automated suite attempts every API operation across tenants and roles and finds no access outside the authorization table | REQ-N11, REQ-N12 |
 
+**NFR-003 and NFR-004 on one host (changed by the founder on 2026-10-08, DEC-070; the text below is proposed, awaiting the founder).** The two rows above were written for a primary and a standby. By the founder's decision the service runs on one hand-started machine behind a Cloudflare Tunnel, with its backups in Cloudflare R2 (Architecture, "Deployment as it is run now"). One machine cannot meet either row as written, and nothing has been measured that would justify a number in their place. What it gives, stated so that the founder can approve or change it:
+
+| ID | Proposed text for one host | Why no better can be said |
+|---|---|---|
+| NFR-003 | **No availability percentage is promised.** The service is available while the machine, its power, its internet link, Windows, Docker and Cloudflare are all up. There is no failover: an outage lasts until a person starts or repairs what stopped, and outside the hours that person is awake and reachable nobody does. Availability is **measured, not targeted**: every outage is written down with its start, its end and its cause, and the monthly figure for 06:00 to 23:00 is reported to the founder. A target is proposed only after three months of such figures. | 99.5% in shop hours allows about two and a half hours of outage a month. One power cut, one failed link or one Windows restart at a bad hour, with one person to notice, can use that up; there is no history to say how often they happen. Measuring needs the outside check of `/healthz` that does not exist yet |
+| NFR-004, data loss | **A recorded entry is not lost when the machine stops** (crash, power cut, restart): it is on the disk before the seller is answered. **When the machine's disk is lost**, what is lost is what had not reached R2: the write-ahead log is sent within about a minute of a write (a segment is closed after 60 seconds at the latest, then uploaded), so at most 5 minutes of entries **while the archive is healthy**, which is the state the backup check reports (it fails when the newest archived segment is older than 5 minutes). While the machine cannot reach R2 the bound does not hold, and nothing tells anybody that it does not. Stored files: up to 5 minutes more. | The mechanism is proven in CI (a destroyed database volume restored from the bucket, rows written after the last backup included). The minute is the configured `archive_timeout`, not a measurement over the machine's real link |
+| NFR-004, recovery time | **No recovery time is promised.** Recovery from the loss of the machine is: another machine with Docker, the repository, the env file from the password manager, a restore from R2, start. It becomes a number the first time the founder does it on a second machine with a clock running (runbook 15), and is written here then. Recovery from a machine that merely stopped is the time until someone starts it. | The restore took seconds in the proof on a database of 34 MB; that says nothing about a real one or about finding a machine |
+
+Until the founder approves this text or other text, NFR-003 and NFR-004 stand as written above and are **not met**.
+
 None of these has been measured. NFR-005, NFR-006, NFR-009 and NFR-011 require a load test with generated data before launch.
 
 ## Integrations
@@ -288,7 +298,7 @@ A reply that says something was saved is sent only after commit.
 | REQ-N02, REQ-N03 | Chat fast path; NFR-001, NFR-009 | ADR-011 |
 | REQ-N04, REQ-N05 | Deployment; retention; NFR-008 | ADR-014, ADR-020 |
 | REQ-N06, REQ-N07 | Integer money; insert-only tables | ADR-003, ADR-005 |
-| REQ-N08, REQ-N09 | NFR-003, NFR-004 | ADR-014, ADR-015 |
+| REQ-N08, REQ-N09 | NFR-003, NFR-004 (not met on one host; proposed text under "Performance targets"; changed by the founder on 2026-10-08, DEC-070) | ADR-014, ADR-015 |
 | REQ-N10 | Reminder constraints and rules | ADR-007 |
 | REQ-N11, REQ-N12 | Authentication and authorization; NFR-013 | ADR-016, ADR-017 |
 | REQ-N13 | NFR-005, NFR-006 | ADR-002, ADR-004 |
