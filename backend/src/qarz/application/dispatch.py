@@ -10,7 +10,15 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from qarz.application.ports import OutboxMessage, RecipientBlocked, RetryLater, Sender, SendFailed, Storage
+from qarz.application.ports import (
+    OutboxMessage,
+    RecipientBlocked,
+    RetryLater,
+    Sender,
+    SendFailed,
+    SendRejected,
+    Storage,
+)
 
 PER_RECIPIENT_INTERVAL = timedelta(seconds=1)  # at most one message a second per chat
 GLOBAL_PER_SECOND = 25  # below Telegram's limit of about 30 a second (EVID-032)
@@ -91,6 +99,11 @@ class Dispatcher:
                     await session.mark_recipient_unreachable(int(message.recipient))
             blocked.add(key)
             result.blocked += 1
+        except SendRejected:
+            # Refused for good (ports.SendRejected): no second attempt, and nothing else is failed with it.
+            async with self.storage.platform() as session:
+                await session.mark_failed(message.message_id)
+            result.failed += 1
         except SendFailed:
             async with self.storage.platform() as session:
                 if now - message.created_at >= GIVE_UP_AFTER:

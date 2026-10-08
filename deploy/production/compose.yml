@@ -112,6 +112,10 @@ services:
       <<: *shared-env
       QD_WORKER_DATABASE_URL: ${QD_WORKER_DATABASE_URL:?QD_WORKER_DATABASE_URL is not set}
       QD_WORKER_STATEMENT_TIMEOUT_MS: ${QD_WORKER_STATEMENT_TIMEOUT_MS:-60000}
+      # The SMS provider's account. The worker alone sends, so the API is not given it.
+      QD_ESKIZ_EMAIL: ${QD_ESKIZ_EMAIL:-}
+      QD_ESKIZ_PASSWORD: ${QD_ESKIZ_PASSWORD:-}
+      QD_ESKIZ_SENDER: ${QD_ESKIZ_SENDER:-}
     networks: [egress]
     deploy:
       resources:

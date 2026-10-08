@@ -22,6 +22,12 @@ into a real monitoring system: there are no servers yet, so no alert has been tr
   - `qd_outbox_oldest_due_seconds{channel}`, `qd_job_last_finished_seconds{job}` and
     `qd_receipts_oldest_waiting_seconds{status="submitted"}`, read from the database when the metrics
     are read. The last is absent while no subscription receipt awaits a decision.
+  - `qd_sms_messages_last_day{status}`, read from the database in the same way: the SMS of the last 24
+    hours that were `sent` (accepted by the provider), `failed` (refused for good, or given up after a
+    day of attempts) or are `retrying` (waiting after an attempt that did not succeed). Counts only. The
+    worker has no metrics of its own; what it does shows here and in its log (`sms_sent`, `sms_rejected`,
+    `sms_retry`, with `kind` and `status`). Rules `SmsRefused` and `SmsNotGoingOut`; runbook 12, "When SMS
+    fail".
 - **Alert rules.** `alerts.yml`, written against those metrics with the thresholds of the operations
   document. Its last group, `qarz-backup`, reads host-level figures that the backup scripts write, not
   the application's `/metrics` (see the table below and `deploy/backup/README.md`).
