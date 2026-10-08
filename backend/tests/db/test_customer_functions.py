@@ -264,10 +264,10 @@ def test_only_a_person_nothing_refers_to_is_forgotten(
 
 
 def test_the_reminder_schedule_function_returns_only_shops_that_should_be_served(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+    owner: psycopg.Connection, as_worker: AppSession, shop_a: Shop, shop_b: Shop
 ) -> None:
     row = owner.execute(
-        "SELECT has_function_privilege('qd_app', 'shops_due_for_reminders(smallint)', 'EXECUTE'), "
+        "SELECT has_function_privilege('qd_worker', 'shops_due_for_reminders(smallint)', 'EXECUTE'), "
         "has_function_privilege('public', 'shops_due_for_reminders(smallint)', 'EXECUTE')"
     ).fetchone()
     assert row == (True, False)
@@ -281,7 +281,7 @@ def test_the_reminder_schedule_function_returns_only_shops_that_should_be_served
     owner.execute("UPDATE shop SET reminder_hour = 17 WHERE id = %s", (shop_b.shop_id,))  # same hour, but off
 
     def due(hour: int) -> set[uuid.UUID]:
-        with as_app(None) as app:
+        with as_worker(None) as app:
             rows = app.execute("SELECT shop_id FROM shops_due_for_reminders(%s::smallint)", (hour,)).fetchall()
         return {row[0] for row in rows} & {shop_a.shop_id, shop_b.shop_id}
 
@@ -295,11 +295,11 @@ def test_the_reminder_schedule_function_returns_only_shops_that_should_be_served
     assert due(17) == set()
 
 
-def test_the_subscription_review_function_is_for_the_application_role_and_lists_only_what_is_due(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+def test_the_subscription_review_function_is_for_the_worker_role_and_lists_only_what_is_due(
+    owner: psycopg.Connection, as_worker: AppSession, shop_a: Shop, shop_b: Shop
 ) -> None:
     row = owner.execute(
-        "SELECT has_function_privilege('qd_app', 'subscriptions_to_review(date)', 'EXECUTE'), "
+        "SELECT has_function_privilege('qd_worker', 'subscriptions_to_review(date)', 'EXECUTE'), "
         "has_function_privilege('public', 'subscriptions_to_review(date)', 'EXECUTE')"
     ).fetchone()
     assert row == (True, False)
@@ -311,7 +311,7 @@ def test_the_subscription_review_function_is_for_the_application_role_and_lists_
     )
 
     def listed(today: str) -> dict[uuid.UUID, tuple[Any, ...]]:
-        with as_app(None) as app:
+        with as_worker(None) as app:
             rows = app.execute(
                 "SELECT shop_id, state, ends_on, owner_tg IS NOT NULL FROM subscriptions_to_review(%s::date)", (today,)
             ).fetchall()

@@ -24,7 +24,8 @@ a real certificate, a real bot or a real database host. See "Not proven" at the 
 | `scripts/deploy.sh`, `rollback.sh`, `smoke.sh` | See below. `local.sh` runs the local proof; `lib.sh` is shared. |
 
 PostgreSQL and the file store are **not** in `compose.yml`. They live on the database hosts (ADR-014,
-ADR-015, ADR-020) and are reached through `QD_DATABASE_URL`, `QD_MIGRATION_URL` and `QD_S3_*`.
+ADR-015, ADR-020) and are reached through `QD_DATABASE_URL`, `QD_ADMIN_DATABASE_URL`,
+`QD_WORKER_DATABASE_URL`, `QD_MIGRATION_URL` and `QD_S3_*`.
 
 ## Prerequisites
 
@@ -59,10 +60,35 @@ ADR-015, ADR-020) and are reached through `QD_DATABASE_URL`, `QD_MIGRATION_URL` 
    `/etc/qarz/tls`, makes them readable by user 101 only (`chown 101 … && chmod 400 …`), and reloads the
    proxy (`docker compose -p qarz exec proxy nginx -s reload`). This hook is described, not written, and
    no certificate has been requested from any authority.
-3. **Database role.** The migrations create the role `qd_app` without a login, so the very first
-   `deploy.sh` runs the migrations and then stops: the worker cannot connect. Give the role its password
-   as the owner, `ALTER ROLE qd_app LOGIN PASSWORD '…'` (the one in `QD_DATABASE_URL`), and run
-   `deploy.sh` again.
+3. **Database roles.** Each part of the application connects as a role of its own, and the migrations
+   create all three without a login, so the very first `deploy.sh` runs the migrations and then stops:
+   the worker cannot connect. As the owner, give each role a password of its own, then run `deploy.sh`
+   again:
+
+   | Role | Who connects as it | Setting | Statement |
+   |---|---|---|---|
+   | `qd_app` | the API: shop members, customers, sign-in, the bot's chat | `QD_DATABASE_URL` | `ALTER ROLE qd_app LOGIN PASSWORD '…'` |
+   | `qd_admin` | the API's administrators' side, and `rotate_secrets` | `QD_ADMIN_DATABASE_URL` | `ALTER ROLE qd_admin LOGIN PASSWORD '…'` |
+   | `qd_worker` | the worker, and `measure_export` | `QD_WORKER_DATABASE_URL` | `ALTER ROLE qd_worker LOGIN PASSWORD '…'` |
+
+   Three different passwords: the roles exist so that one part cannot act as another (security review,
+   finding 11), and a shared password would undo that. `compose.yml` hands the worker only the worker's
+   connection and the API only the other two. The API refuses to start when `QD_ADMIN_TG_IDS` names
+   somebody and `QD_ADMIN_DATABASE_URL` is empty; the worker refuses to start without
+   `QD_WORKER_DATABASE_URL`.
+   The two commands run in the service that holds their connection:
+   `docker compose run --rm api python -m qarz.interface.rotate_secrets` and
+   `docker compose run --rm worker python -m qarz.interface.measure_export`.
+
+   **A database that was created before migration `0031`.** That migration creates `qd_admin` and
+   `qd_worker` and takes from `qd_app` what only they need. The release that brings it needs the two
+   new settings in the env file and the two new roles able to log in. Create them, as the owner, before
+   deploying: `CREATE ROLE qd_admin LOGIN PASSWORD '…'; CREATE ROLE qd_worker LOGIN PASSWORD '…';`
+   (plain roles, with no other attribute). The migration leaves a role that exists as it finds it and
+   grants it its rights, so one `deploy.sh` is then enough. Between the migration and the restart of
+   the worker and the API, a few seconds, the release still running has lost its administrators' side
+   and its worker: deploy it at a quiet hour. Nothing of this was done on a server; it was proven in
+   the tests and in the local stack only.
 4. **State directory.** `sudo install -d -o <deploying user> /var/lib/qarz/deploy`. The scripts keep the
    current and the previous release there.
 
@@ -97,6 +123,13 @@ Starts the previous images, worker then API then proxy. It never runs a migratio
 `alembic downgrade`: the migrations have no tested downgrade, and each is compatible with the release
 before it, so the previous code runs on the newer schema. It refuses when the images of that commit are
 not on the host. Damaged data is a point-in-time restore (runbook 3), not a roll back.
+
+One migration is an exception to "the previous code runs on the newer schema": `0031`, which splits the
+database roles. A release from before it connects every part as `qd_app`, which after `0031` may no
+longer do what the administrators' side and the worker do. To roll back across it, first run, as the
+owner, `GRANT qd_admin, qd_worker TO qd_app;`, which gives the old role back everything the old release
+used. When the newer release is deployed again, take it back: `REVOKE qd_admin, qd_worker FROM qd_app;`.
+While the grant is in place the three roles are one again.
 
 ## Logs
 

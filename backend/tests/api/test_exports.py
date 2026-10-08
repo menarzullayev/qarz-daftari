@@ -85,11 +85,11 @@ def told(owner: psycopg.Connection, shop_id: uuid.UUID) -> list[tuple[str, str]]
     ]
 
 
-def work(app_database_url: str, file_root: Path, *, store: Any = "files", now: Any = None, limit: int = 3) -> int:
+def work(worker_database_url: str, file_root: Path, *, store: Any = "files", now: Any = None, limit: int = 3) -> int:
     """One pass of the worker over the waiting exports."""
 
     async def run() -> int:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             kept = FilesystemFileStore(file_root) if store == "files" else store
             return await ExportService(database, FileService(database, kept), now).run_pending(limit)
@@ -115,7 +115,7 @@ def column(rows: list[list[Any]], index: int) -> list[Any]:
 
 
 def test_an_owner_asks_the_worker_writes_and_the_file_comes_through_a_signed_link(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     asked = ask(client, world)
     assert asked.status_code == 201, asked.text
@@ -140,7 +140,7 @@ def test_an_owner_asks_the_worker_writes_and_the_file_comes_through_a_signed_lin
     assert (early.status_code, early.json()["error"]["code"]) == (409, "EXPORT_NOT_READY")
     assert early.json()["error"]["fields"] == {"status": "queued"}
 
-    assert work(app_database_url, file_root) == 1
+    assert work(worker_database_url, file_root) == 1
     assert jobs(owner, world.shop_a) == [("done", None, 1, True, 1)]
     ((file_id, mime, delete_after),) = export_files(owner, world.shop_a)
     assert mime == XLSX
@@ -173,11 +173,11 @@ def test_an_owner_asks_the_worker_writes_and_the_file_comes_through_a_signed_lin
         "Mahsulotlar",
     ]
     # A second pass finds nothing to do.
-    assert work(app_database_url, file_root) == 0
+    assert work(worker_database_url, file_root) == 0
 
 
 def test_the_workbook_holds_the_customers_the_whole_ledger_the_promise_history_and_the_goods(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     owner.execute(
         "UPDATE customer SET phone = '+998901234567', credit_limit = 900000 WHERE id = %s", (world.customer_a,)
@@ -200,7 +200,7 @@ def test_the_workbook_holds_the_customers_the_whole_ledger_the_promise_history_a
     assert record(client, world, world.settled_customer_a, "payment", 7000).status_code == 201
 
     job = ask(client, world, world.manager_a).json()["id"]
-    assert work(app_database_url, file_root) == 1
+    assert work(worker_database_url, file_root) == 1
     book = workbook(client, world, job)
 
     customers = book["Mijozlar"]
@@ -258,7 +258,7 @@ def test_the_workbook_holds_the_customers_the_whole_ledger_the_promise_history_a
 
 
 def test_an_export_never_carries_another_shops_rows_or_anyones_telegram_identity(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     stranger = seed_customer(owner, world.shop_b, "Begona Maxfiy")
     owner.execute("UPDATE customer SET phone = '+998977777777' WHERE id = %s", (stranger,))
@@ -270,7 +270,7 @@ def test_an_export_never_carries_another_shops_rows_or_anyones_telegram_identity
     job = ask(client, world).json()["id"]
     asked_b = client.post(f"/api/v1/shops/{world.shop_b}/exports", headers={**as_user(world.owner_b), **key()})
     assert asked_b.status_code == 201
-    assert work(app_database_url, file_root) == 2
+    assert work(worker_database_url, file_root) == 2
 
     content = client.get(link(client, world, job).json()["url"]).content
     everything = b"".join(xlsx_reader.parts(content).values()).decode()
@@ -293,7 +293,7 @@ def test_an_export_never_carries_another_shops_rows_or_anyones_telegram_identity
 
 
 def test_a_customer_whose_data_was_removed_appears_only_as_the_label_the_shop_sees(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     owner.execute("UPDATE customer SET phone = '+998935554433' WHERE id = %s", (world.customer_a,))
     assert record(client, world, world.customer_a, "payment", 50000).status_code == 201
@@ -303,7 +303,7 @@ def test_a_customer_whose_data_was_removed_appears_only_as_the_label_the_shop_se
     assert removed.json()["removed"] is True
 
     job = ask(client, world).json()["id"]
-    work(app_database_url, file_root)
+    work(worker_database_url, file_root)
     book = workbook(client, world, job)
     label = f"Anonim {world.customer_a.hex[:6].upper()}"
     row = next(row for row in book["Mijozlar"][1:] if row[6] == str(world.customer_a))
@@ -314,12 +314,12 @@ def test_a_customer_whose_data_was_removed_appears_only_as_the_label_the_shop_se
 
 
 def test_the_workbook_is_in_the_shops_language(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     owner.execute("UPDATE shop SET lang = 'ru' WHERE id = %s", (world.shop_a,))
     owner.execute("UPDATE app_user SET lang = 'ru' WHERE id = %s", (world.owner_a,))
     job = ask(client, world).json()["id"]
-    work(app_database_url, file_root)
+    work(worker_database_url, file_root)
     book = workbook(client, world, job)
     assert list(book) == ["Отчёт", "Клиенты", "Книга", "История сроков", "Товары"]
     assert book["Книга"][1][2] == "Продажа в долг" and book["Клиенты"][0][0] == "Клиент"
@@ -330,7 +330,7 @@ def test_the_ledger_is_read_a_page_at_a_time_and_nothing_is_lost_or_doubled(
     client: TestClient,
     world: World,
     owner: psycopg.Connection,
-    app_database_url: str,
+    worker_database_url: str,
     file_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -355,7 +355,7 @@ def test_the_ledger_is_read_a_page_at_a_time_and_nothing_is_lost_or_doubled(
     for n in range(7):
         seed_customer(owner, world.shop_a, f"Mijoz {n}")
     job = ask(client, world).json()["id"]
-    work(app_database_url, file_root)
+    work(worker_database_url, file_root)
     book = workbook(client, world, job)
     stored = owner.execute(
         "SELECT id FROM ledger_entry WHERE shop_id = %s ORDER BY created_at, id", (world.shop_a,)
@@ -369,7 +369,7 @@ def test_the_ledger_is_read_a_page_at_a_time_and_nothing_is_lost_or_doubled(
 
 
 def test_the_file_is_the_ledger_as_it_stood_when_the_worker_took_the_job(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     seed_entry(owner, world, world.customer_a, 2, "credit", 8000, promised=today(), days_ago=2)
     earlier = seed_entry(owner, world, world.customer_a, 3, "payment", 5000, days_ago=1)
@@ -378,7 +378,7 @@ def test_the_file_is_the_ledger_as_it_stood_when_the_worker_took_the_job(
     # Recorded after that instant: the seeded sale of 50 000, a new sale, and the reversal of the payment.
     assert record(client, world, world.customer_a, "credit", 9999).status_code == 201
     assert reverse(client, world, earlier).status_code == 201
-    work(app_database_url, file_root, now=lambda: an_hour_ago)
+    work(worker_database_url, file_root, now=lambda: an_hour_ago)
     book = workbook(client, world, job)
     assert column(book["Daftar"], 3) == [8000, 5000]
     assert column(book["Daftar"], 7) == ["Yo'q", "Yo'q"], "not shown as reversed by a reversal that is not in the file"
@@ -390,7 +390,7 @@ def test_the_file_is_the_ledger_as_it_stood_when_the_worker_took_the_job(
 
 
 def test_one_export_at_a_time_per_shop(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     first = ask(client, world)
     again = ask(client, world, world.manager_a)
@@ -410,7 +410,7 @@ def test_one_export_at_a_time_per_shop(
     owner.execute(
         "UPDATE export_job SET status = 'queued', started_at = NULL, attempts = 0 WHERE shop_id = %s", (world.shop_a,)
     )
-    work(app_database_url, file_root)
+    work(worker_database_url, file_root)
     assert ask(client, world).status_code == 201
     assert first.json()["id"] != listed(client, world)[0]["id"]
     with pytest.raises(psycopg.errors.UniqueViolation):
@@ -456,12 +456,12 @@ def test_a_repeated_request_makes_one_job(client: TestClient, world: World, owne
 
 
 def test_in_a_suspended_shop_only_the_owner_exports_and_in_a_limited_one_managers_too(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     _subscription(owner, world, "state = 'limited'")
     limited = ask(client, world, world.manager_a)
     assert limited.status_code == 201, limited.text
-    work(app_database_url, file_root)
+    work(worker_database_url, file_root)
 
     _subscription(owner, world, "state = 'suspended'")
     for response in (ask(client, world, world.manager_a), link(client, world, limited.json()["id"], world.manager_a)):
@@ -473,13 +473,13 @@ def test_in_a_suspended_shop_only_the_owner_exports_and_in_a_limited_one_manager
 
     asked = ask(client, world, world.owner_a)
     assert asked.status_code == 201, asked.text
-    assert work(app_database_url, file_root) == 1, "the worker writes it although the shop is suspended"
+    assert work(worker_database_url, file_root) == 1, "the worker writes it although the shop is suspended"
     assert "Hisobot" in workbook(client, world, asked.json()["id"])
     assert len(listed(client, world, world.owner_a)) == 2
 
 
 def test_a_shop_waiting_to_be_deleted_can_still_be_exported(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     owner.execute(
         "UPDATE shop SET status = 'deletion_pending', deletion_due = now() + interval '29 days' WHERE id = %s",
@@ -487,15 +487,15 @@ def test_a_shop_waiting_to_be_deleted_can_still_be_exported(
     )
     asked = ask(client, world)
     assert asked.status_code == 201, asked.text
-    assert work(app_database_url, file_root) == 1
+    assert work(worker_database_url, file_root) == 1
     assert workbook(client, world, asked.json()["id"])["Mijozlar"][1][0] == "Ali"
 
 
 def test_only_a_manager_or_owner_of_the_shop_gets_a_link(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     job = ask(client, world).json()["id"]
-    work(app_database_url, file_root)
+    work(worker_database_url, file_root)
     assert link(client, world, job, world.manager_a).status_code == 200
     assert link(client, world, job, world.seller_a).status_code == 403
     for user in (world.owner_b, world.customer_of_a, world.stranger, world.suspended_a):
@@ -509,7 +509,7 @@ def test_only_a_manager_or_owner_of_the_shop_gets_a_link(
 
 
 def test_two_workers_at_once_write_each_job_once(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     ask(client, world)
     assert (
@@ -518,7 +518,7 @@ def test_two_workers_at_once_write_each_job_once(
     )
 
     async def both() -> list[int]:
-        first, second = Database(app_database_url), Database(app_database_url)
+        first, second = Database(worker_database_url), Database(worker_database_url)
         try:
             store = FilesystemFileStore(file_root)
             return list(
@@ -539,7 +539,7 @@ def test_two_workers_at_once_write_each_job_once(
 
 
 def test_a_job_whose_worker_died_is_taken_again_and_given_up_after_three_starts(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     ask(client, world)
 
@@ -550,11 +550,11 @@ def test_a_job_whose_worker_died_is_taken_again_and_given_up_after_three_starts(
         )
 
     running(14, 1)
-    assert work(app_database_url, file_root) == 0, "its worker may still be writing"
+    assert work(worker_database_url, file_root) == 0, "its worker may still be writing"
     assert jobs(owner, world.shop_a) == [("running", None, 1, False, None)]
 
     running(16, 2)
-    assert work(app_database_url, file_root) == 1
+    assert work(worker_database_url, file_root) == 1
     assert jobs(owner, world.shop_a) == [("done", None, 3, True, 1)], "the third start is still made"
 
     assert ask(client, world).status_code == 201
@@ -563,7 +563,7 @@ def test_a_job_whose_worker_died_is_taken_again_and_given_up_after_three_starts(
         "WHERE shop_id = %s AND status = 'queued'",
         (datetime.now(UTC) - timedelta(minutes=16), world.shop_a),
     )
-    assert work(app_database_url, file_root) == 1
+    assert work(worker_database_url, file_root) == 1
     assert jobs(owner, world.shop_a)[1] == ("failed", "interrupted", 4, False, None)
     assert told(owner, world.shop_a)[-1][1] == say("uz", "export_failed", shop="Shop A")
     assert len(stored_objects(file_root)) == 1
@@ -589,13 +589,13 @@ def test_a_failed_job_says_what_kind_of_failure_it_was_and_nothing_else(
     client: TestClient,
     world: World,
     owner: psycopg.Connection,
-    app_database_url: str,
+    worker_database_url: str,
     file_root: Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     first = ask(client, world).json()["id"]
-    assert work(app_database_url, file_root, store=BrokenStore(FilesystemFileStore(file_root))) == 1
+    assert work(worker_database_url, file_root, store=BrokenStore(FilesystemFileStore(file_root))) == 1
     assert jobs(owner, world.shop_a) == [("failed", "file_store", 1, False, None)]
     assert export_files(owner, world.shop_a) == [] and stored_objects(file_root) == []
     text = say("uz", "export_failed", shop="Shop A")
@@ -615,7 +615,7 @@ def test_a_failed_job_says_what_kind_of_failure_it_was_and_nothing_else(
         monkeypatch.setattr(ExportService, "_write", failure)
         ask(client, world)
         with caplog.at_level(logging.ERROR, logger="qarz.exports"):
-            assert work(app_database_url, file_root) == 1
+            assert work(worker_database_url, file_root) == 1
         assert jobs(owner, world.shop_a)[-1] == ("failed", kind, 1, False, None)
     everything = (
         caplog.text + str(owner.execute("SELECT * FROM export_job").fetchall()) + str(told(owner, world.shop_a))
@@ -629,7 +629,7 @@ def test_a_worker_whose_job_was_closed_meanwhile_keeps_no_file_and_tells_nobody_
     client: TestClient,
     world: World,
     owner: psycopg.Connection,
-    app_database_url: str,
+    worker_database_url: str,
     file_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -645,20 +645,20 @@ def test_a_worker_whose_job_was_closed_meanwhile_keeps_no_file_and_tells_nobody_
         return staged
 
     monkeypatch.setattr(FileService, "stage", stage_while_another_worker_gives_up)
-    assert work(app_database_url, file_root) == 1
+    assert work(worker_database_url, file_root) == 1
     assert jobs(owner, world.shop_a) == [("failed", "interrupted", 1, False, None)]
     assert export_files(owner, world.shop_a) == [] and stored_objects(file_root) == []
     assert told(owner, world.shop_a) == []
 
 
 def test_the_scheduler_writes_waiting_exports_at_every_tick(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     moment = datetime(2084, 4, 4, 21, 30, tzinfo=UTC)  # night in Tashkent: no other job has work
 
     def tick() -> None:
         async def run() -> None:
-            database = Database(app_database_url)
+            database = Database(worker_database_url)
             try:
                 clock = lambda: moment  # noqa: E731
                 service = ExportService(database, FileService(database, FilesystemFileStore(file_root)), clock)
@@ -680,16 +680,16 @@ def test_the_scheduler_writes_waiting_exports_at_every_tick(
 
 
 def test_the_workbook_is_deleted_after_seven_days_by_the_hourly_cleanup(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     job = ask(client, world).json()["id"]
-    work(app_database_url, file_root)
+    work(worker_database_url, file_root)
     url = link(client, world, job).json()["url"]
     ((file_id, _, _),) = export_files(owner, world.shop_a)
 
     def cleanup(after: timedelta) -> tuple[int, int]:
         async def run() -> tuple[int, int]:
-            database = Database(app_database_url)
+            database = Database(worker_database_url)
             try:
                 files = FileService(database, FilesystemFileStore(file_root))
                 return await PaymentNoticeService(database, files, lambda: datetime.now(UTC) + after).run_hourly()
@@ -719,14 +719,14 @@ def test_the_workbook_is_deleted_after_seven_days_by_the_hourly_cleanup(
 
 
 def test_erasing_a_shop_takes_its_export_jobs_and_workbooks_with_it(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     ask(client, world)
     assert (
         client.post(f"/api/v1/shops/{world.shop_b}/exports", headers={**as_user(world.owner_b), **key()}).status_code
         == 201
     )
-    work(app_database_url, file_root)
+    work(worker_database_url, file_root)
     assert len(stored_objects(file_root)) == 2
     owner.execute(
         "UPDATE shop SET status = 'deletion_pending', deletion_due = now() - interval '1 second' WHERE id = %s",
@@ -734,7 +734,7 @@ def test_erasing_a_shop_takes_its_export_jobs_and_workbooks_with_it(
     )
 
     async def erase() -> None:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             await ShopDeletionService(database, files=FilesystemFileStore(file_root)).erase_due()
         finally:
@@ -750,13 +750,13 @@ def test_a_workbook_larger_than_the_store_would_hand_back_is_not_kept(
     client: TestClient,
     world: World,
     owner: psycopg.Connection,
-    app_database_url: str,
+    worker_database_url: str,
     file_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ask(client, world)
     monkeypatch.setattr(exports_module, "MAX_EXPORT_BYTES", 1000)
-    assert work(app_database_url, file_root) == 1
+    assert work(worker_database_url, file_root) == 1
     assert jobs(owner, world.shop_a) == [("failed", "file_store", 1, False, None)]
     assert stored_objects(file_root) == [] and export_files(owner, world.shop_a) == []
     # At exactly the limit it is kept.
@@ -770,15 +770,15 @@ def test_a_workbook_larger_than_the_store_would_hand_back_is_not_kept(
 
     monkeypatch.setattr(FileService, "stage", measure)
     monkeypatch.setattr(exports_module, "MAX_EXPORT_BYTES", 10**9)
-    work(app_database_url, file_root)
+    work(worker_database_url, file_root)
     ask(client, world)
     monkeypatch.setattr(exports_module, "MAX_EXPORT_BYTES", probe[0])
-    work(app_database_url, file_root)
+    work(worker_database_url, file_root)
     assert [row[0] for row in jobs(owner, world.shop_a)] == ["failed", "done", "done"]
 
 
 def test_a_finished_export_is_measured_by_its_size_and_carries_no_identity(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     def measured() -> list[tuple[Any, ...]]:
         return owner.execute(
@@ -788,21 +788,21 @@ def test_a_finished_export_is_measured_by_its_size_and_carries_no_identity(
     before = measured()
     job = ask(client, world).json()["id"]
     assert measured() == before, "asking is recorded in the shop's activity log, not measured"
-    work(app_database_url, file_root)
+    work(worker_database_url, file_root)
     assert measured()[len(before) :] == [("export_done", 1)]
     refs = owner.execute("SELECT shop_ref, entry_ref FROM measure.event WHERE kind = 'export_done'").fetchall()
     assert all(str(world.shop_a) != str(shop_ref) and job != str(entry_ref) for shop_ref, entry_ref in refs)
     ask(client, world)
-    work(app_database_url, file_root, store=BrokenStore(FilesystemFileStore(file_root)))
+    work(worker_database_url, file_root, store=BrokenStore(FilesystemFileStore(file_root)))
     assert measured()[len(before) + 1 :] == [("export_failed", 0)]
 
 
 def test_someone_who_is_no_longer_staff_is_not_told_about_the_export_they_asked_for(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     job = ask(client, world, world.manager_a).json()["id"]
     owner.execute("UPDATE membership SET status = 'suspended' WHERE id = %s", (world.manager_a_membership,))
-    assert work(app_database_url, file_root) == 1
+    assert work(worker_database_url, file_root) == 1
     assert jobs(owner, world.shop_a) == [("done", None, 1, True, 1)], "the work is done all the same"
     assert told(owner, world.shop_a) == []
     assert link(client, world, job, world.manager_a).status_code == 404

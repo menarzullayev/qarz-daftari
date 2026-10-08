@@ -29,18 +29,22 @@ def build(settings: Settings | None = None) -> FastAPI:
     # No allow-list or no key for the second-factor secrets: nobody can be an administrator, so that side
     # of the API does not exist. A malformed list or key refuses to start instead.
     allowed = settings.admin_allow_list()
-    admin = (
-        AdminAccess(
-            database, allowed_tg_ids=allowed, cipher=SecretBox(settings.secrets_key, settings.secrets_key_previous)
-        )
-        if allowed and settings.secrets_key
-        else None
-    )
+    admin: AdminAccess | None = None
+    admin_database: Database | None = None
+    if allowed and settings.secrets_key:
+        cipher = SecretBox(settings.secrets_key, settings.secrets_key_previous)
+        # The administrators' side connects as its own role (qd_admin). The ordinary role's rights no
+        # longer reach the administrators' tables, so without this connection that side cannot be served.
+        if not settings.admin_database_url:
+            raise ValueError("QD_ADMIN_DATABASE_URL must be set when QD_ADMIN_TG_IDS is")
+        admin_database = Database(settings.admin_database_url, statement_timeout_ms=settings.statement_timeout_ms)
+        admin = AdminAccess(admin_database, allowed_tg_ids=allowed, cipher=cipher)
     return create_app(
         database.reachable,
         database,
         auth=auth,
         admin=admin,
+        admin_storage=admin_database,
         webhook_secret=settings.webhook_secret or None,
         # A store that is named but misconfigured stops the start; none at all only refuses receipts.
         file_store=build_file_store(settings, max_object_bytes=MAX_EXPORT_BYTES),

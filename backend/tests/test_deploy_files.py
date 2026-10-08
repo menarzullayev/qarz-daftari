@@ -19,7 +19,14 @@ PRODUCTION = REPO / "deploy" / "production"
 BACKEND = REPO / "backend"
 
 OWNER_URL = "QD_MIGRATION_URL"
-WORKER_ONLY = {"QD_WORKER_STATEMENT_TIMEOUT_MS"}
+WORKER_ONLY = {"QD_WORKER_STATEMENT_TIMEOUT_MS", "QD_WORKER_DATABASE_URL"}
+# The connection of each part's own database role (migration 0031): which service may hold which.
+CONNECTIONS = {
+    "QD_DATABASE_URL": {"api"},
+    "QD_ADMIN_DATABASE_URL": {"api"},
+    "QD_WORKER_DATABASE_URL": {"worker"},
+    OWNER_URL: {"migrate"},
+}
 
 
 def setting_names() -> set[str]:
@@ -92,10 +99,37 @@ def test_every_setting_reaches_the_service_that_reads_it(compose: str) -> None:
     api, worker = handed(compose, "api"), handed(compose, "worker")
     assert setting_names() - WORKER_ONLY - api == set()
     assert WORKER_ONLY - worker == set()
-    # The worker's connection, bot and file store are the API's.
+    # The worker's bot and file store are the API's. Its database connection is not: see below.
     shared = handed(compose, "worker") - WORKER_ONLY
     assert shared <= api
-    assert {"QD_DATABASE_URL", "QD_BOT_TOKEN", "QD_FILE_STORE", "QD_S3_SECRET_KEY"} <= shared
+    assert {"QD_BOT_TOKEN", "QD_FILE_STORE", "QD_S3_SECRET_KEY"} <= shared
+
+
+def holders(compose_text: str) -> dict[str, set[str]]:
+    """For each database connection, the services that are handed it."""
+    services = ("api", "worker", "migrate", "proxy")
+    return {name: {service for service in services if name in handed(compose_text, service)} for name in CONNECTIONS}
+
+
+def test_each_part_is_handed_the_connection_of_its_own_role_and_no_other(compose: str) -> None:
+    """The worker never holds the ordinary or the administrators' connection, nor the API the worker's."""
+    assert holders(compose) == CONNECTIONS
+    assert {name for name in setting_names() if name.endswith("DATABASE_URL")} == set(CONNECTIONS) - {OWNER_URL}
+
+
+def test_a_connection_handed_to_the_wrong_service_is_reported(compose: str) -> None:
+    """The counterpart: the old arrangement, one connection shared by the API and the worker, fails."""
+    shared_again = compose.replace(
+        "  QD_BOT_TOKEN: ${QD_BOT_TOKEN:-}\n", "  QD_BOT_TOKEN: ${QD_BOT_TOKEN:-}\n  QD_DATABASE_URL: x\n", 1
+    )
+    assert shared_again != compose
+    assert holders(shared_again)["QD_DATABASE_URL"] == {"api", "worker"}
+    to_the_api = compose.replace(
+        "      QD_WEBHOOK_SECRET: ${QD_WEBHOOK_SECRET:-}\n",
+        "      QD_WEBHOOK_SECRET: ${QD_WEBHOOK_SECRET:-}\n      QD_WORKER_DATABASE_URL: x\n",
+        1,
+    )
+    assert holders(to_the_api)["QD_WORKER_DATABASE_URL"] == {"api", "worker"}
 
 
 def test_a_setting_not_handed_to_the_api_is_reported(compose: str) -> None:

@@ -36,7 +36,11 @@ SCHEDULE_EVERY_SECONDS = 30.0
 async def run(settings: Settings, stop: asyncio.Event) -> None:
     if not settings.bot_token:
         raise RuntimeError("QD_BOT_TOKEN is not set")
-    database = Database(settings.database_url, statement_timeout_ms=settings.worker_statement_timeout_ms)
+    if not settings.worker_database_url:
+        raise RuntimeError("QD_WORKER_DATABASE_URL is not set")
+    # The worker's own role (qd_worker): it holds the outbox and the scheduled jobs, and nothing of the
+    # administrators' side or of sign-in.
+    database = Database(settings.worker_database_url, statement_timeout_ms=settings.worker_statement_timeout_ms)
     bot = Bot(settings.bot_token)
     # No SMS provider is chosen yet: the SMS path exists, is switched off, and refuses to send.
     dispatcher = Dispatcher(database, ChannelSender(telegram=TelegramSender(bot), sms=NoSmsProvider()))

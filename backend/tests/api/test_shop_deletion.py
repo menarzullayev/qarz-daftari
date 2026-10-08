@@ -133,9 +133,9 @@ def test_the_owner_cancels_and_nothing_is_lost(client: TestClient, world: World,
 # --- erasure ---------------------------------------------------------------------------------------------
 
 
-def run_erasure(app_database_url: str) -> int:
+def run_erasure(worker_database_url: str) -> int:
     async def scenario() -> int:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             return await ShopDeletionService(database).erase_due()
         finally:
@@ -145,16 +145,16 @@ def run_erasure(app_database_url: str) -> int:
 
 
 def test_a_shop_is_erased_only_after_its_waiting_period(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str
 ) -> None:
     ask(client, world)
-    run_erasure(app_database_url)
+    run_erasure(worker_database_url)
     assert shop_row(owner, world)[0] == "deletion_pending", "the waiting period is not over"
     assert owner.execute("SELECT count(*) FROM ledger_entry WHERE shop_id = %s", (world.shop_a,)).fetchone() == (1,)
 
     owner.execute("UPDATE shop SET deletion_due = now() - interval '1 second' WHERE id = %s", (world.shop_a,))
     owner_tg = owner.execute("SELECT tg_id FROM app_user WHERE id = %s", (world.owner_a,)).fetchone()
-    run_erasure(app_database_url)
+    run_erasure(worker_database_url)
 
     assert shop_row(owner, world)[:2] == ("erased", "erased")
     for table in ("ledger_entry", "customer", "customer_link", "membership", "promise", "activity", "subscription"):
@@ -176,7 +176,7 @@ def test_a_shop_is_erased_only_after_its_waiting_period(
         assert client.get("/api/v1/me/shops", headers=as_user(user)).json()["items"] == []
     assert client.get("/api/v1/me/accounts", headers=as_user(world.customer_of_a)).json() == {"items": []}
     # A second run finds nothing to do.
-    run_erasure(app_database_url)
+    run_erasure(worker_database_url)
     again = owner.execute(
         "SELECT count(*) FROM outbox_message WHERE dedupe_key = %s", (f"shop:erased:{world.shop_a}",)
     ).fetchone()
@@ -185,7 +185,7 @@ def test_a_shop_is_erased_only_after_its_waiting_period(
 
 
 def test_the_worker_erases_due_shops_once_an_hour(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str
 ) -> None:
     ask(client, world)
     owner.execute("UPDATE shop SET deletion_due = now() - interval '1 second' WHERE id = %s", (world.shop_a,))
@@ -199,7 +199,7 @@ def test_the_worker_erases_due_shops_once_an_hour(
     moment = datetime(2070, 5, 5, 6, 30, tzinfo=UTC)
 
     async def scenario() -> None:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             for minutes in (0, 5, 61):
                 clock = lambda minutes=minutes: moment + timedelta(minutes=minutes)  # noqa: E731

@@ -16,7 +16,11 @@ from qarz.infrastructure.settings import Settings
 
 
 async def run(weeks: int, compute: date | None) -> str:
-    database = Database(Settings().database_url)
+    settings = Settings()
+    if not settings.worker_database_url:
+        raise RuntimeError("QD_WORKER_DATABASE_URL is not set")
+    # The weekly figures are the worker's: this command connects as the worker's role.
+    database = Database(settings.worker_database_url)
     try:
         service = MeasurementService(database)
         if compute is not None:

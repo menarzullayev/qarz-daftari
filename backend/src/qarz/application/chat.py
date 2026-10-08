@@ -229,6 +229,7 @@ class ChatService:
         now: Callable[[], datetime] | None = None,
         files: FileService | None = None,
         admin_tg_ids: Container[int] = (),
+        admin_storage: Storage | None = None,
     ) -> None:
         self._storage = storage
         self._shops = shops
@@ -241,9 +242,13 @@ class ChatService:
         self._receipts = SubscriptionReceiptService(
             storage, files or FileService(storage, None), now, admin_tg_ids=admin_tg_ids
         )
-        # The allow-list of the administrator's side, and the same decisions the panel makes.
+        # The allow-list of the administrator's side, and the same decisions the panel makes. They are
+        # made through the administrators' own database role, like the panel's: the ordinary role this
+        # chat otherwise works with cannot read an administrator's account or decide a receipt. Without
+        # that storage nobody is an administrator here, so the fallback below is never used.
         self._reviewers = admin_tg_ids
-        self._admin_receipts = AdminReceiptService(storage, files or FileService(storage, None), now)
+        self._admin_storage = admin_storage
+        self._admin_receipts = AdminReceiptService(admin_storage or storage, files or FileService(storage, None), now)
         # The decisions of the review group's own Telegram administrators (DEC-064).
         self._group_receipts = GroupReceiptService(now)
         self._date_requests = DateRequestService(storage, now)
@@ -1023,20 +1028,24 @@ class ChatService:
         group = platform_settings.effective(REVIEW_GROUP, await session.platform_setting(REVIEW_GROUP))
         return isinstance(group, int) and not isinstance(group, bool) and group == chat_id
 
-    async def _reviewer(self, session: PlatformSession, incoming: Incoming) -> bool | None:
+    async def _reviewer(self, incoming: Incoming) -> bool | None:
         """Whether the person may decide receipts here (ADR-017).
 
         True: on the allow-list, with an active and confirmed administrator account, and holding an admin
         session that is still valid, which is the proof that they passed the second factor within its
         lifetime. False: an administrator who lacks only that. None: anyone else, to whom these buttons
         are no buttons at all.
+
+        The account and the session are read through the administrators' database role, and only for
+        someone on the allow-list: the role the rest of the chat uses cannot read either table.
         """
-        if incoming.chat_id not in self._reviewers:
+        if self._admin_storage is None or incoming.chat_id not in self._reviewers:
             return None
-        account = await session.admin_account(incoming.user_id, for_update=False)
-        if account is None or account.status != "active":
-            return None
-        return account.confirmed and await session.admin_has_live_session(incoming.user_id, self._now())
+        async with self._admin_storage.platform() as admin_session:
+            account = await admin_session.admin_account(incoming.user_id, for_update=False)
+            if account is None or account.status != "active":
+                return None
+            return account.confirmed and await admin_session.admin_has_live_session(incoming.user_id, self._now())
 
     async def awaited_group_reason(self, session: PlatformSession, user_id: UUID) -> int | None:
         """The review group in which this person pressed "reject" and has not yet written the reason.
@@ -1075,7 +1084,7 @@ class ChatService:
     ) -> None:
         lang = incoming.lang
         receipt_id = _uuid(receipt_hex)
-        allowed = await self._reviewer(session, incoming)
+        allowed = await self._reviewer(incoming)
         if (
             receipt_id is not None
             and allowed is not True
@@ -1192,7 +1201,7 @@ class ChatService:
         """An administrator's next message after pressing "reject" is the reason told to the owner."""
         lang = incoming.lang
         receipt_id = _uuid(str(payload.get("receipt", "")))
-        allowed = await self._reviewer(session, incoming)
+        allowed = await self._reviewer(incoming)
         pressed_in = self._group_of(payload)
         if (
             receipt_id is not None

@@ -49,9 +49,9 @@ def add_event(owner: psycopg.Connection, at: datetime, kind: str, amount: int, *
     )
 
 
-def compute(app_database_url: str, week_start: date) -> dict[str, float | None]:
+def compute(worker_database_url: str, week_start: date) -> dict[str, float | None]:
     async def scenario() -> dict[str, float | None]:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             return await MeasurementService(database).compute_week(week_start)
         finally:
@@ -169,7 +169,7 @@ def test_a_week_runs_from_monday_to_monday_in_tashkent() -> None:
 
 
 def test_the_weekly_figures_are_totals_of_that_week_only(
-    owner: psycopg.Connection, app_database_url: str, week: date
+    owner: psycopg.Connection, worker_database_url: str, week: date
 ) -> None:
     start, end = week_bounds(week)
     shop_one, shop_two = uuid.uuid4(), uuid.uuid4()
@@ -189,7 +189,7 @@ def test_the_weekly_figures_are_totals_of_that_week_only(
     add_event(owner, start - timedelta(seconds=1), "credit", 999_000, shop=uuid.uuid4())
     add_event(owner, end, "credit", 999_000, shop=uuid.uuid4())
 
-    assert compute(app_database_url, week) == {
+    assert compute(worker_database_url, week) == {
         "active_shops": 2,
         "credit_count": 4,
         "credit_sum": 200_000,
@@ -208,7 +208,7 @@ def test_the_weekly_figures_are_totals_of_that_week_only(
 
     # Computing again replaces the figures rather than adding to them.
     add_event(owner, inside, "payment", 20_000, shop=shop_one)
-    assert compute(app_database_url, week)["payment_sum"] == 110_000
+    assert compute(worker_database_url, week)["payment_sum"] == 110_000
     again = owner.execute(
         "SELECT value FROM measure.weekly WHERE week_start = %s AND metric = 'payment_sum'", (week,)
     ).fetchone()
@@ -216,21 +216,21 @@ def test_the_weekly_figures_are_totals_of_that_week_only(
     assert owner.execute("SELECT count(*) FROM measure.weekly WHERE week_start = %s", (week,)).fetchone() == (12,)
 
 
-def test_an_empty_week_has_zeros_and_no_shares(owner: psycopg.Connection, app_database_url: str, week: date) -> None:
-    figures = compute(app_database_url, week)
+def test_an_empty_week_has_zeros_and_no_shares(owner: psycopg.Connection, worker_database_url: str, week: date) -> None:
+    figures = compute(worker_database_url, week)
     assert figures["active_shops"] == 0 and figures["credit_sum"] == 0
     assert figures["dispute_rate"] is None, "no sales: a rate would be a guess"
     assert figures["in_time_share"] is None
     assert figures["median_credit_handle_ms"] is None
 
 
-def test_the_export_is_csv_of_totals(owner: psycopg.Connection, app_database_url: str, week: date) -> None:
+def test_the_export_is_csv_of_totals(owner: psycopg.Connection, worker_database_url: str, week: date) -> None:
     start, _ = week_bounds(week)
     add_event(owner, start, "credit", 45_000, handle_ms=30)
-    compute(app_database_url, week)
+    compute(worker_database_url, week)
 
     async def scenario() -> str:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             return await MeasurementService(database).export_csv(weeks=1)
         finally:
@@ -245,7 +245,7 @@ def test_the_export_is_csv_of_totals(owner: psycopg.Connection, app_database_url
 
 
 def test_the_worker_computes_the_finished_week_once(
-    owner: psycopg.Connection, app_database_url: str, week: date
+    owner: psycopg.Connection, worker_database_url: str, week: date
 ) -> None:
     start, _ = week_bounds(week)
     add_event(owner, start + timedelta(hours=1), "credit", 45_000)
@@ -260,7 +260,7 @@ def test_the_worker_computes_the_finished_week_once(
     tuesday = week + timedelta(days=8)
 
     async def scenario() -> None:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             for hour, minute in ((8, 0), (9, 30), (15, 0)):
                 moment = datetime.combine(tuesday, time(hour, minute), tzinfo=TASHKENT)

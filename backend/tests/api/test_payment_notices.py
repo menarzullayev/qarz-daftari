@@ -170,12 +170,12 @@ def sent_to_staff(owner: psycopg.Connection, shop_id: uuid.UUID) -> list[tuple[s
 
 
 def with_services(
-    app_database_url: str, file_root: Path, action: Callable[[PaymentNoticeService, FileService], Awaitable[Any]]
+    worker_database_url: str, file_root: Path, action: Callable[[PaymentNoticeService, FileService], Awaitable[Any]]
 ) -> Any:
     """Call the functions the worker will call, on services wired as the application wires them."""
 
     async def run() -> Any:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             file_service = FileService(database, FilesystemFileStore(file_root))
             return await action(PaymentNoticeService(database, file_service), file_service)
@@ -952,7 +952,7 @@ def test_a_stale_notice_does_not_count_against_the_limit_and_is_marked_when_the_
 
 
 def test_the_hourly_job_can_mark_a_shops_stale_notices(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     file_id = uuid.uuid4()
     owner.execute(
@@ -966,15 +966,15 @@ def test_the_hourly_job_can_mark_a_shops_stale_notices(
     stale_other = seed_notice(owner, world, 100, days_ago=40, customer=world.settled_customer_a)
     fresh = seed_notice(owner, world, 2000, days_ago=13.99)
 
-    marked = with_services(app_database_url, file_root, lambda service, _: service.expire_due(world.shop_a))
+    marked = with_services(worker_database_url, file_root, lambda service, _: service.expire_due(world.shop_a))
     assert marked == 2
     statuses = dict(
         owner.execute("SELECT id, status FROM payment_notice WHERE shop_id = %s", (world.shop_a,)).fetchall()
     )
     assert statuses == {stale: "expired", stale_other: "expired", fresh: "sent", uuid.UUID(decided): "declined"}
     assert about(files(owner, world.shop_a)[0][6], datetime.now(UTC) + timedelta(days=90))
-    assert with_services(app_database_url, file_root, lambda service, _: service.expire_due(world.shop_a)) == 0
-    assert with_services(app_database_url, file_root, lambda service, _: service.expire_due(world.shop_b)) == 0
+    assert with_services(worker_database_url, file_root, lambda service, _: service.expire_due(world.shop_a)) == 0
+    assert with_services(worker_database_url, file_root, lambda service, _: service.expire_due(world.shop_b)) == 0
 
 
 # --- subscription state (BR-29, BR-30) -----------------------------------------------------------------
@@ -1012,7 +1012,7 @@ def test_in_a_suspended_shop_nothing_is_decided_and_only_the_owner_may_look(
 
 
 def test_removal_makes_the_customers_receipts_unreachable_and_the_cleanup_deletes_them(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     customer = world.settled_customer_a
     attach_waiter(client, world, customer)
@@ -1047,7 +1047,7 @@ def test_removal_makes_the_customers_receipts_unreachable_and_the_cleanup_delete
 
     # The cleanup removes the objects and their rows, and nothing that is not due.
     removed = with_services(
-        app_database_url,
+        worker_database_url,
         file_root,
         lambda _, kept_files: kept_files.purge_due_receipts(world.shop_a, datetime.now(UTC)),
     )
@@ -1058,7 +1058,7 @@ def test_removal_makes_the_customers_receipts_unreachable_and_the_cleanup_delete
         receipt(client, f"{shop(world)}/payment-notices/{kept}/receipt", headers=as_user(world.owner_a)).content == PNG
     )
     again = with_services(
-        app_database_url,
+        worker_database_url,
         file_root,
         lambda _, kept_files: kept_files.purge_due_receipts(world.shop_a, datetime.now(UTC)),
     )
@@ -1107,13 +1107,15 @@ def test_an_open_notice_of_a_removed_customer_is_not_offered_to_staff(
 
 
 def test_the_cleanup_leaves_what_is_not_due_and_other_shops_alone(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     notice = send(client, world.customer_of_a, link_of(owner, world.customer_a), 20000, JPEG).json()["id"]
     now = datetime.now(UTC)
 
     def purge(shop_id: uuid.UUID, moment: datetime) -> int:
-        return int(with_services(app_database_url, file_root, lambda _, kept: kept.purge_due_receipts(shop_id, moment)))
+        return int(
+            with_services(worker_database_url, file_root, lambda _, kept: kept.purge_due_receipts(shop_id, moment))
+        )
 
     assert purge(world.shop_a, now + timedelta(days=103)) == 0
     assert purge(world.shop_b, now + timedelta(days=200)) == 0, "another shop's cleanup cannot see the file"
@@ -1213,13 +1215,13 @@ def test_a_receipt_is_not_left_in_the_store_when_the_notice_could_not_be_recorde
 
 
 def test_a_receipt_the_cleanup_could_not_delete_is_found_again_by_the_next_run(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     send(client, world.customer_of_a, link_of(owner, world.customer_a), 20000, JPEG)
     later = datetime.now(UTC) + timedelta(days=200)
 
     async def purge(store: Any) -> int:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             return await FileService(database, store).purge_due_receipts(world.shop_a, later)
         finally:
@@ -1238,7 +1240,7 @@ def test_a_receipt_the_cleanup_could_not_delete_is_found_again_by_the_next_run(
 
 
 def test_erasing_a_shop_deletes_its_receipts_from_the_store_and_waits_when_it_cannot(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     send(client, world.customer_of_a, link_of(owner, world.customer_a), 20000, JPEG)
     send(client, world.customer_of_a, link_of(owner, world.customer_a), 5000, PDF)
@@ -1257,7 +1259,7 @@ def test_erasing_a_shop_deletes_its_receipts_from_the_store_and_waits_when_it_ca
 
     def erase(store: Any) -> int:
         async def run() -> int:
-            database = Database(app_database_url)
+            database = Database(worker_database_url)
             try:
                 return await ShopDeletionService(database, files=store).erase_due()
             finally:
@@ -1282,7 +1284,7 @@ def test_erasing_a_shop_deletes_its_receipts_from_the_store_and_waits_when_it_ca
 
 
 def test_a_shop_without_files_is_erased_without_a_file_store(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str
 ) -> None:
     send(client, world.customer_of_a, link_of(owner, world.customer_a), 20000)
     owner.execute(
@@ -1291,7 +1293,7 @@ def test_a_shop_without_files_is_erased_without_a_file_store(
     )
 
     async def run() -> int:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             return await ShopDeletionService(database).erase_due()
         finally:
@@ -1459,7 +1461,7 @@ def test_only_the_notice_route_may_carry_more_than_the_general_limit(
 
 
 def test_the_worker_expires_stale_notices_and_deletes_due_receipts_once_an_hour(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     link = link_of(owner, world.customer_a)
     # A receipt whose customer's data was removed: due for deletion at once (BR-32).
@@ -1485,7 +1487,7 @@ def test_the_worker_expires_stale_notices_and_deletes_due_receipts_once_an_hour(
         clock = lambda: moment + timedelta(minutes=minutes)  # noqa: E731
 
         async def run() -> None:
-            database = Database(app_database_url)
+            database = Database(worker_database_url)
             try:
                 service = PaymentNoticeService(database, FileService(database, FilesystemFileStore(file_root)), clock)
                 await Scheduler(database, ReminderService(database, clock), clock, notices=service).tick()
@@ -1512,13 +1514,13 @@ def test_the_worker_expires_stale_notices_and_deletes_due_receipts_once_an_hour(
 
 
 def test_the_hourly_job_looks_only_at_shops_that_have_work(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str
 ) -> None:
     now = datetime.now(UTC)
 
     def shops() -> set[uuid.UUID]:
         async def run() -> list[uuid.UUID]:
-            database = Database(app_database_url)
+            database = Database(worker_database_url)
             try:
                 async with database.platform() as session:
                     return await session.shops_with_receipt_work(now - timedelta(days=14), now)

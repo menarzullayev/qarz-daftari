@@ -17,7 +17,10 @@ Conventions used below:
   environment; the names are listed in `.env.example` and, by service, in `deploy/production/.env.example`. Secrets live in the operator's password manager, never in the
   repository and never in a chat.
 - "The owner connection" means a database session as the migration owner, which is not subject to
-  row-level security. The application itself connects as `qd_app`.
+  row-level security. The application itself connects as three roles, one for each part: the API as
+  `qd_app` (`QD_DATABASE_URL`) and, for the administrators' side, as `qd_admin`
+  (`QD_ADMIN_DATABASE_URL`); the worker as `qd_worker` (`QD_WORKER_DATABASE_URL`). None of them can do
+  what another is for (migration 0031).
 - Every action an administrator takes in the panel is written to the admin audit by the application. What
   an operator does on a server is not: write it down in the incident or change note.
 
@@ -33,6 +36,11 @@ user.
 2. Read the migrations the release adds (`backend/migrations/sql/`). A migration that would make the
    previous release fail (a dropped or renamed column) must not be deployed in the same step as the code
    that needs it; the operations document requires migrations to be backward compatible.
+   One existing migration is not: `0031_separate_roles` takes from the role `qd_app` what the
+   administrators' side and the worker now do as `qd_admin` and `qd_worker`. The release that brings it
+   needs the two new connection settings and the two new roles created with a login beforehand
+   (`deploy/production/README.md`, "Database roles"), and rolling back across it needs one statement
+   first (below).
 3. Take note of the current release: `cat /var/lib/qarz/deploy/current`. That is the reference a roll
    back needs.
 4. `deploy/production/scripts/deploy.sh <git-ref>`. It builds the two images of that commit (or reuses or
@@ -51,7 +59,10 @@ user.
 **Roll back.** `deploy/production/scripts/rollback.sh <previous-ref>` (the last release is in
 `/var/lib/qarz/deploy/previous`), then `smoke.sh` again. It starts the previous images and runs no
 migration. Do not run `alembic downgrade`: the migrations have no tested downgrade, and because they are
-backward compatible the previous code runs on the newer schema.
+backward compatible the previous code runs on the newer schema. The exception is a roll back to a release
+from before migration `0031`: run `GRANT qd_admin, qd_worker TO qd_app;` as the owner first, so that the
+one role the old release connects as can again do everything, and `REVOKE qd_admin, qd_worker FROM qd_app;`
+when the newer release is back.
 
 **Not yet possible.** The scripts have run only on a developer machine, against a throwaway database and
 with a self-signed certificate; there is no server, so steps 4 to 7 have never been done for real. There
@@ -121,7 +132,7 @@ because no server exists. A point-in-time restore from a repository on a real st
 | Bot token (`QD_BOT_TOKEN`) | Revoke and reissue with BotFather; set the new value; restart API and worker; set the webhook again | Until restart: sign-in and sending fail. Sessions already open keep working |
 | Webhook secret (`QD_WEBHOOK_SECRET`) | Generate a new one; set the webhook with it; then restart the API with it | Between the two steps Telegram's calls are refused (403) and delivered again later |
 | Server secret (`QD_SECRETS_KEY`) | See below | Nothing, when done in the order below |
-| Database passwords | `ALTER ROLE qd_app PASSWORD ...` as the owner; update `QD_DATABASE_URL`; restart API and worker | Requests fail between the change and the restart |
+| Database passwords | As the owner, for each role in turn: `ALTER ROLE qd_app PASSWORD ...` and `QD_DATABASE_URL`; `ALTER ROLE qd_admin PASSWORD ...` and `QD_ADMIN_DATABASE_URL`; `ALTER ROLE qd_worker PASSWORD ...` and `QD_WORKER_DATABASE_URL`. Each role has its own password. Restart the API after the first two and the worker after the third | Requests of that part fail between the change and the restart |
 | Metrics token (`QD_METRICS_TOKEN`) | Set a new value; restart the API; update the monitoring system | Scrapes fail until both are changed |
 | Backup key | See below | Losing the key loses the backups: keep it in two places off both servers |
 

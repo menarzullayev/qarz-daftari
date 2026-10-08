@@ -476,10 +476,11 @@ def test_the_panel_and_the_chat_deciding_at_once_cannot_both_win(
     admin_env: AdminEnv,
     reviewer: Chat,
     app_database_url: str,
+    admin_database_url: str,
     file_root: Path,
 ) -> None:
     colleague = elevate(client, admin_env, world.stranger, make_admin(owner, admin_env, world.stranger))
-    with second_admin_app(app_database_url, admin_env, file_root) as panel:
+    with second_admin_app(app_database_url, admin_database_url, admin_env, file_root) as panel:
         for attempt in range(4):
             owner.execute(
                 "UPDATE subscription SET state = 'limited', paid_through = NULL, prior_state = NULL WHERE shop_id = %s",

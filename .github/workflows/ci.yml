@@ -99,9 +99,12 @@ jobs:
         env:
           DEPLOY_RELEASE: ci
           QD_DATABASE_URL: postgresql://qd_app@db.invalid/qarz
+          QD_WORKER_DATABASE_URL: postgresql://qd_worker@db.invalid/qarz
           QD_MIGRATION_URL: postgresql://owner@db.invalid/qarz
           LOCAL_POSTGRES_PASSWORD: ci
           LOCAL_APP_PASSWORD: ci
+          LOCAL_ADMIN_PASSWORD: ci
+          LOCAL_WORKER_PASSWORD: ci
         run: |
           docker compose -f deploy/production/compose.yml config --quiet
           docker compose -f deploy/production/compose.yml -f deploy/production/compose.local.yml config --quiet
@@ -162,9 +165,12 @@ jobs:
         env:
           DEPLOY_RELEASE: ci
           QD_DATABASE_URL: postgresql://qd_app@db.invalid/qarz
+          QD_WORKER_DATABASE_URL: postgresql://qd_worker@db.invalid/qarz
           QD_MIGRATION_URL: postgresql://owner@db.invalid/qarz
           LOCAL_POSTGRES_PASSWORD: ci
           LOCAL_APP_PASSWORD: ci
+          LOCAL_ADMIN_PASSWORD: ci
+          LOCAL_WORKER_PASSWORD: ci
         run: |
           shellcheck --external-sources --severity=warning e2e/stack.sh
           test -x e2e/stack.sh

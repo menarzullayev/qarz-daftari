@@ -23,8 +23,8 @@ services:
       db:
         condition: service_healthy
 
-  # The migrations create the role `qd_app` without a login; a server gets its password from the
-  # operator once. Here a one-shot does it.
+  # The migrations create the roles `qd_app`, `qd_admin` and `qd_worker` without a login; a server gets
+  # their passwords from the operator once. Here a one-shot does it, each role with its own.
   local-role:
     image: postgres:16-alpine
     restart: "no"
@@ -34,9 +34,17 @@ services:
     environment:
       PGPASSWORD: ${LOCAL_POSTGRES_PASSWORD:?}
       LOCAL_APP_PASSWORD: ${LOCAL_APP_PASSWORD:?}
+      LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:?}
+      LOCAL_WORKER_PASSWORD: ${LOCAL_WORKER_PASSWORD:?}
     entrypoint: ["sh", "-c"]
     command:
-      - echo "ALTER ROLE qd_app LOGIN PASSWORD :'pw'" | psql -q -h db -U postgres -d qarz -v ON_ERROR_STOP=1 -v pw="$$LOCAL_APP_PASSWORD"
+      - |
+        psql -q -h db -U postgres -d qarz -v ON_ERROR_STOP=1 \
+          -v app="$$LOCAL_APP_PASSWORD" -v admin="$$LOCAL_ADMIN_PASSWORD" -v worker="$$LOCAL_WORKER_PASSWORD" <<'SQL'
+        ALTER ROLE qd_app LOGIN PASSWORD :'app';
+        ALTER ROLE qd_admin LOGIN PASSWORD :'admin';
+        ALTER ROLE qd_worker LOGIN PASSWORD :'worker';
+        SQL
     networks: [egress]
 
   api:

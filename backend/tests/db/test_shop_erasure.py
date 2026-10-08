@@ -124,20 +124,23 @@ def make_due(owner: psycopg.Connection, shop: Shop, interval: str = "-1 minute")
     )
 
 
-def erase(as_app: AppSession, shop_id: uuid.UUID) -> bool:
-    with as_app(None) as app:
+def erase(as_worker: AppSession, shop_id: uuid.UUID) -> bool:
+    with as_worker(None) as app:
         row = app.execute("SELECT erase_shop(%s)", (shop_id,)).fetchone()
     assert row is not None
     return bool(row[0])
 
 
 @pytest.mark.parametrize("function", ["erase_shop(uuid)", "shops_to_erase()"])
-def test_the_erasure_functions_are_for_the_application_role_only(owner: psycopg.Connection, function: str) -> None:
+def test_the_erasure_functions_are_for_the_worker_role_only(owner: psycopg.Connection, function: str) -> None:
     row = owner.execute(
-        "SELECT has_function_privilege('qd_app', %s, 'EXECUTE'), has_function_privilege('public', %s, 'EXECUTE')",
-        (function, function),
+        "SELECT has_function_privilege('qd_worker', %s, 'EXECUTE'), has_function_privilege('public', %s, 'EXECUTE'), "
+        "has_function_privilege('qd_app', %s, 'EXECUTE'), has_function_privilege('qd_admin', %s, 'EXECUTE')",
+        (function, function, function, function),
     ).fetchone()
-    assert row == (True, False)
+    # Since migration 0031 erasure is the worker's: the ordinary application asks for a deletion and can
+    # never carry one out.
+    assert row == (True, False, False, False)
 
 
 def test_every_table_that_names_a_shop_is_emptied_by_the_function(owner: psycopg.Connection) -> None:
@@ -150,12 +153,12 @@ def test_every_table_that_names_a_shop_is_emptied_by_the_function(owner: psycopg
 
 
 def test_a_shop_that_was_not_asked_to_be_deleted_cannot_be_erased(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+    owner: psycopg.Connection, as_worker: AppSession, shop_a: Shop
 ) -> None:
     fill(owner, shop_a)
     before = rows_of(owner, shop_a.shop_id)
-    assert erase(as_app, shop_a.shop_id) is False
-    assert erase(as_app, uuid.uuid4()) is False
+    assert erase(as_worker, shop_a.shop_id) is False
+    assert erase(as_worker, uuid.uuid4()) is False
     assert rows_of(owner, shop_a.shop_id) == before
     assert owner.execute("SELECT status, name FROM shop WHERE id = %s", (shop_a.shop_id,)).fetchone() == (
         "active",
@@ -165,20 +168,20 @@ def test_a_shop_that_was_not_asked_to_be_deleted_cannot_be_erased(
 
 @pytest.mark.parametrize("interval", ["1 minute", "29 days"])
 def test_a_shop_inside_its_waiting_period_cannot_be_erased(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, interval: str
+    owner: psycopg.Connection, as_worker: AppSession, shop_a: Shop, interval: str
 ) -> None:
     fill(owner, shop_a)
     make_due(owner, shop_a, interval)
     before = rows_of(owner, shop_a.shop_id)
-    assert erase(as_app, shop_a.shop_id) is False
+    assert erase(as_worker, shop_a.shop_id) is False
     assert rows_of(owner, shop_a.shop_id) == before
-    with as_app(None) as app:
+    with as_worker(None) as app:
         listed = app.execute("SELECT shop_id FROM shops_to_erase()").fetchall()
     assert shop_a.shop_id not in {row[0] for row in listed}
 
 
 def test_erasure_removes_everything_of_that_shop_and_nothing_of_another(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+    owner: psycopg.Connection, as_worker: AppSession, shop_a: Shop, shop_b: Shop
 ) -> None:
     linked_a = fill(owner, shop_a)
     linked_b = fill(owner, shop_b)
@@ -191,10 +194,10 @@ def test_erasure_removes_everything_of_that_shop_and_nothing_of_another(
     assert all(count > 0 for table, count in rows_of(owner, shop_a.shop_id).items() if table not in UNFILLED)
 
     make_due(owner, shop_a)
-    with as_app(None) as app:
+    with as_worker(None) as app:
         listed = app.execute("SELECT shop_id, shop_name, owner_tg IS NOT NULL FROM shops_to_erase()").fetchall()
     assert (shop_a.shop_id, "Shop A", True) in listed
-    assert erase(as_app, shop_a.shop_id) is True
+    assert erase(as_worker, shop_a.shop_id) is True
 
     assert rows_of(owner, shop_a.shop_id) == dict.fromkeys(rows_of(owner, shop_a.shop_id), 0)
     assert owner.execute(
@@ -211,16 +214,17 @@ def test_erasure_removes_everything_of_that_shop_and_nothing_of_another(
     assert owner.execute("SELECT tg_id IS NOT NULL FROM app_user WHERE id = %s", (linked_b,)).fetchone() == (True,)
 
     # Done once: a second call finds nothing to erase.
-    assert erase(as_app, shop_a.shop_id) is False
+    assert erase(as_worker, shop_a.shop_id) is False
 
 
 def test_the_application_role_still_cannot_delete_from_the_ledger_itself(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+    owner: psycopg.Connection, as_app: AppSession, as_worker: AppSession, shop_a: Shop
 ) -> None:
     fill(owner, shop_a)
     for table in ("ledger_entry", "goods_line", "promise", "activity"):
-        with pytest.raises(psycopg.errors.InsufficientPrivilege), as_app(shop_a.shop_id) as app:
-            app.execute(f"DELETE FROM {table}")
+        for role in (as_app, as_worker):  # nor can the role that erases shops
+            with pytest.raises(psycopg.errors.InsufficientPrivilege), role(shop_a.shop_id) as app:
+                app.execute(f"DELETE FROM {table}")
 
 
 # Tables `fill` leaves empty: they need files, administrators or imports that do not exist in this test.

@@ -401,7 +401,7 @@ def test_a_refused_repeat_leaves_one_session_and_one_record(
 
 
 def test_the_worker_purges_dead_sessions_and_used_sign_in_data_once_an_hour(
-    session_client: SessionClient, owner: psycopg.Connection, app_database_url: str, world: World
+    session_client: SessionClient, owner: psycopg.Connection, worker_database_url: str, world: World
 ) -> None:
     tg_id = next(_tg_ids)
     token = session_client.http.post(
@@ -422,7 +422,7 @@ def test_the_worker_purges_dead_sessions_and_used_sign_in_data_once_an_hour(
 
     def tick() -> None:
         async def run() -> None:
-            database = Database(app_database_url)
+            database = Database(worker_database_url)
             try:
                 clock = lambda: moment  # noqa: E731
                 await Scheduler(database, ReminderService(database, clock), clock, sign_in_cleanup=True).tick()

@@ -4,10 +4,11 @@
 Run with:  python -m qarz.interface.rotate_secrets
 
 Reads `QD_SECRETS_KEY` (the new secret) and `QD_SECRETS_KEY_PREVIOUS` (the one it replaces) from the
-environment, like the application. Everything happens in one transaction and the command can be run
-again safely. It prints three counts and, for secrets neither key could read, the user identifiers of
-those administrator accounts: they must be enrolled again (runbook 7). It never prints a secret or a key.
-The exit status is 1 when some secret could not be read, 2 when the configuration is unusable.
+environment, like the application, and connects with `QD_ADMIN_DATABASE_URL`, the administrators' role.
+Everything happens in one transaction and the command can be run again safely. It prints three counts
+and, for secrets neither key could read, the user identifiers of those administrator accounts: they must
+be enrolled again (runbook 7). It never prints a secret or a key. The exit status is 1 when some secret
+could not be read, 2 when the configuration is unusable.
 """
 
 import argparse
@@ -24,7 +25,10 @@ async def run(settings: Settings | None = None) -> RotationResult:
     settings = settings or Settings()
     # Built before the database is touched: a missing or too short secret stops here.
     cipher = SecretBox(settings.secrets_key, settings.secrets_key_previous)
-    database = Database(settings.database_url)
+    if not settings.admin_database_url:
+        raise ValueError("QD_ADMIN_DATABASE_URL is not set")
+    # The second-factor secrets are readable only by the administrators' role.
+    database = Database(settings.admin_database_url)
     try:
         return await rotate_admin_secrets(database, cipher)
     finally:

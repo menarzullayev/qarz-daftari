@@ -575,14 +575,17 @@ def test_the_database_refuses_an_administrator_whose_session_has_ended(
 
 
 @pytest.fixture
-def observed(app_database_url: str, admin_env: AdminEnv) -> Iterator[TestClient]:
-    database = Database(app_database_url)
-    access = AdminAccess(database, allowed_tg_ids=admin_env.allowed, cipher=admin_env.box, now=admin_env.clock.now)
+def observed(app_database_url: str, admin_database_url: str, admin_env: AdminEnv) -> Iterator[TestClient]:
+    database, admin_database = Database(app_database_url), Database(admin_database_url)
+    access = AdminAccess(
+        admin_database, allowed_tg_ids=admin_env.allowed, cipher=admin_env.box, now=admin_env.clock.now
+    )
     app = create_app(
         database.reachable,
         database,
         auth=AuthService(database, TEST_BOT_TOKEN),
         admin=access,
+        admin_storage=admin_database,
         authenticator=HeaderAuthenticator(),
         now=admin_env.clock.now,
         metrics_token=METRICS_TOKEN,
@@ -590,6 +593,7 @@ def observed(app_database_url: str, admin_env: AdminEnv) -> Iterator[TestClient]
     with TestClient(app) as test_client:
         yield test_client
         test_client.portal.call(database.dispose)  # type: ignore[union-attr]
+        test_client.portal.call(admin_database.dispose)  # type: ignore[union-attr]
 
 
 def _events(client: TestClient, kind: str) -> int:

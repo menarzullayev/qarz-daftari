@@ -894,14 +894,15 @@ def test_deciding_twice_has_no_second_effect(
 
 
 @contextmanager
-def second_admin_app(app_database_url: str, env: AdminEnv, root: Path) -> Iterator[TestClient]:
+def second_admin_app(app_database_url: str, admin_database_url: str, env: AdminEnv, root: Path) -> Iterator[TestClient]:
     """Another instance of the application with the same administrators, as a second server would be."""
-    database = Database(app_database_url)
+    database, admin_database = Database(app_database_url), Database(admin_database_url)
     app = create_app(
         database.reachable,
         database,
         auth=AuthService(database, TEST_BOT_TOKEN),
-        admin=AdminAccess(database, allowed_tg_ids=env.allowed, cipher=env.box, now=env.clock.now),
+        admin=AdminAccess(admin_database, allowed_tg_ids=env.allowed, cipher=env.box, now=env.clock.now),
+        admin_storage=admin_database,
         authenticator=HeaderAuthenticator(),
         now=env.clock.now,
         file_store=FilesystemFileStore(root),
@@ -910,6 +911,7 @@ def second_admin_app(app_database_url: str, env: AdminEnv, root: Path) -> Iterat
     with TestClient(app) as other:
         yield other
         other.portal.call(database.dispose)  # type: ignore[union-attr]
+        other.portal.call(admin_database.dispose)  # type: ignore[union-attr]
 
 
 def test_two_administrators_deciding_at_once_cannot_both_win(
@@ -919,10 +921,11 @@ def test_two_administrators_deciding_at_once_cannot_both_win(
     admin_env: AdminEnv,
     admin: dict[str, str],
     app_database_url: str,
+    admin_database_url: str,
     file_root: Path,
 ) -> None:
     colleague = elevate(client, admin_env, world.stranger, make_admin(owner, admin_env, world.stranger))
-    with second_admin_app(app_database_url, admin_env, file_root) as second:
+    with second_admin_app(app_database_url, admin_database_url, admin_env, file_root) as second:
         for attempt in range(4):
             set_subscription(owner, world.shop_a, "limited")
             receipt = sent_ok(client, world.owner_a, world.shop_a, 100_000, 1)
@@ -952,13 +955,13 @@ def test_two_administrators_deciding_at_once_cannot_both_win(
 
 
 def test_the_database_itself_decides_a_receipt_once_and_only_for_an_administrator(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str
+    client: TestClient, world: World, owner: psycopg.Connection, admin_database_url: str
 ) -> None:
     receipt = uuid.UUID(sent_ok(client, world.owner_a, world.shop_a))
     owner.execute("UPDATE admin_account SET status = 'active' WHERE user_id = %s", (world.admin,))
 
     async def run() -> list[Any]:
-        database = Database(app_database_url)
+        database = Database(admin_database_url)
         now = datetime.now().astimezone()
         try:
             async with database.platform() as session:
@@ -991,9 +994,9 @@ def test_the_database_itself_decides_a_receipt_once_and_only_for_an_administrato
 # --- retention and erasure ---------------------------------------------------------------------------------
 
 
-def _services(app_database_url: str, root: Path, action: Any) -> Any:
+def _services(worker_database_url: str, root: Path, action: Any) -> Any:
     async def run() -> Any:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             store = FilesystemFileStore(root)
             files = FileService(database, store)
@@ -1011,7 +1014,7 @@ def test_a_receipt_file_is_deleted_when_its_three_years_are_over_and_the_receipt
     world: World,
     owner: psycopg.Connection,
     admin: dict[str, str],
-    app_database_url: str,
+    worker_database_url: str,
     file_root: Path,
 ) -> None:
     old = sent_ok(client, world.owner_a, world.shop_a, 100_000, 1, JPEG)
@@ -1026,7 +1029,7 @@ def test_a_receipt_file_is_deleted_when_its_three_years_are_over_and_the_receipt
     assert client.get(f"{RECEIPTS}/{old}", headers=admin).json()["file"] is None
 
     async def shops_with_work() -> list[uuid.UUID]:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             async with database.platform() as session:
                 at = datetime.now().astimezone()
@@ -1037,7 +1040,7 @@ def test_a_receipt_file_is_deleted_when_its_three_years_are_over_and_the_receipt
     # The hourly job finds the shop, and deletes what is due there and nothing else.
     assert world.shop_a in asyncio.run(shops_with_work()) and world.shop_b not in asyncio.run(shops_with_work())
     purge = lambda _, __, files: files.purge_due_receipts(world.shop_a, datetime.now().astimezone())  # noqa: E731
-    assert _services(app_database_url, file_root, purge) == 1
+    assert _services(worker_database_url, file_root, purge) == 1
     assert [path.read_bytes() for path in stored_objects(file_root)] == [PNG]
     assert [row[0:2] for row in files_of(owner, world.shop_a)] == [("subscription_receipt", "image/png")]
     # The record of the payment outlives its image.
@@ -1048,7 +1051,7 @@ def test_a_receipt_file_is_deleted_when_its_three_years_are_over_and_the_receipt
     seen = client.get(f"{RECEIPTS}/{old}", headers=admin).json()
     assert (seen["has_file"], seen["file"], seen["status"]) == (False, None, "approved")
     assert client.get(client.get(f"{RECEIPTS}/{recent}", headers=admin).json()["file"]["url"]).content == PNG
-    assert _services(app_database_url, file_root, purge) == 0
+    assert _services(worker_database_url, file_root, purge) == 0
     assert world.shop_a not in asyncio.run(shops_with_work())
 
 
@@ -1057,7 +1060,7 @@ def test_erasing_a_shop_removes_its_receipts_and_their_files(
     world: World,
     owner: psycopg.Connection,
     admin: dict[str, str],
-    app_database_url: str,
+    worker_database_url: str,
     file_root: Path,
 ) -> None:
     gone = sent_ok(client, world.owner_a, world.shop_a, 100_000, 1, JPEG)
@@ -1070,7 +1073,7 @@ def test_erasing_a_shop_removes_its_receipts_and_their_files(
         (world.shop_a,),
     )
 
-    assert _services(app_database_url, file_root, lambda _, deletion, __: deletion.erase_due()) >= 1
+    assert _services(worker_database_url, file_root, lambda _, deletion, __: deletion.erase_due()) >= 1
     assert rows(owner, world.shop_a) == [] and files_of(owner, world.shop_a) == []
     assert [path.read_bytes() for path in stored_objects(file_root)] == [PNG]
     assert client.get(f"{RECEIPTS}/{gone}", headers=admin).status_code == 404

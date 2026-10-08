@@ -18,6 +18,13 @@ from ..conftest import AppSession, Shop
 
 pytestmark = pytest.mark.db
 
+# One of the three application roles may call it. Which one is listed, function by function, in
+# tests/db/test_database_roles.py.
+_SOME_ROLE = (
+    "(has_function_privilege('qd_app', oid, 'EXECUTE') OR has_function_privilege('qd_admin', oid, 'EXECUTE') "
+    "OR has_function_privilege('qd_worker', oid, 'EXECUTE'))"
+)
+
 FUNCTIONS = [
     "subscription_receipt_copies(uuid)",
     "admin_receipts(uuid, text, timestamptz, uuid, integer)",
@@ -148,14 +155,14 @@ def test_a_shop_learns_how_many_copies_of_its_own_receipt_exist_and_nothing_else
 
 
 def test_the_administrators_functions_do_nothing_for_anyone_else(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop
 ) -> None:
     content = uuid.uuid4().bytes
     receipt, copy = _receipt(owner, shop_a, content), _receipt(owner, shop_a, content)
     admin, disabled, nobody = _admin(owner), _admin(owner, "disabled"), uuid.uuid4()
     for caller in (disabled, nobody, shop_a.user_id):
         for tenant in (None, shop_a.shop_id):
-            with as_app(tenant) as conn:
+            with as_admin(tenant) as conn:
                 listed = conn.execute(
                     "SELECT receipt_id FROM admin_receipts(%s, 'submitted', NULL, NULL, 100)", (caller,)
                 ).fetchall()
@@ -180,7 +187,7 @@ def test_the_administrators_functions_do_nothing_for_anyone_else(
         "SELECT count(*) FROM activity WHERE shop_id = %s AND actor_kind = 'admin'", (shop_a.shop_id,)
     ).fetchone() == (0,)
 
-    with as_app(None) as conn:
+    with as_admin(None) as conn:
         copies = conn.execute("SELECT receipt_id FROM admin_receipt_copies(%s, %s)", (admin, receipt)).fetchall()
         assert copies == [(copy,)]
         seen = conn.execute(
@@ -201,14 +208,14 @@ def test_the_administrators_functions_do_nothing_for_anyone_else(
 
 
 def test_a_decision_is_approved_or_rejected_and_an_approval_carries_months(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop
 ) -> None:
     receipt, admin = _receipt(owner, shop_a, uuid.uuid4().bytes), _admin(owner)
-    with pytest.raises(errors.RaiseException), as_app(None) as conn:
+    with pytest.raises(errors.RaiseException), as_admin(None) as conn:
         conn.execute("SELECT admin_decide_receipt(%s, %s, 'submitted', NULL, NULL, now())", (admin, receipt))
-    with pytest.raises(errors.CheckViolation), as_app(None) as conn:
+    with pytest.raises(errors.CheckViolation), as_admin(None) as conn:
         conn.execute("SELECT admin_decide_receipt(%s, %s, 'approved', NULL, NULL, now())", (admin, receipt))
-    with as_app(None) as conn:
+    with as_admin(None) as conn:
         assert conn.execute(
             "SELECT admin_decide_receipt(%s, %s, 'approved', 2::smallint, 'ignored for an approval', now())",
             (admin, receipt),
@@ -244,7 +251,7 @@ def test_each_function_runs_as_its_owner_with_a_pinned_search_path_and_is_closed
     owner: psycopg.Connection, signature: str
 ) -> None:
     row = owner.execute(
-        "SELECT prosecdef, proconfig, has_function_privilege('qd_app', oid, 'EXECUTE'), "
+        f"SELECT prosecdef, proconfig, {_SOME_ROLE}, "
         "has_function_privilege('public', oid, 'EXECUTE') FROM pg_proc WHERE oid = %s::regprocedure",
         (signature,),
     ).fetchone()
@@ -477,7 +484,7 @@ def test_the_review_group_functions_run_as_their_owner_and_are_closed_to_public(
     owner: psycopg.Connection, signature: str
 ) -> None:
     row = owner.execute(
-        "SELECT prosecdef, proconfig, has_function_privilege('qd_app', oid, 'EXECUTE'), "
+        f"SELECT prosecdef, proconfig, {_SOME_ROLE}, "
         "has_function_privilege('public', oid, 'EXECUTE') FROM pg_proc WHERE oid = %s::regprocedure",
         (signature,),
     ).fetchone()
