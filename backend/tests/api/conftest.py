@@ -353,9 +353,12 @@ def wal_position(owner: psycopg.Connection) -> str:
     return str(row[0])
 
 
+def days_at(moment: datetime) -> tuple[date, date]:
+    return moment.astimezone(UTC).date(), tashkent_date(moment)
+
+
 def _days() -> tuple[date, date]:
-    now = datetime.now(UTC)
-    return now.date(), tashkent_date(now)
+    return days_at(datetime.now(UTC))
 
 
 def keep_world(owner: psycopg.Connection, database: str) -> KeptWorld:

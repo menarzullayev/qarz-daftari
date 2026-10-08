@@ -14,7 +14,7 @@ import dataclasses
 import time
 import uuid
 from collections.abc import Callable, Iterator
-from datetime import timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import psycopg
 import pytest
@@ -25,6 +25,7 @@ from .conftest import (
     KEPT_WORLD_SECONDS,
     World,
     as_user,
+    days_at,
     hand_over_world,
     keep_world,
     still_untouched,
@@ -175,6 +176,13 @@ def test_a_world_is_not_kept_for_long_or_past_the_day_or_for_another_database(
     assert not still_untouched(dataclasses.replace(kept, days=(utc, tashkent - timedelta(days=1))), owner, database_url)
     assert not still_untouched(kept, owner, database_url + "-other")
     assert not still_untouched(dataclasses.replace(kept, wal_position="0/FFFFFF"), owner, database_url)
+
+
+def test_both_days_are_watched_the_servers_and_the_services() -> None:
+    # From 19:00 to 24:00 UTC it is already tomorrow in Tashkent: the world's dates are counted from both.
+    assert days_at(datetime(2026, 3, 1, 18, 59, tzinfo=UTC)) == (date(2026, 3, 1), date(2026, 3, 1))
+    assert days_at(datetime(2026, 3, 1, 19, 0, tzinfo=UTC)) == (date(2026, 3, 1), date(2026, 3, 2))
+    assert days_at(datetime(2026, 3, 2, 0, 0, tzinfo=UTC)) == (date(2026, 3, 2), date(2026, 3, 2))
 
 
 def test_the_counts_say_how_often_a_world_was_seeded_and_handed_over_again(
