@@ -50,3 +50,17 @@ def split(node_ids: Sequence[str], shard: Shard) -> tuple[list[int], list[int]]:
     for position, node_id in enumerate(node_ids):
         (selected if shard_of(node_id, shard.total) == shard.index else deselected).append(position)
     return selected, deselected
+
+
+def shuffled(node_ids: Sequence[str], seed: str) -> list[int]:
+    """The positions of the tests in an order fixed by the seed (`pytest --shuffle=SEED`).
+
+    For showing that no test depends on the order or on what another left behind. The place of a test
+    comes from a hash of the seed and its node identifier, so one seed gives one order on every machine
+    and version of Python, and a failure can be run again.
+    """
+
+    def place(position: int) -> tuple[bytes, int]:
+        return hashlib.sha256(f"{seed}\0{node_ids[position]}".encode()).digest(), position
+
+    return sorted(range(len(node_ids)), key=place)

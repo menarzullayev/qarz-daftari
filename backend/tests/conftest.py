@@ -1,6 +1,7 @@
 """Database fixtures: a fresh database per test session, built by the real migrations.
 
-Also the option `--shard=INDEX/TOTAL`, with which CI runs the suite as several parallel jobs (sharding.py).
+Also the options `--shard=INDEX/TOTAL`, with which CI runs the suite as several parallel jobs, and
+`--shuffle=SEED`, which runs the tests in another order (sharding.py).
 """
 
 import os
@@ -17,7 +18,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 
-from .sharding import Shard, parse_shard, split
+from .sharding import Shard, parse_shard, shuffled, split
 
 BACKEND = Path(__file__).resolve().parents[1]
 _SHARD = pytest.StashKey[Shard]()
@@ -30,6 +31,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         metavar="INDEX/TOTAL",
         default=None,
         help="run only the tests of one shard of the suite, for example 2/4 (CI runs the four in parallel)",
+    )
+
+    parser.addoption(
+        "--shuffle",
+        metavar="SEED",
+        default=None,
+        help="run the tests in an order fixed by SEED instead of the order of collection (before --shard)",
     )
 
 
@@ -45,6 +53,9 @@ def pytest_configure(config: pytest.Config) -> None:
 
 @pytest.hookimpl(trylast=True)
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    seed = config.getoption("--shuffle")
+    if seed is not None:
+        items[:] = [items[position] for position in shuffled([item.nodeid for item in items], seed)]
     shard = config.stash.get(_SHARD, None)
     if shard is None:
         return
@@ -57,11 +68,15 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 def pytest_report_collectionfinish(config: pytest.Config) -> list[str]:
+    lines = []
+    seed = config.getoption("--shuffle")
+    if seed is not None:
+        lines.append(f"shuffled with the seed {seed!r}")
     shard = config.stash.get(_SHARD, None)
     counts = config.stash.get(_SHARD_COUNTS, None)
-    if shard is None or counts is None:
-        return []
-    return [f"shard {shard.index}/{shard.total}: {counts[0]} of {counts[1]} collected tests"]
+    if shard is not None and counts is not None:
+        lines.append(f"shard {shard.index}/{shard.total}: {counts[0]} of {counts[1]} collected tests")
+    return lines
 
 
 def _admin_url() -> str:
