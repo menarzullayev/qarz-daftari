@@ -28,6 +28,7 @@ from qarz.application.ledger_service import (
     REVERSE_ENTRY,
     LedgerService,
 )
+from qarz.interface.answers import CustomerDetail, CustomerPage, DebtorPage, Overview
 from qarz.interface.shops_api import IdempotencyKey
 
 CurrentUser = Callable[..., Awaitable[UUID]]
@@ -109,7 +110,7 @@ def add_customer_routes(
     ) -> dict[str, Any]:
         return await customers.create(user_id, shop_id, body.display_name, body.phone, idempotency_key)
 
-    @app.get(base, name=LIST_CUSTOMERS.name)
+    @app.get(base, name=LIST_CUSTOMERS.name, response_model=CustomerPage)
     async def list_customers(
         shop_id: UUID,
         user_id: user,
@@ -120,7 +121,7 @@ def add_customer_routes(
     ) -> dict[str, Any]:
         return await customers.list(user_id, shop_id, query=q, status=status, cursor=cursor, limit=limit)
 
-    @app.get(base + "/{customer_id}", name=READ_CUSTOMER.name)
+    @app.get(base + "/{customer_id}", name=READ_CUSTOMER.name, response_model=CustomerDetail)
     async def read_customer(shop_id: UUID, customer_id: UUID, user_id: user) -> dict[str, Any]:
         return await ledger.customer_detail(user_id, shop_id, customer_id)
 
@@ -193,11 +194,11 @@ def add_customer_routes(
     ) -> dict[str, Any]:
         return await ledger.change_promise(user_id, shop_id, entry_id, body.promised_date, body.reason, idempotency_key)
 
-    @app.get("/api/v1/shops/{shop_id}/overview", name=READ_OVERVIEW.name)
+    @app.get("/api/v1/shops/{shop_id}/overview", name=READ_OVERVIEW.name, response_model=Overview)
     async def overview(shop_id: UUID, user_id: user) -> dict[str, Any]:
         return await ledger.overview(user_id, shop_id)
 
-    @app.get("/api/v1/shops/{shop_id}/overview/debtors", name=LIST_DEBTORS.name)
+    @app.get("/api/v1/shops/{shop_id}/overview/debtors", name=LIST_DEBTORS.name, response_model=DebtorPage)
     async def debtors(
         shop_id: UUID,
         user_id: user,

@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, Header
 from pydantic import BaseModel, ConfigDict
 
 from qarz.application.shops import CREATE_SHOP, READ_SHOP, UPDATE_SHOP, ShopService, ShopUpdate
+from qarz.interface.answers import Shop
 
 CurrentUser = Callable[..., Awaitable[UUID]]
 
@@ -40,7 +41,7 @@ def add_shop_routes(app: FastAPI, service: ShopService, current_user: CurrentUse
     async def create_shop(body: ShopCreate, user_id: user, idempotency_key: IdempotencyKey = None) -> dict[str, Any]:
         return await service.create(user_id, body.name, body.lang, idempotency_key)
 
-    @app.get("/api/v1/shops/{shop_id}", name=READ_SHOP.name)
+    @app.get("/api/v1/shops/{shop_id}", name=READ_SHOP.name, response_model=Shop)
     async def read_shop(shop_id: UUID, user_id: user) -> dict[str, Any]:
         return await service.read(user_id, shop_id)
 
