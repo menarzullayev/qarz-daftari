@@ -7,6 +7,7 @@ import { isCustomerPath, MY_PATH } from "./customer/paths";
 import { type ShopSwitch, useDesktop, type WorkspaceExtension } from "./layout";
 import { Link, navigate, useHashPath } from "./router";
 import { SignInRequiredScreen } from "./screens";
+import { SignOutEverywhere } from "./SignOutEverywhere";
 import { Shell } from "./Shell";
 import { StaffRoutes } from "./StaffApp";
 import { Failure, Loading } from "./workspace/parts";
@@ -15,8 +16,11 @@ import { modeOfRefusal, type ShopMode } from "./workspace/shopMode";
 /** What the web panel adds to the workspace; the Mini App passes none of it. */
 export type PanelParts = {
   extension: WorkspaceExtension;
-  /** Called when the session is not, or is no longer, accepted: the panel shows its sign-in screen. */
-  onSignedOut: () => void;
+  /**
+   * Called when the session is not, or is no longer, accepted: the panel shows its sign-in screen.
+   * `everywhere` is true when the person has just ended all of their sessions themselves.
+   */
+  onSignedOut: (everywhere?: boolean) => void;
   /** The controls under the side navigation of a wide screen, around the shop switcher's state. */
   side: (shops: ShopSwitch) => ReactNode;
   /** The same controls for a narrow screen, next to the overview's buttons. */
@@ -45,7 +49,7 @@ type StaffRootProps = {
 
 type Phase =
   | { kind: "connecting" }
-  | { kind: "signedOut" }
+  | { kind: "signedOut"; everywhere: boolean }
   | { kind: "failed"; error: ApiError }
   | { kind: "ready"; api: Api; shops: ShopMembership[]; activeShop: string | null; isCustomer: boolean };
 
@@ -126,7 +130,7 @@ export function StaffWorkspace({
     let cancelled = false;
     const signedOut = () => {
       if (!cancelled) {
-        setPhase({ kind: "signedOut" });
+        setPhase({ kind: "signedOut", everywhere: false });
         panel?.onSignedOut();
       }
     };
@@ -206,6 +210,11 @@ export function StaffWorkspace({
   if (phase.kind === "signedOut") {
     return (
       <Gate entryKey={entryKey} title={t("screen.signInRequired.title")}>
+        {phase.everywhere ? (
+          <p className="notice" role="status">
+            {t("session.everywhere.done")}
+          </p>
+        ) : null}
         <SignInRequiredScreen />
       </Gate>
     );
@@ -217,6 +226,18 @@ export function StaffWorkspace({
       </Gate>
     );
   }
+  // The person ends all of their sessions, this one included: the same screen as for a session that
+  // ended by itself, with a line saying what happened. In the panel that screen is the sign-in.
+  const api = phase.api;
+  const everywhere = (
+    <SignOutEverywhere
+      signOut={() => api.signOutEverywhere()}
+      onDone={() => {
+        setPhase({ kind: "signedOut", everywhere: true });
+        panel?.onSignedOut(true);
+      }}
+    />
+  );
   // A person may work in one shop and owe in another. The address decides which side is shown: the
   // paths under /my are their own accounts, every other path is the staff workspace. A person with
   // accounts and no shop only has the first side, whatever the path.
@@ -229,7 +250,7 @@ export function StaffWorkspace({
           </Gate>
         }
       >
-        <CustomerArea api={phase.api} staffHome={phase.shops.length > 0} now={now} />
+        <CustomerArea api={phase.api} staffHome={phase.shops.length > 0} now={now} accountsFooter={everywhere} />
       </Suspense>
     );
   }
@@ -237,6 +258,7 @@ export function StaffWorkspace({
     return (
       <Gate entryKey={entryKey} title={t("shops.none.title")}>
         <p>{t("shops.none.body")}</p>
+        {everywhere}
       </Gate>
     );
   }
@@ -285,21 +307,24 @@ export function StaffWorkspace({
       shops={phase.shops}
       reloadSession={reloadSession}
       overviewFooter={
-        switchHere || phase.isCustomer || footer ? (
-          <p className="actions">
-            {switchHere ? (
-              <button type="button" className="button" onClick={() => setChoosing(true)}>
-                {t("shops.switch")}
-              </button>
-            ) : null}
-            {phase.isCustomer ? (
-              <Link to={MY_PATH} className="button">
-                {t("my.nav.accounts")}
-              </Link>
-            ) : null}
-            {footer}
-          </p>
-        ) : null
+        <>
+          {switchHere || phase.isCustomer || footer ? (
+            <p className="actions">
+              {switchHere ? (
+                <button type="button" className="button" onClick={() => setChoosing(true)}>
+                  {t("shops.switch")}
+                </button>
+              ) : null}
+              {phase.isCustomer ? (
+                <Link to={MY_PATH} className="button">
+                  {t("my.nav.accounts")}
+                </Link>
+              ) : null}
+              {footer}
+            </p>
+          ) : null}
+          {everywhere}
+        </>
       }
     />
   );

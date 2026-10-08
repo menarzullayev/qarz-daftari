@@ -200,6 +200,7 @@ def test_the_api_and_the_worker_each_connect_with_their_own_limit(monkeypatch: p
 
     settings = Settings(
         database_url="postgresql://qd_app:unused@127.0.0.1:1/unused",
+        worker_database_url="postgresql://qd_worker:unused@127.0.0.1:1/unused",
         bot_token="123:test",
         statement_timeout_ms=1234,
         worker_statement_timeout_ms=45678,

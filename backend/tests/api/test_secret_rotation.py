@@ -93,15 +93,18 @@ def _everything_else(owner: psycopg.Connection) -> list[Any]:
     ).fetchall()
 
 
-def _rotate(app_database_url: str, current: str, previous: str = "") -> RotationResult:
-    """The command's work, as the application role: what it may do after migration 0027 is enough."""
+def _rotate(admin_database_url: str, current: str, previous: str = "") -> RotationResult:
+    """The command's work, as the administrators' role: since migration 0031 no other role of the
+    application can read the second-factor secrets, and what this one may do is enough."""
     return asyncio.run(
-        rotate_secrets.run(Settings(database_url=app_database_url, secrets_key=current, secrets_key_previous=previous))
+        rotate_secrets.run(
+            Settings(admin_database_url=admin_database_url, secrets_key=current, secrets_key_previous=previous)
+        )
     )
 
 
 def test_the_command_moves_what_the_previous_key_reads_and_counts_the_rest(
-    app_database_url: str, owner: psycopg.Connection
+    admin_database_url: str, owner: psycopg.Connection
 ) -> None:
     old_a, secret_a = _account(owner, SecretBox(OLD).encrypt)
     old_b, secret_b = _account(owner, _before_key_ids(OLD))
@@ -111,7 +114,7 @@ def test_the_command_moves_what_the_previous_key_reads_and_counts_the_rest(
     lost_f, _ = _account(owner, lambda secret, context: b"test-only")
     before, untouched = _stored(owner), _everything_else(owner)
 
-    result = _rotate(app_database_url, NEW, OLD)
+    result = _rotate(admin_database_url, NEW, OLD)
     assert (result.reencrypted, result.already_current) == (2, 2)
     assert set(result.unreadable) == {lost_e, lost_f}
 
@@ -127,38 +130,40 @@ def test_the_command_moves_what_the_previous_key_reads_and_counts_the_rest(
     assert _everything_else(owner) == untouched, "only the secret's bytes change"
 
 
-def test_running_it_twice_changes_nothing_the_second_time(app_database_url: str, owner: psycopg.Connection) -> None:
+def test_running_it_twice_changes_nothing_the_second_time(admin_database_url: str, owner: psycopg.Connection) -> None:
     _account(owner, SecretBox(OLD).encrypt)
     _account(owner, _before_key_ids(OLD))
     lost, _ = _account(owner, SecretBox(WRONG).encrypt)
-    first = _rotate(app_database_url, NEW, OLD)
+    first = _rotate(admin_database_url, NEW, OLD)
     assert (first.reencrypted, first.already_current, first.unreadable) == (2, 0, (lost,))
     once = _stored(owner)
 
-    second = _rotate(app_database_url, NEW, OLD)
+    second = _rotate(admin_database_url, NEW, OLD)
     assert (second.reencrypted, second.already_current, second.unreadable) == (0, 2, (lost,))
     assert _stored(owner) == once, "not one byte is written again"
     # Nor after the previous secret has been taken out of the environment.
-    third = _rotate(app_database_url, NEW)
+    third = _rotate(admin_database_url, NEW)
     assert (third.reencrypted, third.already_current, third.unreadable) == (0, 2, (lost,))
     assert _stored(owner) == once
 
 
 @pytest.mark.parametrize("previous", [WRONG, "", NEW], ids=["a wrong previous key", "none given", "the same key"])
-def test_a_wrong_previous_key_changes_nothing(app_database_url: str, owner: psycopg.Connection, previous: str) -> None:
+def test_a_wrong_previous_key_changes_nothing(
+    admin_database_url: str, owner: psycopg.Connection, previous: str
+) -> None:
     user, secret = _account(owner, SecretBox(OLD).encrypt)
     legacy, _ = _account(owner, _before_key_ids(OLD))
     before = _stored(owner)
-    result = _rotate(app_database_url, NEW, previous)
+    result = _rotate(admin_database_url, NEW, previous)
     assert (result.reencrypted, result.already_current) == (0, 0)
     assert set(result.unreadable) == {user, legacy}
     assert _stored(owner) == before
     # The right previous key afterwards still finds everything where it was.
-    assert _rotate(app_database_url, NEW, OLD).reencrypted == 2
+    assert _rotate(admin_database_url, NEW, OLD).reencrypted == 2
     assert SecretBox(NEW).decrypt(_stored(owner)[user], user.bytes) == secret
 
 
-def test_it_is_one_transaction(app_database_url: str, owner: psycopg.Connection) -> None:
+def test_it_is_one_transaction(admin_database_url: str, owner: psycopg.Connection) -> None:
     """A failure part of the way leaves every secret as it was: never half under one key, half under another."""
     for _ in range(3):
         _account(owner, SecretBox(OLD).encrypt)
@@ -175,7 +180,7 @@ def test_it_is_one_transaction(app_database_url: str, owner: psycopg.Connection)
             return self.box.reseal(ciphertext, context)
 
     async def attempt() -> None:
-        database = Database(app_database_url)
+        database = Database(admin_database_url)
         try:
             await rotate_admin_secrets(database, FailsOnTheThird())
         finally:
@@ -187,7 +192,7 @@ def test_it_is_one_transaction(app_database_url: str, owner: psycopg.Connection)
 
 
 def test_the_command_prints_three_counts_and_who_must_enrol_again_but_never_a_secret(
-    app_database_url: str,
+    admin_database_url: str,
     owner: psycopg.Connection,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -195,7 +200,7 @@ def test_the_command_prints_three_counts_and_who_must_enrol_again_but_never_a_se
     moved, secret = _account(owner, SecretBox(OLD).encrypt)
     _account(owner, SecretBox(NEW).encrypt)
     lost, lost_secret = _account(owner, SecretBox(WRONG).encrypt)
-    monkeypatch.setenv("QD_DATABASE_URL", app_database_url)
+    monkeypatch.setenv("QD_ADMIN_DATABASE_URL", admin_database_url)
     monkeypatch.setenv("QD_SECRETS_KEY", NEW)
     monkeypatch.setenv("QD_SECRETS_KEY_PREVIOUS", OLD)
     monkeypatch.setattr("sys.argv", ["rotate_secrets"])
@@ -215,7 +220,7 @@ def test_the_command_prints_three_counts_and_who_must_enrol_again_but_never_a_se
     for value in (secret, lost_secret, *stored.values(), derive_key(NEW), derive_key(OLD)):
         for spelling in (value.hex(), base64.b64encode(value).decode(), base64.b32encode(value).decode()):
             assert spelling not in shown
-    for value in (NEW, OLD, app_database_url):
+    for value in (NEW, OLD, admin_database_url):
         assert value not in shown
     assert str(moved) not in shown, "only the accounts that could not be read are named"
 
@@ -231,7 +236,7 @@ def test_the_command_prints_three_counts_and_who_must_enrol_again_but_never_a_se
     ("current", "previous"), [("", OLD), ("short", OLD), (NEW, "short")], ids=["no key", "short key", "short previous"]
 )
 def test_the_command_refuses_an_unusable_key_before_it_touches_anything(
-    app_database_url: str,
+    admin_database_url: str,
     owner: psycopg.Connection,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -240,7 +245,7 @@ def test_the_command_refuses_an_unusable_key_before_it_touches_anything(
 ) -> None:
     _account(owner, SecretBox(OLD).encrypt)
     before = _stored(owner)
-    monkeypatch.setenv("QD_DATABASE_URL", app_database_url)
+    monkeypatch.setenv("QD_ADMIN_DATABASE_URL", admin_database_url)
     monkeypatch.setenv("QD_SECRETS_KEY", current)
     monkeypatch.setenv("QD_SECRETS_KEY_PREVIOUS", previous)
     monkeypatch.setattr("sys.argv", ["rotate_secrets"])
@@ -257,15 +262,19 @@ def test_the_command_refuses_an_unusable_key_before_it_touches_anything(
 
 
 @contextmanager
-def _application(app_database_url: str, env: AdminEnv, current: str, previous: str = "") -> Iterator[TestClient]:
-    """The application as it starts with these two settings."""
-    database = Database(app_database_url)
-    access = AdminAccess(database, allowed_tg_ids=env.allowed, cipher=SecretBox(current, previous), now=env.clock.now)
+def _application(urls: tuple[str, str], env: AdminEnv, current: str, previous: str = "") -> Iterator[TestClient]:
+    """The application as it starts with these two settings. `urls`: the ordinary role's connection and
+    the administrators'."""
+    database, admin_database = Database(urls[0]), Database(urls[1])
+    access = AdminAccess(
+        admin_database, allowed_tg_ids=env.allowed, cipher=SecretBox(current, previous), now=env.clock.now
+    )
     app = create_app(
         database.reachable,
         database,
         auth=AuthService(database, TEST_BOT_TOKEN),
         admin=access,
+        admin_storage=admin_database,
         authenticator=HeaderAuthenticator(),
         now=env.clock.now,
         secrets_key=current,
@@ -274,6 +283,7 @@ def _application(app_database_url: str, env: AdminEnv, current: str, previous: s
     with TestClient(app) as test_client:
         yield test_client
         test_client.portal.call(database.dispose)  # type: ignore[union-attr]
+        test_client.portal.call(admin_database.dispose)  # type: ignore[union-attr]
 
 
 def _sign_in(client: TestClient, env: AdminEnv, user: uuid.UUID, secret: bytes) -> Any:
@@ -281,7 +291,7 @@ def _sign_in(client: TestClient, env: AdminEnv, user: uuid.UUID, secret: bytes) 
 
 
 def test_administrators_sign_in_with_their_old_device_before_during_and_after_the_rotation(
-    app_database_url: str, owner: psycopg.Connection, admin_env: AdminEnv
+    app_database_url: str, admin_database_url: str, owner: psycopg.Connection, admin_env: AdminEnv
 ) -> None:
     admin_env.clock.freeze()
     people = [_account(owner, SecretBox(OLD).encrypt), _account(owner, _before_key_ids(OLD))]
@@ -297,47 +307,47 @@ def test_administrators_sign_in_with_their_old_device_before_during_and_after_th
             )
             assert shops.status_code == 200, (when, shops.text)
 
-    with _application(app_database_url, admin_env, OLD) as before:
+    with _application((app_database_url, admin_database_url), admin_env, OLD) as before:
         everyone_signs_in(before, "before the rotation")
 
-    with _application(app_database_url, admin_env, NEW, OLD) as during:
+    with _application((app_database_url, admin_database_url), admin_env, NEW, OLD) as during:
         everyone_signs_in(during, "restarted with both secrets, before the command")
-        result = _rotate(app_database_url, NEW, OLD)
+        result = _rotate(admin_database_url, NEW, OLD)
         assert (result.reencrypted, result.already_current, result.unreadable) == (2, 0, ())
         everyone_signs_in(during, "after the command, the previous secret still set")
 
-    with _application(app_database_url, admin_env, NEW) as after:
+    with _application((app_database_url, admin_database_url), admin_env, NEW) as after:
         everyone_signs_in(after, "the previous secret removed")
 
     # The old secret alone no longer opens anything: the stored secrets are under the new key.
-    with _application(app_database_url, admin_env, OLD) as stale:
+    with _application((app_database_url, admin_database_url), admin_env, OLD) as stale:
         user, secret = people[0]
         refused = _sign_in(stale, admin_env, user, secret)
         assert (refused.status_code, refused.json()["error"]["code"]) == (403, "SECOND_FACTOR_INVALID")
 
 
 def test_without_the_previous_secret_a_changed_key_locks_administrators_out(
-    app_database_url: str, owner: psycopg.Connection, admin_env: AdminEnv
+    app_database_url: str, admin_database_url: str, owner: psycopg.Connection, admin_env: AdminEnv
 ) -> None:
     """What the second setting is for: the same restart without it refuses a right code."""
     admin_env.clock.freeze()
     user, secret = _account(owner, SecretBox(OLD).encrypt)
     allow_list(owner, admin_env, user)
-    with _application(app_database_url, admin_env, NEW) as changed:
+    with _application((app_database_url, admin_database_url), admin_env, NEW) as changed:
         refused = _sign_in(changed, admin_env, user, secret)
         assert (refused.status_code, refused.json()["error"]["code"]) == (403, "SECOND_FACTOR_INVALID")
     with pytest.raises(SecretUnreadable):
         SecretBox(NEW).decrypt(_stored(owner)[user], user.bytes)
-    with _application(app_database_url, admin_env, NEW, OLD) as both:
+    with _application((app_database_url, admin_database_url), admin_env, NEW, OLD) as both:
         assert _sign_in(both, admin_env, user, secret).status_code == 201
 
 
 def test_a_new_enrolment_during_a_rotation_is_stored_under_the_current_key(
-    app_database_url: str, owner: psycopg.Connection, admin_env: AdminEnv
+    app_database_url: str, admin_database_url: str, owner: psycopg.Connection, admin_env: AdminEnv
 ) -> None:
     user = _person(owner)
     allow_list(owner, admin_env, user)
-    with _application(app_database_url, admin_env, NEW, OLD) as during:
+    with _application((app_database_url, admin_database_url), admin_env, NEW, OLD) as during:
         enrolled = during.post(
             f"{ADMIN_API}/auth/enrolment", headers={**as_user(user), "Idempotency-Key": f"enrol-{uuid.uuid4().hex}"}
         )
@@ -346,7 +356,7 @@ def test_a_new_enrolment_during_a_rotation_is_stored_under_the_current_key(
     assert len(SecretBox(NEW).decrypt(stored, user.bytes)) == totp.SECRET_BYTES
     with pytest.raises(SecretUnreadable):
         SecretBox(OLD).decrypt(stored, user.bytes)
-    assert _rotate(app_database_url, NEW, OLD).already_current == 1
+    assert _rotate(admin_database_url, NEW, OLD).already_current == 1
 
 
 # --- file links across a rotation -----------------------------------------------------------------------

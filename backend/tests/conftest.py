@@ -1,6 +1,7 @@
 """Database fixtures: a fresh database per test session, built by the real migrations."""
 
 import os
+import time
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
@@ -48,18 +49,47 @@ def database_url() -> Iterator[str]:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
 
 
+def _login_url(database_url: str, role: str) -> str:
+    """Give one of the three application roles a login and return its connection string."""
+    # A role is shared by every database of the server, so two test sessions running at once (two
+    # agents, or two terminals) must set the same password or they lock each other out.
+    password = os.environ.get("QD_TEST_APP_PASSWORD", "test-only-qd-app-password")
+    statement = psycopg.sql.SQL("ALTER ROLE {} LOGIN PASSWORD {}").format(
+        psycopg.sql.Identifier(role), psycopg.sql.Literal(password)
+    )
+    with psycopg.connect(database_url, autocommit=True) as conn:
+        for attempt in range(10):
+            try:
+                conn.execute(statement)
+                break
+            except psycopg.errors.InternalError_:
+                # "tuple concurrently updated": another test session set the same role's password at the
+                # same instant. Both set the same one, so trying again is all there is to do.
+                if attempt == 9:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
+    parts = urlsplit(database_url)
+    host = parts.hostname or "127.0.0.1"
+    netloc = f"{role}:{password}@{host}:{parts.port or 5432}"
+    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+
+
 @pytest.fixture(scope="session")
 def app_database_url(database_url: str) -> str:
     """Connection string for qd_app itself, so the API runs under the same restrictions as in production."""
-    # The role is shared by every database of the server, so two test sessions running at once (two
-    # agents, or two terminals) must set the same password or they lock each other out.
-    password = os.environ.get("QD_TEST_APP_PASSWORD", "test-only-qd-app-password")
-    with psycopg.connect(database_url, autocommit=True) as conn:
-        conn.execute(psycopg.sql.SQL("ALTER ROLE qd_app LOGIN PASSWORD {}").format(psycopg.sql.Literal(password)))
-    parts = urlsplit(database_url)
-    host = parts.hostname or "127.0.0.1"
-    netloc = f"qd_app:{password}@{host}:{parts.port or 5432}"
-    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+    return _login_url(database_url, "qd_app")
+
+
+@pytest.fixture(scope="session")
+def admin_database_url(database_url: str) -> str:
+    """Connection string for qd_admin, the role of the administrators' side."""
+    return _login_url(database_url, "qd_admin")
+
+
+@pytest.fixture(scope="session")
+def worker_database_url(database_url: str) -> str:
+    """Connection string for qd_worker, the role of the worker."""
+    return _login_url(database_url, "qd_worker")
 
 
 @pytest.fixture
@@ -105,22 +135,43 @@ def shop_b(owner: psycopg.Connection) -> Shop:
 AppSession = Callable[[uuid.UUID | None], AbstractContextManager[psycopg.Connection]]
 
 
+def _as_role(database_url: str, role: str) -> AppSession:
+    @contextmanager
+    def _session(shop_id: uuid.UUID | None) -> Iterator[psycopg.Connection]:
+        with psycopg.connect(database_url) as conn:
+            conn.execute(psycopg.sql.SQL("SET ROLE {}").format(psycopg.sql.Identifier(role)))
+            if shop_id is not None:
+                conn.execute("SELECT set_config('qd.shop_id', %s, true)", (str(shop_id),))
+            yield conn
+
+    return _session
+
+
+def refused(session: AppSession, statement: str, shop_id: uuid.UUID | None = None) -> None:
+    """The role is refused the statement outright: it lacks the right, whatever the rows are."""
+    with pytest.raises(psycopg.errors.InsufficientPrivilege), session(shop_id) as conn:
+        conn.execute(statement)
+
+
 @pytest.fixture
 def as_app(database_url: str) -> AppSession:
     """Open a transaction as the application role qd_app, with the tenant set to the given shop.
 
     Leaving the block commits, so deferred constraints fire; an exception rolls back.
     """
+    return _as_role(database_url, "qd_app")
 
-    @contextmanager
-    def _session(shop_id: uuid.UUID | None) -> Iterator[psycopg.Connection]:
-        with psycopg.connect(database_url) as conn:
-            conn.execute("SET ROLE qd_app")
-            if shop_id is not None:
-                conn.execute("SELECT set_config('qd.shop_id', %s, true)", (str(shop_id),))
-            yield conn
 
-    return _session
+@pytest.fixture
+def as_admin(database_url: str) -> AppSession:
+    """The same as the role of the administrators' side, qd_admin."""
+    return _as_role(database_url, "qd_admin")
+
+
+@pytest.fixture
+def as_worker(database_url: str) -> AppSession:
+    """The same as the role of the worker, qd_worker."""
+    return _as_role(database_url, "qd_worker")
 
 
 def add_entry(

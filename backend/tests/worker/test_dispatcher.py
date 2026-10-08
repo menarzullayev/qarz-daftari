@@ -47,9 +47,9 @@ def empty_outbox(owner: psycopg.Connection) -> None:
     owner.execute("UPDATE outbox_message SET status = 'sent' WHERE status = 'pending'")
 
 
-def run[T](app_database_url: str, scenario: Callable[[Database], Awaitable[T]]) -> T:
+def run[T](worker_database_url: str, scenario: Callable[[Database], Awaitable[T]]) -> T:
     async def wrapper() -> T:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             return await scenario(database)
         finally:
@@ -74,21 +74,21 @@ def status_of(owner: psycopg.Connection, recipient: str) -> list[tuple[str, int]
 # --- the outbox is transactional -----------------------------------------------------------------------
 
 
-def test_a_queued_message_is_sent_and_marked(app_database_url: str, owner: psycopg.Connection) -> None:
+def test_a_queued_message_is_sent_and_marked(worker_database_url: str, owner: psycopg.Connection) -> None:
     sender, clock = FakeSender(), Clock()
 
     async def scenario(database: Database) -> Any:
         await enqueue(database, "111", "salom")
         return await Dispatcher(database, sender, clock.now).run_once()
 
-    result = run(app_database_url, scenario)
+    result = run(worker_database_url, scenario)
     assert result.sent == 1
     assert sender.sent == [("telegram", "111", {"text": "salom"})]
     assert status_of(owner, "111") == [("sent", 0)]
 
 
 def test_a_message_queued_in_a_failed_transaction_never_exists(
-    app_database_url: str, owner: psycopg.Connection
+    worker_database_url: str, owner: psycopg.Connection
 ) -> None:
     sender, clock = FakeSender(), Clock()
 
@@ -99,18 +99,18 @@ def test_a_message_queued_in_a_failed_transaction_never_exists(
                 raise RuntimeError("the business change failed")
         return await Dispatcher(database, sender, clock.now).run_once()
 
-    result = run(app_database_url, scenario)
+    result = run(worker_database_url, scenario)
     assert result.sent == 0
     assert sender.sent == []
     assert status_of(owner, "222") == []
 
 
-def test_the_same_dedupe_key_is_queued_once(app_database_url: str, owner: psycopg.Connection) -> None:
+def test_the_same_dedupe_key_is_queued_once(worker_database_url: str, owner: psycopg.Connection) -> None:
     async def scenario(database: Database) -> tuple[bool, bool]:
         key = f"dedupe-{uuid.uuid4().hex}"
         return await enqueue(database, "333", key=key), await enqueue(database, "333", key=key)
 
-    assert run(app_database_url, scenario) == (True, False)
+    assert run(worker_database_url, scenario) == (True, False)
     assert len(status_of(owner, "333")) == 1
 
 
@@ -118,7 +118,7 @@ def test_the_same_dedupe_key_is_queued_once(app_database_url: str, owner: psycop
 
 
 def test_retry_after_waits_exactly_that_long_and_is_not_a_failed_attempt(
-    app_database_url: str, owner: psycopg.Connection
+    worker_database_url: str, owner: psycopg.Connection
 ) -> None:
     sender, clock = FakeSender(failures={"444": [RetryLater(30)]}), Clock()
 
@@ -132,14 +132,14 @@ def test_retry_after_waits_exactly_that_long_and_is_not_a_failed_attempt(
         later = await dispatcher.run_once()
         return [first, too_early, later]
 
-    first, too_early, later = run(app_database_url, scenario)
+    first, too_early, later = run(worker_database_url, scenario)
     assert (first.rescheduled, first.sent) == (1, 0)
     assert (too_early.sent, too_early.rescheduled) == (0, 0)
     assert later.sent == 1
     assert status_of(owner, "444") == [("sent", 0)]
 
 
-def test_other_failures_back_off_and_count_attempts(app_database_url: str, owner: psycopg.Connection) -> None:
+def test_other_failures_back_off_and_count_attempts(worker_database_url: str, owner: psycopg.Connection) -> None:
     sender = FakeSender(failures={"555": [SendFailed("net"), SendFailed("net"), SendFailed("net")]})
     clock = Clock()
 
@@ -152,7 +152,7 @@ def test_other_failures_back_off_and_count_attempts(app_database_url: str, owner
             sent_per_run.append((await dispatcher.run_once()).sent)
         return sent_per_run
 
-    assert run(app_database_url, scenario) == [0, 0, 0, 0, 0, 0, 1]
+    assert run(worker_database_url, scenario) == [0, 0, 0, 0, 0, 0, 1]
     assert status_of(owner, "555") == [("sent", 3)]
 
 
@@ -161,7 +161,9 @@ def test_backoff_doubles_and_is_capped() -> None:
     assert backoff(30) == timedelta(hours=1)
 
 
-def test_a_message_that_keeps_failing_for_a_day_is_given_up(app_database_url: str, owner: psycopg.Connection) -> None:
+def test_a_message_that_keeps_failing_for_a_day_is_given_up(
+    worker_database_url: str, owner: psycopg.Connection
+) -> None:
     sender, clock = FakeSender(failures={"666": [SendFailed("net")] * 3}), Clock()
 
     async def scenario(database: Database) -> list[Any]:
@@ -176,14 +178,14 @@ def test_a_message_that_keeps_failing_for_a_day_is_given_up(app_database_url: st
         given_up = await dispatcher.run_once()
         return [still_trying, given_up]
 
-    still_trying, given_up = run(app_database_url, scenario)
+    still_trying, given_up = run(worker_database_url, scenario)
     assert (still_trying.rescheduled, still_trying.failed) == (1, 0)
     assert given_up.failed == 1
     assert status_of(owner, "666") == [("failed", 1)]
 
 
 def test_a_blocked_recipient_fails_all_their_messages_and_their_links_become_unreachable(
-    app_database_url: str, owner: psycopg.Connection
+    worker_database_url: str, owner: psycopg.Connection
 ) -> None:
     blocked_tg, other_tg = 777_000_001, 777_000_002
     users = {}
@@ -212,7 +214,7 @@ def test_a_blocked_recipient_fails_all_their_messages_and_their_links_become_unr
         await enqueue(database, str(other_tg))
         return await Dispatcher(database, sender, clock.now).run_once()
 
-    result = run(app_database_url, scenario)
+    result = run(worker_database_url, scenario)
     assert (result.blocked, result.sent) == (1, 1)
     assert [status for status, _ in status_of(owner, str(blocked_tg))] == ["failed", "failed", "failed"]
     assert status_of(owner, str(other_tg)) == [("sent", 0)]
@@ -224,22 +226,24 @@ def test_a_blocked_recipient_fails_all_their_messages_and_their_links_become_unr
     assert state == {"blocked in shop 1": "unreachable", "blocked in shop 2": "unreachable", "other": "active"}
 
 
-def test_only_the_narrow_function_can_cross_tenants(app_database_url: str, owner: psycopg.Connection) -> None:
-    """qd_app with no tenant cannot touch customer_link directly; the function is not open to everyone."""
-    with psycopg.connect(app_database_url, autocommit=True) as conn:
+def test_only_the_narrow_function_can_cross_tenants(worker_database_url: str, owner: psycopg.Connection) -> None:
+    """The worker's role with no tenant cannot touch customer_link directly; the function is the worker's
+    alone (migration 0031): neither everyone nor the ordinary application may call it."""
+    with psycopg.connect(worker_database_url, autocommit=True) as conn:
         assert conn.execute("UPDATE customer_link SET status = 'unreachable'").rowcount == 0
     row = owner.execute(
         "SELECT has_function_privilege('public', 'mark_recipient_unreachable(bigint)', 'EXECUTE'), "
-        "       has_function_privilege('qd_app', 'mark_recipient_unreachable(bigint)', 'EXECUTE'), "
-        "       (SELECT prosecdef FROM pg_proc WHERE proname = 'mark_recipient_unreachable')"
+        "       has_function_privilege('qd_worker', 'mark_recipient_unreachable(bigint)', 'EXECUTE'), "
+        "       (SELECT prosecdef FROM pg_proc WHERE proname = 'mark_recipient_unreachable'), "
+        "       has_function_privilege('qd_app', 'mark_recipient_unreachable(bigint)', 'EXECUTE')"
     ).fetchone()
-    assert row == (False, True, True)
+    assert row == (False, True, True, False)
 
 
 # --- rate limits ---------------------------------------------------------------------------------------
 
 
-def test_one_message_a_second_per_recipient(app_database_url: str, owner: psycopg.Connection) -> None:
+def test_one_message_a_second_per_recipient(worker_database_url: str, owner: psycopg.Connection) -> None:
     sender, clock = FakeSender(), Clock()
 
     async def scenario(database: Database) -> list[Any]:
@@ -252,13 +256,13 @@ def test_one_message_a_second_per_recipient(app_database_url: str, owner: psycop
             results.append(await dispatcher.run_once())
         return results
 
-    results = run(app_database_url, scenario)
+    results = run(worker_database_url, scenario)
     assert [(r.sent, r.deferred) for r in results] == [(1, 2), (1, 1), (1, 0)]
     assert [payload["text"] for _, _, payload in sender.sent] == ["m0", "m1", "m2"]
     assert status_of(owner, "888") == [("sent", 0)] * 3  # deferral is not a failed attempt
 
 
-def test_the_global_limit_holds_across_recipients(app_database_url: str) -> None:
+def test_the_global_limit_holds_across_recipients(worker_database_url: str) -> None:
     sender, clock = FakeSender(), Clock()
     extra = 5
 
@@ -271,7 +275,7 @@ def test_the_global_limit_holds_across_recipients(app_database_url: str) -> None
         second = await dispatcher.run_once()
         return [first, second]
 
-    first, second = run(app_database_url, scenario)
+    first, second = run(worker_database_url, scenario)
     assert (first.sent, first.deferred) == (GLOBAL_PER_SECOND, extra)
     assert second.sent == extra
     assert len({recipient for _, recipient, _ in sender.sent}) == GLOBAL_PER_SECOND + extra
@@ -280,7 +284,7 @@ def test_the_global_limit_holds_across_recipients(app_database_url: str) -> None
 # --- at-least-once, never twice at the same time -------------------------------------------------------
 
 
-def test_two_dispatchers_never_send_the_same_message(app_database_url: str) -> None:
+def test_two_dispatchers_never_send_the_same_message(worker_database_url: str) -> None:
     sender, clock = FakeSender(), Clock()
 
     async def scenario(database: Database) -> list[Any]:
@@ -289,14 +293,14 @@ def test_two_dispatchers_never_send_the_same_message(app_database_url: str) -> N
         one, two = Dispatcher(database, sender, clock.now), Dispatcher(database, sender, clock.now)
         return list(await asyncio.gather(one.run_once(), two.run_once()))
 
-    results = run(app_database_url, scenario)
+    results = run(worker_database_url, scenario)
     assert sum(r.sent for r in results) == 20
     recipients = [recipient for _, recipient, _ in sender.sent]
     assert len(recipients) == len(set(recipients)) == 20
 
 
 def test_a_message_claimed_by_a_dispatcher_that_died_is_sent_after_the_lease(
-    app_database_url: str, owner: psycopg.Connection
+    worker_database_url: str, owner: psycopg.Connection
 ) -> None:
     sender, clock = FakeSender(), Clock()
 
@@ -312,5 +316,5 @@ def test_a_message_claimed_by_a_dispatcher_that_died_is_sent_after_the_lease(
         after_lease = (await survivor.run_once()).sent
         return [during_lease, after_lease]
 
-    assert run(app_database_url, scenario) == [0, 1]
+    assert run(worker_database_url, scenario) == [0, 1]
     assert status_of(owner, "999") == [("sent", 0)]

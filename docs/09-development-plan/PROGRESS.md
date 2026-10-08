@@ -2,7 +2,7 @@
 
 Tracks the build against `OUTPUT.md` in this directory. A story is listed as done only when its checks passed in CI on the main branch; the evidence column says where that can be seen. Updated at the end of each working session.
 
-Last updated: 2026-10-07.
+Last updated: 2026-10-08.
 
 ## Milestone M1: Platform foundation
 
@@ -152,6 +152,7 @@ Each is implemented. If one is rejected, the named story must be revisited.
 | DEC-061 | At most five shops and one trial a person; later shops start limited; narrowed database rights | S19.2 |
 | DEC-062 | Reassigning a shop's owner; the former owner becomes a suspended manager; rotating the server secret | S18.1 |
 | DEC-063 | Mini App session token in sessionStorage; panel sign-in by redirect, accepted only from our own site | S15.1, S19.2 |
+| DEC-068 | Three database roles, one for each part of the application; what each is granted; sign out everywhere | S19.2 |
 
 Decided by the founder on 2026-10-07, and so not awaiting review: DEC-058 (nginx and Docker Compose, where the architecture document names Caddy; what to prepare before production); DEC-051 (buttons in the review group, honoured for platform administrators only, as the agent understood him), DEC-052 (no fresh code to decide a receipt), DEC-053 (store open debts).
 
@@ -162,7 +163,7 @@ Decided by the founder on 2026-10-07, and so not awaiting review: DEC-058 (nginx
 | Creation of role `qd_app` | `LOGIN PASSWORD 'set-at-deploy'` in `schema.sql` | Created `NOLOGIN`; login and password set at deploy | No password literal in the repository (DEC-021) |
 | Layer order for the import contract | Layers named without ordering infrastructure | interface, infrastructure, application, domain | A single order is needed for an automatic check |
 | Dependency lock | "Pinned with hashes" | Hash-pinned Linux lock generated with uv | pip-tools did not finish |
-| Tables, columns and functions beyond `schema.sql` | Not present | Tables `user_session`, `ownership_transfer`, `chat_pending`; `job_run`, `measure.weekly`, `online_payment`, `admin_audit`, `admin_session`, `admin_request_key`, `export_job`, `open_debt`, `signin_replay`; columns `app_user.trial_used_at`, `catalog_item.merged_into`, `customer_link.waiting_name`, `date_change_request.decline_reason`; functions `mark_recipient_unreachable`, `accept_staff_invitation`, `my_memberships`, `customer_token_info`, `link_customer`, `my_accounts`, `my_link`, `end_my_link`, `mark_recipient_reachable`, `forget_user_if_unused`, `shops_due_for_reminders`, `subscriptions_to_review`, `shops_to_erase`, `erase_shop`, `online_payment_shop`, `online_payment_shop_by_txn`, `payme_statement`, `shops_with_receipt_work`, `admin_shop_search`, `admin_shop_receipts`, `admin_lock_subscription`, `admin_store_subscription`, `admin_set_platform_setting`, `purge_expired_sign_ins`, `claim_owned_shop`; trigger `shop_deletion_guard`; indexes `ledger_reversal_shop`, `ledger_shop_customer` | DEC-021, DEC-022, DEC-025, DEC-029, DEC-030, DEC-032, DEC-033, DEC-035, DEC-038, DEC-039, DEC-041, DEC-044, DEC-045, DEC-047, DEC-048, DEC-049, DEC-053, DEC-055, DEC-056, DEC-057 |
+| Tables, columns and functions beyond `schema.sql` | Not present | Tables `user_session`, `ownership_transfer`, `chat_pending`; `job_run`, `measure.weekly`, `online_payment`, `admin_audit`, `admin_session`, `admin_request_key`, `export_job`, `open_debt`, `signin_replay`; columns `app_user.trial_used_at`, `catalog_item.merged_into`, `customer_link.waiting_name`, `date_change_request.decline_reason`; functions `mark_recipient_unreachable`, `accept_staff_invitation`, `my_memberships`, `customer_token_info`, `link_customer`, `my_accounts`, `my_link`, `end_my_link`, `mark_recipient_reachable`, `forget_user_if_unused`, `shops_due_for_reminders`, `subscriptions_to_review`, `shops_to_erase`, `erase_shop`, `online_payment_shop`, `online_payment_shop_by_txn`, `payme_statement`, `shops_with_receipt_work`, `admin_shop_search`, `admin_shop_receipts`, `admin_lock_subscription`, `admin_store_subscription`, `admin_set_platform_setting`, `purge_expired_sign_ins`, `claim_owned_shop`, `admin_notice_recipients`; roles `qd_admin`, `qd_worker`; trigger `shop_deletion_guard`; indexes `ledger_reversal_shop`, `ledger_shop_customer` | DEC-021, DEC-022, DEC-025, DEC-029, DEC-030, DEC-032, DEC-033, DEC-035, DEC-038, DEC-039, DEC-041, DEC-044, DEC-045, DEC-047, DEC-048, DEC-049, DEC-053, DEC-055, DEC-056, DEC-057, DEC-068 |
 | Order of consent and the waiting entry | BR-16 allows the waiting entry before consent | Consent first; a constraint refuses a waiting entry without it | Stricter, and simpler to explain to a customer (DEC-032) |
 | Ruff rule S608 in the storage module | All security rules on | Off for `infrastructure/db.py`, replaced by a stricter project test | The rule cannot tell a constant SQL fragment from user input (DEC-027) |
 | Rate limits on sign-in | Specified | The API limits signed-in callers per user and per shop; requests that are not signed in are left to the proxy, which does not exist yet | Limits by network address belong in front of the application (DEC-042) |
@@ -187,7 +188,7 @@ Decided by the founder on 2026-10-07, and so not awaiting review: DEC-058 (nginx
 - The front end and the back end run together only in the end-to-end suite, with signed stand-in data: no real Telegram client and no real Login widget has been used (EVID-076).
 - Deployment and backups were proven in containers on one machine with a self-signed certificate. Nothing ran on a server, under systemd, or between two hosts; whether the proxy sees clients' real addresses is unknown until then (EVID-072).
 - There is no monitoring system: the logs, metrics and alert rules exist, and no alert was ever triggered or received.
-- One database role still serves the API, the administrators' side and the worker, so security findings 9, 11 and 13 are settled only in part (EVID-074).
+- The API, the administrators' side and the worker connect as three database roles (pull request 68, DEC-068), which was proven in tests and in the end-to-end stack only. The administrators' side is still served by the API's process, which holds two of the three connections. What is left of security findings 9, 11 and 13 is in the table at the top of `docs/10-operations/security-review.md`.
 - The file store's S3 adapter never ran against a real bucket; receipts were sanitized on hand-built samples, not on photographs from real phones.
 - No administrator has signed in with a real authenticator application.
 

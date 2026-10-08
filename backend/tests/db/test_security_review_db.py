@@ -24,7 +24,7 @@ pytestmark = pytest.mark.db
 
 
 def test_the_application_role_cannot_erase_a_ledger_before_the_waiting_period(
-    as_app: AppSession, owner: psycopg.Connection, shop_a: Shop
+    as_app: AppSession, as_worker: AppSession, owner: psycopg.Connection, shop_a: Shop
 ) -> None:
     """`erase_shop` trusts `shop.status` and `shop.deletion_due`, and both are columns the application
     role may update. Two statements delete every entry of a shop: the insert-only ledger (REQ-N07) and
@@ -41,7 +41,11 @@ def test_the_application_role_cannot_erase_a_ledger_before_the_waiting_period(
         conn.execute("UPDATE shop SET status = 'deletion_pending', deletion_due = now() + interval '30 days'")
     with pytest.raises(refused, match="30 days"), as_app(shop_a.shop_id) as conn:
         conn.execute("UPDATE shop SET deletion_due = now()")
-    with as_app(None) as conn:
+    # Since migration 0031 the application role may not call the function at all; the worker's role,
+    # which may, is refused by the function itself while the wait lasts.
+    with pytest.raises(refused, match="erase_shop"), as_app(None) as conn:
+        conn.execute("SELECT erase_shop(%s)", (shop_a.shop_id,))
+    with as_worker(None) as conn:
         assert conn.execute("SELECT erase_shop(%s)", (shop_a.shop_id,)).fetchone() == (False,)
     left = owner.execute("SELECT count(*) FROM ledger_entry WHERE shop_id = %s", (shop_a.shop_id,)).fetchone()
     assert left == (1,), "the entry must still be there"
@@ -52,13 +56,13 @@ def test_the_application_role_cannot_erase_a_ledger_before_the_waiting_period(
 
 
 def test_an_erased_shop_cannot_be_brought_back_by_the_application_role(
-    as_app: AppSession, owner: psycopg.Connection, shop_a: Shop
+    as_app: AppSession, as_worker: AppSession, owner: psycopg.Connection, shop_a: Shop
 ) -> None:
     owner.execute(
         "UPDATE shop SET status = 'deletion_pending', deletion_due = now() - interval '1 hour' WHERE id = %s",
         (shop_a.shop_id,),
     )
-    with as_app(None) as conn:
+    with as_worker(None) as conn:
         assert conn.execute("SELECT erase_shop(%s)", (shop_a.shop_id,)).fetchone() == (True,), (
             "erasure itself still works"
         )
@@ -173,18 +177,18 @@ def test_a_database_error_does_not_carry_personal_data(app_database_url: str, sh
 _PLATFORM_RIGHTS: dict[str, tuple[set[str], set[str]]] = {
     "app_user": ({"SELECT", "INSERT"}, {"lang", "active_shop"}),
     "platform_setting": ({"SELECT"}, set()),
-    "admin_account": (
-        {"SELECT", "INSERT"},
-        {"totp_secret", "confirmed_at", "failed_codes", "locked_until", "last_step"},
-    ),
-    "admin_session": ({"SELECT", "INSERT"}, {"revoked_at"}),
-    "admin_audit": ({"SELECT", "INSERT"}, set()),
-    "admin_request_key": ({"SELECT", "INSERT"}, set()),
+    # The administrators' tables belong to the administrators' role since migration 0031.
+    "admin_account": (set(), set()),
+    "admin_session": (set(), set()),
+    "admin_audit": (set(), set()),
+    "admin_request_key": (set(), set()),
     "user_session": ({"SELECT", "INSERT"}, {"revoked_at"}),
     "signin_replay": ({"SELECT", "INSERT"}, set()),
-    "outbox_message": ({"SELECT", "INSERT"}, {"status", "attempts", "next_try_at", "sent_at"}),
+    # Queued only: delivering is the worker's. Of a queued row the role reads five columns and not the
+    # recipient or the text (a column right, listed in tests/db/test_database_roles.py).
+    "outbox_message": ({"INSERT"}, set()),
     "processed_update": ({"SELECT", "INSERT"}, set()),
-    "job_run": ({"SELECT", "INSERT"}, set()),
+    "job_run": ({"SELECT"}, set()),
     "chat_pending": ({"SELECT", "INSERT", "DELETE"}, set()),
     "alembic_version": (set(), set()),
 }
@@ -275,7 +279,7 @@ def test_the_application_role_is_refused_what_it_no_longer_needs(as_app: AppSess
 
 
 def test_the_application_role_still_does_what_the_application_does(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+    owner: psycopg.Connection, as_app: AppSession, as_worker: AppSession, shop_a: Shop
 ) -> None:
     """The other side of the same change: the statements the application really runs are not refused."""
     token, message = uuid.uuid4().bytes * 2, uuid.uuid4()
@@ -294,6 +298,7 @@ def test_the_application_role_still_does_what_the_application_does(
             "INSERT INTO outbox_message (id, channel, recipient, payload) VALUES (%s, 'telegram', '1', '{}')",
             (message,),
         )
+    with as_worker(None) as conn:  # marking a message is the worker's since migration 0031
         conn.execute("UPDATE outbox_message SET status = 'sent', sent_at = now() WHERE id = %s", (message,))
     assert owner.execute("SELECT lang FROM app_user WHERE id = %s", (shop_a.user_id,)).fetchone() == ("ru",)
     assert owner.execute("SELECT status FROM outbox_message WHERE id = %s", (message,)).fetchone() == ("sent",)
@@ -338,11 +343,11 @@ def _setting_rows(conn: psycopg.Connection, key: str) -> tuple[list[tuple[object
 
 
 def test_an_administrator_changes_a_setting_and_the_audit_row_is_written_with_it(
-    owner: psycopg.Connection, as_app: AppSession
+    owner: psycopg.Connection, as_admin: AppSession
 ) -> None:
     admin, key = _administrator(owner), f"review_{uuid.uuid4().hex}"
     try:
-        with as_app(None) as conn:
+        with as_admin(None) as conn:
             first = conn.execute(_SET, (admin, key, "41", "why", '{"before": null, "after": 41}')).fetchone()
             second = conn.execute(_SET, (admin, key, "42", None, None)).fetchone()
         assert first == (True,) and second == (True,)
@@ -369,35 +374,37 @@ def test_an_administrator_changes_a_setting_and_the_audit_row_is_written_with_it
     ids=["disabled", "never confirmed", "no session", "expired session", "revoked session", "not an administrator"],
 )
 def test_nobody_else_changes_a_setting_through_the_function(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, who: dict[str, object] | None
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop, who: dict[str, object] | None
 ) -> None:
     """The check is the database's: the application role cannot write the table, and the function writes
     nothing, setting or audit row, for anybody but an active, confirmed administrator with an open session."""
     actor = shop_a.user_id if who is None else _administrator(owner, **who)  # type: ignore[arg-type]
     key = f"review_{uuid.uuid4().hex}"
-    with as_app(None) as conn:
+    with as_admin(None) as conn:
         assert conn.execute(_SET, (actor, key, "1", None, None)).fetchone() == (False,)
     assert _setting_rows(owner, key) == ([], 0)
 
 
-def test_only_the_application_role_may_call_the_new_functions(owner: psycopg.Connection) -> None:
-    for function in (
-        "admin_set_platform_setting(uuid, text, jsonb, text, jsonb, timestamptz)",
-        "purge_expired_sign_ins()",
-        "claim_owned_shop(uuid, boolean)",
+def test_only_one_role_may_call_each_of_the_new_functions(owner: psycopg.Connection) -> None:
+    """Each belongs to one part of the application since migration 0031."""
+    for function, role in (
+        ("admin_set_platform_setting(uuid, text, jsonb, text, jsonb, timestamptz)", "qd_admin"),
+        ("purge_expired_sign_ins()", "qd_worker"),
+        ("claim_owned_shop(uuid, boolean)", "qd_app"),
     ):
         row = owner.execute(
-            "SELECT has_function_privilege('qd_app', %s, 'EXECUTE'), has_function_privilege('public', %s, 'EXECUTE')",
-            (function, function),
+            "SELECT array(SELECT r FROM unnest(ARRAY['qd_app', 'qd_admin', 'qd_worker', 'public']) AS r "
+            "WHERE has_function_privilege(r, %s, 'EXECUTE'))",
+            (function,),
         ).fetchone()
-        assert row == (True, False), function
+        assert row == ([role],), function
 
 
 # --- finding 9: used sign-in data and dead sessions are purged ---------------------------------------------
 
 
 def test_the_purge_removes_what_is_dead_and_keeps_what_is_alive(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+    owner: psycopg.Connection, as_worker: AppSession, shop_a: Shop
 ) -> None:
     def session(expires: str, revoked: bool) -> bytes:
         token = uuid.uuid4().bytes * 2
@@ -430,7 +437,7 @@ def test_the_purge_removes_what_is_dead_and_keeps_what_is_alive(
     revoked_admin = _administrator(owner, session="revoked")
     new_key, old_key = request_key("29 days"), request_key("31 days")
 
-    with as_app(None) as conn:
+    with as_worker(None) as conn:
         removed = conn.execute("SELECT purge_expired_sign_ins()").fetchone()
     assert removed is not None and removed[0] >= 6
 

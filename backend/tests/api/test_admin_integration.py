@@ -57,14 +57,15 @@ class Ticks:
         return self.now
 
 
-def _app(app_database_url: str, env: AdminEnv, **more: Any) -> Iterator[TestClient]:
-    database = Database(app_database_url)
-    admin = AdminAccess(database, allowed_tg_ids=env.allowed, cipher=env.box, now=env.clock.now)
+def _app(app_database_url: str, admin_database_url: str, env: AdminEnv, **more: Any) -> Iterator[TestClient]:
+    database, admin_database = Database(app_database_url), Database(admin_database_url)
+    admin = AdminAccess(admin_database, allowed_tg_ids=env.allowed, cipher=env.box, now=env.clock.now)
     app = create_app(
         database.reachable,
         database,
         auth=AuthService(database, TEST_BOT_TOKEN),
         admin=admin,
+        admin_storage=admin_database,
         authenticator=HeaderAuthenticator(),
         now=env.clock.now,
         **more,
@@ -72,6 +73,7 @@ def _app(app_database_url: str, env: AdminEnv, **more: Any) -> Iterator[TestClie
     with TestClient(app) as client:
         yield client
         client.portal.call(database.dispose)  # type: ignore[union-attr]
+        client.portal.call(admin_database.dispose)  # type: ignore[union-attr]
 
 
 # --- rate limits ----------------------------------------------------------------------------------------
@@ -83,10 +85,10 @@ def ticks() -> Ticks:
 
 
 @pytest.fixture
-def limited(app_database_url: str, admin_env: AdminEnv, ticks: Ticks) -> Iterator[TestClient]:
+def limited(app_database_url: str, admin_database_url: str, admin_env: AdminEnv, ticks: Ticks) -> Iterator[TestClient]:
     """Five requests at once per user, then one a minute; the shop limit is out of the way."""
     limits = RateLimits(user=Limit(per_minute=1, burst=5), shop=Limit(per_minute=6000, burst=6000))
-    yield from _app(app_database_url, admin_env, rate_limits=limits, monotonic=ticks)
+    yield from _app(app_database_url, admin_database_url, admin_env, rate_limits=limits, monotonic=ticks)
 
 
 def test_the_per_user_rate_limit_covers_the_administrators_routes(
@@ -163,8 +165,8 @@ def test_an_oversized_body_is_refused_before_the_administrators_side_reads_it(
 
 
 @pytest.fixture
-def with_keys(app_database_url: str, admin_env: AdminEnv) -> Iterator[TestClient]:
-    yield from _app(app_database_url, admin_env, payment_keys=KEYS)
+def with_keys(app_database_url: str, admin_database_url: str, admin_env: AdminEnv) -> Iterator[TestClient]:
+    yield from _app(app_database_url, admin_database_url, admin_env, payment_keys=KEYS)
 
 
 def test_turning_online_payment_on_in_the_panel_is_what_lets_an_owner_order(
@@ -380,9 +382,16 @@ METRICS_TOKEN = "a-metrics-token-for-tests"
 
 
 @pytest.fixture
-def observed(app_database_url: str, admin_env: AdminEnv, ticks: Ticks) -> Iterator[TestClient]:
+def observed(app_database_url: str, admin_database_url: str, admin_env: AdminEnv, ticks: Ticks) -> Iterator[TestClient]:
     limits = RateLimits(user=Limit(per_minute=1, burst=3), shop=Limit(per_minute=6000, burst=6000))
-    yield from _app(app_database_url, admin_env, metrics_token=METRICS_TOKEN, rate_limits=limits, monotonic=ticks)
+    yield from _app(
+        app_database_url,
+        admin_database_url,
+        admin_env,
+        metrics_token=METRICS_TOKEN,
+        rate_limits=limits,
+        monotonic=ticks,
+    )
 
 
 def _second_factor_events(client: TestClient) -> int:

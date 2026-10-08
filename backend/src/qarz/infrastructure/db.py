@@ -2010,11 +2010,8 @@ class PgTenantSession:
     async def admin_recipients(self) -> list[tuple[int, str]]:
         rows = (
             await self._conn.execute(
-                text(
-                    "SELECT u.tg_id, u.lang FROM admin_account a JOIN app_user u ON u.id = a.user_id "
-                    "WHERE a.status = 'active' AND a.confirmed_at IS NOT NULL AND u.tg_id IS NOT NULL "
-                    "ORDER BY u.tg_id"
-                )
+                # Through a function: the application role cannot read the administrators' accounts.
+                text("SELECT tg_id, lang FROM admin_notice_recipients() ORDER BY tg_id")
             )
         ).all()
         return [(int(row.tg_id), str(row.lang)) for row in rows]
@@ -2914,6 +2911,14 @@ class PgPlatformSession:
             text("UPDATE user_session SET revoked_at = :now WHERE token_hash = :token_hash AND revoked_at IS NULL"),
             {"token_hash": token_hash, "now": now},
         )
+
+    async def revoke_user_sessions(self, user_id: UUID, now: datetime) -> int:
+        # Named by the person, never by a token: Mini App and web sessions alike, on every device.
+        result = await self._conn.execute(
+            text("UPDATE user_session SET revoked_at = :now WHERE user_id = :user_id AND revoked_at IS NULL"),
+            {"user_id": user_id, "now": now},
+        )
+        return int(result.rowcount)
 
     async def platform_setting(self, key: str) -> Any | None:
         row = (

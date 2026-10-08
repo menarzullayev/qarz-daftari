@@ -59,7 +59,13 @@ type PanelRootProps = {
 };
 
 /** Why the sign-in screen is shown again, when it is not the first time. */
-type Ended = "expired" | "signedOut";
+type Ended = "expired" | "signedOut" | "everywhere";
+
+const ENDED_TEXT = {
+  expired: "panel.signIn.expired",
+  signedOut: "panel.signIn.signedOut",
+  everywhere: "session.everywhere.done",
+} as const;
 
 const browserFetch: Fetch = (input, init) => window.fetch(input, init);
 
@@ -156,7 +162,7 @@ function SignedIn({
     const button = <SignOut pending={leaving.pending} error={leaving.error} onClick={signOut} />;
     return {
       extension: PANEL_EXTENSION,
-      onSignedOut: () => onEnded("expired"),
+      onSignedOut: (everywhere) => onEnded(everywhere ? "everywhere" : "expired"),
       side: (shops) => (
         <>
           <ShopSwitcher {...shops} />
@@ -249,7 +255,7 @@ function SignIn({
     >
       {ended ? (
         <p className="notice" role="status">
-          {t(ended === "expired" ? "panel.signIn.expired" : "panel.signIn.signedOut")}
+          {t(ENDED_TEXT[ended])}
         </p>
       ) : null}
       <p>{t("panel.signIn.body")}</p>

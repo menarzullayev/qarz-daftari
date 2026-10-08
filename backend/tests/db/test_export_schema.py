@@ -89,15 +89,15 @@ def test_the_file_store_keeps_exports_besides_the_three_earlier_purposes(
 
 
 def test_the_worker_takes_the_oldest_waiting_job_and_learns_only_which_it_is(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+    owner: psycopg.Connection, as_worker: AppSession, shop_a: Shop, shop_b: Shop
 ) -> None:
     older = _job(owner, shop_b, created_at=NOW - timedelta(minutes=5))
     newer = _job(owner, shop_a, created_at=NOW - timedelta(minutes=1))
-    with as_app(None) as conn:
+    with as_worker(None) as conn:
         assert _claim(conn) == (older, shop_b.shop_id, 1)
-    with as_app(None) as conn:
+    with as_worker(None) as conn:
         assert _claim(conn) == (newer, shop_a.shop_id, 1)
-    with as_app(None) as conn:
+    with as_worker(None) as conn:
         assert _claim(conn) is None, "both are running now, and neither is stale"
     rows = owner.execute(
         "SELECT status, attempts, started_at IS NOT NULL FROM export_job WHERE id = ANY(%s)", ([older, newer],)
@@ -106,16 +106,16 @@ def test_the_worker_takes_the_oldest_waiting_job_and_learns_only_which_it_is(
 
 
 def test_a_job_that_has_been_running_too_long_is_taken_again_and_one_that_has_not_is_left(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+    owner: psycopg.Connection, as_worker: AppSession, shop_a: Shop, shop_b: Shop
 ) -> None:
     stale = _job(owner, shop_a, "running", started_at=datetime.now(UTC) - timedelta(minutes=16), attempts=2)
     _job(owner, shop_b, "running", started_at=datetime.now(UTC) - timedelta(minutes=14), attempts=1)
-    with as_app(None) as conn:
+    with as_worker(None) as conn:
         assert _claim(conn) == (stale, shop_a.shop_id, 3)
         assert _claim(conn) is None
     owner.execute("UPDATE export_job SET status = 'done' WHERE id = %s", (stale,))
     owner.execute("UPDATE export_job SET status = 'failed', error = 'internal' WHERE shop_id = %s", (shop_b.shop_id,))
-    with as_app(None) as conn:
+    with as_worker(None) as conn:
         assert _claim(conn, stale_minutes=-60) is None, "a closed job is never taken, however old"
 
 
@@ -126,10 +126,10 @@ def test_two_workers_never_take_the_same_job(
     second_job = _job(owner, shop_b, created_at=NOW - timedelta(minutes=1))
     with psycopg.connect(database_url) as one, psycopg.connect(database_url) as two:
         for conn in (one, two):
-            conn.execute("SET ROLE qd_app")
+            conn.execute("SET ROLE qd_worker")
         # Both transactions are open at once: the second does not wait for the first, it takes the next job.
         assert _claim(one) == (first_job, shop_a.shop_id, 1)
         assert _claim(two) == (second_job, shop_b.shop_id, 1)
         with psycopg.connect(database_url) as three:
-            three.execute("SET ROLE qd_app")
+            three.execute("SET ROLE qd_worker")
             assert _claim(three) is None

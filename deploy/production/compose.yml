@@ -1,11 +1,14 @@
 # Qarz Daftari on the application host: proxy, API, worker, and the one-shot migration.
 #
 # NOT here, by design (ADR-014, ADR-015, ADR-020): PostgreSQL and the file store. They live on the
-# database hosts; these services reach them through QD_DATABASE_URL, QD_MIGRATION_URL and QD_S3_*.
+# database hosts; these services reach them through QD_DATABASE_URL, QD_ADMIN_DATABASE_URL,
+# QD_WORKER_DATABASE_URL, QD_MIGRATION_URL and QD_S3_*.
 #
 # Settings come from an env file that is not in the repository (see .env.example), given with
 # `docker compose --env-file`. The scripts in scripts/ do that; run them, not compose by hand.
-# Each service is given only the names it reads: the owner connection goes to `migrate` alone.
+# Each service is given only the names it reads: the owner connection goes to `migrate` alone, and
+# each part of the application gets the connection of its own database role and no other (the API:
+# qd_app, and qd_admin for the administrators' side; the worker: qd_worker).
 name: qarz
 
 x-defaults: &defaults
@@ -28,9 +31,8 @@ x-backend-image: &backend-image
   build:
     context: ../../backend
 
-# Read by both the API and the worker.
+# Read by both the API and the worker. No database connection is shared: each has its own role.
 x-shared-env: &shared-env
-  QD_DATABASE_URL: ${QD_DATABASE_URL:?QD_DATABASE_URL is not set}
   QD_BOT_TOKEN: ${QD_BOT_TOKEN:-}
   QD_FILE_STORE: ${QD_FILE_STORE:-}
   QD_FILE_ROOT: ${QD_FILE_ROOT:-}
@@ -65,6 +67,10 @@ services:
     stop_grace_period: 30s
     environment:
       <<: *shared-env
+      QD_DATABASE_URL: ${QD_DATABASE_URL:?QD_DATABASE_URL is not set}
+      # The administrators' side. Needed as soon as QD_ADMIN_TG_IDS names somebody: the API then
+      # refuses to start without it.
+      QD_ADMIN_DATABASE_URL: ${QD_ADMIN_DATABASE_URL:-}
       QD_WEBHOOK_SECRET: ${QD_WEBHOOK_SECRET:-}
       QD_SECRETS_KEY: ${QD_SECRETS_KEY:-}
       QD_SECRETS_KEY_PREVIOUS: ${QD_SECRETS_KEY_PREVIOUS:-}
@@ -104,6 +110,7 @@ services:
       disable: true
     environment:
       <<: *shared-env
+      QD_WORKER_DATABASE_URL: ${QD_WORKER_DATABASE_URL:?QD_WORKER_DATABASE_URL is not set}
       QD_WORKER_STATEMENT_TIMEOUT_MS: ${QD_WORKER_STATEMENT_TIMEOUT_MS:-60000}
     networks: [egress]
     deploy:

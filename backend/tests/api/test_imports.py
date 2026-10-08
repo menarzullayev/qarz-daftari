@@ -43,11 +43,11 @@ _WORKER: dict[str, Any] = {}
 
 
 @pytest.fixture(autouse=True)
-def worker(owner: psycopg.Connection, app_database_url: str, file_root: Path) -> Iterator[None]:
+def worker(owner: psycopg.Connection, worker_database_url: str, file_root: Path) -> Iterator[None]:
     """Where `work()` finds the database and the file store; and no step left waiting by an earlier test,
     since a worker takes the oldest waiting batch of any shop."""
     owner.execute("UPDATE import_batch SET status = 'discarded' WHERE status IN ('uploaded', 'applying', 'undoing')")
-    _WORKER.update(url=app_database_url, root=file_root)
+    _WORKER.update(url=worker_database_url, root=file_root)
     yield
     _WORKER.clear()
 
@@ -1268,13 +1268,13 @@ def test_an_import_of_another_shop_does_not_exist(client: TestClient, world: Wor
 
 
 def test_the_file_of_an_applied_import_is_deleted_by_the_hourly_job_and_the_batch_stays(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     done = applied(client, world, table("Karim,,250000,,"))
     waiting = uploaded(client, world, table("Lola,,80000,,"))
     assert len(stored_objects(file_root)) == 2
 
-    with_services(app_database_url, file_root, lambda notices, files: notices.run_hourly())
+    with_services(worker_database_url, file_root, lambda notices, files: notices.run_hourly())
     assert [path.read_bytes() for path in stored_objects(file_root)] == [table("Lola,,80000,,")]
     assert len(import_file(owner, world)) == 1
     kept = owner.execute("SELECT id, file_id IS NULL FROM import_batch WHERE shop_id = %s", (world.shop_a,)).fetchall()
@@ -1287,7 +1287,7 @@ def test_the_file_of_an_applied_import_is_deleted_by_the_hourly_job_and_the_batc
     owner.execute(
         "UPDATE stored_file SET delete_after = now() - interval '1 minute' WHERE shop_id = %s", (world.shop_a,)
     )
-    with_services(app_database_url, file_root, lambda notices, files: notices.run_hourly())
+    with_services(worker_database_url, file_root, lambda notices, files: notices.run_hourly())
     assert stored_objects(file_root) == []
     assert import_file(owner, world) == []
     gone = state(client, world, waiting)
@@ -1319,7 +1319,7 @@ def test_a_file_that_has_vanished_from_the_store_cannot_be_checked_or_applied(
 
 
 def test_two_workers_at_once_do_each_step_once(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     waiting = [uploaded(client, world, table(f"{name},,1000,,")) for name in ("Karim", "Lola", "Nodir")]
     for batch in waiting:
@@ -1327,7 +1327,7 @@ def test_two_workers_at_once_do_each_step_once(
     unchecked = upload(client, world, table("Zafar,,2000,,")).json()["id"]
 
     async def both() -> list[int]:
-        first, second = Database(app_database_url), Database(app_database_url)
+        first, second = Database(worker_database_url), Database(worker_database_url)
         try:
             store = FilesystemFileStore(file_root)
             return list(
@@ -1354,14 +1354,14 @@ def test_two_workers_at_once_do_each_step_once(
 
 
 def test_a_worker_that_takes_a_step_another_has_done_does_nothing(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     """A worker that was silent too long and wakes up after another has taken over its batch."""
     batch = uploaded(client, world, table("Karim,,250000,,"))
     assert apply(client, world, batch).status_code == 202
 
     async def twice(step: str) -> None:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             service = ImportService(database, FileService(database, FilesystemFileStore(file_root)))
             await service.do_step(world.shop_a, uuid.UUID(batch), step)
@@ -1498,7 +1498,7 @@ def test_an_undo_waits_for_a_payment_being_recorded_and_then_sees_it(
 
 
 def test_the_scheduler_does_the_import_steps_at_every_tick(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     batch = upload(client, world, table("Karim,,250000,,")).json()["id"]
     # At night in Tashkent and far in the future: no other job of the scheduler has work then.
@@ -1506,7 +1506,7 @@ def test_the_scheduler_does_the_import_steps_at_every_tick(
 
     def tick() -> None:
         async def run() -> None:
-            database = Database(app_database_url)
+            database = Database(worker_database_url)
             try:
                 clock = lambda: moment  # noqa: E731
                 service = ImportService(database, FileService(database, FilesystemFileStore(file_root)), clock)
@@ -1569,7 +1569,7 @@ def test_two_thousand_rows_no_request_runs_long_and_the_worker_does_each_step_in
 
 
 def test_each_step_looks_at_the_state_again_once_it_holds_the_batch(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, file_root: Path
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
 ) -> None:
     """Between a worker reading a batch and locking it another may finish the step: asked directly, with
     the rows in hand, a check or an apply of a batch that waits for neither changes nothing; and a step
@@ -1581,7 +1581,7 @@ def test_each_step_looks_at_the_state_again_once_it_holds_the_batch(
     before = (batches(owner, world), entries(owner, world), count(owner, world, "customer"))
 
     async def late() -> None:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             now = datetime.now(UTC)
             async with database.tenant(world.shop_a) as session:

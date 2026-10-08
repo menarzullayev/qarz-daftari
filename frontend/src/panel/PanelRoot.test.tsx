@@ -393,6 +393,45 @@ describe("the session", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Panelga kirish" })).toBeTruthy();
     expect(screen.getByRole("status").textContent).toBe("Paneldan chiqdingiz.");
   });
+
+  it("signs out everywhere only after a confirmation: tells the server, with the token, and shows sign-in saying so", async () => {
+    const server = backend();
+    await open(server);
+    const before = server.sent.length;
+    fireEvent.click(screen.getByRole("button", { name: "Barcha qurilmalarda chiqish" }));
+    expect(screen.getByText(/Hisobingiz barcha qurilmalarda yopiladi/)).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(server.sent).toHaveLength(before);
+    fireEvent.click(screen.getByRole("button", { name: "Ha, chiqish" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Panelga kirish" })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe("Barcha qurilmalarda hisobingizdan chiqdingiz.");
+    const sent = server.sent[before];
+    expect(sent).toMatchObject({ method: "POST", path: "/api/v1/auth/sign-out-everywhere" });
+    expect(sent?.headers["X-CSRF-Token"]).toBe(CSRF);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(server.sent).toHaveLength(before + 1);
+  });
+
+  it("stays in the panel when the person answers no to signing out everywhere", async () => {
+    const server = backend();
+    await open(server);
+    const before = server.sent.length;
+    fireEvent.click(screen.getByRole("button", { name: "Barcha qurilmalarda chiqish" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bekor qilish" }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(server.sent).toHaveLength(before);
+    expect(heading()).toBe("Umumiy ko'rinish");
+    expect(screen.getByRole("button", { name: "Barcha qurilmalarda chiqish" })).toBeTruthy();
+  });
+
+  it("stays signed in, and says why, when signing out everywhere fails", async () => {
+    const server = backend({ extra: (sent) => (sent.path === "/api/v1/auth/sign-out-everywhere" ? "offline" : null) });
+    await open(server);
+    fireEvent.click(screen.getByRole("button", { name: "Barcha qurilmalarda chiqish" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ha, chiqish" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Serverga ulanib bo'lmadi"));
+    expect(heading()).toBe("Umumiy ko'rinish");
+  });
 });
 
 describe("desktop layout, from 1024 px", () => {

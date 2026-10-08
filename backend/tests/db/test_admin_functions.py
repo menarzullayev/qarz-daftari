@@ -17,7 +17,7 @@ from psycopg import errors
 
 from qarz.domain.subscription import effective_state
 
-from ..conftest import AppSession, Shop
+from ..conftest import AppSession, Shop, refused
 
 pytestmark = pytest.mark.db
 
@@ -129,13 +129,15 @@ def _stored(owner: psycopg.Connection, shop: Shop) -> Any:
 
 
 @pytest.mark.parametrize("function", FUNCTIONS)
-def test_only_the_application_role_may_call_them(owner: psycopg.Connection, function: str) -> None:
+def test_only_the_administrators_role_may_call_them(owner: psycopg.Connection, function: str) -> None:
     row = owner.execute(
-        "SELECT has_function_privilege('qd_app', %s, 'EXECUTE'), has_function_privilege('public', %s, 'EXECUTE'), "
-        "(SELECT prosecdef FROM pg_proc WHERE oid = %s::regprocedure)",
-        (function, function, function),
+        "SELECT has_function_privilege('qd_admin', %s, 'EXECUTE'), has_function_privilege('public', %s, 'EXECUTE'), "
+        "(SELECT prosecdef FROM pg_proc WHERE oid = %s::regprocedure), "
+        "has_function_privilege('qd_app', %s, 'EXECUTE'), has_function_privilege('qd_worker', %s, 'EXECUTE')",
+        (function, function, function, function, function),
     ).fetchone()
-    assert row == (True, False, True)
+    # Since migration 0031 neither the ordinary application nor the worker may call them.
+    assert row == (True, False, True, False, False)
 
 
 def test_the_migration_adds_no_other_admin_function(owner: psycopg.Connection) -> None:
@@ -144,14 +146,16 @@ def test_the_migration_adds_no_other_admin_function(owner: psycopg.Connection) -
         "WHERE n.nspname = 'public' AND p.proname LIKE 'admin\\_%'"
     ).fetchall()
     normalized = {name.replace("timestamp with time zone", "timestamptz") for (name,) in rows}
-    assert normalized == {function.replace(", ", ",") for function in FUNCTIONS}
+    # `admin_notice_recipients` is not one of the administrators' own: the ordinary application calls
+    # it to learn whom to tell that a receipt waits (migration 0031; tests/db/test_database_roles.py).
+    assert normalized == {function.replace(", ", ",") for function in FUNCTIONS} | {"admin_notice_recipients()"}
 
 
 # --- search ---------------------------------------------------------------------------------------------
 
 
 def test_search_shows_a_shop_without_anything_of_its_customers(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop, shop_b: Shop
 ) -> None:
     admin, tag = _admin(owner), _tag()
     _named(owner, shop_a, f"Dokon {tag} bir")
@@ -178,8 +182,8 @@ def test_search_shows_a_shop_without_anything_of_its_customers(
     owner_tg = owner.execute("SELECT tg_id FROM app_user WHERE id = %s", (shop_a.user_id,)).fetchone()
     assert owner_tg is not None
 
-    with as_app(None) as conn:
-        assert conn.execute("SELECT count(*) FROM shop").fetchone() == (0,), "the role itself sees no shop"
+    refused(as_admin, "SELECT count(*) FROM shop")  # the role itself may not read the table at all
+    with as_admin(None) as conn:
         rows = _search(conn, admin, query=tag)
 
     assert {row["shop_id"] for row in rows} == {shop_a.shop_id, shop_b.shop_id}
@@ -202,25 +206,25 @@ def test_search_shows_a_shop_without_anything_of_its_customers(
 
 @pytest.mark.parametrize("who", ["a stranger", "a disabled administrator", "nobody"])
 def test_search_returns_nothing_to_someone_who_is_not_an_active_administrator(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, who: str
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop, who: str
 ) -> None:
     tag = _tag()
     _named(owner, shop_a, f"Dokon {tag}")
     caller = {"a stranger": _user(owner), "a disabled administrator": _admin(owner, "disabled"), "nobody": None}[who]
-    with as_app(None) as conn:
+    with as_admin(None) as conn:
         assert _search(conn, caller, query=tag) == []  # type: ignore[arg-type]
         assert _search(conn, caller, shop=shop_a.shop_id) == []  # type: ignore[arg-type]
-    with as_app(None) as conn:
+    with as_admin(None) as conn:
         assert len(_search(conn, _admin(owner), query=tag)) == 1, "an administrator does find it"
 
 
 def test_search_matches_a_part_of_the_name_and_treats_wildcards_as_text(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop, shop_b: Shop
 ) -> None:
     admin, tag = _admin(owner), _tag()
     _named(owner, shop_a, f"{tag} 100% Halol_Market")
     _named(owner, shop_b, f"{tag} 100 foiz HalolXMarket")
-    with as_app(None) as conn:
+    with as_admin(None) as conn:
         assert len(_search(conn, admin, query=tag.upper())) == 2, "letter case does not matter"
         assert [row["shop_id"] for row in _search(conn, admin, query=f"{tag} 100%")] == [shop_a.shop_id]
         assert [row["shop_id"] for row in _search(conn, admin, query="Halol_Market")] == [shop_a.shop_id]
@@ -239,7 +243,7 @@ def test_search_matches_a_part_of_the_name_and_treats_wildcards_as_text(
 )
 def test_the_state_filter_agrees_with_the_domain_rule(
     owner: psycopg.Connection,
-    as_app: AppSession,
+    as_admin: AppSession,
     shop_a: Shop,
     state: str,
     trial_delta: int | None,
@@ -250,14 +254,14 @@ def test_the_state_filter_agrees_with_the_domain_rule(
     paid_through = None if paid_delta is None else TODAY + timedelta(days=paid_delta)
     _subscribe(owner, shop_a, state, trial_ends=trial_ends, paid_through=paid_through)
     expected = effective_state(state, trial_ends, paid_through, TODAY)
-    with as_app(None) as conn:
+    with as_admin(None) as conn:
         assert _search(conn, admin, shop=shop_a.shop_id)[0]["effective_state"] == expected
         for asked in ("trial", "active", "limited", "suspended"):
             found = _search(conn, admin, shop=shop_a.shop_id, state=asked)
             assert bool(found) is (asked == expected), (asked, expected)
 
 
-def test_search_pages_newest_first_without_gaps_or_repeats(owner: psycopg.Connection, as_app: AppSession) -> None:
+def test_search_pages_newest_first_without_gaps_or_repeats(owner: psycopg.Connection, as_admin: AppSession) -> None:
     admin, tag = _admin(owner), _tag()
     ids = [uuid.uuid4() for _ in range(5)]
     base = datetime.now(ZoneInfo("Asia/Tashkent"))
@@ -267,7 +271,7 @@ def test_search_pages_newest_first_without_gaps_or_repeats(owner: psycopg.Connec
             "INSERT INTO shop (id, name, created_at) VALUES (%s, %s, %s)",
             (shop_id, f"Sahifa {tag} {position}", base - timedelta(minutes=position // 3)),
         )
-    with as_app(None) as conn:
+    with as_admin(None) as conn:
         everything = _search(conn, admin, query=tag)
         assert [(row["created_at"], row["shop_id"]) for row in everything] == sorted(
             ((row["created_at"], row["shop_id"]) for row in everything), reverse=True
@@ -286,13 +290,13 @@ def test_search_pages_newest_first_without_gaps_or_repeats(owner: psycopg.Connec
     assert sorted(seen) == sorted(ids)
 
 
-def test_search_never_returns_more_than_a_page_and_one(owner: psycopg.Connection, as_app: AppSession) -> None:
+def test_search_never_returns_more_than_a_page_and_one(owner: psycopg.Connection, as_admin: AppSession) -> None:
     admin, tag = _admin(owner), _tag()
     owner.execute(
         "INSERT INTO shop (id, name) SELECT gen_random_uuid(), %s || n FROM generate_series(1, 105) n",
         (f"Kop {tag} ",),
     )
-    with as_app(None) as conn:
+    with as_admin(None) as conn:
         assert len(_search(conn, admin, query=tag, limit=100000)) == 101
         assert len(_search(conn, admin, query=tag, limit=0)) == 1
         assert len(_search(conn, admin, query=tag, limit=-5)) == 1
@@ -302,7 +306,7 @@ def test_search_never_returns_more_than_a_page_and_one(owner: psycopg.Connection
 
 
 def test_receipts_are_one_shops_payment_history_for_an_administrator_only(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop, shop_b: Shop
 ) -> None:
     admin = _admin(owner)
     mine, other = uuid.uuid4(), uuid.uuid4()
@@ -312,8 +316,8 @@ def test_receipts_are_one_shops_payment_history_for_an_administrator_only(
         (mine, shop_a.shop_id, other, shop_b.shop_id),
     )
     call = "SELECT receipt_id, stated_amount, status, months FROM admin_shop_receipts(%s, %s)"
-    with as_app(None) as conn:
-        assert conn.execute("SELECT count(*) FROM subscription_receipt").fetchone() == (0,)
+    refused(as_admin, "SELECT count(*) FROM subscription_receipt")
+    with as_admin(None) as conn:
         assert conn.execute(call, (admin, shop_a.shop_id)).fetchall() == [(mine, 100000, "approved", 1)]
         assert conn.execute(call, (admin, uuid.uuid4())).fetchall() == []
         for caller in (_user(owner), _admin(owner, "disabled"), shop_a.user_id):
@@ -327,27 +331,27 @@ STORE = "SELECT admin_store_subscription(%s, %s, %s, %s, %s, %s, now())"
 
 
 def test_lock_returns_the_subscription_and_where_to_reach_the_owner(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop
 ) -> None:
     admin = _admin(owner)
     _subscribe(owner, shop_a, "suspended", trial_ends=TODAY, prior_state="trial")
     owner.execute("UPDATE app_user SET lang = 'ru' WHERE id = %s", (shop_a.user_id,))
     owner_tg = owner.execute("SELECT tg_id FROM app_user WHERE id = %s", (shop_a.user_id,)).fetchone()
     assert owner_tg is not None
-    with as_app(None) as conn:
+    with as_admin(None) as conn:
         assert conn.execute(LOCK, (admin, shop_a.shop_id)).fetchall() == [
             ("suspended", TODAY, None, "trial", "Shop A", owner_tg[0], "ru")
         ]
 
 
 def test_lock_holds_the_row_until_the_transaction_ends(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, database_url: str
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop, database_url: str
 ) -> None:
     admin = _admin(owner)
     _subscribe(owner, shop_a, "trial", trial_ends=TODAY)
     grab = "SELECT 1 FROM subscription WHERE shop_id = %s FOR UPDATE NOWAIT"
     with psycopg.connect(database_url) as other:
-        with as_app(None) as conn:
+        with as_admin(None) as conn:
             assert len(conn.execute(LOCK, (admin, shop_a.shop_id)).fetchall()) == 1
             with pytest.raises(errors.LockNotAvailable):
                 other.execute(grab, (shop_a.shop_id,))
@@ -356,13 +360,13 @@ def test_lock_holds_the_row_until_the_transaction_ends(
 
 
 def test_lock_returns_nothing_without_an_active_administrator_or_a_living_shop(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop, shop_b: Shop
 ) -> None:
     admin = _admin(owner)
     _subscribe(owner, shop_a, "trial", trial_ends=TODAY)
     _subscribe(owner, shop_b, "trial", trial_ends=TODAY)
     owner.execute("UPDATE shop SET status = 'erased' WHERE id = %s", (shop_b.shop_id,))
-    with as_app(None) as conn:
+    with as_admin(None) as conn:
         for caller in (_user(owner), _admin(owner, "disabled"), shop_a.user_id):
             assert conn.execute(LOCK, (caller, shop_a.shop_id)).fetchall() == []
         assert conn.execute(LOCK, (admin, shop_b.shop_id)).fetchall() == [], "an erased shop"
@@ -371,27 +375,27 @@ def test_lock_returns_nothing_without_an_active_administrator_or_a_living_shop(
 
 
 def test_store_writes_exactly_the_given_shops_subscription(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop, shop_b: Shop
 ) -> None:
     admin = _admin(owner)
     _subscribe(owner, shop_a, "trial", trial_ends=TODAY)
     _subscribe(owner, shop_b, "trial", trial_ends=TODAY)
     until = TODAY + timedelta(days=30)
-    with as_app(None) as conn:
-        assert conn.execute("SELECT count(*) FROM subscription").fetchone() == (0,), "the role itself sees none"
+    refused(as_admin, "SELECT count(*) FROM subscription")  # the role itself may not read the table
+    with as_admin(None) as conn:
         assert conn.execute(STORE, (admin, shop_a.shop_id, "active", TODAY, until, None)).fetchone() == (True,)
     assert _stored(owner, shop_a) == ("active", TODAY, until, None)
     assert _stored(owner, shop_b) == ("trial", TODAY, None, None), "the other shop is untouched"
 
 
 def test_store_does_nothing_without_an_active_administrator_or_a_living_shop(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop, shop_b: Shop
 ) -> None:
     admin = _admin(owner)
     _subscribe(owner, shop_a, "trial", trial_ends=TODAY)
     _subscribe(owner, shop_b, "trial", trial_ends=TODAY)
     owner.execute("UPDATE shop SET status = 'erased' WHERE id = %s", (shop_b.shop_id,))
-    with as_app(None) as conn:
+    with as_admin(None) as conn:
         for caller in (_user(owner), _admin(owner, "disabled"), shop_a.user_id):
             assert conn.execute(STORE, (caller, shop_a.shop_id, "suspended", None, None, "trial")).fetchone() == (
                 False,
@@ -403,11 +407,11 @@ def test_store_does_nothing_without_an_active_administrator_or_a_living_shop(
 
 
 def test_store_cannot_write_a_state_the_schema_does_not_know(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop
 ) -> None:
     admin = _admin(owner)
     _subscribe(owner, shop_a, "trial", trial_ends=TODAY)
-    with pytest.raises(errors.CheckViolation), as_app(None) as conn:
+    with pytest.raises(errors.CheckViolation), as_admin(None) as conn:
         conn.execute(STORE, (admin, shop_a.shop_id, "free-forever", None, None, None))
     assert _stored(owner, shop_a) == ("trial", TODAY, None, None)
 
@@ -420,9 +424,11 @@ AUDIT_INSERT = (
 )
 
 
-def test_the_application_can_add_to_the_audit_and_read_it(owner: psycopg.Connection, as_app: AppSession) -> None:
+def test_the_administrators_role_can_add_to_the_audit_and_read_it(
+    owner: psycopg.Connection, as_admin: AppSession
+) -> None:
     admin, audit_id = _admin(owner), uuid.uuid4()
-    with as_app(None) as conn:
+    with as_admin(None) as conn:
         conn.execute(AUDIT_INSERT, (audit_id, admin))
         assert conn.execute("SELECT admin_id, reason FROM admin_audit WHERE id = %s", (audit_id,)).fetchone() == (
             admin,
@@ -440,12 +446,12 @@ def test_the_application_can_add_to_the_audit_and_read_it(owner: psycopg.Connect
         "TRUNCATE admin_audit",
     ],
 )
-def test_the_application_can_never_change_or_remove_an_audit_row(
-    owner: psycopg.Connection, as_app: AppSession, statement: str
+def test_the_administrators_role_can_never_change_or_remove_an_audit_row(
+    owner: psycopg.Connection, as_admin: AppSession, statement: str
 ) -> None:
     admin, audit_id = _admin(owner), uuid.uuid4()
     owner.execute(AUDIT_INSERT, (audit_id, admin))
-    with pytest.raises(errors.InsufficientPrivilege), as_app(None) as conn:
+    with pytest.raises(errors.InsufficientPrivilege), as_admin(None) as conn:
         conn.execute(statement, {"id": audit_id})
     assert owner.execute("SELECT reason FROM admin_audit WHERE id = %s", (audit_id,)).fetchone() == ("because",)
 
@@ -453,7 +459,7 @@ def test_the_application_can_never_change_or_remove_an_audit_row(
 def test_the_grants_on_the_new_tables_are_exactly_these(owner: psycopg.Connection) -> None:
     rows = owner.execute(
         "SELECT table_name, privilege_type FROM information_schema.role_table_grants "
-        "WHERE grantee = 'qd_app' AND table_name IN ('admin_audit', 'admin_session', 'admin_request_key')"
+        "WHERE grantee = 'qd_admin' AND table_name IN ('admin_audit', 'admin_session', 'admin_request_key')"
     ).fetchall()
     granted: dict[str, set[str]] = {}
     for table, privilege in rows:
@@ -501,7 +507,7 @@ def test_an_admin_session_belongs_to_an_administrator_account(owner: psycopg.Con
 
 
 def test_erasing_a_shop_deletes_the_stored_admin_answers_about_it_and_no_others(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+    owner: psycopg.Connection, as_worker: AppSession, shop_a: Shop, shop_b: Shop
 ) -> None:
     admin = _admin(owner)
     for key, about in (("about-a-1", shop_a.shop_id), ("about-a-2", shop_a.shop_id), ("about-b", shop_b.shop_id)):
@@ -522,7 +528,7 @@ def test_erasing_a_shop_deletes_the_stored_admin_answers_about_it_and_no_others(
         "UPDATE shop SET status = 'deletion_pending', deletion_due = now() - interval '1 minute' WHERE id = %s",
         (shop_a.shop_id,),
     )
-    with as_app(None) as conn:
+    with as_worker(None) as conn:  # erasure is the worker's
         assert conn.execute("SELECT erase_shop(%s)", (shop_b.shop_id,)).fetchone() == (False,), "not asked for"
         assert conn.execute("SELECT erase_shop(%s)", (shop_a.shop_id,)).fetchone() == (True,)
     kept = owner.execute("SELECT key FROM admin_request_key WHERE admin_id = %s ORDER BY key", (admin,)).fetchall()
@@ -530,12 +536,13 @@ def test_erasing_a_shop_deletes_the_stored_admin_answers_about_it_and_no_others(
     assert owner.execute("SELECT count(*) FROM admin_audit WHERE id = %s", (audit_id,)).fetchone() == (1,)
 
 
-def test_erase_shop_still_pins_its_search_path_and_is_for_the_application_only(owner: psycopg.Connection) -> None:
+def test_erase_shop_still_pins_its_search_path_and_is_for_the_worker_only(owner: psycopg.Connection) -> None:
     row = owner.execute(
-        "SELECT prosecdef, proconfig, has_function_privilege('qd_app', oid, 'EXECUTE'), "
-        "has_function_privilege('public', oid, 'EXECUTE') FROM pg_proc WHERE oid = 'erase_shop(uuid)'::regprocedure"
+        "SELECT prosecdef, proconfig, has_function_privilege('qd_worker', oid, 'EXECUTE'), "
+        "has_function_privilege('public', oid, 'EXECUTE'), has_function_privilege('qd_app', oid, 'EXECUTE'), "
+        "has_function_privilege('qd_admin', oid, 'EXECUTE') FROM pg_proc WHERE oid = 'erase_shop(uuid)'::regprocedure"
     ).fetchone()
-    assert row == (True, ["search_path=public, pg_temp"], True, False)
+    assert row == (True, ["search_path=public, pg_temp"], True, False, False, False)
 
 
 # --- reassigning a shop's owner (migration 0028) --------------------------------------------------------
@@ -567,29 +574,27 @@ def _tg_of(owner: psycopg.Connection, user: uuid.UUID) -> int:
     return int(row[0])
 
 
-def test_without_the_function_the_application_cannot_touch_a_shops_memberships_from_outside(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+def test_without_the_function_the_administrators_role_cannot_touch_a_shops_memberships(
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop
 ) -> None:
-    """Why the function exists: with no tenant the application role sees and changes no membership."""
-    with as_app(None) as conn:
-        assert conn.execute("SELECT count(*) FROM membership WHERE shop_id = %s", (shop_a.shop_id,)).fetchone() == (0,)
-        changed = conn.execute(
-            "UPDATE membership SET role = 'manager' WHERE shop_id = %s RETURNING id", (shop_a.shop_id,)
-        ).fetchall()
-        assert changed == []
-    with pytest.raises(errors.InsufficientPrivilege), as_app(None) as conn:
-        conn.execute(
-            "INSERT INTO membership (id, shop_id, user_id, role) VALUES (%s, %s, %s, 'seller')",
-            (uuid.uuid4(), shop_a.shop_id, _user(owner)),
-        )
+    """Why the function exists: the administrators' role has no right on memberships at all, with a
+    tenant or without one."""
+    for tenant in (None, shop_a.shop_id):
+        refused(as_admin, "SELECT count(*) FROM membership", tenant)
+        refused(as_admin, "UPDATE membership SET role = 'manager'", tenant)
+        with pytest.raises(errors.InsufficientPrivilege), as_admin(tenant) as conn:
+            conn.execute(
+                "INSERT INTO membership (id, shop_id, user_id, role) VALUES (%s, %s, %s, 'seller')",
+                (uuid.uuid4(), shop_a.shop_id, _user(owner)),
+            )
     assert _owners(owner, shop_a) == [(shop_a.user_id,)]
 
 
 def test_reassigning_leaves_exactly_one_owner_and_writes_the_audit_and_the_activity_together(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop, shop_b: Shop
 ) -> None:
     admin, person = _elevated(owner), _user(owner)
-    with as_app(None) as conn:
+    with as_admin(None) as conn:
         assert conn.execute(REASSIGN, (admin, shop_a.shop_id, _tg_of(owner, person), "Lost account")).fetchall() == [
             ("reassigned",)
         ]
@@ -610,11 +615,11 @@ def test_reassigning_leaves_exactly_one_owner_and_writes_the_audit_and_the_activ
 
 
 def test_a_reassignment_whose_transaction_fails_leaves_nothing_behind(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop
 ) -> None:
     """All or nothing: the caller's transaction ending badly takes every part of the change with it."""
     admin, person = _elevated(owner), _user(owner)
-    with pytest.raises(RuntimeError, match="stop"), as_app(None) as conn:
+    with pytest.raises(RuntimeError, match="stop"), as_admin(None) as conn:
         assert conn.execute(REASSIGN, (admin, shop_a.shop_id, _tg_of(owner, person), "Lost account")).fetchall() == [
             ("reassigned",)
         ]
@@ -627,7 +632,7 @@ def test_a_reassignment_whose_transaction_fails_leaves_nothing_behind(
 
 
 def test_reassigning_is_refused_to_anyone_but_an_elevated_administrator_and_for_a_dead_shop(
-    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+    owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop, shop_b: Shop
 ) -> None:
     admin, person = _elevated(owner), _user(owner)
     tg = _tg_of(owner, person)
@@ -643,7 +648,7 @@ def test_reassigning_is_refused_to_anyone_but_an_elevated_administrator_and_for_
     )
     owner.execute("UPDATE admin_session SET revoked_at = now() WHERE user_id = %s", (signed_out,))
     owner.execute("UPDATE shop SET status = 'erased' WHERE id = %s", (shop_b.shop_id,))
-    with as_app(None) as conn:
+    with as_admin(None) as conn:
         outsiders = (_user(owner), shop_a.user_id, _admin(owner, "disabled"), unconfirmed, no_session)
         for caller in (*outsiders, expired, signed_out):
             assert conn.execute(REASSIGN, (caller, shop_a.shop_id, tg, "Lost account")).fetchall() == [("refused",)]

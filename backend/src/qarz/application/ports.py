@@ -1358,6 +1358,10 @@ class PlatformSession(Protocol):
 
     async def revoke_session(self, token_hash: bytes, now: datetime) -> None: ...
 
+    async def revoke_user_sessions(self, user_id: UUID, now: datetime) -> int:
+        """End every session of this person that is still open, of both kinds. Returns how many it ended."""
+        ...
+
     async def platform_setting(self, key: str) -> Any | None: ...
 
     # --- the administrator's side (ADR-017, ADR-018) ---------------------------------------------------

@@ -149,19 +149,23 @@ def stored_objects(root: Path) -> list[Path]:
 @pytest.fixture
 def client(
     app_database_url: str,
+    admin_database_url: str,
     file_root: Path,
     telegram_files: FakeTelegramFiles,
     telegram_members: FakeChatMembers,
     admin_env: AdminEnv,
 ) -> Iterator[TestClient]:
+    # As deployed: the ordinary side connects as qd_app and the administrators' side as qd_admin.
     database = Database(app_database_url)
+    admin_database = Database(admin_database_url)
     auth = AuthService(database, TEST_BOT_TOKEN)
-    admin = AdminAccess(database, allowed_tg_ids=admin_env.allowed, cipher=admin_env.box, now=admin_env.clock.now)
+    admin = AdminAccess(admin_database, allowed_tg_ids=admin_env.allowed, cipher=admin_env.box, now=admin_env.clock.now)
     app = create_app(
         database.reachable,
         database,
         auth=auth,
         admin=admin,
+        admin_storage=admin_database,
         authenticator=HeaderAuthenticator(),
         webhook_secret=WEBHOOK_SECRET,
         now=admin_env.clock.now,
@@ -173,6 +177,7 @@ def client(
     with TestClient(app) as test_client:
         yield test_client
         test_client.portal.call(database.dispose)  # type: ignore[union-attr]
+        test_client.portal.call(admin_database.dispose)  # type: ignore[union-attr]
 
 
 @dataclass(frozen=True)

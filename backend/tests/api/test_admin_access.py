@@ -416,15 +416,18 @@ def test_a_garbage_admin_cookie_is_just_no_admin_session(
 
 
 @pytest.fixture
-def deployed(app_database_url: str, admin_env: AdminEnv) -> Iterator[TestClient]:
+def deployed(app_database_url: str, admin_database_url: str, admin_env: AdminEnv) -> Iterator[TestClient]:
     """The application as deployed: Telegram-backed sessions, no test authenticator, the admin side on."""
-    database = Database(app_database_url)
+    database, admin_database = Database(app_database_url), Database(admin_database_url)
     auth = AuthService(database, TEST_BOT_TOKEN)
-    admin = AdminAccess(database, allowed_tg_ids=admin_env.allowed, cipher=admin_env.box, now=admin_env.clock.now)
-    app = create_app(database.reachable, database, auth=auth, admin=admin, now=admin_env.clock.now)
+    admin = AdminAccess(admin_database, allowed_tg_ids=admin_env.allowed, cipher=admin_env.box, now=admin_env.clock.now)
+    app = create_app(
+        database.reachable, database, auth=auth, admin=admin, admin_storage=admin_database, now=admin_env.clock.now
+    )
     with TestClient(app) as test_client:
         yield test_client
         test_client.portal.call(database.dispose)  # type: ignore[union-attr]
+        test_client.portal.call(admin_database.dispose)  # type: ignore[union-attr]
 
 
 def _signed_in(deployed: TestClient, owner: psycopg.Connection, tg_id: int) -> tuple[uuid.UUID, str]:

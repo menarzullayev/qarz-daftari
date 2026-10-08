@@ -32,11 +32,11 @@ def day() -> date:
     return date(2050, 1, 1) + timedelta(days=next(_days))
 
 
-def review(app_database_url: str, now: datetime) -> None:
+def review(worker_database_url: str, now: datetime) -> None:
     """One tick of the worker's scheduler at the given moment."""
 
     async def scenario() -> None:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             clock = lambda: now  # noqa: E731
             scheduler = Scheduler(
@@ -160,7 +160,7 @@ def test_obuna_in_chat_is_for_the_owner(client: TestClient, world: World, owner:
 def test_the_owner_is_warned_before_the_period_ends(
     world: World,
     owner: psycopg.Connection,
-    app_database_url: str,
+    worker_database_url: str,
     day: date,
     state: str,
     column: str,
@@ -169,35 +169,35 @@ def test_the_owner_is_warned_before_the_period_ends(
 ) -> None:
     ends = day + timedelta(days=days)
     set_subscription(owner, world, state, **{column: ends})
-    review(app_database_url, at(day, 9, 5))
+    review(worker_database_url, at(day, 9, 5))
     assert told(owner, world) == [
         (owner_chat(owner, world), say("uz", text_key, shop="Shop A", days=days, date=show_day(ends)))
     ]
     assert stored(owner, world) == (state, None), "a warning changes nothing"
 
     # The review runs once a day, and a second run would not warn twice anyway.
-    review(app_database_url, at(day, 15))
+    review(worker_database_url, at(day, 15))
     owner.execute("DELETE FROM job_run WHERE job = 'subscriptions' AND period = %s", (day.isoformat(),))
-    review(app_database_url, at(day, 16))
+    review(worker_database_url, at(day, 16))
     assert len(told(owner, world)) == 1
 
 
 @pytest.mark.parametrize("days", [8, 6, 2, 0])
 def test_no_warning_on_other_days(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date, days: int
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date, days: int
 ) -> None:
     set_subscription(owner, world, "trial", trial_ends=day + timedelta(days=days))
-    review(app_database_url, at(day, 9, 5))
+    review(worker_database_url, at(day, 9, 5))
     assert told(owner, world) == []
     assert stored(owner, world) == ("trial", None)
 
 
 @pytest.mark.parametrize(("state", "column"), [("trial", "trial_ends"), ("active", "paid_through")])
 def test_the_day_after_a_period_ends_the_shop_becomes_limited_and_the_owner_is_told(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date, state: str, column: str
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date, state: str, column: str
 ) -> None:
     set_subscription(owner, world, state, **{column: day - timedelta(days=1)})
-    review(app_database_url, at(day, 9, 5))
+    review(worker_database_url, at(day, 9, 5))
     assert stored(owner, world) == ("limited", state)
     assert told(owner, world) == [(owner_chat(owner, world), say("uz", "sub_limited", shop="Shop A"))]
     logged = owner.execute(
@@ -207,29 +207,29 @@ def test_the_day_after_a_period_ends_the_shop_becomes_limited_and_the_owner_is_t
     assert logged == [("system", None)]
 
     # Told once: the next day's review finds nothing to do for this shop.
-    review(app_database_url, at(day + timedelta(days=400), 9, 5))
+    review(worker_database_url, at(day + timedelta(days=400), 9, 5))
     assert len(told(owner, world)) == 1
 
 
 def test_the_review_waits_for_nine_and_leaves_other_states_alone(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date
 ) -> None:
     set_subscription(owner, world, "trial", trial_ends=day - timedelta(days=1))
-    review(app_database_url, at(day, 8, 59))
+    review(worker_database_url, at(day, 8, 59))
     assert stored(owner, world) == ("trial", None)
 
     set_subscription(owner, world, "suspended", paid_through=day - timedelta(days=1))
-    review(app_database_url, at(day, 9, 0))
+    review(worker_database_url, at(day, 9, 0))
     assert stored(owner, world) == ("suspended", None), "a suspended shop is not moved to limited"
     assert told(owner, world) == []
 
 
 def test_a_running_period_is_never_limited_by_the_review(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, day: date
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, day: date
 ) -> None:
     """The review trusts what it reads inside the shop, not the list it was given."""
     set_subscription(owner, world, "active", paid_through=day + timedelta(days=1))
-    review(app_database_url, at(day, 9, 5))
+    review(worker_database_url, at(day, 9, 5))
     assert stored(owner, world) == ("active", None)
     # And with the real clock the shop still sells.
     set_subscription(owner, world, "active", paid_through=today())
@@ -237,7 +237,7 @@ def test_a_running_period_is_never_limited_by_the_review(
 
 
 def test_the_review_is_done_once_a_day(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date
 ) -> None:
     calls: list[datetime] = []
 
@@ -247,7 +247,7 @@ def test_the_review_is_done_once_a_day(
             return await super().run_daily()
 
     async def scenario() -> None:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             for moment in (at(day, 8, 30), at(day, 9, 1), at(day, 9, 2), at(day, 18, 0)):
                 clock = lambda moment=moment: moment  # noqa: E731

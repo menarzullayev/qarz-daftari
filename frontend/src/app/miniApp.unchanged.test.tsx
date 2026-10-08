@@ -175,7 +175,7 @@ describe("the Telegram Mini App is as it was before the web panel's layouts", ()
     expect(wide.requests).toEqual(phone.requests);
   });
 
-  it("has no table, no sign-out and no Telegram sign-in script anywhere in these screens", async () => {
+  it("has no table and no Telegram sign-in script anywhere in these screens", async () => {
     for (const [role, hash, shops] of CASES) {
       const { html } = await miniApp(role, hash, PHONE, shops);
       expect(html).not.toContain("<table");

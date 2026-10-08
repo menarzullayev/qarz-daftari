@@ -21,6 +21,7 @@ from qarz.domain.telegram_auth import (
 SIGN_IN_WEBAPP = public_operation("auth.telegram_webapp")
 SIGN_IN_WEB = public_operation("auth.telegram_login")
 SIGN_OUT = self_operation("auth.sign_out")
+SIGN_OUT_EVERYWHERE = self_operation("auth.sign_out_everywhere")
 READ_ME = self_operation("me.read")
 UPDATE_ME = self_operation("me.update")
 
@@ -119,6 +120,16 @@ class AuthService:
     async def sign_out(self, token: str) -> None:
         async with self._storage.platform() as session:
             await session.revoke_session(_hash(token), self._now())
+
+    async def sign_out_everywhere(self, user_id: UUID) -> int:
+        """End every session of the caller, on every device: Mini App and web, this one included
+        (security review, finding 9).
+
+        The person is the one the request was authenticated as, never one named in the request, so
+        nobody can end another person's sessions. Returns how many sessions were ended.
+        """
+        async with self._storage.platform() as session:
+            return await session.revoke_user_sessions(user_id, self._now())
 
     async def me(self, user_id: UUID) -> dict[str, Any]:
         async with self._storage.platform() as session:

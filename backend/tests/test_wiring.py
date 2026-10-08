@@ -13,6 +13,8 @@ from qarz.interface.asgi import build
 from qarz.interface.worker import run
 
 DB = "postgresql://qd_app:unused@127.0.0.1:1/unused"  # never connected to in these tests
+ADMIN_DB = "postgresql://qd_admin:unused@127.0.0.1:1/unused"
+WORKER_DB = "postgresql://qd_worker:unused@127.0.0.1:1/unused"
 
 
 def _paths(settings: Settings) -> set[str]:
@@ -117,7 +119,141 @@ def test_the_test_authenticator_cannot_reach_production_wiring() -> None:
 
 def test_the_worker_refuses_to_start_without_a_bot_token() -> None:
     with pytest.raises(RuntimeError, match="QD_BOT_TOKEN"):
-        asyncio.run(run(Settings(database_url=DB, bot_token=""), asyncio.Event()))
+        asyncio.run(run(Settings(database_url=DB, worker_database_url=WORKER_DB, bot_token=""), asyncio.Event()))
+
+
+# --- each part connects as its own database role (migration 0031) ------------------------------------
+
+
+class _Connected(Exception):
+    """Raised in place of opening a connection pool: carries the connection string that was asked for."""
+
+
+def _refuse_to_connect(url: str, **_: object) -> None:
+    raise _Connected(url)
+
+
+def test_the_worker_connects_with_its_own_connection_and_never_with_the_ordinary_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from qarz.interface import worker
+
+    monkeypatch.setattr(worker, "Database", _refuse_to_connect)
+    settings = Settings(
+        database_url=DB, admin_database_url=ADMIN_DB, worker_database_url=WORKER_DB, bot_token="123:test"
+    )
+    with pytest.raises(_Connected) as connected:
+        asyncio.run(run(settings, asyncio.Event()))
+    assert connected.value.args == (WORKER_DB,)
+
+
+def test_the_worker_refuses_to_start_without_its_own_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+    """It does not fall back to the ordinary role's connection, which is set here."""
+    from qarz.interface import worker
+
+    monkeypatch.setattr(worker, "Database", _refuse_to_connect)
+    with pytest.raises(RuntimeError, match="QD_WORKER_DATABASE_URL"):
+        asyncio.run(run(Settings(database_url=DB, admin_database_url=ADMIN_DB, bot_token="123:test"), asyncio.Event()))
+
+
+def test_the_measurement_command_is_the_workers_and_refuses_to_run_without_its_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from qarz.interface import measure_export
+
+    monkeypatch.setattr(measure_export, "Database", _refuse_to_connect)
+    monkeypatch.setenv("QD_DATABASE_URL", DB)
+    monkeypatch.delenv("QD_WORKER_DATABASE_URL", raising=False)
+    with pytest.raises(RuntimeError, match="QD_WORKER_DATABASE_URL"):
+        asyncio.run(measure_export.run(1, None))
+    monkeypatch.setenv("QD_WORKER_DATABASE_URL", WORKER_DB)
+    with pytest.raises(_Connected) as connected:
+        asyncio.run(measure_export.run(1, None))
+    assert connected.value.args == (WORKER_DB,)
+
+
+def test_the_rotation_command_is_the_administrators_and_refuses_to_run_without_their_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from qarz.interface import rotate_secrets
+
+    monkeypatch.setattr(rotate_secrets, "Database", _refuse_to_connect)
+    with pytest.raises(ValueError, match="QD_ADMIN_DATABASE_URL"):
+        asyncio.run(
+            rotate_secrets.run(Settings(database_url=DB, worker_database_url=WORKER_DB, secrets_key=SECRETS_KEY))
+        )
+    with pytest.raises(_Connected) as connected:
+        asyncio.run(rotate_secrets.run(Settings(database_url=DB, admin_database_url=ADMIN_DB, secrets_key=SECRETS_KEY)))
+    assert connected.value.args == (ADMIN_DB,)
+
+
+def test_the_api_gives_the_ordinary_side_and_the_administrators_side_each_its_own_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """What `build` hands to the application: the ordinary storage is the ordinary role's, and the
+    administrators' access and storage are the administrators' role's. The worker's is never opened."""
+    from qarz.interface import asgi
+
+    opened: list[str] = []
+
+    class Pool:
+        def __init__(self, url: str, **_: object) -> None:
+            self.url = url
+            opened.append(url)
+
+        async def reachable(self) -> bool:
+            return True
+
+    handed: dict[str, object] = {}
+
+    def capture(reachable: object, storage: Pool, **more: object) -> str:
+        handed.update(storage=storage, **more)
+        return "the application"
+
+    monkeypatch.setattr(asgi, "Database", Pool)
+    monkeypatch.setattr(asgi, "create_app", capture)
+    settings = Settings(
+        database_url=DB,
+        admin_database_url=ADMIN_DB,
+        worker_database_url=WORKER_DB,
+        bot_token="123:test",
+        admin_tg_ids="1001",
+        secrets_key=SECRETS_KEY,
+    )
+    assert asgi.build(settings) == "the application"  # type: ignore[comparison-overlap]
+    assert opened == [DB, ADMIN_DB]
+    assert handed["storage"].url == DB  # type: ignore[attr-defined]
+    assert handed["admin_storage"].url == ADMIN_DB  # type: ignore[attr-defined]
+    assert handed["admin"]._storage is handed["admin_storage"]  # type: ignore[attr-defined]
+    assert handed["auth"]._storage is handed["storage"]  # type: ignore[attr-defined]
+
+    # Without administrators there is no second connection at all.
+    opened.clear()
+    asgi.build(Settings(database_url=DB, admin_database_url=ADMIN_DB, bot_token="123:test"))
+    assert opened == [DB] and handed["admin"] is None and handed["admin_storage"] is None
+
+
+def test_with_administrators_named_and_no_connection_for_their_role_the_api_refuses_to_start() -> None:
+    """It does not serve the administrators' side through the ordinary role's connection instead."""
+    with pytest.raises(ValueError, match="QD_ADMIN_DATABASE_URL"):
+        build(Settings(database_url=DB, bot_token="123:test", admin_tg_ids="1001", secrets_key=SECRETS_KEY))
+    # Nobody named, or no key: there is no such side, and nothing is asked for.
+    assert _paths(Settings(database_url=DB, bot_token="123:test", secrets_key=SECRETS_KEY))
+    assert _paths(Settings(database_url=DB, bot_token="123:test", admin_tg_ids="1001"))
+
+
+def test_the_application_cannot_be_built_with_administrators_and_no_storage_of_their_own() -> None:
+    from qarz.application.admin_access import AdminAccess
+    from qarz.infrastructure.db import Database
+    from qarz.infrastructure.secret_box import SecretBox
+
+    async def reachable() -> bool:
+        return True
+
+    ordinary = Database(DB)
+    access = AdminAccess(ordinary, allowed_tg_ids={1001}, cipher=SecretBox(SECRETS_KEY))
+    with pytest.raises(ValueError, match="own storage"):
+        http.create_app(reachable, ordinary, admin=access)
 
 
 # --- the administrator's side (ADR-017) -------------------------------------------------------------
@@ -126,7 +262,13 @@ SECRETS_KEY = "a-server-secret-for-wiring-tests-0123456789"
 
 
 def _admin_paths(**admin: str) -> set[str]:
-    settings = Settings(database_url=DB, bot_token="123:test", webhook_secret="a-long-enough-secret", **admin)
+    settings = Settings(
+        database_url=DB,
+        admin_database_url=ADMIN_DB,
+        bot_token="123:test",
+        webhook_secret="a-long-enough-secret",
+        **admin,
+    )
     return {path for path in _paths(settings) if path.startswith("/api/admin/")}
 
 
@@ -150,7 +292,9 @@ def test_without_an_allow_list_or_without_a_key_the_administrators_side_does_not
 
 
 def test_without_a_bot_token_the_administrators_side_is_not_served_either() -> None:
-    settings = Settings(database_url=DB, bot_token="", admin_tg_ids="1001", secrets_key=SECRETS_KEY)
+    settings = Settings(
+        database_url=DB, admin_database_url=ADMIN_DB, bot_token="", admin_tg_ids="1001", secrets_key=SECRETS_KEY
+    )
     assert not {path for path in _paths(settings) if path.startswith("/api/")}
 
 
@@ -173,6 +317,7 @@ def test_a_previous_server_secret_that_is_too_short_refuses_to_start(key: str, a
         build(
             Settings(
                 database_url=DB,
+                admin_database_url=ADMIN_DB,
                 bot_token="123:test",
                 admin_tg_ids=admin_tg_ids,
                 secrets_key=SECRETS_KEY,

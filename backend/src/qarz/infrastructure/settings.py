@@ -9,6 +9,11 @@ class Settings(BaseSettings):
 
     # Connection string of the application role (qd_app), which cannot bypass row-level security.
     database_url: str = "postgresql://qd_app@localhost:5432/qarz"
+    # Connection string of the administrators' role (qd_admin): the administrators' side of the API and
+    # the command that rotates their second-factor secrets. Required wherever that side is served.
+    admin_database_url: str = Field(default="", repr=False)
+    # Connection string of the worker's role (qd_worker): the worker and the measurement command.
+    worker_database_url: str = Field(default="", repr=False)
     # Token of this environment's bot: verifies Telegram signatures and sends messages.
     bot_token: str = ""
     # Secret Telegram sends with every webhook call.

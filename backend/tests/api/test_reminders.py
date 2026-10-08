@@ -41,9 +41,9 @@ def at(day: date, hour: int, minute: int = 30) -> datetime:
     return datetime.combine(day, time(hour, minute), tzinfo=TASHKENT).astimezone(UTC)
 
 
-def run_job(app_database_url: str, now: datetime, call: Callable[[ReminderService, Scheduler], Any]) -> Any:
+def run_job(worker_database_url: str, now: datetime, call: Callable[[ReminderService, Scheduler], Any]) -> Any:
     async def scenario() -> Any:
-        database = Database(app_database_url)
+        database = Database(worker_database_url)
         try:
             service = ReminderService(database, lambda: now)
             return await call(service, Scheduler(database, service, lambda: now))
@@ -141,26 +141,26 @@ def messages(owner: psycopg.Connection, world: World) -> list[tuple[str, str, st
 
 
 def test_reminders_are_off_until_the_shop_turns_them_on(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date
 ) -> None:
     link(owner, world, debtor(owner, world, "Kechikkan", 70000, day - timedelta(days=3)))
-    run_job(app_database_url, at(day, 10), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, at(day, 10), lambda service, _: service.run_hour(10))
     assert reminders(owner, world) == []
 
     turn_on(owner, world.shop_a)
-    run_job(app_database_url, at(day, 10), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, at(day, 10), lambda service, _: service.run_hour(10))
     assert reminders(owner, world) == [("Kechikkan", "auto", "telegram", 70000, day)]
 
 
 def test_a_reminder_states_the_shop_and_the_amount_in_the_customers_language(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date
 ) -> None:
     turn_on(owner, world.shop_a, template=1)
     due = link(owner, world, debtor(owner, world, "Bugun", 40000, day))
     late = link(owner, world, debtor(owner, world, "Kech", 70000, day - timedelta(days=2)), lang="ru")
     link(owner, world, debtor(owner, world, "Erta", 90000, day + timedelta(days=1)))  # not due yet
 
-    run_job(app_database_url, at(day, 10), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, at(day, 10), lambda service, _: service.run_hour(10))
     assert sorted(messages(owner, world)) == sorted(
         [
             ("telegram", str(due), say("uz", "r1_due_today", shop="Shop A", name="Bugun", amount=money("uz", 40000))),
@@ -171,25 +171,25 @@ def test_a_reminder_states_the_shop_and_the_amount_in_the_customers_language(
         assert "Erta" not in text and "90" not in text, "nothing about other customers (REQ-024)"
 
     # Running the same hour again sends nothing more.
-    run_job(app_database_url, at(day, 10, 45), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, at(day, 10, 45), lambda service, _: service.run_hour(10))
     assert len(messages(owner, world)) == 2
     assert len(reminders(owner, world)) == 2
 
 
 @pytest.mark.parametrize("template", [1, 2, 3])
 def test_the_shop_picks_the_wording(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date, template: int
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date, template: int
 ) -> None:
     turn_on(owner, world.shop_a, template=template)
     link(owner, world, debtor(owner, world, "Kech", 70000, day - timedelta(days=2)))
-    run_job(app_database_url, at(day, 10), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, at(day, 10), lambda service, _: service.run_hour(10))
     assert [text for _, _, text in messages(owner, world)] == [
         say("uz", f"r{template}_overdue", shop="Shop A", name="Kech", amount=money("uz", 70000))
     ]
 
 
 def test_an_overdue_debt_is_reminded_of_again_only_after_seven_days(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date
 ) -> None:
     turn_on(owner, world.shop_a)
     customers = {}
@@ -202,25 +202,25 @@ def test_an_overdue_debt_is_reminded_of_again_only_after_seven_days(
                 "VALUES (%s, %s, %s, 'auto', 'telegram', 10000, %s)",
                 (uuid.uuid4(), world.shop_a, customers[name], day - timedelta(days=days_ago)),
             )
-    run_job(app_database_url, at(day, 10), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, at(day, 10), lambda service, _: service.run_hour(10))
     sent_today = [row[0] for row in reminders(owner, world) if row[4] == day]
     assert sorted(sent_today) == ["Hech", "Yetti"]
 
 
 def test_only_shops_whose_hour_it_is_are_served(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date
 ) -> None:
     turn_on(owner, world.shop_a, hour=14)
     link(owner, world, debtor(owner, world, "Kech", 70000, day - timedelta(days=2)))
-    run_job(app_database_url, at(day, 10), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, at(day, 10), lambda service, _: service.run_hour(10))
     assert reminders(owner, world) == []
-    run_job(app_database_url, at(day, 14), lambda service, _: service.run_hour(14))
+    run_job(worker_database_url, at(day, 14), lambda service, _: service.run_hour(14))
     assert len(reminders(owner, world)) == 1
     assert owner.execute("SELECT count(*) FROM reminder WHERE shop_id = %s", (world.shop_b,)).fetchone() == (0,)
 
 
 def test_a_customer_with_reminders_off_and_a_suspended_shop_get_none(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date
 ) -> None:
     turn_on(owner, world.shop_a)
     quiet = debtor(owner, world, "Jim", 70000, day - timedelta(days=2))
@@ -229,17 +229,17 @@ def test_a_customer_with_reminders_off_and_a_suspended_shop_get_none(
     link(owner, world, debtor(owner, world, "Kech", 30000, day - timedelta(days=2)))
 
     owner.execute("UPDATE subscription SET state = 'suspended' WHERE shop_id = %s", (world.shop_a,))
-    run_job(app_database_url, at(day, 10), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, at(day, 10), lambda service, _: service.run_hour(10))
     assert reminders(owner, world) == []
 
     # In limited mode reminders continue (BR-29).
     owner.execute("UPDATE subscription SET state = 'limited' WHERE shop_id = %s", (world.shop_a,))
-    run_job(app_database_url, at(day, 10), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, at(day, 10), lambda service, _: service.run_hour(10))
     assert [row[0] for row in reminders(owner, world)] == ["Kech"]
 
 
 def test_a_disputed_amount_is_left_out(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date
 ) -> None:
     turn_on(owner, world.shop_a)
     only_disputed = debtor(owner, world, "Faqat", 50000, day - timedelta(days=2))
@@ -255,12 +255,12 @@ def test_a_disputed_amount_is_left_out(
             "INSERT INTO dispute (id, shop_id, entry_id, reason) VALUES (%s, %s, %s, 'Men olmaganman')",
             (uuid.uuid4(), world.shop_a, entry),
         )
-    run_job(app_database_url, at(day, 10), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, at(day, 10), lambda service, _: service.run_hour(10))
     assert reminders(owner, world) == [("Aralash", "auto", "telegram", 20000, day)]
 
 
 def test_a_paid_debt_is_not_reminded_of(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date
 ) -> None:
     turn_on(owner, world.shop_a)
     paid = debtor(owner, world, "Tolagan", 30000, day - timedelta(days=2))
@@ -270,7 +270,7 @@ def test_a_paid_debt_is_not_reminded_of(
         "VALUES (%s, %s, %s, 2, 'payment', 30000, %s, %s)",
         (uuid.uuid4(), world.shop_a, paid, world.seller_a_membership, at(day, 8)),
     )
-    run_job(app_database_url, at(day, 10), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, at(day, 10), lambda service, _: service.run_hour(10))
     assert reminders(owner, world) == []
 
 
@@ -289,7 +289,7 @@ def sms(owner: psycopg.Connection) -> Any:
 
 
 def test_without_telegram_and_with_sms_off_the_customer_is_listed_as_not_reachable(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str
 ) -> None:
     today = tashkent_date(datetime.now(UTC))
     turn_on(owner, world.shop_a)
@@ -298,7 +298,7 @@ def test_without_telegram_and_with_sms_off_the_customer_is_listed_as_not_reachab
     link(owner, world, linked)
     debtor(owner, world, "Hali erta", 10000, today + timedelta(days=5), phone="+998901112244")
 
-    run_job(app_database_url, datetime.now(UTC), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, datetime.now(UTC), lambda service, _: service.run_hour(10))
     assert [row[0] for row in reminders(owner, world)] == ["Ulangan"]
     listed = client.get(f"{shop(world)}/reminders/unreachable", headers=as_user(world.manager_a)).json()["items"]
     assert [(item["display_name"], item["phone"], item["amount"]) for item in listed] == [
@@ -307,7 +307,7 @@ def test_without_telegram_and_with_sms_off_the_customer_is_listed_as_not_reachab
 
 
 def test_sms_needs_the_platform_the_shop_a_phone_and_quota(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date, sms: Any
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date, sms: Any
 ) -> None:
     turn_on(owner, world.shop_a)
     for index in range(3):
@@ -315,11 +315,11 @@ def test_sms_needs_the_platform_the_shop_a_phone_and_quota(
     debtor(owner, world, "Raqamsiz", 5000, day - timedelta(days=2))
 
     # The platform switch alone is not enough: the shop has not turned SMS on.
-    run_job(app_database_url, at(day, 10), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, at(day, 10), lambda service, _: service.run_hour(10))
     assert reminders(owner, world) == []
 
     owner.execute("UPDATE shop SET sms_on = true WHERE id = %s", (world.shop_a,))
-    run_job(app_database_url, at(day, 10), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, at(day, 10), lambda service, _: service.run_hour(10))
     sent = reminders(owner, world)
     assert [(row[1], row[2]) for row in sent] == [("auto", "sms")] * 2, "the monthly quota of two is not exceeded"
     queued = messages(owner, world)
@@ -331,7 +331,7 @@ def test_sms_needs_the_platform_the_shop_a_phone_and_quota(
     ]
 
     # The quota is for the month: the next day nothing more goes out by SMS.
-    run_job(app_database_url, at(day + timedelta(days=0), 10, 50), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, at(day + timedelta(days=0), 10, 50), lambda service, _: service.run_hour(10))
     assert len(reminders(owner, world)) == 2
 
 
@@ -462,18 +462,18 @@ def test_a_manager_turns_reminders_on_and_chooses_the_hour(
 
 
 def test_the_scheduler_serves_each_hour_once_and_catches_up(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date
 ) -> None:
     turn_on(owner, world.shop_a, hour=9)
     link(owner, world, debtor(owner, world, "Kech", 70000, day - timedelta(days=2)))
 
     # Before eight nothing is due.
-    run_job(app_database_url, at(day, 7, 59), lambda _, scheduler: scheduler.tick())
+    run_job(worker_database_url, at(day, 7, 59), lambda _, scheduler: scheduler.tick())
     assert reminders(owner, world) == []
     assert owner.execute("SELECT count(*) FROM job_run WHERE period LIKE %s", (f"{day}T%",)).fetchone() == (0,)
 
     # A worker that starts at 10:30 still serves the hours that have begun: 8, 9 and 10.
-    run_job(app_database_url, at(day, 10, 30), lambda _, scheduler: scheduler.tick())
+    run_job(worker_database_url, at(day, 10, 30), lambda _, scheduler: scheduler.tick())
     assert [row[0] for row in reminders(owner, world)] == ["Kech"]
     periods = owner.execute(
         "SELECT period FROM job_run WHERE job = 'reminders' AND period LIKE %s ORDER BY period", (f"{day}T%",)
@@ -482,11 +482,11 @@ def test_the_scheduler_serves_each_hour_once_and_catches_up(
 
     # A second tick in the same hour does nothing.
     owner.execute("DELETE FROM reminder WHERE shop_id = %s", (world.shop_a,))
-    run_job(app_database_url, at(day, 10, 31), lambda _, scheduler: scheduler.tick())
+    run_job(worker_database_url, at(day, 10, 31), lambda _, scheduler: scheduler.tick())
     assert reminders(owner, world) == [], "a finished hour is not run again"
 
     # Late in the evening the hours stop at twenty.
-    run_job(app_database_url, at(day, 23, 0), lambda _, scheduler: scheduler.tick())
+    run_job(worker_database_url, at(day, 23, 0), lambda _, scheduler: scheduler.tick())
     last = owner.execute(
         "SELECT max(period), count(*) FROM job_run WHERE job = 'reminders' AND period LIKE %s", (f"{day}T%",)
     ).fetchone()
@@ -494,7 +494,7 @@ def test_the_scheduler_serves_each_hour_once_and_catches_up(
 
 
 def test_an_hour_that_failed_is_tried_again(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date
 ) -> None:
     turn_on(owner, world.shop_a, hour=8)
     link(owner, world, debtor(owner, world, "Kech", 70000, day - timedelta(days=2)))
@@ -510,39 +510,39 @@ def test_an_hour_that_failed_is_tried_again(
             await scheduler.tick()
         service.run_hour = real  # type: ignore[method-assign]
 
-    run_job(app_database_url, at(day, 8, 5), failing)
+    run_job(worker_database_url, at(day, 8, 5), failing)
     assert owner.execute("SELECT count(*) FROM job_run WHERE period = %s", (f"{day}T08",)).fetchone() == (0,)
-    run_job(app_database_url, at(day, 8, 6), lambda _, scheduler: scheduler.tick())
+    run_job(worker_database_url, at(day, 8, 6), lambda _, scheduler: scheduler.tick())
     assert [row[0] for row in reminders(owner, world)] == ["Kech"]
 
 
 def test_a_shop_that_turned_reminders_off_meanwhile_is_not_served(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date
 ) -> None:
     """The list of shops is only where to look: each shop's own setting is read again inside it."""
     turn_on(owner, world.shop_a)
     link(owner, world, debtor(owner, world, "Kech", 70000, day - timedelta(days=2)))
     owner.execute("UPDATE shop SET reminders_on = false WHERE id = %s", (world.shop_a,))
-    sent = run_job(app_database_url, at(day, 10), lambda service, _: service._remind_shop(world.shop_a))
+    sent = run_job(worker_database_url, at(day, 10), lambda service, _: service._remind_shop(world.shop_a))
     assert sent == 0
     assert reminders(owner, world) == []
 
 
 def test_the_platform_switch_alone_stops_every_sms(
-    world: World, owner: psycopg.Connection, app_database_url: str, day: date, sms: Any
+    world: World, owner: psycopg.Connection, worker_database_url: str, day: date, sms: Any
 ) -> None:
     owner.execute("UPDATE platform_setting SET value = 'false' WHERE key = 'sms_on'")
     turn_on(owner, world.shop_a)
     owner.execute("UPDATE shop SET sms_on = true WHERE id = %s", (world.shop_a,))
     debtor(owner, world, "Telefonli", 70000, day - timedelta(days=2), phone="+998901112299")
-    run_job(app_database_url, at(day, 10), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, at(day, 10), lambda service, _: service.run_hour(10))
     assert reminders(owner, world) == []
     assert messages(owner, world) == []
 
 
 @pytest.mark.parametrize("status", ["unreachable", "ended"])
 def test_a_customer_whose_link_is_not_active_is_not_reminded_through_telegram(
-    client: TestClient, world: World, owner: psycopg.Connection, app_database_url: str, status: str
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, status: str
 ) -> None:
     today = tashkent_date(datetime.now(UTC))
     turn_on(owner, world.shop_a)
@@ -550,7 +550,7 @@ def test_a_customer_whose_link_is_not_active_is_not_reminded_through_telegram(
     link(owner, world, customer)
     owner.execute("UPDATE customer_link SET status = %s WHERE customer_id = %s", (status, customer))
 
-    run_job(app_database_url, datetime.now(UTC), lambda service, _: service.run_hour(10))
+    run_job(worker_database_url, datetime.now(UTC), lambda service, _: service.run_hour(10))
     assert reminders(owner, world) == []
     assert messages(owner, world) == []
     listed = client.get(f"{shop(world)}/reminders/unreachable", headers=as_user(world.manager_a)).json()["items"]

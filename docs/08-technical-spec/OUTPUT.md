@@ -32,7 +32,7 @@ Conventions: timestamps stored in UTC and shown in Tashkent time (UTC+5). Money 
 
 | Resource | Operations | Roles | Requirements |
 |---|---|---|---|
-| `/auth/*`, `/me` | Sign in; profile, language, active shop, my shops and links | Any | REQ-050, REQ-051, REQ-064 |
+| `/auth/*`, `/me` | Sign in; sign out of this session, or of every session of the person on every device (`POST /auth/sign-out-everywhere`); profile, language, active shop, my shops and links | Any | REQ-050, REQ-051, REQ-064 |
 | `/shops` | Create shop | Any | REQ-001, REQ-052 |
 | `/shops/{id}` | Read, update settings, request deletion, cancel deletion | Owner; managers read | REQ-042, REQ-048 |
 | `/shops/{id}/staff`, `/staff/invitations`, `/ownership-transfer` | List, invite, change role, suspend, remove, transfer ownership | Owner | REQ-031 to REQ-036 |
@@ -91,10 +91,11 @@ Design rules the schema carries:
 
 | Rule | Mechanism | Decision |
 |---|---|---|
-| Entries, goods lines, promise history, and activity are insert-only | Role `qd_app` has no update, delete, or truncate on them | ADR-005 |
+| Entries, goods lines, promise history, and activity are insert-only | No role the application connects as (`qd_app`, `qd_admin`, `qd_worker`) has update, delete, or truncate on them | ADR-005 |
 | Goods lines: one batch per entry, in time, summing to the total | Row trigger and a deferred constraint trigger | ADR-005 |
 | Current promised date is the latest promise row | Insert-only `promise` table with an index by entry and time | ADR-005 |
-| One shop's rows are invisible to another | `shop_id` on every tenant table; forced row-level security keyed to the session setting `qd.shop_id`; `qd_app` cannot bypass | ADR-016 |
+| One shop's rows are invisible to another | `shop_id` on every tenant table; forced row-level security keyed to the session setting `qd.shop_id`; `qd_app`, `qd_admin` and `qd_worker` cannot bypass | ADR-016 |
+| One part of the application cannot act as another | Three database roles, each granted only the statements and functions its part runs: `qd_app` (shop members, customers, sign-in, the chat), `qd_admin` (the administrators' side), `qd_worker` (the worker). Migration `0031`; the grants are listed, table by table and function by function, in `backend/tests/db/test_database_roles.py` | Security review, finding 11; DEC-068 |
 | One active owner per shop | Partial unique index | Domain invariant INV-11 |
 | One dispute per entry; one open date request per entry; one reversal per entry | Unique constraints | Domain rules BR-11, BR-15; INV-5 |
 | Support access at most 24 hours | Check constraint | Domain rule BR-31 |
@@ -117,6 +118,8 @@ Design rules the schema carries:
 Not verified: the time limit on adding goods lines (needs clock control), behavior under load, the cross-tenant functions below, anonymization, and shop erasure.
 
 **Cross-tenant functions.** Because the application role cannot see across shops, the few legitimate cross-shop reads are `SECURITY DEFINER` functions owned by the migration role, each narrow and reviewed: `my_memberships(user)`, `my_links(user)`, `owner_totals(user)`, `shops_due_for_reminders(hour)`, `subscriptions_expiring(date)`, `admin_shop_search(admin, query)`, `admin_open_shop(admin, shop)` which requires a current support access. The worker iterates shop by shop, setting the tenant for each.
+
+Each such function may be executed by exactly the role of the part that calls it and by nobody else: the `admin_*` functions by `qd_admin`, the worker's (`shops_due_for_reminders`, `subscriptions_to_review`, `shops_to_erase`, `erase_shop`, `claim_export_job`, `claim_import_batch`, `shops_with_receipt_work`, `purge_expired_sign_ins`, `mark_recipient_unreachable`) by `qd_worker`, the rest by `qd_app`. One is shared, `forget_user_if_unused`, because both the API and the worker complete a customer's removal. A test enumerates every such function and fails for one that is not listed with its roles.
 
 **Calculations in the domain layer, not in SQL:** balance and non-negativity (row lock on the customer, then compute); oldest-first allocation, overdue status, and the payment history indicator; default promised date; line rounding (half up to whole UZS).
 

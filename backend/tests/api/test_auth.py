@@ -1,12 +1,16 @@
 """Sign-in and sessions through the application as deployed (ADR-017, story S2.1)."""
 
+import asyncio
 import itertools
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import psycopg
 import pytest
 
+from qarz.application.auth import AuthService
+from qarz.infrastructure.db import Database
 from tests.test_telegram_auth import login_data, webapp_init_data
 
 from .conftest import TEST_BOT_TOKEN, WEBHOOK_SECRET, SessionClient
@@ -261,3 +265,196 @@ def test_no_name_or_username_from_telegram_is_stored(session_client: SessionClie
         ).fetchall()
     }
     assert not {c for c in columns if "name" in c or "photo" in c or "phone" in c}
+
+
+# --- sign out everywhere (security review, finding 9) -------------------------------------------------
+
+EVERYWHERE = "/api/v1/auth/sign-out-everywhere"
+
+
+def _app_token(app: SessionClient, tg_id: int) -> str:
+    return str(app.http.post(WEBAPP, json={"init_data": _fresh(tg_id=tg_id)}).json()["token"])
+
+
+def _sessions(owner: psycopg.Connection, tg_id: int) -> list[tuple[str, bool]]:
+    """The person's sessions, oldest first: the kind, and whether it was ended."""
+    rows = owner.execute(
+        "SELECT s.kind, s.revoked_at IS NOT NULL FROM user_session s JOIN app_user u ON u.id = s.user_id "
+        "WHERE u.tg_id = %s ORDER BY s.created_at, s.id",
+        (tg_id,),
+    ).fetchall()
+    return [(str(kind), bool(ended)) for kind, ended in rows]
+
+
+def test_signing_out_everywhere_ends_every_session_of_the_person_on_every_device(
+    session_client: SessionClient, owner: psycopg.Connection
+) -> None:
+    """Mini App sessions and web sessions alike, the one that asked included; the next request of each is
+    refused exactly as a signed-out one is."""
+    http, me = session_client.http, 5_300_001
+    phone, tablet = _app_token(session_client, me), _app_token(session_client, me)
+    laptop, laptop_csrf = _web_session(session_client, me)
+    office, office_csrf = _web_session(session_client, me)
+    for headers in (_bearer(phone), _bearer(tablet), _cookie(laptop), _cookie(office)):
+        assert http.get(ME, headers=headers).status_code == 200
+
+    done = http.post(EVERYWHERE, headers=_bearer(phone))
+    assert (done.status_code, done.content) == (204, b"")
+
+    for headers in (_bearer(phone), _bearer(tablet), _cookie(laptop), _cookie(office)):
+        refused = http.get(ME, headers=headers)
+        assert refused.status_code == 401
+        assert refused.json()["error"]["code"] == "UNAUTHENTICATED"
+    # Not only reads: a web session's own CSRF token no longer changes anything either.
+    for token, csrf in ((laptop, laptop_csrf), (office, office_csrf)):
+        changed = http.patch(ME, json={"lang": "ru"}, headers={**_cookie(token), "X-CSRF-Token": csrf})
+        assert changed.status_code == 401
+    assert _sessions(owner, me) == [("webapp", True), ("webapp", True), ("web", True), ("web", True)]
+    assert owner.execute("SELECT lang FROM app_user WHERE tg_id = %s", (me,)).fetchone() == ("uz",)
+
+
+def test_signing_out_everywhere_from_the_web_needs_the_csrf_token_and_clears_the_cookie(
+    session_client: SessionClient, owner: psycopg.Connection
+) -> None:
+    http, me = session_client.http, 5_300_002
+    phone = _app_token(session_client, me)
+    laptop, csrf = _web_session(session_client, me)
+
+    # A cookie alone is refused, as for every request that changes something, and nothing is ended.
+    assert http.post(EVERYWHERE, headers=_cookie(laptop)).status_code == 401
+    assert http.post(EVERYWHERE, headers={**_cookie(laptop), "X-CSRF-Token": "not-the-token"}).status_code == 401
+    assert _sessions(owner, me) == [("webapp", False), ("web", False)]
+
+    done = http.post(EVERYWHERE, headers={**_cookie(laptop), "X-CSRF-Token": csrf})
+    assert done.status_code == 204
+    cleared = done.headers["set-cookie"].lower()
+    assert cleared.startswith(('qd_session="";', "qd_session=;"))
+    assert "path=/api" in cleared and "max-age=0" in cleared
+    assert http.get(ME, headers=_cookie(laptop)).status_code == 401
+    assert http.get(ME, headers=_bearer(phone)).status_code == 401, "the Mini App session on the phone ended too"
+    assert _sessions(owner, me) == [("webapp", True), ("web", True)]
+
+
+def test_one_person_cannot_end_another_persons_sessions(
+    session_client: SessionClient, owner: psycopg.Connection
+) -> None:
+    """Whose sessions end is decided by the session that asks and by nothing in the request."""
+    http, me, other = session_client.http, 5_300_003, 5_300_004
+    mine = _app_token(session_client, me)
+    theirs = _app_token(session_client, other)
+    their_web, their_csrf = _web_session(session_client, other)
+    row = owner.execute("SELECT id FROM app_user WHERE tg_id = %s", (other,)).fetchone()
+    assert row is not None
+    their_id = str(row[0])
+
+    # Naming the other person every way a request can: in the body, in the query, in headers.
+    done = http.post(
+        f"{EVERYWHERE}?user_id={their_id}&user={their_id}",
+        json={"user_id": their_id, "user": their_id, "tg_id": other},
+        headers={**_bearer(mine), "X-User-Id": their_id, "X-Test-User": their_id},
+    )
+    assert done.status_code == 204
+    assert _sessions(owner, me) == [("webapp", True)]
+    assert _sessions(owner, other) == [("webapp", False), ("web", False)], "the other person's sessions are untouched"
+    assert http.get(ME, headers=_bearer(theirs)).status_code == 200
+    kept = http.patch(ME, json={"lang": "ru"}, headers={**_cookie(their_web), "X-CSRF-Token": their_csrf})
+    assert kept.status_code == 200
+    assert http.get(ME, headers=_bearer(mine)).status_code == 401
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {},
+        {"Authorization": "Bearer"},
+        {"Authorization": "Bearer " + "A" * 43},
+        {"Authorization": "Basic abc"},
+        {"Cookie": "qd_session=" + "B" * 43},
+        {"Cookie": "qd_session=" + "B" * 43, "X-CSRF-Token": "C" * 43},
+    ],
+    ids=["nothing", "empty bearer", "unknown bearer", "another scheme", "unknown cookie", "unknown cookie and token"],
+)
+def test_without_a_valid_session_nobody_is_signed_out(
+    session_client: SessionClient, owner: psycopg.Connection, headers: dict[str, str]
+) -> None:
+    token = _app_token(session_client, 5_300_005)
+    before = owner.execute("SELECT count(*) FROM user_session WHERE revoked_at IS NOT NULL").fetchone()
+    refused = session_client.http.post(EVERYWHERE, headers=headers)
+    assert refused.status_code == 401
+    assert refused.json()["error"]["code"] == "UNAUTHENTICATED"
+    assert "set-cookie" not in refused.headers
+    assert owner.execute("SELECT count(*) FROM user_session WHERE revoked_at IS NOT NULL").fetchone() == before
+    assert session_client.http.get(ME, headers=_bearer(token)).status_code == 200
+
+
+def test_a_session_that_has_ended_cannot_end_the_persons_other_sessions(
+    session_client: SessionClient, owner: psycopg.Connection
+) -> None:
+    """Neither a session that was signed out, nor one that expired, nor a web session's token sent as a
+    bearer token: whoever holds only that holds nothing."""
+    http, me = session_client.http, 5_300_006
+    signed_out, expiring = _app_token(session_client, me), _app_token(session_client, me)
+    web, _ = _web_session(session_client, me)
+    assert http.post("/api/v1/auth/sign-out", headers=_bearer(signed_out)).status_code == 204
+    assert http.post(EVERYWHERE, headers=_bearer(signed_out)).status_code == 401
+    assert http.post(EVERYWHERE, headers=_bearer(web)).status_code == 401, "a cookie session's token is no bearer"
+
+    session_client.clock.offset = timedelta(hours=12, minutes=1)  # Mini App sessions are over; the web one is not
+    assert http.post(EVERYWHERE, headers=_bearer(expiring)).status_code == 401
+    assert _sessions(owner, me) == [("webapp", True), ("webapp", False), ("web", False)]
+    assert http.get(ME, headers=_cookie(web)).status_code == 200
+
+
+def test_after_signing_out_everywhere_the_person_signs_in_again_and_the_old_sessions_stay_ended(
+    session_client: SessionClient, owner: psycopg.Connection
+) -> None:
+    http, me = session_client.http, 5_300_007
+    old_phone, (old_web, old_csrf) = _app_token(session_client, me), _web_session(session_client, me)
+    assert http.post(EVERYWHERE, headers=_bearer(old_phone)).status_code == 204
+    # Asking again with the session that has just ended is refused: there is nothing left to end with it.
+    assert http.post(EVERYWHERE, headers=_bearer(old_phone)).status_code == 401
+    assert http.post(EVERYWHERE, headers={**_cookie(old_web), "X-CSRF-Token": old_csrf}).status_code == 401
+
+    new_phone = _app_token(session_client, me)
+    assert http.get(ME, headers=_bearer(new_phone)).status_code == 200
+    assert http.get(ME, headers=_bearer(old_phone)).status_code == 401
+    assert http.get(ME, headers=_cookie(old_web)).status_code == 401
+    assert _sessions(owner, me) == [("webapp", True), ("web", True), ("webapp", False)]
+    assert owner.execute("SELECT count(*) FROM app_user WHERE tg_id = %s", (me,)).fetchone() == (1,)
+
+
+def test_signing_out_everywhere_leaves_the_time_of_an_earlier_sign_out_as_it_was(
+    session_client: SessionClient, owner: psycopg.Connection
+) -> None:
+    """Only sessions that are still open are ended: the record of an earlier sign-out keeps its time."""
+    http, me = session_client.http, 5_300_008
+    earlier, current = _app_token(session_client, me), _app_token(session_client, me)
+    assert http.post("/api/v1/auth/sign-out", headers=_bearer(earlier)).status_code == 204
+    when = "SELECT s.revoked_at FROM user_session s JOIN app_user u ON u.id = s.user_id WHERE u.tg_id = %s ORDER BY 1"
+    first = owner.execute(when, (me,)).fetchall()[0]
+    session_client.clock.offset = timedelta(minutes=5)
+    assert http.post(EVERYWHERE, headers=_bearer(current)).status_code == 204
+    ended = owner.execute(when, (me,)).fetchall()
+    assert ended[0] == first and ended[1][0] - first[0] >= timedelta(minutes=4)
+
+
+def test_the_service_says_how_many_sessions_it_ended(session_client: SessionClient, app_database_url: str) -> None:
+    me = 5_300_009
+    _app_token(session_client, me)
+    _web_session(session_client, me)
+    last = _app_token(session_client, me)
+    user_id = uuid.UUID(session_client.http.get(ME, headers=_bearer(last)).json()["id"])
+
+    async def three_times() -> tuple[int, int, int]:
+        database = Database(app_database_url)
+        try:
+            service = AuthService(database, TEST_BOT_TOKEN)
+            return (
+                await service.sign_out_everywhere(uuid.uuid4()),  # somebody with no session: nothing to end
+                await service.sign_out_everywhere(user_id),
+                await service.sign_out_everywhere(user_id),  # a repeat finds nothing left
+            )
+        finally:
+            await database.dispose()
+
+    assert asyncio.run(three_times()) == (0, 3, 0)

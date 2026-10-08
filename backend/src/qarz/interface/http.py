@@ -99,6 +99,7 @@ def create_app(
     *,
     auth: AuthService | None = None,
     admin: AdminAccess | None = None,
+    admin_storage: Storage | None = None,
     authenticator: Authenticator | None = None,
     webhook_secret: str | None = None,
     now: Callable[[], datetime] | None = None,
@@ -121,8 +122,11 @@ def create_app(
     receipts are refused; without `telegram_files` a receipt sent to the bot cannot be fetched; without
     `telegram_members` nobody counts as a Telegram administrator of the review group (DEC-064). The
     administrator's side is served only when `admin` is given, which production does only with an
-    allow-list and the server secret.
+    allow-list and the server secret. It works through `admin_storage`, a connection as the
+    administrators' own database role: `storage` is the ordinary role's and cannot reach their tables.
     """
+    if admin is not None and admin_storage is None:
+        raise ValueError("the administrators' side needs its own storage")
     app = FastAPI(title="Qarz Daftari", docs_url=None, redoc_url=None, openapi_url=None)
 
     @app.get("/healthz")
@@ -217,8 +221,7 @@ def create_app(
         )
         add_credit_routes(app, CreditService(storage, now), current_user)
         add_reminder_routes(app, ReminderService(storage, now), current_user)
-        support = SupportAccessService(storage, now)
-        add_owner_support_routes(app, support, current_user)
+        add_owner_support_routes(app, SupportAccessService(storage, now), current_user)
         add_report_routes(app, ReportService(storage, now), current_user)
         add_dispute_routes(app, DisputeService(storage, now), current_user)
         add_payment_notice_routes(app, PaymentNoticeService(storage, files, now), current_user)
@@ -231,21 +234,31 @@ def create_app(
             app, AccountService(storage), ActivityService(storage), OwnershipService(storage), current_user
         )
 
-        if admin is not None:
+        if admin is not None and admin_storage is not None:
+            # Who the caller is, and their language, is the ordinary side's knowledge; everything the
+            # administrator then does goes through the administrators' role.
             admin_user = add_admin_routes(
                 app,
                 admin,
-                AdminService(storage, admin, now),
+                AdminService(admin_storage, admin, now),
                 resolver.user_id,
                 storage.user_language,
                 None if limiter is None else (lambda user_id: counted.check(user_id, None)),
-                AdminReceiptService(storage, files, now),
-                AdminOwnershipService(storage, admin, now),
+                AdminReceiptService(admin_storage, files, now),
+                AdminOwnershipService(admin_storage, admin, now),
             )
-            add_admin_support_routes(app, support, admin_user)
+            add_admin_support_routes(app, SupportAccessService(admin_storage, now), admin_user)
 
     if webhook_secret is not None and storage is not None:
-        chat = ChatService(storage, ShopService(storage, now), StaffService(storage, now), now, files, reviewers)
+        chat = ChatService(
+            storage,
+            ShopService(storage, now),
+            StaffService(storage, now),
+            now,
+            files,
+            reviewers,
+            admin_storage=admin_storage,
+        )
         add_webhook_route(app, UpdateProcessor(storage, chat, telegram_files, telegram_members), webhook_secret)
 
     metrics = Metrics()

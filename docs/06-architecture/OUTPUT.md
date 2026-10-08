@@ -123,10 +123,11 @@ Cross-cutting: authorization (role and tenant on every command), tenant context 
 | Internet to service | TLS; only the proxy is exposed; request size and rate limits at the proxy |
 | Client to API | Every request carries a server-issued session bound to a Telegram identity. Sessions are short-lived for Mini Apps and cookie-based with CSRF protection for the web. |
 | User to shop data | Role and membership checked in the application for every command (REQ-N11) |
-| Tenant isolation | PostgreSQL row-level security on every tenant table, keyed to a shop set for the database session; the application role cannot bypass it (REQ-N12). A bug in a query therefore returns nothing from another shop. |
+| Tenant isolation | PostgreSQL row-level security on every tenant table, keyed to a shop set for the database session; none of the application's database roles can bypass it (REQ-N12). A bug in a query therefore returns nothing from another shop. |
+| Parts of the application | The ordinary API, the administrators' side and the worker each connect to the database as a role of their own (`qd_app`, `qd_admin`, `qd_worker`), granted only what that part runs. The ordinary role cannot read an administrator's account or the text of a queued message, and cannot erase a shop; the worker cannot open a session or act as an administrator (security review, finding 11; DEC-068) |
 | Customer to data | A customer session can address only accounts reached through its own active links |
 | Administrator | Separate admin entry point; allowed Telegram identities listed in configuration; a second factor required; no access to shop data without a support access record that the owner can see (REQ-059) |
-| Ledger immutability | Database permissions deny update and delete on entries and lines to the application role (REQ-N07) |
+| Ledger immutability | Database permissions deny update and delete on entries and lines to every role the application connects as (REQ-N07) |
 | Files | Type and size checks on upload; stored outside the web root; served only through short-lived signed links after an authorization check |
 | Secrets | Environment files on the servers, readable by the service user only; backup encryption key kept off both servers |
 | Personal data | In the database, file store, and backups, all inside Uzbekistan; logs carry identifiers only |
