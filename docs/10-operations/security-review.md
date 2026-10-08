@@ -49,6 +49,30 @@ Method:
 
 No Critical or High finding was made on `main`. That is a statement about what this review looked at, listed below, and not about what it did not.
 
+## Added after the review: the SMS sender (Eskiz)
+
+Not part of the review above and not seen by its reviewer; recorded here by the build so that the next
+review knows it exists. `infrastructure/eskiz_sms.py` and `infrastructure/sms_sender.py` send reminders
+to Eskiz (`notify.eskiz.uz`) from the worker, behind the platform switch `sms_on`, which is off.
+
+- **New secrets:** `QD_ESKIZ_EMAIL`, `QD_ESKIZ_PASSWORD` (and the sender name `QD_ESKIZ_SENDER`), read
+  from the worker's environment only; the API's service is not handed them
+  (`backend/tests/test_deploy_files.py`). The token Eskiz returns lives in the worker's memory, is never
+  written to the database and never logged.
+- **New outbound flow of personal data:** a customer's phone number, their name as the shop wrote it, the
+  shop's name and the amount owed go to Eskiz and on to a mobile operator. It is the first such flow
+  besides Telegram, and belongs with the open legal questions ("SMS without consent", specification).
+- **Logs and errors:** a send is logged by a fixed word, the HTTP status and nothing else; exceptions
+  carry a fixed word. A test sends failing messages whose provider answers and network errors repeat the
+  number, the text, the token and the password, and fails if any of them reaches a log record or an
+  exception (`backend/tests/worker/test_eskiz_sms.py`).
+- **Transport:** HTTPS to a fixed host, certificate checked by the standard library's defaults, no
+  redirects followed, no proxy from the environment, 10 seconds a socket operation and 20 a call, answers
+  read up to 64 KiB. The multipart body is built by the sender from fixed field names.
+- **No new endpoint:** delivery reports (`callback_url`) are not taken, so nothing new listens.
+- **Database:** no new right. Migration 0032 adds one index for the health figures.
+- **Not reviewed by anyone but its author, and never run against Eskiz.**
+
 ## What was read
 
 | Area | Files |

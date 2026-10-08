@@ -1,4 +1,4 @@
-# Tests of the backup alert rules, for `promtool test rules deploy/monitoring/alerts.test.yml`.
+# Tests of the backup, security and SMS alert rules, for `promtool test rules deploy/monitoring/alerts.test.yml`.
 # In these tests time() starts at 0, so a figure of 0 means "happened when the test began".
 rule_files:
   - alerts.yml
@@ -170,3 +170,64 @@ tests:
         exp_alerts:
           - exp_labels: {severity: day, channel: operator-telegram}
             exp_annotations: {summary: "The restore test has not passed in 8 days"}
+
+  # SMS (group qarz-messaging). Messages are sent, none fails and none waits: neither rule fires.
+  - name: sms going out
+    interval: 1m
+    input_series:
+      - series: 'qd_sms_messages_last_day{status="sent"}'
+        values: '0+1x120'
+      - series: 'qd_sms_messages_last_day{status="failed"}'
+        values: '0x120'
+      - series: 'qd_sms_messages_last_day{status="retrying"}'
+        values: '0x120'
+    alert_rule_test:
+      - {eval_time: 100m, alertname: SmsRefused, exp_alerts: []}
+      - {eval_time: 100m, alertname: SmsNotGoingOut, exp_alerts: []}
+
+  # Negative: one SMS ends as failed. Seen within the hour, and not for ever after.
+  - name: sms refused
+    interval: 1m
+    input_series:
+      - series: 'qd_sms_messages_last_day{status="failed"}'
+        values: '0x30 1x200'
+      - series: 'qd_sms_messages_last_day{status="retrying"}'
+        values: '0x230'
+    alert_rule_test:
+      - {eval_time: 25m, alertname: SmsRefused, exp_alerts: []}
+      - eval_time: 40m
+        alertname: SmsRefused
+        exp_alerts:
+          - exp_labels: {severity: day, channel: operator-telegram, status: failed}
+            exp_annotations: {summary: "An SMS was refused by the provider or given up"}
+      - {eval_time: 150m, alertname: SmsRefused, exp_alerts: []}
+      - {eval_time: 150m, alertname: SmsNotGoingOut, exp_alerts: []}
+
+  # Negative: SMS wait after failed attempts for longer than half an hour.
+  - name: sms not accepted
+    interval: 1m
+    input_series:
+      - series: 'qd_sms_messages_last_day{status="failed"}'
+        values: '0x120'
+      - series: 'qd_sms_messages_last_day{status="retrying"}'
+        values: '0x10 3x110'
+    alert_rule_test:
+      - {eval_time: 30m, alertname: SmsNotGoingOut, exp_alerts: []}
+      - eval_time: 45m
+        alertname: SmsNotGoingOut
+        exp_alerts:
+          - exp_labels: {severity: day, channel: operator-telegram, status: retrying}
+            exp_annotations: {summary: "SMS are queued and not being accepted by the provider"}
+      - {eval_time: 45m, alertname: SmsRefused, exp_alerts: []}
+
+  # A provider that was slow for a few minutes and then accepted the message is nobody's alert.
+  - name: sms retried and sent
+    interval: 1m
+    input_series:
+      - series: 'qd_sms_messages_last_day{status="failed"}'
+        values: '0x120'
+      - series: 'qd_sms_messages_last_day{status="retrying"}'
+        values: '0x10 2x10 0x100'
+    alert_rule_test:
+      - {eval_time: 18m, alertname: SmsNotGoingOut, exp_alerts: []}
+      - {eval_time: 60m, alertname: SmsNotGoingOut, exp_alerts: []}

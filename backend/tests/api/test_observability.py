@@ -260,6 +260,54 @@ def test_the_health_figures_tell_how_long_messages_and_jobs_have_waited(
     assert "998900000000" not in text
 
 
+def sms_figures(observed: TestClient) -> tuple[dict[str, float], str]:
+    text = metrics(observed)
+    values = dict(line.rsplit(" ", 1) for line in text.splitlines() if not line.startswith("#"))
+    prefix = 'qd_sms_messages_last_day{status="'
+    return {name[len(prefix) : -2]: float(value) for name, value in values.items() if name.startswith(prefix)}, text
+
+
+def test_the_health_figures_count_the_sms_of_the_last_day_by_what_became_of_them(
+    observed: TestClient, owner: psycopg.Connection
+) -> None:
+    """What the rules SmsRefused and SmsNotGoingOut read (deploy/monitoring/alerts.yml)."""
+    owner.execute("DELETE FROM outbox_message")
+    try:
+        nothing, _ = sms_figures(observed)
+        assert nothing == {"sent": 0, "failed": 0, "retrying": 0}, "each is there from the start, at zero"
+        owner.execute(
+            "INSERT INTO outbox_message (id, channel, recipient, payload, next_try_at, status) VALUES "
+            "(gen_random_uuid(), 'sms', '+998900000001', '{}', now() - interval '1 hour', 'sent'), "
+            "(gen_random_uuid(), 'sms', '+998900000001', '{}', now() - interval '23 hours', 'sent'), "
+            "(gen_random_uuid(), 'sms', '+998900000001', '{}', now() - interval '2 hours', 'failed'), "
+            # Waiting after an attempt that did not succeed: pending, and its time has not come.
+            "(gen_random_uuid(), 'sms', '+998900000001', '{}', now() + interval '40 seconds', 'pending'), "
+            "(gen_random_uuid(), 'sms', '+998900000001', '{}', now() + interval '1 hour', 'pending'), "
+            # Not counted: only just queued and due; older than a day; another channel.
+            "(gen_random_uuid(), 'sms', '+998900000001', '{}', now() - interval '1 second', 'pending'), "
+            "(gen_random_uuid(), 'sms', '+998900000001', '{}', now() - interval '25 hours', 'sent'), "
+            "(gen_random_uuid(), 'sms', '+998900000001', '{}', now() - interval '3 days', 'failed'), "
+            "(gen_random_uuid(), 'telegram', '1', '{}', now() - interval '1 hour', 'sent'), "
+            "(gen_random_uuid(), 'telegram', '1', '{}', now() - interval '1 hour', 'failed'), "
+            "(gen_random_uuid(), 'telegram', '1', '{}', now() + interval '1 hour', 'pending')"
+        )
+        figures, text = sms_figures(observed)
+    finally:
+        owner.execute("DELETE FROM outbox_message")
+    assert figures == {"sent": 2, "failed": 1, "retrying": 2}
+    assert "# TYPE qd_sms_messages_last_day gauge" in text
+    assert "998900000001" not in text, "counts only: nobody's number"
+
+
+def test_the_sms_figures_are_read_through_their_own_small_index(owner: psycopg.Connection) -> None:
+    """Migration 0032. The outbox keeps every message; without it each reading of /metrics reads it all."""
+    found = owner.execute(
+        "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'outbox_sms_recent'"
+    ).fetchone()
+    assert found is not None
+    assert found[0].split(" USING ", 1)[1] == "btree (next_try_at) WHERE (channel = 'sms'::text)"
+
+
 def test_metrics_render_cumulative_buckets() -> None:
     held = Metrics()
     for ms in (10, 25, 30, 250, 6000):  # 25 is itself the edge of the first bucket
@@ -309,8 +357,14 @@ def test_the_alert_rules_name_routes_jobs_and_events_that_exist(observed: TestCl
         "qd_outbox_oldest_due_seconds",
         "qd_job_last_finished_seconds",
         "qd_receipts_oldest_waiting_seconds",
+        "qd_sms_messages_last_day",
         *host_level,
     }
+    # The SMS rules read states the application exposes, and both the states that mean trouble are watched.
+    from qarz.infrastructure.db import SMS_STATES
+
+    watched = set(re.findall(r'qd_sms_messages_last_day\{status="([^"]+)"\}', rules))
+    assert watched == {"failed", "retrying"} and watched <= set(SMS_STATES)
     scripts = "".join(
         path.read_text(encoding="utf-8")
         for path in (Path(__file__).resolve().parents[3] / "deploy" / "backup" / "scripts").glob("*.sh")
