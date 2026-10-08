@@ -1,0 +1,15 @@
+{
+  "event_id": "261cb79e2621",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-08T19:32:13+00:00",
+  "path": "docs\\evidence\\EVID-080.md",
+  "stage": "09-development-plan",
+  "title": "Types generated from the API description, with checks that they are current",
+  "claim": "Pull request 70 writes the description of the API from the application without a server, generates TypeScript types from it, and fails CI when either committed file is out of date; changing a field in the back end was seen to fail the type check of the front end. Of 122 operations only 6 read operations have a typed answer in the description; 111, among them every write and the whole administrator side, still answer an open object, so story S2.2 is met in mechanism and only in small part in coverage. CI passed on commit b626612",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/70",
+  "date": "2026-10-09",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-080"
+}
