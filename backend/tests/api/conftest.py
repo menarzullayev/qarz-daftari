@@ -101,6 +101,20 @@ class FakeTelegramFiles:
         return content if content is not None and len(content) <= max_bytes else None
 
 
+class FakeChatMembers:
+    """Stands in for the Bot API's getChatMember: a test says what a person is in a chat. Someone it was
+    told nothing about has "left", which is what Telegram answers for a person who is not in the chat."""
+
+    def __init__(self) -> None:
+        self.statuses: dict[tuple[int, int], str | None] = {}
+        self.asked: list[tuple[int, int]] = []
+        self.unreachable = False  # Telegram cannot be asked: every question gets no answer
+
+    async def status(self, chat_id: int, user_id: int) -> str | None:
+        self.asked.append((chat_id, user_id))
+        return None if self.unreachable else self.statuses.get((chat_id, user_id), "left")
+
+
 # Where the file store of the running test keeps its objects, for code that seeds a file without a fixture.
 _file_root: list[Path] = []
 
@@ -123,13 +137,22 @@ def telegram_files() -> FakeTelegramFiles:
     return FakeTelegramFiles()
 
 
+@pytest.fixture
+def telegram_members() -> FakeChatMembers:
+    return FakeChatMembers()
+
+
 def stored_objects(root: Path) -> list[Path]:
     return sorted(path for path in root.rglob("*") if path.is_file())
 
 
 @pytest.fixture
 def client(
-    app_database_url: str, file_root: Path, telegram_files: FakeTelegramFiles, admin_env: AdminEnv
+    app_database_url: str,
+    file_root: Path,
+    telegram_files: FakeTelegramFiles,
+    telegram_members: FakeChatMembers,
+    admin_env: AdminEnv,
 ) -> Iterator[TestClient]:
     database = Database(app_database_url)
     auth = AuthService(database, TEST_BOT_TOKEN)
@@ -144,6 +167,7 @@ def client(
         now=admin_env.clock.now,
         file_store=FilesystemFileStore(file_root),
         telegram_files=telegram_files,
+        telegram_members=telegram_members,
         secrets_key=TEST_SECRETS_KEY,
     )
     with TestClient(app) as test_client:

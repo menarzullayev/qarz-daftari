@@ -223,7 +223,7 @@ Records keep their numbers. Four version 1 records are superseded, six are kept 
 
 **Options considered.** (1) Telegram identity everywhere: bot updates, signed Mini App launch data, and Telegram Login on the web. (2) Phone number with one-time codes. (3) Email and password for the web.
 
-**Selected solution.** Option 1. The server validates Telegram's signature in each case and issues its own session. Administrators are additionally restricted to an allow-list of Telegram identities and must pass a time-based second factor.
+**Selected solution.** Option 1. The server validates Telegram's signature in each case and issues its own session. Administrators are additionally restricted to an allow-list of Telegram identities and must pass a time-based second factor. One exception, changed by the founder on 2026-10-08 (DEC-064): a subscription receipt may be approved or rejected from the review group's buttons by anyone Telegram names, at the moment of the press, as the creator or an administrator of that group, without the allow-list and without the second factor. Such a person has no administrator account and can do nothing else; the decision is recorded with their Telegram user identifier. Who administers the review group is therefore as sensitive as the allow-list.
 
 **Rationale.** One identity per person across all clients, no credentials to store or leak, and no SMS cost. Option 2 needs the SMS provider that is switched off.
 
@@ -249,7 +249,7 @@ Records keep their numbers. Four version 1 records are superseded, six are kept 
 
 **Status:** Accepted on the founder's decision of 2026-10-06; details by the agent.
 
-**Context / problem.** No registered business entity exists, so no contract with an online payment provider is possible yet. The founder decided that owners pay by transfer to a personal card and send the receipt through the bot; receipts go to the administrator and a review group; an administrator approves (REQ-054, REQ-055). He states this is lawful (EVID-035); that is unverified.
+**Context / problem.** No registered business entity exists, so no contract with an online payment provider is possible yet. The founder decided that owners pay by transfer to a personal card and send the receipt through the bot; receipts go to the administrator and a review group; an administrator approves (REQ-054, REQ-055), and so may a Telegram administrator of the review group, from the group (changed by the founder on 2026-10-08, DEC-064). He states this is lawful (EVID-035); that is unverified.
 
 **Options considered.** (1) Manual receipts only. (2) Manual receipts now, with Click and Payme adapters built behind a switch. (3) Telegram Stars.
 

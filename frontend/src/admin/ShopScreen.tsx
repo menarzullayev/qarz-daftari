@@ -14,7 +14,7 @@ import { Confirm, Empty, Failure, FieldError, formatInstant, Loading } from "../
 import type { AdminApi, AdminShop, AdminShopDetail, AuditRow, SubscriptionAction, SubscriptionReceipt, SubscriptionState } from "./adminApi";
 import "./messages";
 import { OwnerSection } from "./OwnerSection";
-import { cleanReason, dateInRange, dateRange, isChangeRefusal, offeredActions, REASON_MAX, REASON_MIN, shortId } from "./rules";
+import { actorName, cleanReason, dateInRange, dateRange, isChangeRefusal, offeredActions, REASON_MAX, REASON_MIN } from "./rules";
 import { known, NONE, stateText } from "./ShopsScreen";
 import { SupportSection, type Who } from "./SupportSection";
 
@@ -230,7 +230,11 @@ function Detail({ api, loaded, now, who, reload }: { api: AdminApi; loaded: Admi
     { id: "before", header: t("admin.audit.before"), cell: (row) => subscriptionLine(row.detail["before"], t, day) },
     { id: "after", header: t("admin.audit.after"), cell: (row) => subscriptionLine(row.detail["after"], t, day) },
     { id: "reason", header: t("admin.reason"), cell: (row) => row.reason ?? NONE },
-    { id: "admin", header: t("admin.audit.admin"), cell: (row) => shortId(row.adminId) },
+    {
+      id: "admin",
+      header: t("admin.audit.admin"),
+      cell: (row) => actorName(row.adminId, row.actorTgId, (id) => t("admin.actor.groupAdmin", { id }), NONE),
+    },
   ];
 
   return (

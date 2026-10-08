@@ -8,6 +8,7 @@ import pytest
 from qarz.application.errors import ValidationFailed
 from qarz.domain.subscription import ACTIVE, LIMITED, MAX_MONTHS, SUSPENDED, TRIAL, after_payment
 from qarz.domain.subscription_receipts import (
+    GROUP_DECIDER_STATUSES,
     MAX_AMOUNT,
     MAX_REASON,
     MAX_WAITING,
@@ -17,6 +18,7 @@ from qarz.domain.subscription_receipts import (
     RETENTION,
     ReceiptRefusal,
     clean_reason,
+    decides_in_review_group,
     delete_file_after,
     expected_amount,
     may_submit,
@@ -88,6 +90,38 @@ def test_months_are_a_whole_number_up_to_the_longest_period(months: Any, valid: 
 def test_whether_a_receipt_may_be_sent(amount: int, months: int, waiting: int, refusal: ReceiptRefusal | None) -> None:
     assert may_submit(amount=amount, months=months, waiting=waiting) is refusal
     assert MAX_WAITING == 3
+
+
+@pytest.mark.parametrize("status", ["creator", "administrator"])
+def test_the_creator_and_the_administrators_of_the_review_group_decide_there(status: str) -> None:
+    """DEC-064: the Bot API's own words for the people who administer a chat."""
+    assert decides_in_review_group(status) is True
+    assert status in GROUP_DECIDER_STATUSES and len(GROUP_DECIDER_STATUSES) == 2
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        "member",
+        "restricted",
+        "left",
+        "kicked",
+        "owner",  # not a word Telegram uses
+        "Administrator",
+        "CREATOR",
+        " creator",
+        "administrator ",
+        "",
+        None,  # Telegram gave no answer
+        True,
+        1,
+        b"creator",
+        ["creator"],
+        {"status": "creator"},
+    ],
+)
+def test_nobody_else_decides_in_the_review_group_and_no_answer_is_a_refusal(status: Any) -> None:
+    assert decides_in_review_group(status) is False
 
 
 @pytest.mark.parametrize(

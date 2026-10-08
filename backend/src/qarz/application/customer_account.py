@@ -17,6 +17,7 @@ from qarz.application.ledger_service import (
     HISTORY_PAGE,
     date_request_body,
     latest_date_requests,
+    payment_history_body,
     promise_body,
 )
 from qarz.application.notice_view import NOTICES_SHOWN, notice_body
@@ -98,13 +99,16 @@ class CustomerAccountService:
             lines = await session.goods_lines_of([row.entry.id for row in shown])
             promises = await session.promises_of([row.entry.id for row in shown])
             requests = latest_date_requests(await session.date_requests_of_customer(customer_id))
-            # No note, no author and no payment indicator: those are the shop's own (REQ-045).
+            # No note and no author: those are the shop's own (REQ-045). The customer does see their own
+            # payment history indicator, the same figures the shop's staff see, calculated from this
+            # shop's records only (BR-9; the founder's decision of 2026-10-08, DEC-066, changing DEC-033).
             return {
                 "link_id": str(link_id),
                 "shop_name": settings.name,
                 "display_name": customer.display_name,
                 "balance": ledger.balance(entries),
                 "overdue": {"amount": status.overdue_amount, "due_today": status.due_today_amount},
+                "payment_history": payment_history_body(ledger.payment_history(entries, today)),
                 "removal_requested": await session.removal_waiting(customer_id),
                 "entries": [
                     {

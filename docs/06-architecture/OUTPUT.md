@@ -100,7 +100,7 @@ Cross-cutting: authorization (role and tenant on every command), tenant context 
 
 **Reminder run (REQ-023, REQ-043).** Hourly, the worker takes the shops whose reminder hour matches, selects eligible customers, chooses Telegram or SMS, records each reminder and queues it in one transaction, and spreads delivery.
 
-**Subscription payment (REQ-054, REQ-055).** Owner opens "pay" → sees card number and amount → sends the receipt in the bot → file stored, receipt recorded, forwarded to the administrator and the review group → administrator approves or rejects in the admin panel or by a button in the chat → subscription updated, owner notified, action logged.
+**Subscription payment (REQ-054, REQ-055).** Owner opens "pay" → sees card number and amount → sends the receipt in the bot → file stored, receipt recorded, forwarded to the administrator and the review group → administrator approves or rejects in the admin panel or by a button in the chat, or a Telegram administrator of the review group does so by a button in the group (changed by the founder on 2026-10-08, DEC-064) → subscription updated, owner notified, action logged.
 
 **Import (REQ-062).** Owner uploads a spreadsheet → worker validates and builds a preview → owner confirms → worker applies in one transaction per batch.
 

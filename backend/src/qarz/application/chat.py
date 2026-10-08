@@ -32,6 +32,7 @@ from qarz.application.date_requests import decline_in as decline_date_request_in
 from qarz.application.disputes import DECLINE_DISPUTE, DisputeService, decline_in
 from qarz.application.errors import AlreadyMember, AppError, ForbiddenRole, NotFound, ValidationFailed
 from qarz.application.files import FileService
+from qarz.application.group_receipts import GroupReceiptService
 from qarz.application.ledger_service import (
     CHOOSE_PROMISE,
     RECORD_ENTRY,
@@ -46,7 +47,7 @@ from qarz.application.payment_notices import ACCEPT_NOTICE, DECLINE_NOTICE, Paym
 from qarz.application.payment_notices import accept_in as accept_notice_in
 from qarz.application.payment_notices import decline_in as decline_notice_in
 from qarz.application.ports import CustomerAccount, Membership, MyShop, PlatformSession, Storage, TenantSession
-from qarz.application.shops import ShopLimitReached, ShopService, require_member
+from qarz.application.shops import ShopService, require_member
 from qarz.application.staff import StaffService, token_hash
 from qarz.application.subscription import SubscriptionService
 from qarz.application.subscription_receipts import REVIEW_GROUP, SubscriptionReceiptService
@@ -113,6 +114,7 @@ def _uuid(hex_text: str) -> UUID | None:
 
 
 GROUP_LANG = "uz"  # the review group is answered in the language its announcement was written in
+CALLBACK_NOTICE_MAX = 200  # Bot API: the text of answerCallbackQuery
 
 
 @dataclass(frozen=True)
@@ -128,6 +130,9 @@ class Incoming:
     # the announcement's message. `chat_id` is then the presser's own private chat, where they are
     # answered; the group only sees the announcement change once a decision is made.
     group: tuple[int, int] | None = None
+    # The chat of which Telegram said, while this update was being handled, that the person is its
+    # creator or one of its administrators. Only ever asked about the review group (DEC-064).
+    administers: int | None = None
 
     @property
     def key(self) -> str:
@@ -148,6 +153,9 @@ class Replies:
         self._session = session
         self._incoming = incoming
         self._count = 0
+        # Words to show over the pressed button itself (`answerCallbackQuery`), for someone the bot may
+        # not be able to write to: a person in the review group who never started the bot.
+        self.notice: str | None = None
 
     async def _queue(self, payload: dict[str, Any]) -> None:
         suffix = "" if self._count == 0 else f":{self._count + 1}"
@@ -178,6 +186,10 @@ class Replies:
                 "reply_markup": _markup(keyboard),
             }
         )
+
+    def alert(self, text: str) -> None:
+        """Say it over the pressed button. Telegram shows at most 200 characters there."""
+        self.notice = text[:CALLBACK_NOTICE_MAX]
 
     async def strip(self, message_id: int) -> None:
         """Take the buttons off an earlier message of this chat."""
@@ -232,6 +244,8 @@ class ChatService:
         # The allow-list of the administrator's side, and the same decisions the panel makes.
         self._reviewers = admin_tg_ids
         self._admin_receipts = AdminReceiptService(storage, files or FileService(storage, None), now)
+        # The decisions of the review group's own Telegram administrators (DEC-064).
+        self._group_receipts = GroupReceiptService(now)
         self._date_requests = DateRequestService(storage, now)
         self._now = now or (lambda: datetime.now(UTC))
 
@@ -387,8 +401,10 @@ class ChatService:
 
     # --- what a person may press ---------------------------------------------------------------------
 
-    async def handle_callback(self, session: PlatformSession, incoming: Incoming, data: str) -> None:
-        replies = Replies(session, incoming)
+    async def handle_callback(
+        self, session: PlatformSession, incoming: Incoming, data: str, replies: Replies | None = None
+    ) -> None:
+        replies = replies or Replies(session, incoming)
         parts = data.split(":")
         if len(parts) < 2 or parts[0] != CALLBACK_VERSION:
             await replies.buttons(None)
@@ -999,7 +1015,7 @@ class ChatService:
     # --- an administrator decides a subscription receipt from their private chat (REQ-055) -------------
 
     def on_allow_list(self, tg_id: int) -> bool:
-        """Whether a press in the review group is looked at at all: nobody else becomes a user by it."""
+        """Whether the person is on the platform administrators' allow-list."""
         return tg_id in self._reviewers
 
     @staticmethod
@@ -1022,12 +1038,54 @@ class ChatService:
             return None
         return account.confirmed and await session.admin_has_live_session(incoming.user_id, self._now())
 
+    async def awaited_group_reason(self, session: PlatformSession, user_id: UUID) -> int | None:
+        """The review group in which this person pressed "reject" and has not yet written the reason.
+
+        Their next message decides a receipt, so Telegram is asked again, then, whether they still
+        administer that group. None when no such question is open or the group is no longer the review group.
+        """
+        asked = await session.current_pending(user_id, "receipt_reject", self._now())
+        group = None if asked is None else self._group_of(asked[1])
+        if group is None or not await self.is_review_group(session, group[0]):
+            return None
+        return group[0]
+
+    @staticmethod
+    def _group_of(payload: dict[str, Any]) -> tuple[int, int] | None:
+        """The review group's chat and the announcement's message, as a rejection question remembers them."""
+        group = payload.get("group")
+        if (
+            isinstance(group, list)
+            and len(group) == 2
+            and all(isinstance(part, int) and not isinstance(part, bool) for part in group)
+        ):
+            return group[0], group[1]
+        return None
+
+    async def _group_administrator(self, session: PlatformSession, incoming: Incoming, group_id: int) -> bool:
+        """Whether the person decides here as a Telegram administrator of the review group (DEC-064).
+
+        True only when Telegram said so while this update was being handled, about this very chat, and
+        the chat is the configured review group. Nothing the button carries is believed.
+        """
+        return incoming.administers == group_id and await self.is_review_group(session, group_id)
+
     async def _receipt_pressed(
         self, session: PlatformSession, incoming: Incoming, replies: Replies, action: str, receipt_hex: str
     ) -> None:
         lang = incoming.lang
         receipt_id = _uuid(receipt_hex)
         allowed = await self._reviewer(session, incoming)
+        if (
+            receipt_id is not None
+            and allowed is not True
+            and incoming.group is not None
+            and await self._group_administrator(session, incoming, incoming.group[0])
+        ):
+            # Not a platform administrator with a live session, but a Telegram administrator of the
+            # review group pressing in that group: the one thing such a person may do.
+            await self._group_receipt_pressed(session, incoming, replies, action, receipt_id)
+            return
         if receipt_id is None or allowed is None:
             # Exactly what an unknown button gets; nothing about receipts is said.
             await replies.buttons(None)
@@ -1080,6 +1138,54 @@ class ChatService:
                 say(GROUP_LANG, "a_receipt_approved", shop=body["shop_name"], months=body["months"], date=paid_through),
             )
 
+    async def _group_receipt_pressed(
+        self, session: PlatformSession, incoming: Incoming, replies: Replies, action: str, receipt_id: UUID
+    ) -> None:
+        """A Telegram administrator of the review group pressed approve or reject there (DEC-064).
+
+        The group sees the outcome on the announcement. The person is answered over the button, because
+        the bot cannot write to someone who never started it; only the reason for a rejection is asked
+        for in their own chat with the bot, where their next message is read.
+        """
+        assert incoming.group is not None
+        lang = incoming.lang
+        group_id, announcement = incoming.group
+        try:
+            if action == "srj":
+                await self._group_receipts.require_waiting(session, group_id, receipt_id)
+                await session.drop_pending(incoming.user_id, "receipt_reject")
+                await session.put_pending(
+                    pending_id=self._pending_id(incoming),
+                    user_id=incoming.user_id,
+                    kind="receipt_reject",
+                    payload={"receipt": receipt_id.hex, "message": None, "group": [group_id, announcement]},
+                    now=self._now(),
+                    expires_at=self._now() + PENDING_LIFETIME,
+                )
+                await replies.send(say(lang, "ask_receipt_reject_reason"), [[(say(lang, "cancel"), callback("srn"))]])
+                replies.alert(say(lang, "g_reason_in_private"))
+                return
+            body = await self._group_receipts.approve(
+                session, group_id=group_id, decider_tg=incoming.chat_id, receipt_id=receipt_id
+            )
+        except ReceiptAlreadyDecided:
+            replies.alert(say(lang, "a_receipt_decided"))
+            await replies.close_in_group(group_id, announcement, say(GROUP_LANG, "a_receipt_decided"))
+            return
+        except ValidationFailed:
+            # The owner stated no months, and they cannot be entered from the group.
+            replies.alert(say(lang, "g_receipt_needs_panel"))
+            return
+        except AppError as error:
+            replies.alert(self._error_text(lang, error))
+            return
+        paid_through = day(date.fromisoformat(body["subscription"]["paid_through"]))
+        await replies.close_in_group(
+            group_id,
+            announcement,
+            say(GROUP_LANG, "a_receipt_approved", shop=body["shop_name"], months=body["months"], date=paid_through),
+        )
+
     async def _receipt_reject_reason(
         self, session: PlatformSession, incoming: Incoming, replies: Replies, payload: dict[str, Any], text: str
     ) -> None:
@@ -1087,6 +1193,15 @@ class ChatService:
         lang = incoming.lang
         receipt_id = _uuid(str(payload.get("receipt", "")))
         allowed = await self._reviewer(session, incoming)
+        pressed_in = self._group_of(payload)
+        if (
+            receipt_id is not None
+            and allowed is not True
+            and pressed_in is not None
+            and await self._group_administrator(session, incoming, pressed_in[0])
+        ):
+            await self._group_reject_reason(session, incoming, replies, receipt_id, pressed_in, text)
+            return
         if receipt_id is None or allowed is None:
             await session.drop_pending(incoming.user_id, "receipt_reject")
             await replies.send(say(lang, "expired"))
@@ -1119,6 +1234,41 @@ class ChatService:
         announced = payload.get("message")
         if isinstance(announced, int) and not isinstance(announced, bool):
             await replies.strip(announced)
+
+    async def _group_reject_reason(
+        self,
+        session: PlatformSession,
+        incoming: Incoming,
+        replies: Replies,
+        receipt_id: UUID,
+        pressed_in: tuple[int, int],
+        text: str,
+    ) -> None:
+        """The reason a Telegram administrator of the review group writes after pressing "reject" there.
+
+        Telegram was asked again, for this message, whether they still administer the group.
+        """
+        lang = incoming.lang
+        reason = clean_receipt_reason(text)
+        if reason is None:
+            await replies.send(say(lang, "a_reason_invalid"), [[(say(lang, "cancel"), callback("srn"))]])
+            return
+        await session.drop_pending(incoming.user_id, "receipt_reject")
+        group_id, announcement = pressed_in
+        try:
+            body = await self._group_receipts.reject(
+                session, group_id=group_id, decider_tg=incoming.chat_id, receipt_id=receipt_id, reason=reason
+            )
+        except ReceiptAlreadyDecided:
+            await replies.send(say(lang, "a_receipt_decided"))
+            return
+        except AppError as error:
+            await replies.send(self._error_text(lang, error))
+            return
+        await replies.send(say(lang, "a_receipt_rejected", shop=body["shop_name"], reason=reason))
+        await replies.close_in_group(
+            group_id, announcement, say(GROUP_LANG, "a_receipt_rejected", shop=body["shop_name"], reason=reason)
+        )
 
     async def _shop_of_notice(self, shops: list[MyShop], notice_id: UUID) -> MyShop | None:
         """Which of the caller's shops holds the notice. Only a lookup, like `_shop_of_entry`."""
@@ -1322,11 +1472,6 @@ class ChatService:
             body = await self._shops.create(incoming.user_id, name, incoming.lang, incoming.new_shop_key)
         except ValidationFailed:
             await replies.send(say(incoming.lang, "shop_name_invalid"))
-            return
-        except ShopLimitReached:
-            # Nothing to wait for any more: the name was not the problem.
-            await session.drop_pending(incoming.user_id, "shop_name")
-            await replies.send(say(incoming.lang, "shop_limit_reached"))
             return
         await session.drop_pending(incoming.user_id, "shop_name")
         await session.set_active_shop(incoming.user_id, UUID(body["id"]))

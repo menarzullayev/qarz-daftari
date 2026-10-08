@@ -109,7 +109,10 @@ def audit_body(row: AdminAuditRow) -> dict[str, Any]:
     return {
         "id": str(row.audit_id),
         "at": row.at.isoformat(),
-        "admin_id": str(row.admin_id),
+        # Who acted: an administrator, or, for a receipt decided from the review group by one of its
+        # Telegram administrators (DEC-064), that person's Telegram identifier. Exactly one is set.
+        "admin_id": None if row.admin_id is None else str(row.admin_id),
+        "actor_tg_id": row.actor_tg,
         "action": row.action,
         "target_type": row.target_type,
         "target_id": row.target_id,

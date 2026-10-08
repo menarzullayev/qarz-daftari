@@ -54,6 +54,10 @@ test("a customer is linked with consent, sees the debt, and asks to move a date;
     const entry = mine.getByRole("region", { name: "Yozuvlar" }).getByRole("listitem");
     await expect(entry).toHaveCount(1);
     await expect(entry).toContainText(`To'lash va'dasi: ${uzDate(promised)}`);
+    // Their own payment history (DEC-066): nothing has fallen due yet, and the page says so.
+    await expect(mine.getByRole("region", { name: "To'lov tarixingiz" })).toContainText(
+      "Hali to'lash muddati kelgan qarzingiz bo'lmagan.",
+    );
     // A customer has no staff workspace: no navigation.
     await expect(mine.getByRole("navigation", { name: "Asosiy menyu" })).toHaveCount(0);
   });

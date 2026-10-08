@@ -4,6 +4,7 @@ REQ-019, REQ-020, REQ-021, REQ-029, REQ-065; domain rule BR-32.
 """
 
 import uuid
+from datetime import timedelta
 from typing import Any
 
 import psycopg
@@ -14,7 +15,7 @@ from qarz.application.chat_texts import money, say
 
 from .conftest import World, as_user
 from .test_chat import chat_of
-from .test_customers_ledger import key, record, reverse, seed_customer, seed_entry, shop
+from .test_customers_ledger import detail, key, record, reverse, seed_customer, seed_entry, shop, today
 from .test_links import notices
 
 pytestmark = pytest.mark.db
@@ -85,6 +86,7 @@ def test_a_customer_reads_their_own_account_without_the_shops_private_fields(
         "display_name",
         "balance",
         "overdue",
+        "payment_history",
         "removal_requested",
         "entries",
         "entries_total",
@@ -96,7 +98,8 @@ def test_a_customer_reads_their_own_account_without_the_shops_private_fields(
         ("credit", 20000),
         ("credit", 50000),
     ]
-    # Neither the seller's note, nor who wrote the entry, nor the shop's payment indicator (REQ-045).
+    # Neither the seller's note nor who wrote the entry (REQ-045). The payment indicator is shown since
+    # the founder's decision of 2026-10-08 (DEC-066); until then it was left out too.
     assert set(body["entries"][0]) == {
         "id",
         "kind",
@@ -113,6 +116,73 @@ def test_a_customer_reads_their_own_account_without_the_shops_private_fields(
     }
     assert "ichki izoh" not in str(body)
     assert "777000" not in str(body)
+
+
+def _keys(value: Any) -> set[str]:
+    """Every key anywhere in a JSON body."""
+    if isinstance(value, dict):
+        return set(value) | {key for inner in value.values() for key in _keys(inner)}
+    if isinstance(value, list):
+        return {key for inner in value for key in _keys(inner)}
+    return set()
+
+
+def test_a_customer_sees_their_own_payment_indicator_exactly_as_the_shop_sees_it(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    """DEC-066, changing DEC-033: the customer's page carries the indicator of BR-9, about themselves."""
+    # Nothing has fallen due yet: no indicator rather than a misleading 0 or 100.
+    untested = client.get(f"{ME}/{link_of(owner, world.customer_a)}", headers=as_user(world.customer_of_a))
+    assert untested.json()["payment_history"] is None
+
+    customer, person, link = seed_customer(owner, world.shop_a, "Intizomli"), uuid.uuid4(), uuid.uuid4()
+    owner.execute("INSERT INTO app_user (id, tg_id) VALUES (%s, %s)", (person, uuid.uuid4().int % 10**15))
+    owner.execute(
+        "INSERT INTO customer_link (id, shop_id, customer_id, user_id, status, consent_text_v, consent_at) "
+        "VALUES (%s, %s, %s, %s, 'active', 2, now())",
+        (link, world.shop_a, customer, person),
+    )
+    seed_entry(owner, world, customer, 1, "credit", 100_000, promised=today() - timedelta(days=10), days_ago=20)
+    seed_entry(owner, world, customer, 2, "payment", 75_000, days_ago=15)
+    seed_entry(owner, world, customer, 3, "payment", 25_000, days_ago=6)
+    # Another customer of the same shop, who paid nothing in time: none of it is in this customer's figures.
+    other = seed_customer(owner, world.shop_a, "Kechikkan")
+    seed_entry(owner, world, other, 1, "credit", 400_000, promised=today() - timedelta(days=30), days_ago=40)
+
+    mine = client.get(f"{ME}/{link}", headers=as_user(person)).json()["payment_history"]
+    assert mine == {
+        "on_time_percent": 75,
+        "on_time_amount": 75_000,
+        "due_amount": 100_000,
+        "longest_delay_days": 4,
+    }
+    assert mine == detail(client, world, customer)["payment_history"], "the same figures the staff see"
+    # Still only their own: the other customer of the shop is told nothing of it.
+    assert client.get(f"{ME}/{link}", headers=as_user(world.customer_of_a)).status_code == 404
+
+
+def test_the_customers_page_never_carries_the_note_or_the_author_of_an_entry(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    """The seller's note and the author stay the shop's own (REQ-045), with the indicator now shown."""
+    secret = "ichki izoh: kechikib to'laydi"
+    record(client, world, world.customer_a, "credit", 20000, note=secret)
+    record(client, world, world.customer_a, "payment", 5000, note="yana bir ichki izoh")
+    staff = detail(client, world, world.customer_a)
+    seen_by_staff = _keys(staff)
+    # The check itself: the staff's answer does carry both, so their absence below means something.
+    assert {"note", "author_id"} <= seen_by_staff and secret in str(staff)
+
+    body = client.get(f"{ME}/{link_of(owner, world.customer_a)}", headers=as_user(world.customer_of_a))
+    assert body.status_code == 200
+    private = {key for key in _keys(body.json()) if "note" in key or "author" in key or key == "membership_id"}
+    assert private == set()
+    assert "izoh" not in body.text
+    authors = owner.execute(
+        "SELECT m.id::text, m.user_id::text FROM membership m WHERE m.shop_id = %s", (world.shop_a,)
+    ).fetchall()
+    for membership, user in authors:
+        assert membership not in body.text and user not in body.text
 
 
 def test_nobody_else_can_open_a_customers_account(client: TestClient, world: World, owner: psycopg.Connection) -> None:

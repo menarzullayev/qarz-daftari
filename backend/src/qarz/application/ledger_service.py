@@ -595,6 +595,18 @@ async def change_promise_in(
     }
 
 
+def payment_history_body(history: ledger.PaymentHistory | None) -> dict[str, int] | None:
+    """The payment history indicator (BR-9) as the API gives it; None while nothing has fallen due."""
+    if history is None:
+        return None
+    return {
+        "on_time_percent": history.on_time_percent,
+        "on_time_amount": history.on_time_amount,
+        "due_amount": history.due_amount,
+        "longest_delay_days": history.longest_delay_days,
+    }
+
+
 async def customer_detail_in(session: TenantSession, customer_id: UUID, today: date, now: datetime) -> dict[str, Any]:
     """One customer with balance, history and entries. The caller has already decided who may see them."""
     customer = await session.get_customer(customer_id, for_update=False)
@@ -612,15 +624,9 @@ async def customer_detail_in(session: TenantSession, customer_id: UUID, today: d
     return {
         **customer_body(customer, ledger.balance(entries)),
         "overdue": _overdue_body(ledger.overdue(entries, today)),
-        # Derived from this shop's records only and shown to its staff only (REQ-045).
-        "payment_history": None
-        if history is None
-        else {
-            "on_time_percent": history.on_time_percent,
-            "on_time_amount": history.on_time_amount,
-            "due_amount": history.due_amount,
-            "longest_delay_days": history.longest_delay_days,
-        },
+        # Derived from this shop's records only; shown to its staff and, on their own page, to the
+        # customer it is about (REQ-045; DEC-066).
+        "payment_history": payment_history_body(history),
         "entries": [
             _entry_body(
                 row,

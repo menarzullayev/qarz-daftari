@@ -444,7 +444,7 @@ def test_the_purge_removes_what_is_dead_and_keeps_what_is_alive(
     assert left("admin_request_key", "key", [new_key, old_key]) == {new_key}
 
 
-# --- finding 13: shops and trials per person ----------------------------------------------------------------
+# --- finding 13: one trial per person; no limit on shops (DEC-065, migration 0029) ---------------------------
 
 _CLAIM = "SELECT claim_owned_shop(%s, %s)"
 
@@ -486,35 +486,39 @@ def test_a_trial_claimed_in_a_transaction_that_fails_is_not_used_up(
     assert owner.execute("SELECT trial_used_at FROM app_user WHERE id = %s", (person,)).fetchone() == (None,)
 
 
-def test_the_sixth_shop_is_refused_and_only_shops_owned_and_not_erased_count(
-    owner: psycopg.Connection, as_app: AppSession
-) -> None:
+def test_no_number_of_shops_is_refused(owner: psycopg.Connection, as_app: AppSession) -> None:
+    """Migration 0027 answered 'refused' from the sixth shop on; 0029 took the limit away (DEC-065)."""
     person = _person(owner)
-    for _ in range(4):
+    for _ in range(12):
         _owned_shop(owner, person)
-    _owned_shop(owner, person, status="erased")  # gone: does not count
-    _owned_shop(owner, person, role="manager")  # somebody else's shop
     with as_app(None) as conn:
         assert conn.execute(_CLAIM, (person, True)).fetchone() == ("trial",)
-    _owned_shop(owner, person)
-    with as_app(None) as conn:
-        assert conn.execute(_CLAIM, (person, True)).fetchone() == ("refused",)
-        assert conn.execute(_CLAIM, (person, False)).fetchone() == ("refused",)
+        assert conn.execute(_CLAIM, (person, True)).fetchone() == ("limited",)
+        assert conn.execute(_CLAIM, (person, False)).fetchone() == ("limited",)
+    source = owner.execute("SELECT prosrc FROM pg_proc WHERE proname = 'claim_owned_shop'").fetchone()
+    assert source is not None and "refused" not in source[0] and "count(" not in source[0]
+    reassign = owner.execute("SELECT prosrc FROM pg_proc WHERE proname = 'admin_reassign_owner'").fetchone()
+    assert reassign is not None and "too_many_shops" not in reassign[0]
 
 
-def test_two_claims_of_one_person_are_taken_one_after_the_other(owner: psycopg.Connection, database_url: str) -> None:
-    """The lock is held to the end of the transaction that creates the shop: a second request of the same
-    person waits for it, and so counts the first one's shop. Another person is not kept waiting."""
+def test_two_claims_of_a_trial_are_taken_one_after_the_other_and_nothing_else_waits(
+    owner: psycopg.Connection, database_url: str
+) -> None:
+    """One trial for a person even when two shops are opened at the same moment: the second claim of a
+    trial waits for the first transaction to end. Nothing is counted any more (DEC-065), so a claim that
+    asks for no trial, and anybody else's claim, wait for nothing."""
     person, other = _person(owner), _person(owner)
     with psycopg.connect(database_url) as first, psycopg.connect(database_url) as second:
         for conn in (first, second):
             conn.execute("SET ROLE qd_app")
-        # Without asking for a trial: nothing of the person is written, so only the function's own lock
-        # can make the second claim wait.
-        first.execute(_CLAIM, (person, False))
+        assert first.execute(_CLAIM, (person, True)).fetchone() == ("trial",)
         second.execute("SET lock_timeout = '300ms'")
-        assert second.execute(_CLAIM, (other, False)).fetchone() == ("limited",)
+        assert second.execute(_CLAIM, (other, True)).fetchone() == ("trial",)
+        assert second.execute(_CLAIM, (person, False)).fetchone() == ("limited",)
         with pytest.raises(psycopg.errors.LockNotAvailable):
-            second.execute(_CLAIM, (person, False))
+            second.execute(_CLAIM, (person, True))
         second.rollback()
-        first.rollback()
+        first.commit()
+        second.execute("SET ROLE qd_app")
+        assert second.execute(_CLAIM, (person, True)).fetchone() == ("limited",), "the trial was taken"
+        second.rollback()

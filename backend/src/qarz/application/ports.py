@@ -537,6 +537,9 @@ class AdminReceipt:
     decided_by: UUID | None
     has_file: bool
     copies: int = 0
+    # The Telegram identifier of the review-group administrator who decided, when it was not an
+    # administrator of the platform (DEC-064). Then `decided_by` is empty.
+    decided_by_tg: int | None = None
     file: StoredFileRecord | None = None  # filled only when one receipt is read
 
 
@@ -550,6 +553,23 @@ class ReceiptCopy:
     stated_amount: int
     status: str
     created_at: datetime
+
+
+@dataclass(frozen=True)
+class GroupReceipt:
+    """A subscription receipt as the review group decides it (DEC-064): what is needed to approve or
+    reject it and to tell the owner, and nothing of its file."""
+
+    receipt_id: UUID
+    shop_id: UUID
+    shop_name: str
+    stated_amount: int
+    stated_months: int | None
+    status: str
+    state: str | None  # the subscription's; None when the shop has no subscription row
+    paid_through: date | None
+    owner_tg: int | None
+    owner_lang: str | None
 
 
 @dataclass(frozen=True)
@@ -610,15 +630,19 @@ class SupportChange:
 
 @dataclass(frozen=True)
 class AdminAuditRow:
+    """One row of the admin audit. Who acted is `admin_id`, or, for a subscription receipt decided from
+    the review group by one of the group's Telegram administrators (DEC-064), `actor_tg`: exactly one."""
+
     audit_id: UUID
     at: datetime
-    admin_id: UUID
+    admin_id: UUID | None
     action: str
     target_type: str
     target_id: str | None
     shop_id: UUID | None
     reason: str | None
     detail: dict[str, Any]
+    actor_tg: int | None = None
 
 
 @dataclass(frozen=True)
@@ -647,8 +671,8 @@ class TenantSession(Protocol):
     ) -> None: ...
 
     async def claim_owned_shop(self, user_id: UUID, *, wants_trial: bool) -> str:
-        """Count the person's shops under a lock held to the end of the transaction, and use up their
-        one trial if it is asked for and still unused. 'refused', 'trial' or 'limited'."""
+        """Use up the person's one trial if it is asked for and still unused: 'trial' or 'limited'.
+        A person may own any number of shops (DEC-065); only the first gets a trial."""
         ...
 
     async def create_shop(self, *, name: str, lang: str) -> ShopSettings: ...
@@ -1469,6 +1493,33 @@ class PlatformSession(Protocol):
         """A line in the shop's activity for what an administrator did to it."""
         ...
 
+    async def review_group_receipt(self, group_id: int, receipt_id: UUID, *, lock: bool) -> GroupReceipt | None:
+        """One receipt for a decision made in the review group (DEC-064). None unless `group_id` is the
+        configured review group. With `lock` the receipt and its shop's subscription are held until the
+        transaction ends."""
+        ...
+
+    async def review_group_decide_receipt(
+        self,
+        group_id: int,
+        decider_tg: int,
+        receipt_id: UUID,
+        *,
+        status: str,
+        months: int | None,
+        reason: str | None,
+        state: str | None,
+        paid_through: date | None,
+        prior_state: str | None,
+        detail: dict[str, Any],
+        now: datetime,
+    ) -> bool:
+        """Write the decision of a Telegram administrator of the review group: the receipt, recorded with
+        their Telegram identifier and no administrator; the subscription, when it is an approval; the
+        audit row; and the line in the shop's activity. All or nothing. False, and nothing written, when
+        the receipt was not waiting any more or `group_id` is not the configured review group."""
+        ...
+
     async def record_shop_measure(self, shop_id: UUID, *, kind: str, entry_ref: UUID, amount: int) -> None:
         """As a shop's `record_measure`, from outside the shop: no name, phone or identity."""
         ...
@@ -1666,6 +1717,15 @@ class FileStore(Protocol):
 
     async def delete(self, key: str) -> None:
         """Deleting what is not there is not an error."""
+        ...
+
+
+class TelegramChatMembers(Protocol):
+    """What a person is in a Telegram chat (Bot API `getChatMember`)."""
+
+    async def status(self, chat_id: int, user_id: int) -> str | None:
+        """The person's status in the chat as Telegram gives it now (creator, administrator, member,
+        restricted, left, kicked), or None when Telegram could not be asked or did not answer."""
         ...
 
 

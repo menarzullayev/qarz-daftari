@@ -160,7 +160,7 @@ export function telegramId(text: string): number | null {
 }
 
 /** Why the server refused to give a shop to a person (`fields.reason` of OWNER_REASSIGNMENT_REFUSED). */
-export const OWNER_REFUSALS = ["unknown_user", "already_owner", "shop_limit"] as const;
+export const OWNER_REFUSALS = ["unknown_user", "already_owner"] as const;
 export type OwnerRefusal = (typeof OWNER_REFUSALS)[number];
 
 export function isOwnerRefusal(value: unknown): value is OwnerRefusal {
@@ -225,4 +225,20 @@ export function isUuid(text: string): boolean {
 /** A short code for an identifier: its last six characters, enough to tell two administrators apart. */
 export function shortId(id: string): string {
   return id.slice(-6);
+}
+
+/**
+ * Who did something, as the panel names them: an administrator by the end of their identifier, or a
+ * Telegram administrator of the review group, who has no account here, by the Telegram identifier.
+ */
+export function actorName(
+  adminId: string | null,
+  telegramId: number | null,
+  groupAdmin: (telegramId: number) => string,
+  nobody: string,
+): string {
+  if (adminId !== null) {
+    return shortId(adminId);
+  }
+  return telegramId === null ? nobody : groupAdmin(telegramId);
 }

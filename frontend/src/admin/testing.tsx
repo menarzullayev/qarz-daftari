@@ -45,6 +45,7 @@ export const auditBody = (overrides: Record<string, unknown> = {}) => ({
   id: "66666666-6666-4666-8666-666666666661",
   at: "2026-10-05T06:00:00+00:00",
   admin_id: ADMIN_ID,
+  actor_tg_id: null,
   action: "subscription.trial_set",
   target_type: "shop",
   target_id: SHOP_ID,
@@ -109,6 +110,7 @@ export const receiptBody = (overrides: Record<string, unknown> = {}) => ({
   created_at: "2026-10-06T06:00:00+00:00",
   decided_at: null,
   decided_by: null,
+  decided_by_tg_id: null,
   has_file: true,
   ...overrides,
 });

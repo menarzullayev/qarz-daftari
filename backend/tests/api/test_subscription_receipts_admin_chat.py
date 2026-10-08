@@ -4,7 +4,10 @@ buttons"; REQ-055; ADR-017).
 
 A press counts only for someone on the allow-list, with an active and confirmed administrator account,
 who holds an admin session that is still valid: the proof that they passed the second factor. The review
-group's copy has them too, and there as well only such an administrator's press decides.
+group's copy has them too. There such an administrator's press decides as well, and so, since the
+founder's decision of 2026-10-08 (DEC-064), does the press of any Telegram administrator of the group:
+that is proved in `test_subscription_receipts_group_admins`. In this file nobody administers the group,
+so what is proved here is what holds for everyone else.
 """
 
 import threading
@@ -366,10 +369,12 @@ def test_an_administrator_rejects_from_the_review_group_and_gives_the_reason_in_
     ]
 
 
-def test_in_the_group_only_an_administrator_who_passed_the_second_factor_decides(
+def test_in_the_group_a_press_by_someone_who_is_neither_kind_of_administrator_changes_nothing(
     client: TestClient, world: World, owner: psycopg.Connection, admin_env: AdminEnv, reviewer: Chat
 ) -> None:
-    """ADR-017 holds in the group as in a private chat: a press by anyone else changes nothing at all."""
+    """Nobody here administers the group in Telegram, so only a platform administrator who passed the
+    second factor decides (ADR-017); a press by anyone else changes nothing at all. Renamed when DEC-064
+    let the group's Telegram administrators decide too: its assertions are unchanged."""
     group = review_group(owner, world)
     receipt = sent_ok(client, world.owner_a, world.shop_a, 300_000, 3, unique_image()[0])
     before = state(owner, world, receipt)

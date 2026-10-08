@@ -294,7 +294,7 @@ def test_someone_the_service_does_not_know_or_the_owner_already_is_refused(
     assert _told(owner, _tg(owner, world.owner_a)) == []
 
 
-def test_a_person_who_owns_five_shops_is_not_given_a_sixth(
+def test_a_person_who_owns_five_shops_can_be_given_a_sixth(
     client: TestClient,
     world: World,
     owner: psycopg.Connection,
@@ -302,6 +302,7 @@ def test_a_person_who_owns_five_shops_is_not_given_a_sixth(
     admin: dict[str, str],
     secret: bytes,
 ) -> None:
+    """Until the founder's decision of 2026-10-08 (DEC-065) this was refused with the reason `shop_limit`."""
     for number in range(5):
         shop = uuid.uuid4()
         owner.execute("INSERT INTO shop (id, name) VALUES (%s, %s)", (shop, f"Own {number}"))
@@ -309,16 +310,14 @@ def test_a_person_who_owns_five_shops_is_not_given_a_sixth(
             "INSERT INTO membership (id, shop_id, user_id, role) VALUES (%s, %s, %s, 'owner')",
             (uuid.uuid4(), shop, world.stranger),
         )
-    refused = _reassign(client, admin, admin_env, secret, world.shop_a, _tg(owner, world.stranger))
-    assert (refused.status_code, refused.json()["error"]["fields"]) == (409, {"reason": "shop_limit"})
-    assert _active_owners(owner, world.shop_a) == [world.owner_a]
-
-    # An erased shop does not count, exactly as when a shop is created.
-    owner.execute(
-        "UPDATE shop SET status = 'erased' WHERE id = (SELECT shop_id FROM membership WHERE user_id = %s LIMIT 1)",
+    given = _reassign(client, admin, admin_env, secret, world.shop_a, _tg(owner, world.stranger))
+    assert given.status_code == 200, given.text
+    assert _active_owners(owner, world.shop_a) == [world.stranger]
+    owned = owner.execute(
+        "SELECT count(*) FROM membership WHERE user_id = %s AND role = 'owner' AND status = 'active'",
         (world.stranger,),
-    )
-    assert _reassign(client, admin, admin_env, secret, world.shop_a, _tg(owner, world.stranger)).status_code == 200
+    ).fetchone()
+    assert owned == (6,)
 
 
 @pytest.mark.parametrize("who", ["manager_a", "seller_a", "suspended_a"])

@@ -65,6 +65,8 @@ def receipt_body(row: AdminReceipt) -> dict[str, Any]:
         "created_at": row.created_at.isoformat(),
         "decided_at": _iso(row.decided_at),
         "decided_by": None if row.decided_by is None else str(row.decided_by),
+        # Set instead of `decided_by` when a Telegram administrator of the review group decided (DEC-064).
+        "decided_by_tg_id": row.decided_by_tg,
         "has_file": row.has_file,
     }
 

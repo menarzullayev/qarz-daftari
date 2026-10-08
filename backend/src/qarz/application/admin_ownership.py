@@ -33,7 +33,7 @@ REASSIGN_OWNER = admin_operation("admin.shops.owner.reassign")
 log = logging.getLogger("qarz.admin")
 
 # The database function's refusals that the administrator can do something about.
-_REFUSALS = {"no_user": "unknown_user", "same_owner": "already_owner", "too_many_shops": "shop_limit"}
+_REFUSALS = {"no_user": "unknown_user", "same_owner": "already_owner"}
 
 
 class OwnerReassignmentRefused(AppError):

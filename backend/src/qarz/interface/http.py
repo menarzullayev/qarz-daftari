@@ -34,7 +34,7 @@ from qarz.application.links import LinkService
 from qarz.application.online_payment import OnlinePaymentService, PaymentKeys
 from qarz.application.ownership import OwnershipService
 from qarz.application.payment_notices import PaymentNoticeService
-from qarz.application.ports import FileStore, Storage, TelegramFiles
+from qarz.application.ports import FileStore, Storage, TelegramChatMembers, TelegramFiles
 from qarz.application.reminders import ReminderService
 from qarz.application.reports import ReportService
 from qarz.application.shop_deletion import ShopDeletionService
@@ -104,6 +104,7 @@ def create_app(
     now: Callable[[], datetime] | None = None,
     file_store: FileStore | None = None,
     telegram_files: TelegramFiles | None = None,
+    telegram_members: TelegramChatMembers | None = None,
     payment_keys: PaymentKeys | None = None,
     rate_limits: RateLimits | None = None,
     monotonic: Callable[[], float] = time.monotonic,
@@ -117,7 +118,8 @@ def create_app(
     authenticating through Telegram-backed sessions; `authenticator` replaces that only in tests, and `now`
     replaces the clock of the ledger only in tests. `rate_limits` are applied to signed-in callers; the
     deployed application always has them, and most tests leave them out. Without a `file_store`
-    receipts are refused; without `telegram_files` a receipt sent to the bot cannot be fetched. The
+    receipts are refused; without `telegram_files` a receipt sent to the bot cannot be fetched; without
+    `telegram_members` nobody counts as a Telegram administrator of the review group (DEC-064). The
     administrator's side is served only when `admin` is given, which production does only with an
     allow-list and the server secret.
     """
@@ -244,7 +246,7 @@ def create_app(
 
     if webhook_secret is not None and storage is not None:
         chat = ChatService(storage, ShopService(storage, now), StaffService(storage, now), now, files, reviewers)
-        add_webhook_route(app, UpdateProcessor(storage, chat, telegram_files), webhook_secret)
+        add_webhook_route(app, UpdateProcessor(storage, chat, telegram_files, telegram_members), webhook_secret)
 
     metrics = Metrics()
     if metrics_token is not None:

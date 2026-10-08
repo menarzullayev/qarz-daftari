@@ -83,6 +83,11 @@ export type AdminReceipt = {
   createdAt: string;
   decidedAt: string | null;
   decidedBy: string | null;
+  /**
+   * The Telegram identifier of the review group's administrator who decided, when it was not an
+   * administrator of the platform; then `decidedBy` is null.
+   */
+  decidedByTgId: number | null;
   hasFile: boolean;
 };
 
@@ -103,7 +108,9 @@ export type DecidedReceipt = AdminReceipt & { subscription: { state: string; pai
 export type AuditRow = {
   id: string;
   at: string;
-  adminId: string;
+  /** Who acted: an administrator, or a Telegram administrator of the review group. Exactly one is set. */
+  adminId: string | null;
+  actorTgId: number | null;
   action: string;
   targetType: string;
   targetId: string | null;
@@ -189,12 +196,24 @@ function adminShop(value: unknown): AdminShop {
   };
 }
 
+/** A Telegram user identifier, or null where the server sends none. */
+function telegramIdOrNull(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+    throw new TypeError("telegram identifier");
+  }
+  return value;
+}
+
 function auditRow(value: unknown): AuditRow {
   const body = record(value);
   return {
     id: text(body["id"]),
     at: text(body["at"]),
-    adminId: text(body["admin_id"]),
+    adminId: textOrNull(body["admin_id"]),
+    actorTgId: telegramIdOrNull(body["actor_tg_id"]),
     action: text(body["action"]),
     targetType: text(body["target_type"]),
     targetId: textOrNull(body["target_id"]),
@@ -234,6 +253,7 @@ function adminReceipt(value: unknown): AdminReceipt {
     createdAt: text(body["created_at"]),
     decidedAt: textOrNull(body["decided_at"]),
     decidedBy: textOrNull(body["decided_by"]),
+    decidedByTgId: telegramIdOrNull(body["decided_by_tg_id"]),
     hasFile: flag(body["has_file"]),
   };
 }

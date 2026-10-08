@@ -43,12 +43,6 @@ class ShopSuspended(AppError):
     code = "SHOP_SUSPENDED"
 
 
-class ShopLimitReached(AppError):
-    """The person already owns as many shops as one person may (security review, finding 13)."""
-
-    code = "SHOP_LIMIT_REACHED"
-
-
 async def refuse_suspended(session: TenantSession) -> None:
     """BR-30: in a suspended shop nothing is changed; only its owner may still look and export."""
     stored = await session.subscription()
@@ -118,11 +112,9 @@ class ShopService:
         async with self._storage.tenant(shop_id) as session:
 
             async def apply() -> dict[str, Any]:
-                # Counted and decided by the database under a lock this transaction holds to its end, so
-                # two requests at once cannot both pass. One trial for a person: later shops start limited.
+                # A person may own any number of shops (DEC-065). One trial for a person, decided by the
+                # database so that two requests at once cannot both take it: later shops start limited.
                 claim = await session.claim_owned_shop(user_id, wants_trial=trial_on)
-                if claim == "refused":
-                    raise ShopLimitReached()
                 settings = await session.create_shop(name=name.strip(), lang=lang)
                 membership_id = await session.add_member(user_id=user_id, role=Role.OWNER)
                 today = self._now().astimezone(TASHKENT).date()
