@@ -40,8 +40,8 @@ Verified so far: the release 1 schema was executed in PostgreSQL 16 and ten cons
 
 | Step | Detail |
 |---|---|
-| Trigger | Every push and pull request |
-| Backend checks | Format, lint, types, import rules between modules, unit and integration tests with PostgreSQL, tenant suite, migration applied to empty and to previous schema, dependency scan |
+| Trigger | Every pull request and every push to main. A pull request that changes documentation only skips every job but the documents check (the rule is an allow-list, `backend/scripts/ci_scope.py`); a push to main runs everything. A new push to a pull request cancels its older run; a run on main is never cancelled |
+| Backend checks | Format, lint, types, import rules between modules, unit and integration tests with PostgreSQL (four parallel jobs, each test in exactly one, which CI proves from the collections on every run), tenant suite, migration applied to empty and to previous schema, dependency scan |
 | Front-end checks | Lint, types, tests, build, bundle-size budget (NFR-010), generated API client is current |
 | Merge rule | Main accepts only green changes |
 | Artifacts | Backend image and front-end static bundle, tagged by commit and by version |
