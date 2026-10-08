@@ -189,6 +189,7 @@ def test_codes_that_lead_nowhere_are_refused_before_any_question(
     owner.execute("UPDATE invitation SET expires_at = now() - interval '1 minute' WHERE kind = 'customer'")
     old_counter = counter_code(client, world)
     counter_code(client, world)  # replaces the one before it
+    questions = owner.execute("SELECT count(*) FROM chat_pending WHERE kind = 'consent'").fetchone()
     for code in (
         prefix + "x" * 43,
         prefix + "short",
@@ -201,7 +202,11 @@ def test_codes_that_lead_nowhere_are_refused_before_any_question(
         assert said.text == say("uz", "link_invalid"), code
         assert said.buttons == {}
     assert links(owner, customer.tg_id) == []
-    assert owner.execute("SELECT count(*) FROM chat_pending WHERE kind = 'consent'").fetchone() == (0,)
+    # No question was put to anyone. Compared with the count before: other tests leave theirs unanswered.
+    assert owner.execute("SELECT count(*) FROM chat_pending WHERE kind = 'consent'").fetchone() == questions
+    assert owner.execute(
+        "SELECT count(*) FROM chat_pending p JOIN app_user u ON u.id = p.user_id WHERE u.tg_id = %s", (customer.tg_id,)
+    ).fetchone() == (0,)
 
 
 def test_a_record_already_linked_cannot_be_taken_over(

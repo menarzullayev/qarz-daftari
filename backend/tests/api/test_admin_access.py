@@ -188,6 +188,7 @@ def test_the_right_code_opens_an_admin_session_in_a_protected_cookie(
 ) -> None:
     secret = make_admin(owner, admin_env, world.admin)
     admin_env.clock.freeze()
+    ordinary_sessions = owner.execute("SELECT count(*) FROM user_session").fetchone()
     response = _open(client, world.admin, fresh_code(admin_env, secret))
     assert response.status_code == 201, response.text
     expires = admin_env.clock.now() + ADMIN_SESSION
@@ -210,7 +211,9 @@ def test_the_right_code_opens_an_admin_session_in_a_protected_cookie(
     assert [(bytes(row[0]), row[1], row[2]) for row in rows] == [
         (hashlib.sha256(token.encode()).digest(), expires, None)
     ]
-    assert owner.execute("SELECT count(*) FROM user_session").fetchone() == (0,), "not an ordinary session"
+    # Counted against what was there before: other tests leave ordinary sessions of their own people.
+    assert owner.execute("SELECT count(*) FROM user_session").fetchone() == ordinary_sessions, "not an ordinary session"
+    assert owner.execute("SELECT count(*) FROM user_session WHERE user_id = %s", (world.admin,)).fetchone() == (0,)
 
     headers = {**as_user(world.admin), "Cookie": f"{ADMIN_COOKIE}={token}"}
     assert client.get(SETTINGS, headers=headers).status_code == 200

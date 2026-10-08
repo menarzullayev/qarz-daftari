@@ -322,7 +322,7 @@ def test_a_repeated_create_request_makes_one_customer(
 def test_a_credit_sale_stores_total_time_author_and_default_promise(
     client: TestClient, world: World, owner: psycopg.Connection
 ) -> None:
-    measured = owner.execute("SELECT count(*) FROM measure.event").fetchone()
+    measured = {row[0] for row in owner.execute("SELECT id FROM measure.event").fetchall()}
     response = record(client, world, world.settled_customer_a, "credit", 45000, note="  non   va sut ")
     assert response.status_code == 201, response.text
     body = response.json()
@@ -343,12 +343,15 @@ def test_a_credit_sale_stores_total_time_author_and_default_promise(
     assert activity == [(world.seller_a_membership, world.settled_customer_a)]
 
     # One measurement row, which names neither the shop nor the entry (ADR-010).
-    after = owner.execute("SELECT count(*) FROM measure.event").fetchone()
-    assert measured is not None and after is not None and after[0] == measured[0] + 1
-    event = owner.execute(
-        "SELECT shop_ref, entry_ref, kind, amount, promised FROM measure.event ORDER BY at DESC LIMIT 1"
-    ).fetchone()
-    assert event is not None
+    # The row is found as the one that was not there before, not as the newest: the measurement tests
+    # write rows dated years ahead, and those stay.
+    added = [
+        row[1:]
+        for row in owner.execute("SELECT id, shop_ref, entry_ref, kind, amount, promised FROM measure.event").fetchall()
+        if row[0] not in measured
+    ]
+    assert len(added) == 1
+    event = added[0]
     assert event[2:] == ("credit", 45000, today() + timedelta(days=30))
     assert event[0] != world.shop_a
     assert str(event[1]) != body["entry"]["id"]

@@ -34,11 +34,17 @@ def week() -> date:
     return date(2080, 1, 1) + timedelta(days=21 * next(_weeks))  # 1 January 2080 is a Monday
 
 
-def events(owner: psycopg.Connection, since: datetime) -> list[tuple[Any, ...]]:
-    return owner.execute(
-        "SELECT kind, amount, promised, handle_ms IS NOT NULL FROM measure.event WHERE at >= %s ORDER BY at, kind",
-        (since,),
+def known_events(owner: psycopg.Connection) -> set[uuid.UUID]:
+    return {row[0] for row in owner.execute("SELECT id FROM measure.event").fetchall()}
+
+
+def events(owner: psycopg.Connection, known: set[uuid.UUID]) -> list[tuple[Any, ...]]:
+    """The rows written since `known` was taken. Not "since a moment": other tests here date rows years
+    ahead (the `week` fixture), and those are later than any moment of today."""
+    rows = owner.execute(
+        "SELECT id, kind, amount, promised, handle_ms IS NOT NULL FROM measure.event ORDER BY at, kind"
     ).fetchall()
+    return [row[1:] for row in rows if row[0] not in known]
 
 
 def add_event(owner: psycopg.Connection, at: datetime, kind: str, amount: int, **more: Any) -> None:
@@ -69,7 +75,7 @@ def test_a_payment_is_measured_as_repaid_in_time_or_late(
     customer = seed_customer(owner, world.shop_a, "Olchov")
     seed_entry(owner, world, customer, 1, "credit", 30_000, promised=today() - timedelta(days=3), days_ago=10)
     seed_entry(owner, world, customer, 2, "credit", 20_000, promised=today() + timedelta(days=5), days_ago=1)
-    since = datetime.now(UTC)
+    since = known_events(owner)
 
     # 40 000 paid today: 30 000 goes to the debt promised three days ago (late), 10 000 to the one not yet due.
     assert record(client, world, customer, "payment", 40_000).status_code == 201
@@ -83,7 +89,7 @@ def test_a_payment_is_measured_as_repaid_in_time_or_late(
 def test_a_credit_sale_and_a_reversal_record_no_repayment(
     client: TestClient, world: World, owner: psycopg.Connection
 ) -> None:
-    since = datetime.now(UTC)
+    since = known_events(owner)
     sale = record(client, world, world.customer_a, "credit", 5_000).json()["entry"]["id"]
     reverse(client, world, sale)
     assert [row[0] for row in events(owner, since)] == ["credit", "reversal"]
@@ -92,20 +98,28 @@ def test_a_credit_sale_and_a_reversal_record_no_repayment(
 def test_the_handling_time_of_a_sale_is_recorded_from_the_api_and_from_chat(
     client: TestClient, world: World, owner: psycopg.Connection
 ) -> None:
-    since = datetime.now(UTC)
+    known = known_events(owner)
     record(client, world, world.customer_a, "credit", 5_000)
     chat_of(client, owner, world.seller_a).say("Ali 6000")
-    recorded = owner.execute(
-        "SELECT amount, handle_ms FROM measure.event WHERE at >= %s AND kind = 'credit' ORDER BY amount", (since,)
-    ).fetchall()
+    recorded = [
+        row[1:]
+        for row in owner.execute(
+            "SELECT id, amount, handle_ms FROM measure.event WHERE kind = 'credit' ORDER BY amount"
+        ).fetchall()
+        if row[0] not in known
+    ]
     assert [row[0] for row in recorded] == [5_000, 6_000]
     assert all(row[1] is not None and 0 <= row[1] < 60_000 for row in recorded)
 
 
 def test_a_measure_names_nobody(client: TestClient, world: World, owner: psycopg.Connection) -> None:
-    since = datetime.now(UTC)
+    known = known_events(owner)
     entry = record(client, world, world.customer_a, "payment", 1_000).json()["entry"]["id"]
-    rows = owner.execute("SELECT row_to_json(e)::text FROM measure.event e WHERE at >= %s", (since,)).fetchall()
+    rows = [
+        row[1:]
+        for row in owner.execute("SELECT id, row_to_json(e)::text FROM measure.event e").fetchall()
+        if row[0] not in known
+    ]
     assert len(rows) == 2
     for (text,) in rows:
         for secret in (str(world.shop_a), str(world.customer_a), entry, "Ali", str(world.seller_a_membership)):
