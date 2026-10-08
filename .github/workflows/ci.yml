@@ -8,13 +8,58 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels the run of the push before it. A run on main is never cancelled
+# and never waits for another: each has a group of its own, because a deployment needs the result of
+# exactly the commit it deploys (runbook 1).
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: >-
+    ci-${{ github.workflow }}-${{ github.event_name == 'pull_request'
+    && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  backend:
+  # Whether the pull request changes documentation only (backend/scripts/ci_scope.py has the rule and
+  # backend/tests/test_ci_scope.py holds it to it). If so, every job below except `documents` is skipped
+  # and the run still ends green, so the commit has a run of its own. A push to main runs everything. The
+  # other jobs run unless this one said "documentation only": if it fails, they run.
+  changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+      - name: Documentation only?
+        id: scope
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "not a pull request: everything runs"
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The checkout is GitHub's merge of the pull request into its base: the first parent is the
+          # base and the second the pull request's head, so the difference from the first parent is
+          # what merging would change. If the checkout is anything else, nothing is skipped.
+          if [ "$(git rev-parse --verify --quiet 'HEAD^2')" != "$PR_HEAD" ]; then
+            echo "the checkout is not the merge of $PR_HEAD: everything runs"
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only --no-renames -z 'HEAD^1' HEAD > "$RUNNER_TEMP/changed-paths"
+          python3 backend/scripts/ci_scope.py < "$RUNNER_TEMP/changed-paths" | tee -a "$GITHUB_OUTPUT"
+
+  # Everything of the backend that is not a test run, once: the tests themselves are the next job.
+  backend-checks:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: backend
@@ -59,12 +104,79 @@ jobs:
         run: |
           psql "$QD_TEST_ADMIN_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE qd_migrate_check'
           QD_MIGRATION_URL=postgresql://postgres:postgres@127.0.0.1:5432/qd_migrate_check alembic upgrade head
-      - name: Tests
-        run: pytest -q
+      # The suite is collected without --shard and once for each shard of the next job, and the lists are
+      # compared: the shards are disjoint, their union is the whole suite, and the counts are printed.
+      - name: The shards of the tests are the whole suite, each test once
+        run: python scripts/check_shards.py 4
       - name: Dependency vulnerabilities
         run: pip-audit --require-hashes -r requirements.lock
 
+  # The test suite, as four jobs side by side, each with a database server of its own. A test's shard
+  # comes from its node identifier (backend/tests/sharding.py); `pytest -q` without the option still runs
+  # everything, which is what a developer runs. The number of shards is written in three places in this
+  # file (the matrix, --shard, and check_shards.py above); backend/tests/test_ci_scope.py fails if they
+  # differ.
+  backend-tests:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
+    env:
+      QD_TEST_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.lock
+      - name: Install pinned dependencies
+        run: |
+          python -m pip install --require-hashes -r requirements.lock
+          python -m pip install --no-deps -e .
+      - name: Tests
+        run: pytest -q --shard=${{ matrix.shard }}/4
+
+  # One result for the whole backend, under the name the backend job had before it was split: red when
+  # a check or any shard failed or was cancelled, or was skipped without the change being documentation
+  # only (backend/scripts/ci_scope.py, `verdict`).
+  backend:
+    needs: [changes, backend-checks, backend-tests]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Every backend job succeeded, or was rightly skipped
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+          CHECKS: ${{ needs.backend-checks.result }}
+          TESTS: ${{ needs.backend-tests.result }}
+        run: python3 backend/scripts/ci_scope.py verdict
+
   frontend:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -95,6 +207,8 @@ jobs:
   # The deployment files (deploy/production): both images build, the compose files are valid, the scripts
   # pass shellcheck, and the stack comes up on the runner and passes its own smoke test.
   deploy-files:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -163,6 +277,8 @@ jobs:
   # body limits and headers are in force. The images come from the same build cache as deploy-files.
   # Nothing the stack sends can leave the runner (deploy/production/compose.e2e.yml).
   e2e:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -253,6 +369,8 @@ jobs:
   # proof's Compose overlay parses, and the alert rules pass their own tests. The proof itself
   # (deploy/backup/proof/run.sh all) takes about five minutes with its image builds and is run by hand.
   backup-files:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -305,6 +423,8 @@ jobs:
   # refusals that must hold (a forged visitor address, a wrong passphrase, damaged data, a restore over
   # a live database). The cloudflared service itself is checked statically and never started.
   single-host:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -375,6 +495,7 @@ jobs:
         if: always()
         run: deploy/production/scripts/single-host-proof.sh down || true
 
+  # Always runs, for a change of documentation only as well: it is then the only job that does.
   documents:
     runs-on: ubuntu-latest
     steps:

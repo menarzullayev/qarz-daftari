@@ -53,11 +53,30 @@ cd ../frontend && npm run api:types                                # writes src/
 npm run typecheck                                                  # shows what the front end must follow
 ```
 
-CI regenerates both and fails when a committed file differs (`python -m qarz.interface.api_description --check` in the backend job, `npm run api:check` in the frontend job). Routes kept out of the schema (provider callbacks, the Telegram webhook, metrics, file links) are not described, and the running application still serves no description.
+CI regenerates both and fails when a committed file differs (`python -m qarz.interface.api_description --check` in the `backend-checks` job, `npm run api:check` in the frontend job). Routes kept out of the schema (provider callbacks, the Telegram webhook, metrics, file links) are not described, and the running application still serves no description.
 
 A route's answer is typed in the description only when the route has a response model from `backend/src/qarz/interface/answers.py`; the others answer with an open object. Only reads carry one, because a write may answer with a stored result of an older shape. The models are closed and strict, so they refuse an answer they do not describe instead of changing it; `backend/tests/api/test_typed_answers.py` compares the bytes with and without a model. In the front end, `Wire` (`frontend/src/shared/api.ts`) names the generated shapes, and the readers and request builders are checked against them with `fieldsOf<Wire["..."]>`.
 
 The database tests create a throwaway database, apply the real migrations, and exercise the schema's rules as the restricted application role. They fail, and are not skipped, when no database is configured.
+
+### What CI runs
+
+One workflow, `.github/workflows/ci.yml`, on every pull request and every push to `main`.
+
+| Job | What it does |
+|---|---|
+| `changes` | Decides whether a pull request changes documentation only (below). |
+| `backend-checks` | Format, lint, types, layering, the API description, the migrations on an empty database, the proof of the shards, the dependency audit. Once. |
+| `backend-tests (1)` to `(4)` | The backend test suite as four jobs side by side, each with a PostgreSQL of its own: `pytest -q --shard=N/4`. |
+| `backend` | The one result of the three above: red when a check or a shard failed, was cancelled, or was skipped without reason. |
+| `frontend`, `e2e`, `deploy-files`, `backup-files`, `single-host` | As before. |
+| `documents` | No unresolved placeholder in a stage document. Always runs. |
+
+**Shards.** A test's shard comes from a hash of its node identifier (`backend/tests/sharding.py`), so one costly file is spread over all four and adding a test moves no other. `pytest -q` without `--shard` runs everything, and that is what to run locally; `pytest -q --shard=2/4` runs what the second job runs, in the same order. Nothing is assumed about the split: `backend-checks` collects the suite without the option and once per shard and fails unless the shards are disjoint and their union is the whole suite (`python scripts/check_shards.py 4`, which prints the counts). Tests that share a shard share one database, as the whole suite does in a local run, so a test must not depend on what another left behind or on the order.
+
+**Documentation only.** When a pull request changes nothing but Markdown under `docs/`, files under `.project-alpha/`, and Markdown at the top of the repository, every job except `changes`, `backend` and `documents` is skipped and the run ends green. The rule is an allow-list in `backend/scripts/ci_scope.py`; any other path, no path at all, or a failure of the `changes` job runs everything, and so does every push to `main`. Two documents are read by backend tests and therefore run everything: `docs/10-operations/runbooks.md` (the SMS templates, `tests/test_sms_templates.py`) and `docs/08-technical-spec/schema.sql` (`tests/db/test_schema_rules.py`). A test that starts to read another document must be listed in `backend/tests/test_ci_scope.py`, which fails until it is.
+
+**Superseded runs.** A new push to a pull request cancels the run of the push before it. A run on `main` is never cancelled.
 
 ## Dependencies
 

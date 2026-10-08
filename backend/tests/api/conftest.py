@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 from qarz.application.admin_access import AdminAccess
 from qarz.application.auth import AuthService
 from qarz.domain import totp
+from qarz.domain.promise import tashkent_date
 from qarz.infrastructure.db import Database
 from qarz.infrastructure.file_store import FilesystemFileStore
 from qarz.infrastructure.secret_box import SecretBox
@@ -261,9 +262,10 @@ def world(owner: psycopg.Connection) -> World:
         (entry_id, shop_a, customer_id, seller_membership),
     )
     owner.execute(
-        "INSERT INTO promise (id, shop_id, entry_id, promised_date, actor) "
-        "VALUES (%s, %s, %s, current_date + 7, 'default')",
-        (uuid.uuid4(), shop_a, entry_id),
+        "INSERT INTO promise (id, shop_id, entry_id, promised_date, actor) VALUES (%s, %s, %s, %s, 'default')",
+        # The service's day is Tashkent's, five hours ahead of the database server's: "a week from today"
+        # counted from the server's current_date is a day short from 19:00 to 24:00 UTC.
+        (uuid.uuid4(), shop_a, entry_id, tashkent_date(datetime.now(UTC)) + timedelta(days=7)),
     )
     owner.execute(
         "INSERT INTO subscription (shop_id, state, trial_ends) VALUES "

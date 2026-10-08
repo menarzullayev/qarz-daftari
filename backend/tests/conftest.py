@@ -1,4 +1,7 @@
-"""Database fixtures: a fresh database per test session, built by the real migrations."""
+"""Database fixtures: a fresh database per test session, built by the real migrations.
+
+Also the option `--shard=INDEX/TOTAL`, with which CI runs the suite as several parallel jobs (sharding.py).
+"""
 
 import os
 import time
@@ -14,7 +17,51 @@ import pytest
 from alembic import command
 from alembic.config import Config
 
+from .sharding import Shard, parse_shard, split
+
 BACKEND = Path(__file__).resolve().parents[1]
+_SHARD = pytest.StashKey[Shard]()
+_SHARD_COUNTS = pytest.StashKey[tuple[int, int]]()
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--shard",
+        metavar="INDEX/TOTAL",
+        default=None,
+        help="run only the tests of one shard of the suite, for example 2/4 (CI runs the four in parallel)",
+    )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    value = config.getoption("--shard")
+    if value is None:
+        return
+    try:
+        config.stash[_SHARD] = parse_shard(value)
+    except ValueError as error:
+        raise pytest.UsageError(str(error)) from error
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    shard = config.stash.get(_SHARD, None)
+    if shard is None:
+        return
+    selected, deselected = split([item.nodeid for item in items], shard)
+    config.stash[_SHARD_COUNTS] = (len(selected), len(items))
+    left_out = [items[position] for position in deselected]
+    items[:] = [items[position] for position in selected]
+    if left_out:
+        config.hook.pytest_deselected(items=left_out)
+
+
+def pytest_report_collectionfinish(config: pytest.Config) -> list[str]:
+    shard = config.stash.get(_SHARD, None)
+    counts = config.stash.get(_SHARD_COUNTS, None)
+    if shard is None or counts is None:
+        return []
+    return [f"shard {shard.index}/{shard.total}: {counts[0]} of {counts[1]} collected tests"]
 
 
 def _admin_url() -> str:
