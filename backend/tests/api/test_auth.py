@@ -34,8 +34,13 @@ def _fresh(**kwargs: Any) -> str:
 
 
 def _fresh_login(tg_id: int) -> dict[str, object]:
-    # Likewise: the widget signs the moment of each login, and two logins never share one.
-    signed_at = datetime.now(UTC) - timedelta(seconds=30 + next(_launches))
+    # Likewise: the widget signs the moment of each login, and two logins never share one. The signed
+    # moment is a whole second and the only thing that tells two logins of one person apart, so each
+    # login is dated five seconds before the one before it. (One second was not enough: the clock had
+    # moved on by the time of the second login, and once in some dozens of runs both fell into the same
+    # second, where the second login is rightly refused as a repeat.) The cycle keeps the data young
+    # enough to be accepted however many logins the module has made.
+    signed_at = datetime.now(UTC) - timedelta(seconds=30 + 5 * (next(_launches) % 200))
     return login_data(tg_id, token=TEST_BOT_TOKEN, auth_date=signed_at)
 
 
