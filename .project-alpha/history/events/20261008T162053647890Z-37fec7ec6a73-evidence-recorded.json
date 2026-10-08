@@ -1,0 +1,15 @@
+{
+  "event_id": "37fec7ec6a73",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-08T16:20:53+00:00",
+  "path": "docs\\evidence\\EVID-077.md",
+  "stage": "09-development-plan",
+  "title": "Three decisions of the founder are built and pass CI on main",
+  "claim": "Pull request 67 lets a Telegram administrator of the configured review group approve or reject a subscription receipt from the group's buttons, removes the limit of five shops a person, and shows a customer their own payment history indicator (migrations 0029 and 0030). CI passed on main in the run for commit 07f12b9. Telegram was never called: the membership check is answered by a stand-in in the tests, and it is unproven against a real group, where the bot must itself be an administrator. The new texts are an agent's drafts",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/67 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37779500676",
+  "date": "2026-10-08",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-077"
+}

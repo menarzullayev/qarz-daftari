@@ -1,0 +1,19 @@
+{
+  "event_id": "34edc0238003",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-08T16:21:18+00:00",
+  "path": ".project-alpha\\decisions\\DEC-071.md",
+  "stage": "04-prd",
+  "title": "Support access stays as built: opened with a reason, read-only, visible to the owner",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-071",
+  "decision": "When DEC-054 was reviewed, a wider administrator access to shops, including writing and without the owner being told, was discussed. The agent declined to build access to shops' records that their owners cannot see, and support access stays as in DEC-054: a reason, 1 to 24 hours, reading only, the owner told at opening and closing and able to end it. Two alternatives were offered and are unanswered: a wider read under an opened access, and a correction entered as the administration's after the owner confirms in chat",
+  "context": "Discussed with the founder on 2026-10-08; awaiting his answer on the two alternatives",
+  "chosen_option": "Leave DEC-054 as built",
+  "rationale": "The agent's position rather than a settled choice of the founder. Whatever access the administration has must also be stated in the consent and privacy texts, which wait for legal review",
+  "impact": "High",
+  "reversibility": "High",
+  "evidence": "EVID-077",
+  "approval_required": "yes",
+  "approval_status": "pending"
+}

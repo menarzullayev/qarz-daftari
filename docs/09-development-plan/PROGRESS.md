@@ -152,6 +152,13 @@ Each is implemented. If one is rejected, the named story must be revisited.
 | DEC-061 | At most five shops and one trial a person; later shops start limited; narrowed database rights | S19.2 |
 | DEC-062 | Reassigning a shop's owner; the former owner becomes a suspended manager; rotating the server secret | S18.1 |
 | DEC-063 | Mini App session token in sessionStorage; panel sign-in by redirect, accepted only from our own site | S15.1, S19.2 |
+| DEC-064 | Telegram administrators of the review group decide a receipt (the founder's; replaces the reading in DEC-051) | Subscription |
+| DEC-065 | No limit on shops a person (the founder's; changes DEC-061 and DEC-062) | Shops |
+| DEC-066 | A customer sees their own payment history indicator (the founder's; changes DEC-033) | Customers |
+| DEC-067 | Earlier choices the founder reviewed and kept | Review |
+| DEC-069 | SMS in release 1 through Eskiz (the founder's) | Reminders |
+| DEC-070 | One host, Cloudflare Tunnel, backups to R2 (the founder's; replaces two servers) | Deployment |
+| DEC-071 | Support access stays as built: a reason, read-only, visible to the owner | Administration |
 | DEC-068 | Three database roles, one for each part of the application; what each is granted; sign out everywhere | S19.2 |
 
 Decided by the founder on 2026-10-07, and so not awaiting review: DEC-058 (nginx and Docker Compose, where the architecture document names Caddy; what to prepare before production); DEC-051 (buttons in the review group, honoured for platform administrators only, as the agent understood him), DEC-052 (no fresh code to decide a receipt), DEC-053 (store open debts).
@@ -202,12 +209,12 @@ Decided by the founder on 2026-10-07, and so not awaiting review: DEC-058 (nginx
 | 4 | M1 to M8 complete, acceptance criteria pass in CI | 42 of 49 stories done in code and CI; S1.5, S16.1, S19.1, S19.2, S19.3 and S19.4 are partly done and each waits on something only people or real servers can give; S2.2's generated API client was never built. Every story's screens exist; fourteen end-to-end tests run the front end and back end together with signed stand-in data (EVID-076) |
 | 5 | Authorization and tenant suite covers every operation | In place and blocking; grows with each story |
 | 6 | Load test | Not met: measured on a developer machine only; the slow overview was cured and re-measured in single statements, not in a full run (EVID-063, EVID-070) |
-| 7 | Security review | An agent's review is done; findings 1 to 8, 10 and 12 are fixed and 9, 11 and 13 in part (EVID-059, EVID-061, EVID-074); a person's review remains |
+| 7 | Security review | An agent's review is done; findings 1 to 8 and 10 to 12 are fixed and 9 and 13 in part (EVID-059, EVID-061, EVID-074, EVID-078); the administrator side still shares the API process; a person's review remains |
 | 8 | Failover and restore rehearsals | Rehearsed locally in containers (EVID-044); a weekly automatic restore test is written and proven in containers (EVID-072); not on real servers |
 | 9 | Alerts triggered and received | Not started: rules are written (EVID-062), no monitoring system exists |
 | 10 | Runbooks executed | Not started: the thirteen runbooks are written (`docs/10-operations/runbooks.md`), none was executed |
 | 11 | Usability sessions | Not started; needs real sellers |
-| 12 | Two servers in use | Open; founder |
+| 12 | Two servers in use | Not met and no longer planned: by DEC-070 the service runs on one host; the criterion has to be rewritten by the founder |
 | 13 | Second operator named | Open; founder |
 | 14 | Both languages reviewed | Not started; needs native speakers |
 | 15 | Payment process run end to end with a test shop | Not started |

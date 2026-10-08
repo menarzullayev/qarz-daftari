@@ -1,0 +1,21 @@
+{
+  "event_id": "5cdc699c43f4",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-08T16:20:53+00:00",
+  "path": ".project-alpha\\decisions\\DEC-064.md",
+  "stage": "04-prd",
+  "title": "Telegram administrators of the review group decide a subscription receipt",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-064",
+  "decision": "A press on the approve or reject button in the review group counts from anyone Telegram names, at the moment of the press, as creator or administrator of the configured review group, whether or not they are on the platform's allow-list. This replaces the agent's reading in DEC-051. They get nothing else: no account, session, panel or administrator API. The decider's Telegram identifier is stored on the receipt and in the audit. Chosen by the agent within this: a rejection needs the reason written in the presser's own chat with the bot, so someone who never started the bot can only approve; months cannot be corrected from the group; the bot must be an administrator of the group for Telegram to answer",
+  "context": "Answered by the founder on 2026-10-08 when asked by the agent in the working session",
+  "chosen_option": "Any Telegram administrator of the configured review group",
+  "rationale": "The founder was asked who decides in the group and chose the group's Telegram administrators over the platform's allow-list and over every member. Granting a subscription now depends on who administers that group in Telegram, which he accepted",
+  "impact": "Medium",
+  "reversibility": "High",
+  "evidence": "EVID-077",
+  "approval_required": "yes",
+  "approval_status": "approved",
+  "approver": "founder",
+  "approved_at": "2026-10-08"
+}

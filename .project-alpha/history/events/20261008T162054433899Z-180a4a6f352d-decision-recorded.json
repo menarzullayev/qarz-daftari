@@ -1,0 +1,21 @@
+{
+  "event_id": "180a4a6f352d",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-08T16:20:54+00:00",
+  "path": ".project-alpha\\decisions\\DEC-072.md",
+  "stage": "04-prd",
+  "title": "The repository is public",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-072",
+  "decision": "The repository was made public on 2026-10-08 so that CI runs without a spending limit. The agent told the founder what becomes readable by anyone: the security review with its open findings, the business documents and decisions, and the code, which carries no licence; and that copies made while it is public cannot be recalled",
+  "context": "Answered by the founder on 2026-10-08 when asked by the agent in the working session",
+  "chosen_option": "Public repository",
+  "rationale": "CI had stopped on the account's billing and the founder preferred this to paying or to a runner on the office computer",
+  "impact": "High",
+  "reversibility": "High",
+  "evidence": "EVID-079",
+  "approval_required": "yes",
+  "approval_status": "approved",
+  "approver": "founder",
+  "approved_at": "2026-10-08"
+}
