@@ -51,6 +51,10 @@ jobs:
         run: mypy
       - name: Layering contracts
         run: lint-imports --config pyproject.toml
+      # The description is rebuilt from this commit's code and compared with the committed file, byte
+      # for byte. The front end's types are generated from that file (the frontend job checks them).
+      - name: API description is current
+        run: python -m qarz.interface.api_description --check
       - name: Migrations apply to an empty database
         run: |
           psql "$QD_TEST_ADMIN_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE qd_migrate_check'
@@ -73,6 +77,10 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      # Regenerated from backend/openapi.json and compared with the committed file. With the backend
+      # job's check, a changed request or response shape cannot merge without the front end's types.
+      - name: API types are current
+        run: npm run api:check
       - name: Lint
         run: npm run lint
       - name: Types
