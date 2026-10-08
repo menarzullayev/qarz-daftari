@@ -67,7 +67,7 @@ One workflow, `.github/workflows/ci.yml`, on every pull request and every push t
 |---|---|
 | `changes` | Decides whether a pull request changes documentation only (below). |
 | `backend-checks` | Format, lint, types, layering, the API description, the migrations on an empty database, the proof of the shards, the dependency audit. Once. |
-| `backend-tests (1/4)` to `(4/4)` | The backend test suite as four jobs side by side, each with a PostgreSQL of its own: `pytest -q --shard=N/4`. |
+| `backend-tests (1)` to `(4)` | The backend test suite as four jobs side by side, each with a PostgreSQL of its own: `pytest -q --shard=N/4`. |
 | `backend` | The one result of the three above: red when a check or a shard failed, was cancelled, or was skipped without reason. |
 | `frontend`, `e2e`, `deploy-files`, `backup-files`, `single-host` | As before. |
 | `documents` | No unresolved placeholder in a stage document. Always runs. |
