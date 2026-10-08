@@ -6,10 +6,11 @@ the caller's user identifier from a header. It exists only in the test suite.
 
 import hashlib
 import os
+import time
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -227,8 +228,7 @@ def _member(conn: psycopg.Connection, shop: uuid.UUID, user: uuid.UUID, role: st
     return membership_id
 
 
-@pytest.fixture
-def world(owner: psycopg.Connection) -> World:
+def seed_world(owner: psycopg.Connection) -> World:
     shop_a, shop_b = uuid.uuid4(), uuid.uuid4()
     owner.execute("INSERT INTO shop (id, name) VALUES (%s, 'Shop A'), (%s, 'Shop B')", (shop_a, shop_b))
     users = {name: _user(owner) for name in ("owner_a", "manager_a", "seller_a", "suspended_a", "owner_b")}
@@ -311,6 +311,97 @@ def world(owner: psycopg.Connection) -> World:
         learned_item_a=learned_item,
         **users,
     )
+
+
+@pytest.fixture
+def world(owner: psycopg.Connection) -> World:
+    """A world of the test's own: nothing else has seen it and nothing else will."""
+    return seed_world(owner)
+
+
+# --- a world handed to several tests in a row, for as long as nobody wrote anything ---------------------
+#
+# Seeding a world is some twenty statements. A test that only watches a call being refused writes nothing,
+# so the next such test can be given the same world. That is safe only while the world is exactly what was
+# seeded, and this is not left to the tests' good behaviour: the position of the database server's
+# write-ahead log is read when the world is seeded and again before it is handed over. Every change to
+# any table of any database of the server moves that position, also one that is rolled back, so an equal
+# position means nothing has been written since the seeding: not by a test, a fixture, the application
+# under test or a failed call. Then the world is handed over; otherwise a new one is seeded. A test that
+# changes data therefore costs its successor a seeding and nothing else, and a defect that lets a refused
+# call write is met by the following tests on a fresh world, as it was when every test seeded its own.
+#
+# What moves the position without touching the world (a checkpoint, another test session on the same
+# server) only costs a seeding. The world also is not kept past a change of the day or for long, because
+# its dates are counted from the moment of seeding.
+
+KEPT_WORLD_SECONDS = 30.0
+
+
+@dataclass(frozen=True)
+class KeptWorld:
+    world: World
+    database: str
+    wal_position: str
+    seeded_at: float  # time.monotonic()
+    days: tuple[date, date]  # the day in UTC (the server's) and in Tashkent (the service's)
+
+
+def wal_position(owner: psycopg.Connection) -> str:
+    row = owner.execute("SELECT pg_current_wal_insert_lsn()::text").fetchone()
+    assert row is not None
+    return str(row[0])
+
+
+def _days() -> tuple[date, date]:
+    now = datetime.now(UTC)
+    return now.date(), tashkent_date(now)
+
+
+def keep_world(owner: psycopg.Connection, database: str) -> KeptWorld:
+    world = seed_world(owner)
+    # Read after the last statement of the seeding: the position covers the whole world.
+    return KeptWorld(world, database, wal_position(owner), time.monotonic(), _days())
+
+
+def still_untouched(kept: KeptWorld, owner: psycopg.Connection, database: str) -> bool:
+    """Nothing has been written to the server since the world was seeded, and it is recent and of today."""
+    return (
+        kept.database == database
+        and time.monotonic() - kept.seeded_at <= KEPT_WORLD_SECONDS
+        and kept.days == _days()
+        and kept.wal_position == wal_position(owner)
+    )
+
+
+_kept_world: list[KeptWorld] = []
+kept_world_counts = {"seeded": 0, "handed over again": 0}
+
+
+def hand_over_world(owner: psycopg.Connection, database: str) -> World:
+    """The kept world if it is still untouched, else a newly seeded one, which is then the kept one."""
+    if _kept_world and still_untouched(_kept_world[0], owner, database):
+        kept_world_counts["handed over again"] += 1
+        return _kept_world[0].world
+    _kept_world[:] = [keep_world(owner, database)]
+    kept_world_counts["seeded"] += 1
+    return _kept_world[0].world
+
+
+@pytest.fixture
+def untouched_world(owner: psycopg.Connection, database_url: str) -> World:
+    """A world exactly as seeded, possibly one that earlier tests have looked at (see above).
+
+    Only for a test whose calls are all refused. A test that changes data may ask for it too and gets a
+    world nobody has changed, but gains nothing; `world` says what such a test means.
+    """
+    return hand_over_world(owner, database_url)
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    if kept_world_counts["seeded"]:
+        seeded, again = kept_world_counts["seeded"], kept_world_counts["handed over again"]
+        terminalreporter.write_line(f"untouched_world: seeded {seeded} times, handed over again {again} times")
 
 
 def as_user(user_id: uuid.UUID) -> dict[str, str]:
