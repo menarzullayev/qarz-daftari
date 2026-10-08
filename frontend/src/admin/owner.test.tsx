@@ -48,8 +48,9 @@ describe("a Telegram identifier as typed", () => {
   });
 
   it("knows the server's refusals and nothing else", () => {
-    expect(["unknown_user", "already_owner", "shop_limit"].every(isOwnerRefusal)).toBe(true);
-    expect([undefined, "", "paid", 5].some(isOwnerRefusal)).toBe(false);
+    expect(["unknown_user", "already_owner"].every(isOwnerRefusal)).toBe(true);
+    // "shop_limit" was one until the limit of five shops was removed (DEC-065).
+    expect([undefined, "", "paid", 5, "shop_limit"].some(isOwnerRefusal)).toBe(false);
   });
 });
 
@@ -149,7 +150,6 @@ describe("changing a shop's owner", () => {
   it.each([
     ["unknown_user", "Bunday Telegram ID bilan botni ishga tushirgan odam yo'q."],
     ["already_owner", "Bu odam allaqachon shu do'kon egasi."],
-    ["shop_limit", "Bu odamda allaqachon 5 ta do'kon bor."],
   ])("explains the server's refusal %s", async (reason, detail) => {
     const general = "Do'konni bu odamga berib bo'lmaydi.";
     const { server } = open(undefined, () => refusal(409, "OWNER_REASSIGNMENT_REFUSED", general, { reason }));

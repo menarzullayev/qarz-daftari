@@ -224,7 +224,9 @@ Always a reversal through the product; never a change in the database.
    uses "Change the owner" (`POST /api/admin/v1/shops/{shop_id}/owner`): the new account's Telegram
    identifier, the reason (what proof was accepted; it is kept in the admin audit and shown to nobody
    else), and a fresh code from the authenticator, which this action asks for every time. Somebody the
-   service does not know, the present owner, and a person who already owns five shops are refused.
+   service does not know and the present owner are refused. How many shops the person already owns does
+   not matter (changed by the founder on 2026-10-08, DEC-065: until then a person who owned five was
+   refused).
 4. What it does, in one transaction: the new account becomes the owner; the old account stays in the shop
    as a **suspended manager**, so it can do nothing there (it may be in someone else's hands) until the new
    owner reinstates or removes it under Staff; a transfer the old owner had offered is cancelled. A
@@ -254,8 +256,17 @@ shop.
 **When.** An owner sent a receipt for a card transfer. An alert fires when one has waited 24 hours.
 
 1. Open the receipt in the admin panel (Receipts), or use the buttons under its announcement in your
-   private chat or in the review group. A press counts only from an administrator who signed in to the
-   panel with their code within the last eight hours; anyone else's press changes nothing.
+   private chat or in the review group. A press counts from an administrator who signed in to the
+   panel with their code within the last eight hours. In the review group it also counts from any
+   Telegram administrator of that group, whether or not they are a platform administrator (changed by
+   the founder on 2026-10-08, DEC-064): Telegram is asked at that moment, and no answer is a refusal.
+   Such a person is asked for a rejection's reason in their own chat with the bot, so they must have
+   started the bot; the months cannot be corrected from the group. The decision is kept with their
+   Telegram identifier in the receipt and in the admin audit. Anyone else's press changes nothing.
+   **Give the administrator's role in the review group only to people who may decide receipts**, and
+   take it away from anyone who should no longer. The bot itself must be an administrator of the
+   group: Telegram promises an answer about another member only to a bot that is one, and without an
+   answer every such press is refused.
 2. Check the transfer in the card's own statement: the amount, the date, the sender. The image is never
    proof by itself.
 3. Look at the warning about copies: the same file sent before, by this or any other shop.

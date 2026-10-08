@@ -2,7 +2,8 @@
 
 An owner pays by card transfer outside the system and sends the receipt with what they say they paid and
 for how many months. An administrator approves it, recording the months that count, or rejects it with a
-reason. A decided receipt stays decided.
+reason. A Telegram administrator of the review group may decide it from the group as well (DEC-064). A
+decided receipt stays decided.
 """
 
 from datetime import datetime, timedelta
@@ -23,6 +24,11 @@ RETENTION = timedelta(days=3 * 365)
 MIN_REASON, MAX_REASON = 3, 500
 # The periods the bot offers; the API takes any whole number of months up to the limit.
 OFFERED_MONTHS = (1, 3, 6, 12)
+
+
+# What Telegram calls the people who may decide a receipt from the review group (DEC-064): the group's
+# creator and its administrators, as the Bot API's getChatMember names them.
+GROUP_DECIDER_STATUSES = frozenset({"creator", "administrator"})
 
 
 class ReceiptRefusal(StrEnum):
@@ -49,6 +55,15 @@ def may_submit(*, amount: object, months: object, waiting: int) -> ReceiptRefusa
     if waiting >= MAX_WAITING:
         return ReceiptRefusal.TOO_MANY_WAITING
     return None
+
+
+def decides_in_review_group(status: object) -> bool:
+    """Whether someone with this Telegram status in the review group may decide a receipt there.
+
+    Only the creator and the administrators of the group. A member, someone who left or was removed, a
+    status this service does not know, and no answer at all are all a refusal.
+    """
+    return isinstance(status, str) and status in GROUP_DECIDER_STATUSES
 
 
 def months_to_record(stated: int | None, corrected: int | None) -> int | None:

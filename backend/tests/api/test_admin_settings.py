@@ -537,6 +537,7 @@ def test_the_audit_is_listed_newest_first_filtered_and_paged(
         "id",
         "at",
         "admin_id",
+        "actor_tg_id",
         "action",
         "target_type",
         "target_id",

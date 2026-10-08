@@ -16,6 +16,7 @@ import {
 import { type CalendarDay, formatCalendarDay, formatDateTime, formatMoney } from "../format";
 import { type Submission, useLoad, useSubmit } from "../hooks";
 import { parseIsoDate } from "../promise";
+import { MyPaymentHistory } from "./MyPaymentHistory";
 import { PaymentNoticeSection } from "./PaymentNoticeSection";
 import { DateReasonForm, dayText, PromiseHistory } from "../promiseParts";
 import { GoodsList } from "../workspace/GoodsEditor";
@@ -366,6 +367,8 @@ function Detail({
           </p>
         ) : null}
       </section>
+
+      <MyPaymentHistory history={account.paymentHistory} />
 
       <section aria-labelledby="my-manage-title">
         <h2 id="my-manage-title">{t("my.manage")}</h2>

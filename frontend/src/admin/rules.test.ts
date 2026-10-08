@@ -11,6 +11,7 @@ import { uz } from "../i18n/uz";
 import { AUDIT_GROUPS, detailText } from "./AuditScreen";
 import "./messages";
 import {
+  actorName,
   CHANGE_REFUSALS,
   cleanReason,
   dateInRange,
@@ -127,6 +128,15 @@ describe("what may be done to a subscription", () => {
     expect(isUuid(SHOP_ID)).toBe(true);
     expect(["", "42", `${SHOP_ID}x`, "5a0c6d3e00004000800000000000aaaa"].map(isUuid)).toEqual([false, false, false, false]);
     expect(shortId("77777777-7777-4777-8777-777777a1b2c3")).toBe("a1b2c3");
+  });
+
+  it("names who acted: an administrator by the code, a review-group administrator by the Telegram identifier", () => {
+    const group = (id: number) => `group ${id}`;
+    expect(actorName("77777777-7777-4777-8777-777777a1b2c3", null, group, "—")).toBe("a1b2c3");
+    expect(actorName(null, 700123456, group, "—")).toBe("group 700123456");
+    expect(actorName(null, null, group, "—")).toBe("—");
+    // The server sets exactly one; should it ever send both, the administrator's account is what is shown.
+    expect(actorName("77777777-7777-4777-8777-777777a1b2c3", 700123456, group, "—")).toBe("a1b2c3");
   });
 });
 

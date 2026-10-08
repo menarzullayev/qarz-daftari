@@ -7,6 +7,7 @@ an active administrator.
 
 import hashlib
 import uuid
+from collections.abc import Iterator
 from typing import Any
 
 import psycopg
@@ -240,6 +241,239 @@ def test_the_oldest_waiting_receipt_is_a_time_and_nothing_more(
 
 @pytest.mark.parametrize("signature", FUNCTIONS)
 def test_each_function_runs_as_its_owner_with_a_pinned_search_path_and_is_closed_to_public(
+    owner: psycopg.Connection, signature: str
+) -> None:
+    row = owner.execute(
+        "SELECT prosecdef, proconfig, has_function_privilege('qd_app', oid, 'EXECUTE'), "
+        "has_function_privilege('public', oid, 'EXECUTE') FROM pg_proc WHERE oid = %s::regprocedure",
+        (signature,),
+    ).fetchone()
+    assert row == (True, ["search_path=public, pg_temp"], True, False)
+
+
+# --- decisions from the review group (migration 0030; DEC-064) ----------------------------------------------
+
+GROUP_FUNCTIONS = [
+    "review_group_receipt(bigint, uuid, boolean)",
+    "review_group_decide_receipt(bigint, bigint, uuid, text, smallint, text, text, date, text, jsonb, timestamptz)",
+]
+_GROUP_DECIDE = (
+    "SELECT review_group_decide_receipt("
+    "%s, %s, %s, %s, %s::smallint, %s, %s, %s::date, NULL, jsonb_build_object('via', 'group'), now())"
+)
+DECIDER = 5_550_001
+
+
+@pytest.fixture
+def review_group(owner: psycopg.Connection) -> Iterator[int]:
+    """A configured review group; the setting is global, so it is taken away again."""
+    group = -1_000_000_000_000 - uuid.uuid4().int % 10**9
+    owner.execute(
+        "INSERT INTO platform_setting (key, value, updated_by) VALUES ('review_group', to_jsonb(%s::bigint), 'test') "
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by",
+        (group,),
+    )
+    yield group
+    owner.execute("DELETE FROM platform_setting WHERE key = 'review_group'")
+
+
+def _with_subscription(owner: psycopg.Connection, shop: Shop) -> None:
+    owner.execute(
+        "INSERT INTO subscription (shop_id, state) VALUES (%s, 'limited') "
+        "ON CONFLICT (shop_id) DO UPDATE SET state = 'limited', paid_through = NULL, prior_state = NULL",
+        (shop.shop_id,),
+    )
+
+
+def _decision(owner: psycopg.Connection, receipt: uuid.UUID) -> Any:
+    return owner.execute(
+        "SELECT status, months, reject_reason, decided_by, decided_by_tg FROM subscription_receipt WHERE id = %s",
+        (receipt,),
+    ).fetchone()
+
+
+def _audit_of(owner: psycopg.Connection, receipt: uuid.UUID) -> list[tuple[Any, ...]]:
+    return owner.execute(
+        "SELECT action, admin_id, actor_tg, target_type, target_shop, reason, detail FROM admin_audit "
+        "WHERE target_id = %s ORDER BY at, id",
+        (str(receipt),),
+    ).fetchall()
+
+
+def test_a_review_group_decision_is_written_with_the_telegram_identifier_and_no_administrator(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, review_group: int
+) -> None:
+    _with_subscription(owner, shop_a)
+    approved, rejected = _receipt(owner, shop_a, uuid.uuid4().bytes), _receipt(owner, shop_a, uuid.uuid4().bytes)
+    with as_app(None) as conn:
+        seen = conn.execute(
+            "SELECT receipt_id, shop_id, shop_name, stated_amount, stated_months, status, state, paid_through "
+            "FROM review_group_receipt(%s, %s, true)",
+            (review_group, approved),
+        ).fetchall()
+        assert seen == [(approved, shop_a.shop_id, "Shop A", 100000, 1, "submitted", "limited", None)]
+        assert conn.execute(
+            _GROUP_DECIDE, (review_group, DECIDER, approved, "approved", 1, None, "active", "2027-01-31")
+        ).fetchone() == (True,)
+        assert conn.execute(
+            _GROUP_DECIDE, (review_group, DECIDER, rejected, "rejected", None, "Soxta chek", None, None)
+        ).fetchone() == (True,)
+        # Decided: neither a second decision nor a different one changes it.
+        for status, months in (("approved", 3), ("rejected", None)):
+            assert conn.execute(
+                _GROUP_DECIDE, (review_group, DECIDER + 1, approved, status, months, "yana", "active", "2030-01-01")
+            ).fetchone() == (False,)
+    assert _decision(owner, approved) == ("approved", 1, None, None, DECIDER)
+    assert _decision(owner, rejected) == ("rejected", None, "Soxta chek", None, DECIDER)
+    state = owner.execute(
+        "SELECT state, paid_through::text, prior_state FROM subscription WHERE shop_id = %s", (shop_a.shop_id,)
+    ).fetchone()
+    assert state == ("active", "2027-01-31", None), "only the approval touched the subscription, and once"
+    assert _audit_of(owner, approved) == [
+        (
+            "subscription.receipt_approved",
+            None,
+            DECIDER,
+            "receipt",
+            shop_a.shop_id,
+            None,
+            {"via": "group", "group": review_group, "stated_amount": 100000, "stated_months": 1},
+        )
+    ]
+    assert [row[:3] + row[5:6] for row in _audit_of(owner, rejected)] == [
+        ("subscription.receipt_rejected", None, DECIDER, "Soxta chek")
+    ]
+    lines = owner.execute(
+        "SELECT actor_kind, actor_id, action, subject_id FROM activity WHERE shop_id = %s AND subject_id = ANY(%s) "
+        "ORDER BY action",
+        (shop_a.shop_id, [approved, rejected]),
+    ).fetchall()
+    assert lines == [
+        ("admin", None, "subscription.receipt_approved", approved),
+        ("admin", None, "subscription.receipt_rejected", rejected),
+    ]
+
+
+@pytest.mark.parametrize("wrong", ["another group", "no group given", "no decider", "decider zero", "decider negative"])
+def test_the_review_group_functions_do_nothing_for_another_group_or_without_a_decider(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, review_group: int, wrong: str
+) -> None:
+    _with_subscription(owner, shop_a)
+    receipt = _receipt(owner, shop_a, uuid.uuid4().bytes)
+    group: int | None = {"another group": review_group - 1, "no group given": None}.get(wrong, review_group)
+    decider: int | None = {"no decider": None, "decider zero": 0, "decider negative": -DECIDER}.get(wrong, DECIDER)
+    with as_app(None) as conn:
+        if group != review_group:
+            for lock in (False, True):
+                read = conn.execute("SELECT * FROM review_group_receipt(%s, %s, %s)", (group, receipt, lock))
+                assert read.fetchall() == []
+        for status, months in (("approved", 1), ("rejected", None)):
+            assert conn.execute(
+                _GROUP_DECIDE, (group, decider, receipt, status, months, "sabab", "active", "2030-01-01")
+            ).fetchone() == (False,)
+    assert _decision(owner, receipt) == ("submitted", None, None, None, None)
+    assert _audit_of(owner, receipt) == []
+    assert owner.execute(
+        "SELECT state, paid_through FROM subscription WHERE shop_id = %s", (shop_a.shop_id,)
+    ).fetchone() == ("limited", None)
+
+
+def test_without_a_configured_review_group_nothing_can_be_decided_from_a_group(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, review_group: int
+) -> None:
+    _with_subscription(owner, shop_a)
+    receipt = _receipt(owner, shop_a, uuid.uuid4().bytes)
+    for stored in (None, f'"{review_group}"', "true", "null"):
+        if stored is None:
+            owner.execute("DELETE FROM platform_setting WHERE key = 'review_group'")
+        else:
+            owner.execute(
+                "INSERT INTO platform_setting (key, value, updated_by) VALUES ('review_group', %s::jsonb, 'test') "
+                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+                (stored,),
+            )
+        with as_app(None) as conn:
+            read = conn.execute("SELECT * FROM review_group_receipt(%s, %s, false)", (review_group, receipt))
+            assert read.fetchall() == [], stored
+            assert conn.execute(
+                _GROUP_DECIDE, (review_group, DECIDER, receipt, "approved", 1, None, "active", "2030-01-01")
+            ).fetchone() == (False,), stored
+    assert _decision(owner, receipt) == ("submitted", None, None, None, None)
+
+
+def test_a_receipt_of_an_erased_shop_is_not_decided_from_the_group(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, review_group: int
+) -> None:
+    _with_subscription(owner, shop_a)
+    receipt = _receipt(owner, shop_a, uuid.uuid4().bytes)
+    owner.execute("UPDATE shop SET status = 'erased' WHERE id = %s", (shop_a.shop_id,))
+    try:
+        with as_app(None) as conn:
+            read = conn.execute("SELECT * FROM review_group_receipt(%s, %s, true)", (review_group, receipt))
+            assert read.fetchall() == []
+            assert conn.execute(
+                _GROUP_DECIDE, (review_group, DECIDER, receipt, "approved", 1, None, "active", "2030-01-01")
+            ).fetchone() == (False,)
+        assert _decision(owner, receipt) == ("submitted", None, None, None, None)
+    finally:
+        owner.execute("UPDATE shop SET status = 'active' WHERE id = %s", (shop_a.shop_id,))
+
+
+def test_a_group_decision_is_approved_or_rejected_and_an_approval_carries_months(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, review_group: int
+) -> None:
+    _with_subscription(owner, shop_a)
+    receipt = _receipt(owner, shop_a, uuid.uuid4().bytes)
+    with pytest.raises(errors.RaiseException), as_app(None) as conn:
+        conn.execute(_GROUP_DECIDE, (review_group, DECIDER, receipt, "submitted", None, None, None, None))
+    with pytest.raises(errors.CheckViolation), as_app(None) as conn:
+        conn.execute(_GROUP_DECIDE, (review_group, DECIDER, receipt, "approved", None, None, "active", "2030-01-01"))
+    assert _decision(owner, receipt) == ("submitted", None, None, None, None)
+    assert _audit_of(owner, receipt) == [], "a decision that failed left no audit row behind"
+
+
+def test_a_receipt_has_one_decider_and_an_audit_row_exactly_one_actor(owner: psycopg.Connection, shop_a: Shop) -> None:
+    receipt, admin = _receipt(owner, shop_a, uuid.uuid4().bytes), _admin(owner)
+    for by_admin, by_tg in ((admin, DECIDER), (None, 0), (None, -1)):
+        with pytest.raises(errors.CheckViolation), owner.transaction():
+            owner.execute(
+                "UPDATE subscription_receipt SET decided_by = %s, decided_by_tg = %s WHERE id = %s",
+                (by_admin, by_tg, receipt),
+            )
+    audit = (
+        "INSERT INTO admin_audit (id, admin_id, actor_tg, action, target_type) "
+        "VALUES (gen_random_uuid(), %s, %s, 'test.checked', 'receipt')"
+    )
+    for by_admin, by_tg in ((None, None), (admin, DECIDER), (None, 0), (None, -DECIDER)):
+        with pytest.raises(errors.CheckViolation), owner.transaction():
+            owner.execute(audit, (by_admin, by_tg))
+    with owner.transaction(force_rollback=True):
+        owner.execute(audit, (admin, None))
+        owner.execute(audit, (None, DECIDER))
+
+
+def test_a_receipt_of_a_shop_without_a_subscription_row_is_read_and_can_be_rejected_but_not_approved(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, review_group: int
+) -> None:
+    owner.execute("DELETE FROM subscription WHERE shop_id = %s", (shop_a.shop_id,))
+    first, second = _receipt(owner, shop_a, uuid.uuid4().bytes), _receipt(owner, shop_a, uuid.uuid4().bytes)
+    with as_app(None) as conn:
+        seen = conn.execute(
+            "SELECT status, state, paid_through FROM review_group_receipt(%s, %s, true)", (review_group, first)
+        ).fetchall()
+        assert seen == [("submitted", None, None)]
+        assert conn.execute(
+            _GROUP_DECIDE, (review_group, DECIDER, first, "rejected", None, "Soxta chek", None, None)
+        ).fetchone() == (True,)
+    with pytest.raises(errors.RaiseException), as_app(None) as conn:
+        conn.execute(_GROUP_DECIDE, (review_group, DECIDER, second, "approved", 1, None, "active", "2030-01-01"))
+    assert _decision(owner, first)[0] == "rejected"
+    assert _decision(owner, second) == ("submitted", None, None, None, None), "the failed approval left nothing"
+    assert _audit_of(owner, second) == []
+
+
+@pytest.mark.parametrize("signature", GROUP_FUNCTIONS)
+def test_the_review_group_functions_run_as_their_owner_and_are_closed_to_public(
     owner: psycopg.Connection, signature: str
 ) -> None:
     row = owner.execute(

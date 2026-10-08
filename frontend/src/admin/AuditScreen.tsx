@@ -7,7 +7,7 @@ import { Link, navigate } from "../shared/router";
 import { Empty, Failure, FieldError, formatInstant, Loading, LoadMore } from "../shared/workspace/parts";
 import type { AdminApi, AuditRow } from "./adminApi";
 import "./messages";
-import { isUuid, shortId } from "./rules";
+import { actorName, isUuid, shortId } from "./rules";
 import { known, NONE } from "./ShopsScreen";
 
 /**
@@ -74,16 +74,20 @@ export function AuditScreen({ api, shopId }: { api: AdminApi; /** The shop the a
       id: "admin",
       header: t("admin.audit.admin"),
       // Nobody types an identifier they have only seen the end of: a row narrows the audit to its administrator.
-      cell: (row) => (
-        <span className="table__actions">
-          {shortId(row.adminId)}
-          {adminId === row.adminId ? null : (
-            <button type="button" className="button button--small" onClick={() => onlyAdmin(row.adminId)}>
-              {t("admin.audit.adminOnly")}
-            </button>
-          )}
-        </span>
-      ),
+      cell: (row) => {
+        const by = row.adminId;
+        return (
+          <span className="table__actions">
+            {actorName(by, row.actorTgId, (id) => t("admin.actor.groupAdmin", { id }), NONE)}
+            {/* Only an administrator can be filtered by: a review-group administrator has no account. */}
+            {by === null || adminId === by ? null : (
+              <button type="button" className="button button--small" onClick={() => onlyAdmin(by)}>
+                {t("admin.audit.adminOnly")}
+              </button>
+            )}
+          </span>
+        );
+      },
     },
     { id: "action", header: t("admin.audit.action"), cell: (row) => known("admin.action", row.action, t) },
     {

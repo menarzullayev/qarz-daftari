@@ -49,7 +49,7 @@ This model covers release 1 as defined in PRD version 2. Rules that go beyond wh
 | Role | Owner, manager, or seller (REQ-033) |
 | Promised date | A calendar date in Tashkent time |
 | Credit limit | Whole UZS; per customer, with a shop default (REQ-044) |
-| Payment history indicator | Derived per customer from that shop's records only: share of due credit repaid by its promised date, and longest delay in days (REQ-045) |
+| Payment history indicator | Derived per customer from that shop's records only: share of due credit repaid by its promised date, and longest delay in days (REQ-045). Shown to the shop's staff and, on their own page, to the customer it is about (changed by the founder on 2026-10-08, DEC-066) |
 | Dispute reason, decline reason | Short required free text |
 | Reminder template | One of a fixed set of approved wordings per language |
 | Consent record | The text version shown, the agreement, and when |
@@ -122,7 +122,7 @@ Recording:
 | BR-6 | A line chosen from the catalog takes the catalog's current price, which the seller may change for that line. A typed good not in the catalog is added to it as a learned item with the typed price. | REQ-040 |
 | BR-7 | Line total is quantity times unit price, rounded to the nearest whole UZS, halves rounded up. | REQ-N06; rounding decided here |
 | BR-8 | A sale that would take the balance above the customer's credit limit produces a warning showing balance and limit. If the shop setting forbids it, a seller cannot proceed and a manager or owner can. | REQ-044 |
-| BR-9 | The payment history indicator counts only credit whose promised date has passed: on-time share is the value covered on or before the promised date, by BR-3 with payment times, divided by the value due. Customers with nothing yet due show no indicator. | REQ-045; calculation decided here |
+| BR-9 | The payment history indicator counts only credit whose promised date has passed: on-time share is the value covered on or before the promised date, by BR-3 with payment times, divided by the value due. Customers with nothing yet due show no indicator. The customer sees the same figures on their own page (changed by the founder on 2026-10-08, DEC-066). | REQ-045; calculation decided here |
 
 Customer side:
 
@@ -245,7 +245,7 @@ Requirements with no domain element because they constrain clients or operations
 - A 30-day default promise, 30-day dispute window, and the other periods decided here suit real shops. Agent judgment.
 - A staff decision is an acceptable way to close a dispute the shop believes is wrong. Without it a customer could avoid reminders indefinitely by disputing.
 - Deferring removal until a debt is settled is lawful (BR-32). Unverified; carried from version 1.
-- The payment history indicator is lawful because it never leaves the shop. Agent inference, not legal advice.
+- The payment history indicator is lawful because it never leaves the shop, other than to the customer it is about (changed by the founder on 2026-10-08, DEC-066). Agent inference, not legal advice.
 
 ## Open questions
 

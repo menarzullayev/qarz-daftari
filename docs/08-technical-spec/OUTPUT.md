@@ -51,7 +51,7 @@ Conventions: timestamps stored in UTC and shown in Tashkent time (UTC+5). Money 
 | `/shops/{id}/activity` | Activity log with filters | Owner | REQ-047 |
 | `/shops/{id}/subscription` | State, price, card number to pay to, receipts and outcomes | Owner | REQ-053, REQ-054, REQ-057 |
 | `/me/owner-totals` | Combined totals across shops the caller owns | Owner | REQ-065 |
-| `/me/accounts` | Customer: my linked shops, balance, entries with goods, promises | Customer | REQ-019, REQ-020 |
+| `/me/accounts` | Customer: my linked shops, balance, entries with goods, promises, and the customer's own payment history indicator (changed by the founder on 2026-10-08, DEC-066); never the seller's note or the entry's author | Customer | REQ-019, REQ-020, REQ-045 |
 | `/me/accounts/{link}/disputes`, `/payment-notices`, `/date-requests`, `/disconnect`, `/removal` | Customer requests | Customer | REQ-016, REQ-021, REQ-029, REQ-060, REQ-066 |
 | Admin: `/shops`, `/receipts`, `/settings`, `/support-access`, `/audit` | Search shops, subscription state and history, approve or reject receipts, change switches and price, suspend, open support access, read admin audit | Administrator | REQ-055, REQ-058, REQ-059, REQ-N14 |
 
@@ -79,7 +79,7 @@ After a credit entry the reply shows balance, any credit-limit warning, and butt
 | `/uzish`, `/ochirish` | Customer | Disconnect; request removal |
 | `/yordam` | Anyone | Help |
 
-Customer notifications carry a "dispute" button and, for credit entries, "ask to move the date". There is no confirm button (REQ-016). Receipts sent with `/obuna` are forwarded to the administrator and the review group with approve and reject buttons (REQ-055).
+Customer notifications carry a "dispute" button and, for credit entries, "ask to move the date". There is no confirm button (REQ-016). Receipts sent with `/obuna` are forwarded to the administrator and the review group with approve and reject buttons (REQ-055). In the group a press counts from a platform administrator who passed the second factor and, changed by the founder on 2026-10-08 (DEC-064), from any Telegram administrator of the group: the server asks Telegram (`getChatMember`) about the presser in the configured review group at the moment of the press and again when a rejection's reason arrives, believes nothing in the button's data, and refuses when Telegram gives no answer. A press by any other member changes nothing.
 
 Callback data: `v2:<action>:<id>`, at most 64 bytes, authorized again on receipt.
 
@@ -307,7 +307,7 @@ A reply that says something was saved is sent only after commit.
 2. Does forwarding subscription receipts to a Telegram group meet any confidentiality expectation of the payer?
 3. Which SMS provider and message templates?
 4. Should the administrator's second factor be mandatory for approving receipts as well as for settings?
-5. What is the review group's exact role: visibility only, or may any member approve?
+5. What is the review group's exact role: visibility only, or may any member approve? Decided by the founder on 2026-10-08 (DEC-064, changing DEC-051): the group's Telegram administrators may approve and reject from the group; other members may not.
 
 ## Approvals
 

@@ -11,7 +11,7 @@ import { NotFoundScreen } from "../shared/screens";
 import { Confirm, Failure, FieldError, formatInstant, Loading } from "../shared/workspace/parts";
 import type { AdminApi, AdminReceiptDetail, DecidedReceipt, ReceiptCopy } from "./adminApi";
 import "./messages";
-import { cleanNote, cleanReason, parseReceiptMonths, REASON_MAX, REASON_MIN, RECEIPT_MONTHS_MAX, shortId } from "./rules";
+import { actorName, cleanNote, cleanReason, parseReceiptMonths, REASON_MAX, REASON_MIN, RECEIPT_MONTHS_MAX } from "./rules";
 import { known, NONE } from "./ShopsScreen";
 
 type Decision = { kind: "approve"; months: number; note: string | null } | { kind: "reject"; reason: string };
@@ -253,7 +253,9 @@ function Detail({ api, loaded, reload, onAlready }: { api: AdminApi; loaded: Adm
             <dt>{t("admin.receipts.decided")}</dt>
             <dd>{formatInstant(receipt.decidedAt, language)}</dd>
             <dt>{t("admin.rc.decidedBy")}</dt>
-            <dd>{receipt.decidedBy === null ? NONE : shortId(receipt.decidedBy)}</dd>
+            <dd>
+              {actorName(receipt.decidedBy, receipt.decidedByTgId, (id) => t("admin.actor.groupAdmin", { id }), NONE)}
+            </dd>
           </>
         )}
         {receipt.months === null ? null : (

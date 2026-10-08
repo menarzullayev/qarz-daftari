@@ -581,6 +581,7 @@ def test_the_queue_lists_waiting_receipts_of_all_shops_oldest_first(
         "created_at": mine[1]["created_at"],
         "decided_at": None,
         "decided_by": None,
+        "decided_by_tg_id": None,
         "has_file": True,
         "copies": mine[1]["copies"],
     }
@@ -617,6 +618,7 @@ def test_an_administrator_opens_a_receipt_through_a_link_and_the_look_is_audited
         "created_at",
         "decided_at",
         "decided_by",
+        "decided_by_tg_id",
         "has_file",
         "file",
         "copies",
@@ -684,6 +686,7 @@ def test_approval_extends_the_paid_period_and_tells_the_owner(
         "created_at": body["created_at"],
         "decided_at": body["decided_at"],
         "decided_by": str(world.admin),
+        "decided_by_tg_id": None,
         "has_file": True,
         "subscription": {"state": "active", "paid_through": until.isoformat()},
     }

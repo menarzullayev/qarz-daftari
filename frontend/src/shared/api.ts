@@ -352,6 +352,8 @@ export type AccountDetail = MyAccount & {
   overdueAmount: number;
   dueToday: number;
   removalRequested: boolean;
+  /** The customer's own payment history indicator (BR-9); null while nothing has fallen due. */
+  paymentHistory: PaymentHistory | null;
   entries: AccountEntry[];
   entriesTotal: number;
   /** The customer's own recent payment notices with their outcome, newest first. */
@@ -879,6 +881,7 @@ function accountDetail(value: unknown): AccountDetail {
     overdueAmount: whole(late["amount"]),
     dueToday: whole(late["due_today"]),
     removalRequested: flag(body["removal_requested"]),
+    paymentHistory: paymentHistory(body["payment_history"]),
     entries: list(body["entries"], accountEntry),
     entriesTotal: whole(body["entries_total"]),
     paymentNotices: paymentNotices(body["payment_notices"]),

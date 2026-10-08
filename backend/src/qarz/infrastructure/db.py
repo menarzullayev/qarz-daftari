@@ -37,6 +37,7 @@ from qarz.application.ports import (
     ExportJobRecord,
     ExportPromise,
     GoodsLineRecord,
+    GroupReceipt,
     ImportBatchRecord,
     ImportCandidate,
     LockedSubscription,
@@ -312,7 +313,7 @@ _RECEIPTS_OF_SHOP = (
 )
 _ADMIN_RECEIPT_COLUMNS = (
     "receipt_id, shop_id, shop_name, stated_amount, stated_months, status, months, reject_reason, created_at, "
-    "decided_at, decided_by"
+    "decided_at, decided_by, decided_by_tg"
 )
 _NOTICE_SELECT = (
     "SELECT n.id, n.customer_id, n.amount, n.file_id, n.status, n.payment_entry, e.amount AS recorded_amount, "
@@ -3058,7 +3059,8 @@ class PgPlatformSession:
         rows = (
             await self._conn.execute(
                 text(
-                    "SELECT id, at, admin_id, action, target_type, target_id, target_shop, reason, detail "
+                    "SELECT id, at, admin_id, actor_tg, action, target_type, target_id, target_shop, reason, "
+                    "  detail "
                     "FROM admin_audit "
                     "WHERE (CAST(:shop_id AS uuid) IS NULL OR target_shop = CAST(:shop_id AS uuid)) "
                     "  AND (CAST(:admin_id AS uuid) IS NULL OR admin_id = CAST(:admin_id AS uuid)) "
@@ -3088,6 +3090,7 @@ class PgPlatformSession:
                 shop_id=row.target_shop,
                 reason=row.reason,
                 detail=json.loads(row.detail) if isinstance(row.detail, str) else dict(row.detail),
+                actor_tg=None if row.actor_tg is None else int(row.actor_tg),
             )
             for row in rows
         ]
@@ -3305,6 +3308,7 @@ class PgPlatformSession:
             has_file=has_file,
             copies=copies,
             file=file,
+            decided_by_tg=None if row.decided_by_tg is None else int(row.decided_by_tg),
         )
 
     async def admin_has_live_session(self, user_id: UUID, now: datetime) -> bool:
@@ -3412,6 +3416,72 @@ class PgPlatformSession:
             )
         ).one()
         return bool(row.written)
+
+    async def review_group_receipt(self, group_id: int, receipt_id: UUID, *, lock: bool) -> GroupReceipt | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT receipt_id, shop_id, shop_name, stated_amount, stated_months, status, state, "
+                    "  paid_through, owner_tg, owner_lang "
+                    "FROM review_group_receipt(:group_id, :receipt, :lock)"
+                ),
+                {"group_id": group_id, "receipt": receipt_id, "lock": lock},
+            )
+        ).first()
+        if row is None:
+            return None
+        return GroupReceipt(
+            receipt_id=row.receipt_id,
+            shop_id=row.shop_id,
+            shop_name=str(row.shop_name),
+            stated_amount=int(row.stated_amount),
+            stated_months=None if row.stated_months is None else int(row.stated_months),
+            status=str(row.status),
+            state=None if row.state is None else str(row.state),
+            paid_through=row.paid_through,
+            owner_tg=None if row.owner_tg is None else int(row.owner_tg),
+            owner_lang=row.owner_lang,
+        )
+
+    async def review_group_decide_receipt(
+        self,
+        group_id: int,
+        decider_tg: int,
+        receipt_id: UUID,
+        *,
+        status: str,
+        months: int | None,
+        reason: str | None,
+        state: str | None,
+        paid_through: date | None,
+        prior_state: str | None,
+        detail: dict[str, Any],
+        now: datetime,
+    ) -> bool:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT review_group_decide_receipt(:group_id, :decider, :receipt, :status, "
+                    "  CAST(:months AS smallint), CAST(:reason AS text), CAST(:state AS text), "
+                    "  CAST(:paid_through AS date), CAST(:prior_state AS text), CAST(:detail AS jsonb), :now"
+                    ") AS changed"
+                ),
+                {
+                    "group_id": group_id,
+                    "decider": decider_tg,
+                    "receipt": receipt_id,
+                    "status": status,
+                    "months": months,
+                    "reason": reason,
+                    "state": state,
+                    "paid_through": paid_through,
+                    "prior_state": prior_state,
+                    "detail": json.dumps(detail, ensure_ascii=False),
+                    "now": now,
+                },
+            )
+        ).one()
+        return bool(row.changed)
 
     async def record_shop_measure(self, shop_id: UUID, *, kind: str, entry_ref: UUID, amount: int) -> None:
         await self._conn.execute(

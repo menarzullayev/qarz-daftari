@@ -522,6 +522,24 @@ describe("the audit", () => {
     expect([...table.querySelectorAll("button")].map((button) => button.textContent)).toEqual(ROWS.map(() => "Faqat shu administrator"));
   });
 
+  it("names a review-group administrator by the Telegram identifier and offers no filter for them", async () => {
+    // A receipt decided from the review group: the row has no administrator, only a Telegram identifier (DEC-064).
+    const fromGroup = auditBody({ id: "g1", admin_id: null, actor_tg_id: 700123456, action: "subscription.receipt_approved", target_type: "receipt", target_id: "r1", reason: null, detail: { via: "group" } });
+    open(null, () => ok({ items: [fromGroup, auditBody()], next_cursor: null }));
+    const table = await screen.findByRole("table", { name: "Audit jurnali" });
+    const rows = cells(table);
+    expect(rows[1]?.[1]).toBe("Guruh administratori (Telegram ID 700123456)");
+    expect(rows[2]?.[1]).toBe("a1b2c3Faqat shu administrator");
+    expect([...table.querySelectorAll("button")].map((button) => button.textContent)).toEqual(["Faqat shu administrator"]);
+  });
+
+  it("refuses an audit row whose Telegram identifier is not a positive whole number", async () => {
+    for (const wrong of ["700123456", 0, -5, 1.5]) {
+      const made = adminApi(() => ok({ items: [auditBody({ admin_id: null, actor_tg_id: wrong })], next_cursor: null }));
+      await expect(made.api.listAudit({})).rejects.toMatchObject({ code: "BAD_RESPONSE" });
+    }
+  });
+
   it("filters by the kind of action, as the start of its name", async () => {
     const server = open();
     const select = (await screen.findByLabelText("Amal")) as HTMLSelectElement;

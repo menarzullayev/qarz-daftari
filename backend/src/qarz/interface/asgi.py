@@ -14,6 +14,7 @@ from qarz.infrastructure.file_store import build_file_store
 from qarz.infrastructure.secret_box import SecretBox
 from qarz.infrastructure.settings import Settings
 from qarz.infrastructure.telegram_files import TelegramFileFetcher
+from qarz.infrastructure.telegram_members import TelegramMemberReader
 from qarz.interface.http import create_app
 from qarz.interface.observability import configure_logging
 from qarz.interface.rate_limit import Limit, RateLimits
@@ -46,6 +47,7 @@ def build(settings: Settings | None = None) -> FastAPI:
         secrets_key=settings.secrets_key or None,
         previous_secrets_key=settings.secrets_key_previous or None,
         telegram_files=TelegramFileFetcher.for_token(settings.bot_token) if settings.bot_token else None,
+        telegram_members=TelegramMemberReader.for_token(settings.bot_token) if settings.bot_token else None,
         metrics_token=settings.metrics_token or None,
         payment_keys=PaymentKeys(
             payme_merchant_id=settings.payme_merchant_id,

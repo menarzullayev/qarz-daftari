@@ -498,7 +498,7 @@ def test_a_route_that_names_its_own_caching_rule_keeps_it_once(client: TestClien
     assert _caching(client.get("/healthz")) == ([], [])
 
 
-# --- finding 13: shops and trials per person ----------------------------------------------------------------
+# --- finding 13: one trial per person; no limit on shops (DEC-065) -------------------------------------------
 
 
 def _open_shop(client: TestClient, user: uuid.UUID, name: str = "Do'kon") -> Any:
@@ -549,28 +549,20 @@ def test_the_trial_is_for_a_persons_first_shop_and_later_shops_start_limited(
     assert sale.status_code == 402 and sale.json()["error"]["code"] == "SUBSCRIPTION_LIMITED", sale.text
 
 
-@pytest.mark.parametrize(
-    ("lang", "words"), [("uz", "Bir kishi ko'pi bilan 5 ta do'kon"), ("ru", "не больше 5 магазинов")]
-)
-def test_the_sixth_shop_is_refused_in_the_persons_language_and_nothing_is_written(
-    client: TestClient, owner: psycopg.Connection, lang: str, words: str
+@pytest.mark.parametrize("lang", ["uz", "ru"])
+def test_a_person_may_open_more_than_five_shops_and_only_the_first_gets_a_trial(
+    client: TestClient, owner: psycopg.Connection, lang: str
 ) -> None:
+    """The founder's decision of 2026-10-08 (DEC-065): there is no limit on the number of shops. Until
+    then the sixth was refused with SHOP_LIMIT_REACHED, a code that no longer exists."""
     person = _person(owner, lang)
-    for number in range(5):
-        assert _open_shop(client, person, f"Do'kon {number}").status_code == 201
-    shops = owner.execute("SELECT count(*) FROM shop").fetchone()
-
-    refused = _open_shop(client, person, "Oltinchi")
-    assert refused.status_code == 409, refused.text
-    assert refused.json()["error"]["code"] == "SHOP_LIMIT_REACHED"
-    assert words in refused.json()["error"]["message"]
-    assert owner.execute("SELECT count(*) FROM shop").fetchone() == shops
-    assert len(_subscriptions(owner, person)) == 5
-    # Somebody else is not held back by it.
-    assert _open_shop(client, _person(owner)).status_code == 201
+    opened = [_open_shop(client, person, f"Do'kon {number}") for number in range(8)]
+    assert [answer.status_code for answer in opened] == [201] * 8, [answer.text for answer in opened]
+    assert [answer.json()["subscription_state"] for answer in opened] == ["trial"] + ["limited"] * 7
+    assert sorted(_subscriptions(owner, person)) == ["limited"] * 7 + ["trial"]
 
 
-def test_an_erased_shop_frees_a_place_and_a_repeated_request_is_not_counted_twice(
+def test_a_repeated_request_opens_one_shop_and_an_erased_first_shop_does_not_bring_the_trial_back(
     client: TestClient, owner: psycopg.Connection
 ) -> None:
     person = _person(owner)
@@ -578,15 +570,7 @@ def test_an_erased_shop_frees_a_place_and_a_repeated_request_is_not_counted_twic
     for _ in range(3):
         again = client.post("/api/v1/shops", json={"name": "Bir", "lang": "uz"}, headers={**as_user(person), **key})
         assert again.status_code == 201
-    assert len(_subscriptions(owner, person)) == 1
-    for number in range(4):
-        assert _open_shop(client, person, f"Do'kon {number}").status_code == 201
-    assert _open_shop(client, person).status_code == 409
-    # The fifth shop's stored answer is still given to a repeat of its own request.
-    assert (
-        client.post("/api/v1/shops", json={"name": "Bir", "lang": "uz"}, headers={**as_user(person), **key}).status_code
-        == 201
-    )
+    assert _subscriptions(owner, person) == ["trial"]
 
     one = owner.execute(
         "SELECT shop_id FROM membership WHERE user_id = %s AND role = 'owner' LIMIT 1", (person,)
@@ -595,12 +579,14 @@ def test_an_erased_shop_frees_a_place_and_a_repeated_request_is_not_counted_twic
     owner.execute(
         "UPDATE shop SET status = 'deletion_pending', deletion_due = now() - interval '1 second' WHERE id = %s", one
     )
-    assert _open_shop(client, person).status_code == 409, "a shop waiting to be erased still exists"
     assert owner.execute("SELECT erase_shop(%s)", one).fetchone() == (True,)
-    assert _open_shop(client, person).status_code == 201
+    # One trial for a person, not one for each first shop: the next one starts limited.
+    later = _open_shop(client, person)
+    assert (later.status_code, later.json()["subscription_state"]) == (201, "limited")
 
 
-def test_two_requests_at_once_cannot_both_take_the_last_place(client: TestClient, owner: psycopg.Connection) -> None:
+def test_many_shops_opened_at_once_are_all_opened(client: TestClient, owner: psycopg.Connection) -> None:
+    """With the limit, six requests at once for the last place gave one shop and five refusals."""
     person = _person(owner)
     for number in range(4):
         assert _open_shop(client, person, f"Do'kon {number}").status_code == 201
@@ -614,8 +600,8 @@ def test_two_requests_at_once_cannot_both_take_the_last_place(client: TestClient
         thread.start()
     for thread in threads:
         thread.join()
-    assert sorted(results) == [201, 409, 409, 409, 409, 409]
-    assert len(_subscriptions(owner, person)) == 5
+    assert results == [201] * 6
+    assert sorted(_subscriptions(owner, person)) == ["limited"] * 9 + ["trial"]
 
 
 def test_two_first_shops_at_once_get_one_trial_between_them(client: TestClient, owner: psycopg.Connection) -> None:
@@ -634,7 +620,7 @@ def test_two_first_shops_at_once_get_one_trial_between_them(client: TestClient, 
     assert sorted(_subscriptions(owner, person)) == ["limited", "limited", "limited", "trial"]
 
 
-def test_the_chat_says_in_words_that_a_later_shop_has_no_trial_and_that_the_sixth_is_refused(
+def test_the_chat_says_in_words_that_a_later_shop_has_no_trial_and_opens_a_sixth_shop_too(
     client: TestClient, owner: psycopg.Connection
 ) -> None:
     person = Chat(client, owner, next(_tg_ids), language="ru")
@@ -645,15 +631,16 @@ def test_the_chat_says_in_words_that_a_later_shop_has_no_trial_and_that_the_sixt
         return person.say(name).text
 
     assert open_shop("Первый") == say("ru", "shop_created", shop="Первый")
-    for name in ("Второй", "Третий", "Четвёртый", "Пятый"):
+    # No limit on the number of shops (DEC-065): the sixth and the seventh open like the second.
+    for name in ("Второй", "Третий", "Четвёртый", "Пятый", "Шестой", "Седьмой"):
         assert open_shop(name) == say("ru", "shop_created_limited", shop=name)
-    assert open_shop("Шестой") == say("ru", "shop_limit_reached")
-    assert "5" in say("uz", "shop_limit_reached") and "5" in say("ru", "shop_limit_reached")
     names = owner.execute(
         "SELECT count(*) FROM shop s JOIN membership m ON m.shop_id = s.id JOIN app_user u ON u.id = m.user_id "
         "WHERE u.tg_id = %s",
         (person.tg_id,),
     ).fetchone()
-    assert names == (5,)
-    # The refusal ended the question: the next message is not taken for a shop's name.
-    assert person.say("Седьмой").text != say("ru", "shop_limit_reached")
+    assert names == (7,)
+    # There is no refusal left to word.
+    for catalog in ("uz", "ru"):
+        with pytest.raises(KeyError):
+            say(catalog, "shop_limit_reached")

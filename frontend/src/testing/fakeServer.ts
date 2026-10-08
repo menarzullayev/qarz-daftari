@@ -252,6 +252,7 @@ export function accountBody(overrides: Record<string, unknown> = {}) {
     display_name: "Ali Valiyev",
     balance: 120000,
     overdue: { amount: 0, due_today: 0 },
+    payment_history: null,
     removal_requested: false,
     entries: [accountEntryBody()],
     entries_total: 1,

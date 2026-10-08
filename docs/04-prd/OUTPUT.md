@@ -190,7 +190,7 @@ Credit control, overview, reports:
 | REQ-026 | Staff can see total outstanding credit, customers by balance, and overdue customers with days overdue, with search and filters. | FEAT-009 | Changed |
 | REQ-027 | Staff can open any customer and see balance, history with goods, promised dates, and disputes. | FEAT-009 | Changed |
 | REQ-044 | An owner or manager can set a credit limit per customer and a shop default. A sale that would exceed the limit warns the seller; whether sellers may proceed is a shop setting. | FEAT-018 | New |
-| REQ-045 | Each customer shows an in-shop payment history indicator derived only from that shop's records, for example the share of debt repaid by the promised date and the longest delay. It is visible to staff only and is never shared outside the shop. | FEAT-018 | New |
+| REQ-045 | Each customer shows an in-shop payment history indicator derived only from that shop's records, for example the share of debt repaid by the promised date and the longest delay. It is visible to the shop's staff and, on their own page, to the customer it is about; it is never shared with anyone else. The seller's note on an entry and the entry's author stay visible to staff only. (Changed by the founder on 2026-10-08, DEC-066: before that the customer did not see it.) | FEAT-018 | New |
 | REQ-046 | An owner or manager can view reports for a chosen period: credit given, repaid, repaid by the promised date, overdue by age band, largest debtors, disputes, and entries per staff member. | FEAT-019 | New |
 | REQ-047 | An owner can view the activity log of the shop, filtered by staff member, customer, and type of action. | FEAT-023 | New |
 
@@ -218,7 +218,7 @@ Subscription and administration:
 | REQ-052 | A new shop starts a free trial of 30 days when the trial switch is on, which is the default. The administrator can turn the trial off for new shops and can extend or end it for any shop. | FEAT-015 | New |
 | REQ-053 | The subscription price is one amount per shop per month, set by the administrator; the initial value is 100,000 UZS. | FEAT-015 | New |
 | REQ-054 | To pay, the owner is shown a card number and the amount, pays by transfer outside the system, and sends the receipt image or file through the bot. | FEAT-015 | New |
-| REQ-055 | Each receipt is delivered to the administrator and to a designated review group. An administrator approves or rejects it with a reason. Approval extends the subscription by the paid period; the owner is told the outcome either way. | FEAT-015, FEAT-021 | New |
+| REQ-055 | Each receipt is delivered to the administrator and to a designated review group. An administrator approves or rejects it with a reason. A Telegram administrator of the review group may also approve or reject it from the buttons on the group's announcement, whether or not they are a platform administrator; that is all such a person may do, and the decision is recorded with their Telegram user identifier. (Changed by the founder on 2026-10-08, DEC-064.) Approval extends the subscription by the paid period; the owner is told the outcome either way. | FEAT-015, FEAT-021 | New |
 | REQ-056 | Online payment through local payment systems is implemented behind a platform switch that is off by default. | FEAT-015 | New |
 | REQ-057 | Owners are warned before a trial or subscription ends. When it ends, the shop becomes limited: staff can still view, export, and record payments, customers can still see their debts, and new credit entries are blocked until payment is approved. | FEAT-015 | New |
 | REQ-058 | Administrators have a panel to list and search shops, see subscription state and payment history, approve receipts, change switches and prices, suspend a shop, and act on support requests. Every administrator action is logged. | FEAT-021 | New |
@@ -361,7 +361,7 @@ Assumptions built into the requirements:
 - Owners will pay by card transfer and send receipts. Untested.
 - A limited mode after expiry, which never hides a shop's own data, is the right balance between revenue and trust. Agent decision.
 - The design capacities in REQ-N13 are adequate. Agent decision.
-- The reliability indicator in REQ-045 is lawful because it never leaves the shop. Agent inference, not legal advice.
+- The reliability indicator in REQ-045 is lawful because it never leaves the shop, other than to the customer it is about (changed by the founder on 2026-10-08, DEC-066). Agent inference, not legal advice.
 
 ## Open questions
 
@@ -369,7 +369,7 @@ Assumptions built into the requirements:
 2. **Telegram's payment rules.** Does collecting a subscription through the bot by card transfer breach the Stars requirement (EVID-028), and what is the consequence if it does?
 3. Legal questions carried from version 1: recording a customer before consent; delaying removal while a balance is owed; notifications through Telegram's servers abroad; the consent text. Added by this revision: retention of payment receipts, which contain the payer's card details, and the lawfulness of SMS to customers who have not consented.
 4. Which SMS provider, at what price, and does it require a registered entity?
-5. Who sits in the receipt review group, and what stops a forged receipt from being approved?
+5. Who sits in the receipt review group, and what stops a forged receipt from being approved? In part decided by the founder on 2026-10-08 (DEC-064): the group's own Telegram administrators may approve and reject from the group, so who administers that group is now a matter of security. What stops a forged receipt is unchanged and still open.
 6. Resolved on 2026-10-06: four candidate functions joined release 1 (FEAT-024 to FEAT-027 inclusive).
 7. Does the web panel need anything the Mini App cannot do, or is it the same screens on a larger display?
 

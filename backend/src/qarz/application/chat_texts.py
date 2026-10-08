@@ -34,10 +34,6 @@ UZ = {
         "✅ «{shop}» do'koni ochildi.\n\nBepul sinov muddati faqat birinchi do'konga beriladi. "
         "Bu do'konda nasiya yozish uchun obuna to'lovini qiling."
     ),
-    "shop_limit_reached": (
-        "Sizda allaqachon 5 ta do'kon bor. Bir kishi ko'pi bilan 5 ta do'kon ocha oladi. "
-        "Yangisini ochish uchun avval keraksiz do'konni o'chiring."
-    ),
     "shop_created": "✅ «{shop}» do'koni ochildi.\n\nEndi nasiya yozishingiz mumkin, masalan: Ali 45000",
     "lang_prompt": "Tilni tanlang:",
     "lang_set": "Til o'zgartirildi: o'zbekcha.",
@@ -219,6 +215,12 @@ UZ = {
     "a_receipt_rejected": "«{shop}»: chek rad etildi. Sabab: {reason}",
     "a_receipt_decided": "Bu chek bo'yicha qaror allaqachon qabul qilingan.",
     "a_receipt_use_panel": "Bu chekni admin panelda ko'rib chiqing: oylar sonini kiritish kerak.",
+    # Shown over the button to a Telegram administrator of the review group (at most 200 characters).
+    "g_reason_in_private": (
+        "Rad etish sababini botga shaxsiy xabarda yozing. Bot bilan hali yozishmagan bo'lsangiz, "
+        "avval botni ochib «Start»ni bosing va «Rad etish»ni qayta bosing."
+    ),
+    "g_receipt_needs_panel": "Bu chekda oylar soni ko'rsatilmagan. Uni platforma administratori panelda hal qiladi.",
     "ask_receipt_reject_reason": "Rad etish sababini yozing (3–500 belgi). U do'kon egasiga yuboriladi.",
     "a_reason_invalid": "Sabab 3 tadan 500 tagacha belgi bo'lishi kerak. Qaytadan yozing yoki bekor qiling.",
     "sub_trial_ending": "«{shop}»: sinov muddati {days} kundan keyin, {date} kuni tugaydi. Davom ettirish: /obuna",
@@ -366,10 +368,6 @@ RU = {
     "shop_created_limited": (
         "✅ Магазин «{shop}» открыт.\n\nБесплатный пробный период даётся только первому магазину. "
         "Чтобы записывать долги в этом магазине, оплатите подписку."
-    ),
-    "shop_limit_reached": (
-        "У вас уже 5 магазинов. Один человек может открыть не больше 5 магазинов. "
-        "Чтобы открыть новый, сначала удалите ненужный."
     ),
     "shop_created": "✅ Магазин «{shop}» открыт.\n\nТеперь можно записывать долги, например: Али 45000",
     "lang_prompt": "Выберите язык:",
@@ -546,6 +544,11 @@ RU = {
     "a_receipt_rejected": "«{shop}»: чек отклонён. Причина: {reason}",
     "a_receipt_decided": "По этому чеку решение уже принято.",
     "a_receipt_use_panel": "Рассмотрите этот чек в панели администратора: нужно указать число месяцев.",
+    "g_reason_in_private": (
+        "Напишите причину отказа боту в личном чате. Если вы ещё не писали боту, "
+        "сначала откройте его, нажмите «Start» и нажмите «Отклонить» ещё раз."
+    ),
+    "g_receipt_needs_panel": "В этом чеке не указано число месяцев. Его рассмотрит администратор платформы в панели.",
     "ask_receipt_reject_reason": "Напишите причину отказа (3–500 символов). Она будет отправлена владельцу магазина.",
     "a_reason_invalid": "Причина должна быть от 3 до 500 символов. Напишите ещё раз или отмените.",
     "sub_trial_ending": "«{shop}»: пробный период закончится через {days} дн., {date}. Продолжить: /obuna",

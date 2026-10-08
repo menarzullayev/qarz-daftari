@@ -361,6 +361,28 @@ describe("one receipt", () => {
     expect(await screen.findByRole("button", { name: "Tasdiqlash" })).toBeTruthy();
   });
 
+  it.each([
+    ["uz", "Guruh administratori (Telegram ID 700123456)"],
+    ["ru", "Администратор группы (Telegram ID 700123456)"],
+  ] as const)("names the review group's administrator who decided by the Telegram identifier, in %s", async (language, name) => {
+    // Decided from the review group by one of its Telegram administrators, who has no account here (DEC-064).
+    const decided = receiptDetailBody({ status: "approved", months: 2, decided_at: "2026-10-06T07:00:00+00:00", decided_by: null, decided_by_tg_id: 700123456 });
+    renderAdmin(<ReceiptScreen api={adminApi(() => ok(decided)).api} receiptId={RECEIPT_ID} />, language);
+    await waitFor(() => expect(facts()).toContain(name));
+    expect(facts()).not.toContain("a1b2c3");
+    // An administrator of the platform is still named by the code, and nobody by a dash.
+    cleanup();
+    renderAdmin(<ReceiptScreen api={adminApi(() => ok({ ...decided, decided_by: ADMIN_ID, decided_by_tg_id: null })).api} receiptId={RECEIPT_ID} />, language);
+    await waitFor(() => expect(facts()).toContain("a1b2c3"));
+    expect(facts()).not.toContain(name);
+  });
+
+  it("refuses a Telegram identifier that is not a positive whole number", async () => {
+    for (const wrong of ["700123456", 0, -5, 1.5]) {
+      await expect(adminApi(() => ok(receiptDetailBody({ decided_by_tg_id: wrong }))).api.readReceipt(RECEIPT_ID)).rejects.toMatchObject({ code: "BAD_RESPONSE" });
+    }
+  });
+
   it("says the same in Russian", async () => {
     renderAdmin(<ReceiptScreen api={adminApi(() => ok(receiptDetailBody())).api} receiptId={RECEIPT_ID} />, "ru");
     fireEvent.click(await screen.findByRole("button", { name: "Подтвердить" }));
