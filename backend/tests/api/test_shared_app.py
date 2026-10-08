@@ -218,16 +218,27 @@ def test_a_counter_that_is_not_set_back_is_found(monkeypatch: pytest.MonkeyPatch
 # --- the counters are set back ------------------------------------------------------------------------------
 
 
-def test_the_counters_start_from_nothing_in_every_test(client: TestClient, world: World, shared_app: SharedApp) -> None:
+@pytest.mark.parametrize("round_", [1, 2])
+def test_the_counters_start_from_nothing_in_every_test(client: TestClient, world: World, round_: int) -> None:
+    # Two rounds, each of which leaves the counters counted: whichever runs second, in any order and
+    # however far from the first, would start with them if the fixture did not set them back.
     metrics = metrics_of(client.app)  # type: ignore[arg-type]
     assert vars(metrics) == vars(Metrics()), "as a newly built application has them"
     assert client.get(f"/api/v1/shops/{world.shop_a}", headers=as_user(world.owner_a)).status_code == 200
     assert client.get(f"/api/v1/shops/{world.shop_a}", headers=as_user(world.stranger)).status_code == 404
     assert vars(metrics) != vars(Metrics()), "the two requests were counted"
-    counted = dict(vars(metrics))
+    assert set(vars(metrics)) == SET_BACK_BEFORE_EACH_TEST[Metrics], (
+        "every field of the counters is one that is set back"
+    )
+
+
+def test_setting_back_leaves_the_counters_as_new(client: TestClient, world: World) -> None:
+    metrics = metrics_of(client.app)  # type: ignore[arg-type]
+    assert client.get(f"/api/v1/shops/{world.shop_a}", headers=as_user(world.owner_a)).status_code == 200
+    assert vars(metrics) != vars(Metrics())
     as_new(client.app)  # type: ignore[arg-type]
     assert vars(metrics) == vars(Metrics())
-    assert set(counted) == SET_BACK_BEFORE_EACH_TEST[Metrics], "every field of the counters is one that is set back"
+    assert metrics_of(client.app) is metrics, "the same object the middleware counts into"  # type: ignore[arg-type]
 
 
 def test_setting_back_refuses_an_application_without_exactly_one_set_of_counters() -> None:
@@ -384,6 +395,7 @@ def test_a_test_gets_the_shared_application_with_its_own_things_behind(
 
 
 _BEHIND_IN_EARLIER_ROUNDS: list[tuple[object, object, object]] = []
+_APPLICATIONS: list[object] = []
 
 
 @pytest.mark.parametrize("round_", [1, 2, 3])
@@ -398,6 +410,9 @@ def test_no_two_tests_have_the_same_connections_clock_or_fakes_behind_the_applic
     for theirs in _BEHIND_IN_EARLIER_ROUNDS:
         assert all(one is not other for one, other in zip(mine, theirs, strict=True))
     _BEHIND_IN_EARLIER_ROUNDS.append(mine)
+    # And the application is the same one in every round: it is built once.
+    _APPLICATIONS.append(client.app)
+    assert all(app is shared_app.app for app in _APPLICATIONS)
     # What this round does to its clock and its fake must not be there for the next.
     assert stage.admin_env().clock.offset == dt.timedelta(0)
     assert stage.telegram_members._target.statuses == {}
