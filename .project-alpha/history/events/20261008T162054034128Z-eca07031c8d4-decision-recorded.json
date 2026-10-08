@@ -1,0 +1,21 @@
+{
+  "event_id": "eca07031c8d4",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-08T16:20:54+00:00",
+  "path": ".project-alpha\\decisions\\DEC-067.md",
+  "stage": "04-prd",
+  "title": "Earlier choices of agents the founder reviewed and left as they are",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-067",
+  "decision": "On 2026-10-08 the founder was shown these choices one at a time and kept each: disputed entries stay in the balance and receive payments, and are left out only of reminders (DEC-026); one entry is at most 100 000 000 UZS (DEC-027, DEC-036); customers are sent nothing when a shop is deleted (DEC-038); owners and managers may export (DEC-055); receipts are kept three years until legal advice says otherwise (DEC-056); a former owner becomes a suspended manager when ownership is reassigned (DEC-062, apart from its shop limit, see DEC-065); the Mini App keeps its session token until the window closes (DEC-063); and the architecture document is to be amended to name nginx (DEC-058). The other choices in DEC-021 to DEC-063 were not shown to him and stay pending",
+  "context": "Answered by the founder on 2026-10-08 when asked by the agent in the working session",
+  "chosen_option": "Keep each as built",
+  "rationale": "Each was put to him with alternatives and he chose the current behaviour",
+  "impact": "Low",
+  "reversibility": "High",
+  "evidence": "EVID-077",
+  "approval_required": "yes",
+  "approval_status": "approved",
+  "approver": "founder",
+  "approved_at": "2026-10-08"
+}

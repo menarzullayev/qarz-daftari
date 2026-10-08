@@ -1,0 +1,21 @@
+{
+  "event_id": "916c3b2b89ba",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-08T16:21:18+00:00",
+  "path": ".project-alpha\\decisions\\DEC-070.md",
+  "stage": "04-prd",
+  "title": "The service runs on one host reached through Cloudflare Tunnel, backed up to Cloudflare R2",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-070",
+  "decision": "For lack of budget the service will run on a single computer the founder already has and be started by hand if it goes down. It is reached through a Cloudflare Tunnel on a subdomain of a domain he already has, and encrypted backups go to Cloudflare R2 every day. This replaces the two servers of the approved architecture and its availability target, the failover of S1.5, and the two locations of DEC-060; launch criteria 8 and 12 have to be rewritten for one host. The agent inspected the host and told the founder what it lacks for this role; that list is kept out of the repository",
+  "context": "Answered by the founder on 2026-10-08 when asked by the agent in the working session",
+  "chosen_option": "One host; Cloudflare Tunnel; encrypted daily backups to R2",
+  "rationale": "The founder said the budget does not allow servers now. The tunnel needs no public address or open port, and R2 keeps a copy off the one disk, which the agent asked for after he first chose two locations on what were then two servers",
+  "impact": "High",
+  "reversibility": "High",
+  "evidence": "EVID-077",
+  "approval_required": "yes",
+  "approval_status": "approved",
+  "approver": "founder",
+  "approved_at": "2026-10-08"
+}

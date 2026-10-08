@@ -1,0 +1,15 @@
+{
+  "event_id": "683b7609ca1d",
+  "event_type": "evidence.recorded",
+  "timestamp": "2026-10-08T16:20:53+00:00",
+  "path": "docs\\evidence\\EVID-078.md",
+  "stage": "09-development-plan",
+  "title": "Separate database roles and signing out everywhere pass CI on main",
+  "claim": "Pull request 68 splits the one application role into qd_app, qd_admin and qd_worker (migration 0031), with a test that compares every table right and every SECURITY DEFINER function against one explicit table and tries each right a role was not given, and adds an operation and a control to end all of a person's sessions. CI passed on main in the run for commit 446bd43. The roles connected only in tests and in the local and CI end-to-end stack: nothing ran on a server, and upgrading an existing database was not rehearsed. The administrator side still runs inside the API process, so that process holds two of the three connections",
+  "source": "https://github.com/menarzullayev/qarz-daftari/pull/68 ; https://github.com/menarzullayev/qarz-daftari/actions/runs/37790862313",
+  "date": "2026-10-08",
+  "confidence": "HIGH",
+  "type": "FACT",
+  "risk": "LOW",
+  "evidence_id": "EVID-078"
+}

@@ -1,0 +1,21 @@
+{
+  "event_id": "03faea27fbb4",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-08T16:20:54+00:00",
+  "path": ".project-alpha\\decisions\\DEC-069.md",
+  "stage": "04-prd",
+  "title": "SMS reminders are in release 1, sent through Eskiz",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-069",
+  "decision": "SMS reminders are part of release 1 and the provider is Eskiz. The agent writes the sender; the contract, the sender name and the message templates in Eskiz's cabinet, and turning the switch on, are the founder's. The switch stays off until he turns it on",
+  "context": "Answered by the founder on 2026-10-08 when asked by the agent in the working session",
+  "chosen_option": "Eskiz",
+  "rationale": "The founder was asked whether SMS is in release 1 and chose Eskiz over leaving SMS out and over Play Mobile",
+  "impact": "Medium",
+  "reversibility": "High",
+  "evidence": "EVID-077",
+  "approval_required": "yes",
+  "approval_status": "approved",
+  "approver": "founder",
+  "approved_at": "2026-10-08"
+}

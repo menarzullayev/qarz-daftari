@@ -1,0 +1,21 @@
+{
+  "event_id": "2506cc73c6e9",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-08T16:20:53+00:00",
+  "path": ".project-alpha\\decisions\\DEC-066.md",
+  "stage": "04-prd",
+  "title": "A customer sees their own payment history indicator",
+  "risk": "MEDIUM",
+  "decision_id": "DEC-066",
+  "decision": "The customer's page shows the customer their own payment history indicator for that shop, the same figures the staff see. The seller's note and the author of an entry stay hidden from the customer, as in DEC-033",
+  "context": "Answered by the founder on 2026-10-08 when asked by the agent in the working session",
+  "chosen_option": "Show the indicator; keep the note and the author hidden",
+  "rationale": "The founder was asked what the customer should see and chose to add the indicator. The agent had recommended leaving it out because it may raise complaints; he preferred that customers see how they are rated",
+  "impact": "Medium",
+  "reversibility": "High",
+  "evidence": "EVID-077",
+  "approval_required": "yes",
+  "approval_status": "approved",
+  "approver": "founder",
+  "approved_at": "2026-10-08"
+}
