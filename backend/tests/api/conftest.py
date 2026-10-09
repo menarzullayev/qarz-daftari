@@ -7,7 +7,7 @@ the caller's user identifier from a header. It exists only in the test suite.
 import hashlib
 import os
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -552,3 +552,19 @@ def session_client(app_database_url: str) -> Iterator[SessionClient]:
     with TestClient(app) as test_client:
         yield SessionClient(test_client, clock)
         test_client.portal.call(database.dispose)  # type: ignore[union-attr]
+
+
+@pytest.fixture
+def free_plan(owner: psycopg.Connection) -> Iterator[Callable[[int], None]]:
+    """Switch the free plan on for the platform (BR-33), holding the number of customers it is called
+    with; off again afterwards. Called again, it changes the number."""
+
+    def switch_on(customers: int) -> None:
+        owner.execute(
+            "INSERT INTO platform_setting (key, value, updated_by) VALUES ('free_plan_on', 'true', 'test'), "
+            "('free_plan_customers', %s::jsonb, 'test') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            (str(customers),),
+        )
+
+    yield switch_on
+    owner.execute("DELETE FROM platform_setting WHERE key IN ('free_plan_on', 'free_plan_customers')")

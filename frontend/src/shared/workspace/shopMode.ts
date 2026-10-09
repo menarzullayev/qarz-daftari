@@ -20,7 +20,8 @@ export function modeOfRefusal(error: ApiError): ShopMode | null {
   return error.code === "SHOP_SUSPENDED" ? "suspended" : null;
 }
 
-/** The mode a subscription state stands for, or null for a shop that works in full. */
+/** The mode a subscription state stands for, or null for a shop that works in full: one in a trial or
+ * paid period, and one the free plan holds ("free"). */
 export function modeOfState(state: string): ShopMode | null {
   return state === "limited" || state === "suspended" ? state : null;
 }

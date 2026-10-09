@@ -127,6 +127,7 @@ export const ruImports: RuImportsCatalog = {
   "imports.refused.reason.internal": "Произошла внутренняя ошибка. Повторите попытку.",
   "imports.refused.reason.stale": "После просмотра клиенты изменились. Проверьте обновлённый просмотр и затем применяйте.",
   "imports.refused.reason.errors": "При повторной проверке в строках нашлись ошибки.",
+  "imports.refused.reason.free_plan_full": "Бесплатный тариф не вмещает новых клиентов этого импорта. Чтобы добавить больше, оплатите подписку: страница «Подписка» или /obuna в боте.",
   "imports.refused.reason.other": "Код причины: {reason}",
   "imports.stale": "Не удалось обновить состояние.",
   "imports.refresh": "Обновить",

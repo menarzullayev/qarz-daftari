@@ -703,6 +703,15 @@ class PgTenantSession:
             None if row.credit_limit is None else int(row.credit_limit),
         )
 
+    async def active_customers(self, *, lock: bool = False) -> int:
+        if lock:
+            await self._conn.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:scope, 0))"),
+                {"scope": "free_plan:" + str(self._shop_id)},
+            )
+        row = (await self._conn.execute(text("SELECT count(*) AS n FROM customer WHERE status = 'active'"))).one()
+        return int(row.n)
+
     async def create_customer(
         self, *, customer_id: UUID, display_name: str, name_norm: str, phone: str | None
     ) -> CustomerRecord:

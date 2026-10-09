@@ -492,7 +492,9 @@ contract with the provider, and a registered entity.
 read 2026-10-08) and **has never been run against Eskiz**: every test uses a fake transport. An SMS
 leaves only when all four hold: the Eskiz account is set in the worker's environment, the platform switch
 `sms_on` is on, the shop turned SMS on for itself, and the shop has quota left this month
-(`sms_monthly_quota`, 0 by default). Until then nothing is sent.
+(`sms_monthly_quota`, 0 by default). Until then nothing is sent. While the free plan is on
+(`free_plan_on`, below) there is a fifth: the shop is in a paid period. A shop on trial, a free shop and a
+limited shop then send no SMS, and their owners are shown SMS as something paying adds.
 
 1. **Contract.** A contract with Eskiz in the name of the registered entity, and money on its balance.
    **Not yet possible:** there is no registered entity.
@@ -525,6 +527,35 @@ leaves only when all four hold: the Eskiz account is set in the worker's environ
 9. **To change the Eskiz password:** change it in the cabinet, set `QD_ESKIZ_PASSWORD`, restart the
    worker. The token Eskiz gives (30 days) is held only in the worker's memory: it is never logged and
    never stored, and a restart obtains a new one with the first message.
+
+### The free plan (`free_plan_on`, `free_plan_customers`)
+
+Built and switched off (expansion module A; domain rules BR-33 to BR-35). Like every module of the
+expansion it is switched on only by the founder's decision, in the admin panel, Settings; the code is
+asked for again. `free_plan_customers` (30 by default, 1 to 10 000) is how many customers the plan holds.
+It applies to every shop at once.
+
+What changes the moment it is on:
+
+- A shop whose trial or paid period has ended, or that never had one, and that has no more **active**
+  customers than the number, is free: it works in full and `/obuna` and the subscription page say "free
+  plan", with the customers used. Archived customers are not counted. Nothing is written to
+  `subscription`: its `state` stays `limited`, meaning "no period runs", and the admin panel's list of
+  shops shows such a shop as limited.
+- A shop without a running period cannot go over the number: the next customer, a customer taken out of
+  the archive, or an import that would exceed it is refused with `FREE_PLAN_FULL`, in the panel and in
+  the bot, with the number and `/obuna`.
+- A shop over the number whose period ends becomes limited exactly as before. The daily review at 09:00
+  tells each owner which of the two happened, and the warnings seven days and one day before say which
+  will.
+- SMS, if `sms_on` is on, is sent only for shops in a paid period (above).
+
+Before the switch: decide `free_plan_customers` first, then turn `free_plan_on` on. Raising the number
+later makes limited shops under the new number free at once; lowering it makes free shops over the new
+number limited at once, with no message to their owners, so tell them before lowering it.
+
+To switch off: the same setting. Every free shop is limited again at once, as it was before the plan,
+and shops on trial and limited shops send SMS again if they had turned it on.
 
 ### When SMS fail
 
@@ -586,7 +617,8 @@ The wordings themselves are agent drafts awaiting the founder's review (DEC-035)
 
 ## 13. Onboard a shop, including its paper ledger
 
-1. The owner starts the bot, opens a shop and gets the trial (if `trial_on`).
+1. The owner starts the bot, opens a shop and gets the trial (if `trial_on`). While the free plan is on
+   (`free_plan_on`, runbook 12), a shop without a trial, such as a person's second shop, starts free.
 2. Staff: the owner invites sellers and managers from the panel; each accepts in the bot.
 3. The counter code: printed and placed where customers can scan it; each customer agrees to the consent
    text before anything is shown to them. **The consent text has had no legal review.** A shop's
