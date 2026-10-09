@@ -15,6 +15,7 @@ export const tg: PartialCatalog<typeof uz> = {
   "nav.stock": "Анбор",
   "nav.stockDocuments": "Ҳуҷҷатҳои анбор",
   "nav.suppliers": "Таъминкунандагон",
+  "nav.network": "Шарикон",
   "nav.reminders": "Ёдовариҳо",
   "nav.reports": "Ҳисоботҳо",
   "nav.cash": "Касса",

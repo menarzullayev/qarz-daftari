@@ -23,22 +23,32 @@ its wording as expected.
 
 ## What there is to review
 
-About 2 300 texts for each of Tajik, Karakalpak and English, the cash book and the stock included, all
-complete on 2026-10-09 (`npm run i18n:missing` in `frontend/`, `python scripts/i18n_missing.py` in
-`backend/`: nothing missing).
+About 2 700 texts for each of Tajik, Karakalpak and English: every module of the expansion, the network
+between shops (module J) included since the final pass of 2026-10-09. **Completeness is enforced:** CI
+runs `npm run i18n:missing -- --strict` in `frontend/` and `python scripts/i18n_missing.py --strict` in
+`backend/`, and the tests ask the same (`frontend/src/i18n/newLanguages.test.ts`,
+`backend/tests/test_languages.py`), so a text added in Uzbek without its Tajik, Karakalpak and English
+fails the pull request that adds it. Complete is not reviewed: **the Tajik and Karakalpak texts, the
+network's among them, were written by a model and no native speaker has read them.**
 
 | Where a person sees it | Files (`xx` is `tg`, `kaa` or `en`) | Texts |
 |---|---|---|
-| Mini App and web panel, every screen | `frontend/src/i18n/xx.ts` | 598 |
-| Web panel's own screens (staff, activity, deletion, permissions) | `frontend/src/i18n/panel/xx.ts` | 225 |
+| Mini App and web panel, every screen | `frontend/src/i18n/xx.ts` | 605 |
+| Web panel's own screens (staff, activity, deletion, permissions) | `frontend/src/i18n/panel/xx.ts` | 254 |
 | Import, export, reports, subscription receipts, customer link, support access | `frontend/src/i18n/{imports,exports,reports,receipts,share,support}/xx.ts` | 127, 46, 66, 29, 26, 25 |
 | Cash book; stock, its documents and suppliers | `frontend/src/i18n/{cash,stock}/xx.ts` | 100, 235 |
-| Administrator's panel | `frontend/src/i18n/admin/xx.ts` | 298 |
+| **The network between shops: partners, orders, delivery notes, payments, reconciliation** | `frontend/src/i18n/network/xx.ts` | 290 |
+| The network's steps in the activity log (group, 20 actions, 5 subjects) | `frontend/src/i18n/panel/xx.ts`, keys `activity.*.network*` | 26 (counted above) |
+| Administrator's panel | `frontend/src/i18n/admin/xx.ts` | 299 |
 | The customer's page behind a read-only link | `frontend/src/k/xx.ts` | 52 |
-| The bot: replies, notifications, reminders, operations alerts | `backend/src/qarz/application/texts_xx.py`, `CHAT` | 277 |
-| Export workbook | same file, `EXPORT` | 79 |
-| Refusals of the API | same file, `ERRORS` | 81 |
-| Names of permissions | same file, `PERMISSIONS` | 52 |
+| The bot: replies, notifications, reminders, operations alerts | `backend/src/qarz/application/texts_xx.py`, `CHAT` | 298 |
+| of which the network: 16 notices to the partner's staff (`net_link_*`, `net_order_*`, `net_note_*`, `net_payment_*`) and 5 texts it writes into a shop's own books (`net_sale_note`, `net_paid_note`, `net_withdrawn_reason`, `net_partner_name`, `net_partner_suffix`) | same | 21 |
+| Export workbook | same file, `EXPORT` | 92 |
+| of which the network's four sheets (`sheet_net_*`, `net_*`) | same | 13 |
+| Refusals of the API | same file, `ERRORS` | 90 |
+| of which the network's (`NETWORK_*`) | same | 9 |
+| Names of permissions | same file, `PERMISSIONS` | 58 |
+| of which the network's (`group.network`, `network.*`) | same | 6 |
 
 SMS reminders are not in the list: they exist in Uzbek and Russian only, because each wording must be
 registered with the provider (runbook 12). A customer of any other language gets the Uzbek SMS.
@@ -46,8 +56,9 @@ registered with the provider (runbook 12). A customer of any other language gets
 ## Glossaries
 
 One per language. Each fixes the word for debt and sale on credit, payment, customer, shop, due date,
-overdue, reminder, subscription, receipt, the staff roles, cash book and stock, and the other terms that
-recur. A reviewer reads the glossary first: changing a term there means changing it everywhere.
+overdue, reminder, subscription, receipt, the staff roles, cash book and stock, the network's terms
+(partner, partnership, buyer, order, delivery note, confirmation, reconciliation), and the other terms
+that recur. A reviewer reads the glossary first: changing a term there means changing it everywhere.
 
 - [Tajik](glossaries/tg.md)
 - [Karakalpak](glossaries/kaa.md)
@@ -148,22 +159,40 @@ text, a refusal, a reminder) is read by the founder before it is merged.
 | A whole Uzbek Cyrillic message that must differ from the rule | `frontend/src/i18n/uzCyrlOverrides.ts`, or `UZ_CYRILLIC` in `chat_texts.py` / `export_texts.py` |
 | An Uzbek or Russian text | Not this review: those are the product's source texts and are changed like any other |
 
-After corrections: `npm test` in `frontend/` and `pytest` in `backend/`; both scripts should still list
-nothing missing.
+## The final pass (2026-10-09), and what is left
 
-## When the remaining modules are merged
+Every module of the expansion is merged. The final pass translated the network between shops (module J,
+the last one) into Tajik, Karakalpak and English, named its steps in the activity log, and made
+completeness strict (above). What it did, for a reviewer to know where the newest text is:
 
-The cash book (module H) and the stock with its suppliers (module I) were merged while this module was
-built and are translated. The network between shops (module J) adds its texts in Uzbek and Russian
-only: until the final pass its screens read Uzbek in the four new languages (Cyrillic Uzbek for
-`uz-Cyrl`, which needs no pass). The names the server gives to stock units and write-off reasons are in
-Uzbek and Russian only and read Uzbek elsewhere. The final pass:
+1. `frontend/src/i18n/network/{tg,kaa,en}.ts` (290 texts each), `nav.network`, the administrator's switch
+   `admin.setting.network_on`, the activity log's names; the server's notices, refusals, export sheets
+   and the texts the network writes into a shop's books. The network's export sheets had their own
+   two-language table: they are in `export_texts` now, like every other sheet.
+2. The six permission names of the network that module J's author wrote for Tajik and Karakalpak were
+   read against the glossaries. Karakalpak said "biykarlaw" (cancel) where the glossary keeps "ret etiw"
+   for declining and rejecting, and "usınıs" (an ownership offer) for an invitation ("mirát"): corrected.
+   Tajik's "анҷом" for ending a partnership became «қатъ кардан», the word the screens use.
+3. Uzbek Cyrillic: the network's Uzbek text was run through the rules. No Latin word was left in it and
+   no word came out wrong on a reading of the output (`npm run i18n:missing` lists the same 25 Latin
+   words as before, all brands and codes), so the three override tables did not change.
 
-1. Run `npm run i18n:missing -- --keys` and `python scripts/i18n_missing.py --keys`; translate every
-   key listed, with the glossaries.
-2. Add the new brands, codes and wrongly written words that the scripts print for `uz-Cyrl` to the
-   rules' tables.
-3. If the customer's page gained messages: `npm run i18n:k`.
-4. Make completeness strict: run both scripts with `--strict` in CI, and let the tests of the partial
-   languages ask for every key.
-5. Send the new texts to the reviewers with this page.
+**Not translated, and not measured by the two scripts**, because they are tables of two languages in
+the code and not catalog entries. A reader of another language is shown the Uzbek word:
+
+- names of stock units and write-off reasons (`qarz.domain.stock.UNITS`, `WRITE_OFF_REASONS`);
+- the stock's own cash-book categories and the note a stock document writes into a supplier's or a
+  customer's account (`qarz.domain.cash.STOCK_CATEGORIES`, `stock_documents._PURCHASE_NOTE`, `_RETURN_NOTE`);
+- the states of a partnership, an order, a delivery note and a payment in the network's export sheets,
+  which are the server's own words (`active`, `sent`, `issued`, `awaiting`, …) in every language.
+
+**For the reviewers of Tajik and Karakalpak, the network first.** Its terms were chosen by a model with
+no earlier text to lean on, and several have a plausible rival. Read the glossary rows added for it, then
+these in particular: «шарик» / "sherik" for the other shop; «борхат» / "júk xatı" for a delivery note;
+«қатъ кардан» / "tamamlaw" for ending a partnership; "satıp alıwshı" for a shop's role as buyer (kept
+apart from "qarıydar", a customer); «расонидан» for delivering and «бақияи мувофиқашуда» for the
+balance both sides confirmed; "jalǵanıw" for connecting by a code and "tarmaq" / «шабака» for the
+network itself.
+
+After corrections: `npm test` in `frontend/` and `pytest` in `backend/`; both scripts must still list
+nothing missing, or CI fails.

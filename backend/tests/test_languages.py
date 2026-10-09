@@ -1,15 +1,19 @@
 """Six languages on the server: which they are, how one is chosen, and what a language that trails says.
 
 Uzbek and Russian mirror each other key for key (`test_chat_texts.py`, `test_export_rules.py`). Tajik,
-Karakalpak and English may trail behind while other work adds Uzbek and Russian text: a text they lack is
-read in Uzbek and is not a mistake. So they are checked here for what they have: no key that Uzbek does
-not have, the same fields to fill in, no empty text. `scripts/i18n_missing.py` lists what is absent; the
-final pass fills it and then makes completeness part of this file
-(docs/10-operations/translation-review.md). Uzbek Cyrillic has no texts of its own: it is Uzbek, rewritten.
+Karakalpak and English are checked here for what they have (no key that Uzbek does not have, the same
+fields to fill in, no empty text) and, since the last module of the expansion was merged, for what they
+lack: every text of the server exists in each of them, and a missing one fails this file and CI
+(`scripts/i18n_missing.py --strict`, docs/10-operations/translation-review.md). At run time a text a
+language does not have is still read in Uzbek, so a mistake that slips through is a wrong language and
+never a crash. Uzbek Cyrillic has no texts of its own: it is Uzbek, rewritten.
 """
 
+import importlib.util
 import string
 from collections.abc import Mapping
+from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -162,6 +166,48 @@ def test_bot_commands_and_the_products_name_are_left_as_uzbek_has_them(lang: str
 
     for key, text in TRAILING[lang].CHAT.items():
         assert kept(text) == kept(UZ[key]), key
+
+
+def _missing_script() -> ModuleType:
+    """`scripts/i18n_missing.py`, the check CI runs with `--strict`."""
+    path = Path(__file__).resolve().parents[1] / "scripts" / "i18n_missing.py"
+    spec = importlib.util.spec_from_file_location("i18n_missing", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("lang", sorted(TRAILING))
+def test_every_text_of_the_server_exists_in_the_language(lang: str) -> None:
+    """Strict since the final pass: Tajik, Karakalpak and English lack nothing that Uzbek has."""
+    assert _missing_script().missing(lang) == {"CHAT": [], "EXPORT": [], "ERRORS": [], "PERMISSIONS": []}
+
+
+def test_a_missing_text_fails_the_check_ci_runs(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The counterpart: one text taken out of one language, and the strict check says which and fails."""
+    script = _missing_script()
+    assert script.main(["--strict"]) == 0
+    monkeypatch.delitem(texts_tg.CHAT, "net_order_sent")
+    monkeypatch.delitem(texts_en.ERRORS, "NETWORK_STATE")
+    monkeypatch.delitem(texts_kaa.EXPORT, "net_notes")
+    monkeypatch.delitem(texts_kaa.PERMISSIONS, "network.confirm")
+    assert script.missing("tg")["CHAT"] == ["net_order_sent"]
+    assert script.missing("en")["ERRORS"] == ["NETWORK_STATE"]
+    assert script.missing("kaa") == {
+        "CHAT": [],
+        "EXPORT": ["net_notes"],
+        "ERRORS": [],
+        "PERMISSIONS": ["network.confirm"],
+    }
+    capsys.readouterr()
+    assert script.main(["--strict"]) == 1
+    printed = capsys.readouterr().out
+    assert "net_order_sent" in printed and "NETWORK_STATE" in printed and "missing keys in all: 4" in printed
+    # Without --strict it lists and does not fail: that is how a translator looks at the gap.
+    assert script.main([]) == 0
 
 
 def test_the_checks_above_would_notice_each_kind_of_mistake() -> None:

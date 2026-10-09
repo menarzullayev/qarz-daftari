@@ -100,6 +100,10 @@ jobs:
       # for byte. The front end's types are generated from that file (the frontend job checks them).
       - name: API description is current
         run: python -m qarz.interface.api_description --check
+      # Every text of the server exists in all six languages: a key that Tajik, Karakalpak or English lacks
+      # is listed and fails here (tests/test_languages.py holds the same). The front end has a twin.
+      - name: Every language has every text
+        run: python scripts/i18n_missing.py --strict
       - name: Migrations apply to an empty database
         run: |
           psql "$QD_TEST_ADMIN_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE qd_migrate_check'
@@ -197,6 +201,10 @@ jobs:
         run: npm run lint
       - name: Types
         run: npm run typecheck
+      # Every text of the front end exists in all six languages: a key that Tajik, Karakalpak or English
+      # lacks is listed and fails here (src/i18n/newLanguages.test.ts holds the same).
+      - name: Every language has every text
+        run: npm run i18n:missing -- --strict
       - name: Tests
         run: npm test
       - name: Build and bundle budget (NFR-010)

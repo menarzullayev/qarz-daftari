@@ -31,6 +31,7 @@ from uuid import UUID, uuid4
 
 from qarz.application import idempotency, stock_cash
 from qarz.application.authorization import require_permission
+from qarz.application.chat_texts import say
 from qarz.application.customers import (
     MAX_PAGE,
     CustomerArchived,
@@ -95,9 +96,6 @@ CONFIRM_NOTE = operation("network.notes.confirm", Capability.MANAGE)
 REJECT_NOTE = operation("network.notes.reject", Capability.MANAGE)
 
 MAX_DRAFTS = 50
-# The note of the entry a confirmed delivery writes on the supplier's side, by the supplier's language.
-_SALE_NOTE = {"uz": "Yuk xati № {number}", "ru": "Накладная № {number}"}
-_PAID_NOTE = {"uz": "Yuk xati № {number}: to'lov", "ru": "Накладная № {number}: оплата"}
 
 
 @dataclass(frozen=True)
@@ -722,7 +720,8 @@ async def sell_in(there: TenantSession, note_id: UUID, *, now: datetime) -> tupl
         note.customer_id,
         kind=EntryKind.CREDIT,
         amount=note.total,
-        note=_SALE_NOTE.get(lang, _SALE_NOTE["uz"]).format(number=note.number),
+        # The note of the entry is in the supplier's own language (`net_sale_note`, `net_paid_note`).
+        note=say(lang, "net_sale_note", number=note.number),
         promised_date=None,
         now=now,
         currency=currency,
@@ -756,7 +755,7 @@ async def sell_in(there: TenantSession, note_id: UUID, *, now: datetime) -> tupl
             note.customer_id,
             kind=EntryKind.PAYMENT,
             amount=note.paid,
-            note=_PAID_NOTE.get(lang, _PAID_NOTE["uz"]).format(number=note.number),
+            note=say(lang, "net_paid_note", number=note.number),
             promised_date=None,
             now=now,
             currency=currency,

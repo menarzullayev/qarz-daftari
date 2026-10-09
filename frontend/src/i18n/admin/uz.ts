@@ -168,6 +168,7 @@ export const uzAdmin = {
   "admin.setting.usd_on": "Dollar (USD) yoqilgan",
   "admin.setting.cash_book_on": "Kassa (kirim va chiqim daftari) yoqilgan",
   "admin.setting.stock_on": "Ombor, kirim va ta'minotchilar yoqilgan",
+  "admin.setting.network_on": "Do'konlar orasidagi tarmoq (hamkorlar, buyurtmalar, yuk xatlari) yoqilgan",
 
   "admin.audit.filters": "Audit filtrlari",
   "admin.audit.at": "Vaqt",

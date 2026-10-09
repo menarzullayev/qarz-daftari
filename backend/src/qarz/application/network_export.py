@@ -12,9 +12,9 @@ in this shop's rows.
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
 from uuid import UUID
 
+from qarz.application.export_texts import header, word
 from qarz.application.ports import Storage
 from qarz.application.xlsx import Workbook
 from qarz.domain.goods import format_qty
@@ -22,63 +22,6 @@ from qarz.domain.money import Currency, parse_code, plain
 from qarz.domain.promise import TASHKENT
 
 PAGE = 100
-
-# The words of these sheets. Uzbek and Russian; a reader of another language is shown the Uzbek ones.
-_TEXTS: dict[str, dict[str, Any]] = {
-    "uz": {
-        "links": "Hamkorlar",
-        "orders": "Hamkor buyurtmalari",
-        "notes": "Yuk xatlari",
-        "payments": "Hamkor to'lovlari",
-        "links_header": ("Hamkor", "Telefon", "Biz", "Holati", "So'ralgan", "Tugagan", "Aloqa ID"),
-        "orders_header": (
-            "Hamkor", "Biz", "Buyurtma №", "Holati", "Yuborilgan", "Kerakli sana", "Izoh", "Valyuta", "Jami",
-            "Qator", "Tovar", "Birlik", "So'ralgan", "Qabul qilingan", "Narx", "Sabab", "Buyurtma ID",
-        ),
-        "notes_header": (
-            "Hamkor", "Biz", "Yuk xati №", "Buyurtma №", "Holati", "Berilgan", "Valyuta", "Jami", "To'langan",
-            "Qator", "Tovar", "Birlik", "Miqdor", "Narx", "Summa", "Rad etish sababi", "Tuzatish sababi", "Yuk xati ID",
-        ),
-        "payments_header": (
-            "Hamkor", "Biz", "Kim yozgan", "Holati", "Yozilgan", "Valyuta", "Summa", "Izoh", "Rad etish sababi",
-            "Daftarimizda", "To'lov ID",
-        ),
-        "buyer": "Xaridor",
-        "supplier": "Ta'minotchi",
-        "own": "Biz",
-        "partner": "Hamkor",
-        "removed": "(o'chirilgan)",
-        "yes": "Ha",
-        "no": "Yo'q",
-    },
-    "ru": {
-        "links": "Партнёры",
-        "orders": "Заказы партнёров",
-        "notes": "Накладные",
-        "payments": "Оплаты партнёров",
-        "links_header": ("Партнёр", "Телефон", "Мы", "Состояние", "Запрошено", "Завершено", "ID связи"),
-        "orders_header": (
-            "Партнёр", "Мы", "Заказ №", "Состояние", "Отправлен", "Нужная дата", "Заметка", "Валюта", "Итого",
-            "Строка", "Товар", "Единица", "Запрошено", "Принято", "Цена", "Причина", "ID заказа",
-        ),
-        "notes_header": (
-            "Партнёр", "Мы", "Накладная №", "Заказ №", "Состояние", "Оформлена", "Валюта", "Итого", "Оплачено",
-            "Строка", "Товар", "Единица", "Количество", "Цена", "Сумма", "Причина отклонения",
-            "Причина исправления", "ID накладной",
-        ),
-        "payments_header": (
-            "Партнёр", "Мы", "Кто записал", "Состояние", "Записано", "Валюта", "Сумма", "Заметка",
-            "Причина отклонения", "В нашем учёте", "ID оплаты",
-        ),
-        "buyer": "Покупатель",
-        "supplier": "Поставщик",
-        "own": "Мы",
-        "partner": "Партнёр",
-        "removed": "(удалён)",
-        "yes": "Да",
-        "no": "Нет",
-    },
-}  # fmt: skip
 
 
 def _local(at: datetime | None) -> str | None:
@@ -94,22 +37,23 @@ def _amount(currency: str | None, amount: int | None) -> int | Decimal | None:
 
 
 async def write_network(book: Workbook, storage: Storage, shop_id: UUID, lang: str) -> None:
-    words = _TEXTS.get(lang, _TEXTS["uz"])
+    # The words of these sheets are the export's own catalog (`export_texts`), in the shop's language.
+    role = {"buyer": word(lang, "net_buyer"), "supplier": word(lang, "net_supplier")}
     async with storage.tenant(shop_id) as session:
         links = await session.network_links()
     if not links:
         return
 
     def partner(name: str | None) -> str:
-        return name or str(words["removed"])
+        return name or word(lang, "net_removed")
 
-    sheet = book.sheet(words["links"], words["links_header"], (28, 16, 14, 12, 18, 18, 38))
+    sheet = book.sheet(word(lang, "sheet_net_links"), header(lang, "net_links"), (28, 16, 14, 12, 18, 18, 38))
     for link in links:
         sheet.append(
             (
                 partner(link.peer_name),
                 link.peer_phone,
-                words[link.role],
+                role[link.role],
                 link.state,
                 _local(link.requested_at),
                 _local(link.ended_at),
@@ -118,7 +62,9 @@ async def write_network(book: Workbook, storage: Storage, shop_id: UUID, lang: s
         )
 
     sheet = book.sheet(
-        words["orders"], words["orders_header"], (24, 12, 10, 12, 18, 12, 28, 8, 14, 6, 28, 8, 10, 10, 12, 28, 38)
+        word(lang, "sheet_net_orders"),
+        header(lang, "net_orders"),
+        (24, 12, 10, 12, 18, 12, 28, 8, 14, 6, 28, 8, 10, 10, 12, 28, 38),
     )
     before: tuple[datetime, UUID] | None = None
     while True:
@@ -133,7 +79,7 @@ async def write_network(book: Workbook, storage: Storage, shop_id: UUID, lang: s
                 sheet.append(
                     (
                         partner(order.peer_name),
-                        words[order.role],
+                        role[order.role],
                         order.number,
                         order.status,
                         _local(order.sent_at),
@@ -153,7 +99,9 @@ async def write_network(book: Workbook, storage: Storage, shop_id: UUID, lang: s
                 )
 
     sheet = book.sheet(
-        words["notes"], words["notes_header"], (24, 12, 10, 10, 12, 18, 8, 14, 14, 6, 28, 8, 10, 12, 14, 28, 28, 38)
+        word(lang, "sheet_net_notes"),
+        header(lang, "net_notes"),
+        (24, 12, 10, 10, 12, 18, 8, 14, 14, 6, 28, 8, 10, 12, 14, 28, 28, 38),
     )
     before = None
     while True:
@@ -168,7 +116,7 @@ async def write_network(book: Workbook, storage: Storage, shop_id: UUID, lang: s
                 sheet.append(
                     (
                         partner(note.peer_name),
-                        words[note.role],
+                        role[note.role],
                         note.number,
                         note.order_number,
                         note.status,
@@ -188,7 +136,9 @@ async def write_network(book: Workbook, storage: Storage, shop_id: UUID, lang: s
                     )
                 )
 
-    sheet = book.sheet(words["payments"], words["payments_header"], (24, 12, 12, 12, 18, 8, 14, 28, 28, 12, 38))
+    sheet = book.sheet(
+        word(lang, "sheet_net_payments"), header(lang, "net_payments"), (24, 12, 12, 12, 18, 8, 14, 28, 28, 12, 38)
+    )
     before = None
     while True:
         async with storage.tenant(shop_id) as session:
@@ -200,15 +150,15 @@ async def write_network(book: Workbook, storage: Storage, shop_id: UUID, lang: s
             sheet.append(
                 (
                     partner(payment.peer_name),
-                    words[payment.role],
-                    words["own" if payment.recorded_by_own else "partner"],
+                    role[payment.role],
+                    word(lang, "net_own" if payment.recorded_by_own else "net_partner"),
                     payment.status,
                     _local(payment.recorded_at),
                     payment.currency,
                     _amount(payment.currency, payment.amount),
                     payment.note,
                     payment.decline_reason,
-                    words["yes" if payment.own_entry_stands else "no"],
+                    word(lang, "yes" if payment.own_entry_stands else "no"),
                     str(payment.payment_id),
                 )
             )

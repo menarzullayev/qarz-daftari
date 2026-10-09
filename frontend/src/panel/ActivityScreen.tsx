@@ -17,7 +17,8 @@ import { memberCode, memberLabel, useOffice } from "./office";
 /**
  * The groups an owner can filter by. Each is the start of the action names the server records
  * ("customer" matches "customer.created"), which is how the API filters (application/account.py).
- * "reminder" also covers "reminders.settings_changed".
+ * "reminder" also covers "reminders.settings_changed". "network" is every step between this shop and a
+ * partner shop: the ones its own staff took, and the partner's, which the log shows as the system's.
  */
 export const ACTION_GROUPS = [
   "customer",
@@ -34,6 +35,7 @@ export const ACTION_GROUPS = [
   "support_access",
   "stock",
   "supplier",
+  "network",
 ] as const;
 type ActionGroup = (typeof ACTION_GROUPS)[number];
 

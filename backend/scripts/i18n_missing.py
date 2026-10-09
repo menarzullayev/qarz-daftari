@@ -1,10 +1,9 @@
-"""List what each language still lacks of the server's texts. Not part of CI.
+"""List what each language lacks of the server's texts. CI runs it with `--strict`.
 
-Uzbek and Russian are complete by test. Tajik, Karakalpak and English may trail behind while other work
-adds Uzbek and Russian text: a text they lack is read in Uzbek, and the tests check only what they have
-(`tests/test_languages.py`). This script is how the gap is seen and, in the end, closed: the final pass
-translates what it lists and then makes completeness part of the tests
-(docs/10-operations/translation-review.md).
+Uzbek and Russian are complete by test. Since the last module of the expansion was merged, Tajik,
+Karakalpak and English are too: a text one of them lacks fails CI here and in `tests/test_languages.py`,
+so whoever adds an Uzbek text adds it in every language in the same pull request
+(docs/10-operations/translation-review.md). At run time a text a language lacks is still read in Uzbek.
 
 For Uzbek Cyrillic, which is made from the Uzbek text, it lists the Latin words left in what the rules
 write: each is a brand or a code that is meant to stay, or a word for a reviewer to look at.

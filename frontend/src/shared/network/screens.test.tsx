@@ -539,7 +539,7 @@ describe("a delivery note", () => {
     fireEvent.click(screen.getByRole("button", { name: "Yangi yuk xatini yozish" }));
     await waitFor(() => expect(supplier.writes()).toHaveLength(1));
     expect(supplier.writes()[0]).toMatchObject({ path: `${NETWORK}/notes/${NOTE_ID}/correct` });
-    expect(supplier.writes()[0]?.body).toEqual({ reason: "Miqdor tuzatildi", lines: [{ line_no: 1, qty: "45", unit_price: 12000 }] });
+    expect(supplier.writes()[0]?.body).toEqual({ reason: "Miqdor tuzatildi", paid: 0, lines: [{ line_no: 1, qty: "45", unit_price: 12000 }] });
     expect((await screen.findByRole("link", { name: "Yuk xati № 6" })).getAttribute("href")).toBe(`#/network/notes/${NEW_NOTE}`);
   });
 
