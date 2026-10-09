@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 import pytest
 
+from qarz.application.cash_feed import default_names
 from qarz.domain import cash
 from qarz.domain.cash import DayProblem, Direction, Line, Method, Sum
 from qarz.domain.money import Currency
@@ -13,19 +14,18 @@ IN, OUT = Direction.INCOME, Direction.EXPENSE
 TODAY = date(2026, 10, 9)
 
 
-def test_the_default_categories_exist_in_both_languages_and_one_is_the_ledgers() -> None:
-    uz, ru = cash.default_names("uz"), cash.default_names("ru")
+def test_the_default_categories_are_named_in_the_shops_language_and_one_is_the_ledgers() -> None:
+    uz, ru = default_names("uz"), default_names("ru")
     assert len(uz) == len(ru) == len(cash.DEFAULT_CATEGORIES) == 10
     assert [(direction, key) for direction, _, key in uz] == [(direction, key) for direction, _, key in ru]
     assert [name for _, name, key in uz if key == cash.DEBT_REPAID] == ["Qarz qaytdi"]
     assert [name for _, name, key in ru if key == cash.DEBT_REPAID] == ["Возврат долга"]
     assert sum(1 for _, _, key in uz if key is not None) == 1
-    # A language the service does not have is named in Uzbek, like every other text.
-    assert cash.default_names("en") == uz
-    for names in (uz, ru):
-        # Every default is a name a shop could have typed, and no two of a direction are the same name.
-        cleaned = [(direction, cash.category_name(name)[1]) for direction, name, _ in names]
-        assert len(set(cleaned)) == len(cleaned)
+    # Every language of the product has names of its own (tests/test_text_tables.py holds each to the rules
+    # of a name); a code that is no language of the product is named in Uzbek, like every other text.
+    assert [name for _, name, _ in default_names("en")][:2] == ["Sales", "Debt repaid"]
+    assert [name for _, name, _ in default_names("uz-Cyrl")][:2] == ["Савдо", "Қарз қайтди"]
+    assert default_names("de") == uz
     assert {direction for direction, _, _ in uz} == {IN, OUT}
 
 

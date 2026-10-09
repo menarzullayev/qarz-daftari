@@ -45,13 +45,14 @@ function currencyOrNull(value: unknown): Currency | null {
 }
 
 /**
- * A name the server gives in Uzbek and Russian. A reader of another language is shown the Uzbek one
- * (`labelIn`), until the server names it in theirs.
+ * A name the server gives in every language of the product, by its tag (the names of units and of
+ * write-off reasons). The reader is shown their own (`labelIn`); a language the answer lacks, or has
+ * empty, reads Uzbek, like every other text.
  */
-export type Labelled = { key: string; label: { uz: string; ru: string } };
+export type Labelled = { key: string; label: { uz: string } & Partial<Record<string, string>> };
 
 export function labelIn(label: Labelled["label"], language: string): string {
-  return language === "ru" ? label.ru : label.uz;
+  return label[language] || label.uz;
 }
 export type StockUnit = Labelled & { weighed: boolean };
 
@@ -75,7 +76,13 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 function labelled(value: unknown): Labelled {
   const body = record(value);
   const label = record(body["label"]);
-  return { key: text(body["key"]), label: { uz: text(label["uz"]), ru: text(label["ru"]) } };
+  const names: Labelled["label"] = { uz: text(label["uz"]) };
+  for (const [language, name] of Object.entries(label)) {
+    if (typeof name === "string") {
+      names[language] = name;
+    }
+  }
+  return { key: text(body["key"]), label: names };
 }
 
 function stockSettings(value: unknown): StockSettings {

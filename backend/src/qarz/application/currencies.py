@@ -67,6 +67,10 @@ class _Shop(_Settings, Protocol):
     async def dollars_setting(self, *, lock: bool = False) -> bool: ...
 
 
+class _Held(_Settings, Protocol):
+    async def hold_dollars_setting(self) -> bool: ...
+
+
 async def platform_dollars(session: _Settings) -> bool:
     """Whether the platform switch `usd_on` is on."""
     return platform_settings.effective("usd_on", await session.platform_setting("usd_on")) is True
@@ -78,6 +82,12 @@ async def dollars_on(session: _Shop, *, lock: bool = False) -> bool:
     A writer of a dollar amount passes `lock`, which holds the setting until its transaction ends.
     """
     return await platform_dollars(session) and await session.dollars_setting(lock=lock)
+
+
+async def dollars_held(session: _Held) -> bool:
+    """`dollars_on` with the setting held, for a writer whose role may not lock the shop's row: the
+    import, applied by the worker. See `TenantSession.hold_dollars_setting`."""
+    return await platform_dollars(session) and await session.hold_dollars_setting()
 
 
 async def shop_currencies(session: _Shop) -> tuple[Currency, ...]:

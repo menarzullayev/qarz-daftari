@@ -162,10 +162,14 @@ describe("the overview of the web panel", () => {
     renderScreen(<HomeScreen />, { fetch: server.fetch, role: "owner", features: ON });
     fireEvent.click(await screen.findByRole("button", { name: "Qabul qilish" }));
     const form = within(screen.getByRole("group", { name: "Qabul qilish" }));
+    const choice = form.getByRole("combobox", { name: "Bizning daftardagi ta'minotchi" }) as HTMLInputElement;
+    // Nothing chosen yet, and the field says what that means: a new row is made.
+    expect(choice.value).toBe("");
+    expect(choice.getAttribute("placeholder")).toBe("Yangi yozuv yaratilsin");
+    fireEvent.click(choice);
     await form.findByRole("option", { name: "Baraka ulgurji" });
-    expect((form.getByLabelText("Bizning daftardagi ta'minotchi") as HTMLSelectElement).value).toBe("");
     expect(form.getByRole("option", { name: "Yangi yozuv yaratilsin" })).toBeTruthy();
-    fireEvent.change(form.getByLabelText("Bizning daftardagi ta'minotchi"), { target: { value: COUNTERPART_ID } });
+    fireEvent.click(form.getByRole("option", { name: "Baraka ulgurji" }));
     fireEvent.click(form.getByRole("button", { name: "Qabul qilish" }));
     await waitFor(() => expect(server.writes()).toHaveLength(1));
     expect(server.writes()[0]).toMatchObject({ method: "POST", path: `${NETWORK}/links/${NET_LINK_ID}/accept`, body: { counterpart_id: COUNTERPART_ID } });
@@ -616,7 +620,7 @@ describe("the payments", () => {
     expect(server.writes()[0]?.body).toEqual({ link_id: NET_LINK_ID, amount: 250000, currency: "UZS" });
   });
 
-  it("decline a payment with a reason, and offer nothing to one who may not move that money", async () => {
+  it("decline a payment with a reason", async () => {
     const server = backend(reads, () => ok(paymentBody({ status: "declined" })));
     renderScreen(<PaymentsScreen />, { fetch: server.fetch, role: "manager", features: ON });
     fireEvent.click(await screen.findByRole("button", { name: "To'lovni rad etish" }));
@@ -624,11 +628,43 @@ describe("the payments", () => {
     fireEvent.click(screen.getByRole("button", { name: "To'lovni rad etish" }));
     await waitFor(() => expect(server.writes()).toHaveLength(1));
     expect(server.writes()[0]).toMatchObject({ path: `${NETWORK}/payments/${PAYMENT_ID}/decline`, body: { reason: "Pul kelmadi" } });
-    cleanup();
-    // May confirm in the network, but not record a customer's payment nor pay a supplier.
-    renderScreen(<PaymentsScreen />, { fetch: backend(reads).fetch, role: "seller", permissions: ["network.view", "network.confirm"], features: ON });
-    await waitFor(() => rows("To'lovlar"));
-    expect(screen.queryByRole("button", { name: /To'lov/ })).toBeNull();
+  });
+
+  const names = (row: HTMLElement | undefined) =>
+    within(row as HTMLElement)
+      .queryAllByRole("button")
+      .map((button) => button.textContent);
+
+  it("offer declining by network.confirm alone, as the server does, and nothing that writes to a book", async () => {
+    // May confirm in the network, but not record a customer's payment nor pay a supplier: the server
+    // lets this member decline (nothing is written to a book) and refuses the rest.
+    const server = backend(reads, () => ok(paymentBody({ status: "declined" })));
+    renderScreen(<PaymentsScreen />, { fetch: server.fetch, role: "seller", permissions: ["network.view", "network.confirm"], features: ON });
+    const [theirs, ours] = await waitFor(() => rows("To'lovlar"));
+    expect(names(theirs)).toEqual(["To'lovni rad etish"]);
+    expect(names(ours)).toEqual([]);
+    expect(screen.queryByRole("button", { name: "To'lovni tasdiqlash" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Qaytarib olish" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "To'lov yozish" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "To'lovni rad etish" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Rad etish sababi" }), { target: { value: "Pul kelmadi" } });
+    fireEvent.click(screen.getByRole("button", { name: "To'lovni rad etish" }));
+    await waitFor(() => expect(server.writes()).toHaveLength(1));
+    expect(server.writes()[0]).toMatchObject({ path: `${NETWORK}/payments/${PAYMENT_ID}/decline` });
+  });
+
+  it("offer confirming only with the permission of the book the entry goes to, and no step without network.confirm", async () => {
+    const show = async (permissions: string[]) => {
+      cleanup();
+      renderScreen(<PaymentsScreen />, { fetch: backend(reads).fetch, role: "seller", permissions, features: ON });
+      return waitFor(() => rows("To'lovlar"));
+    };
+    // The partner's payment of the fixture is one this shop, the supplier, was paid: a customer's payment.
+    expect(names((await show(["network.view", "network.confirm", "payments.record"]))[0])).toEqual(["To'lovni tasdiqlash", "To'lovni rad etish"]);
+    // The other book's permission does not open confirming.
+    expect(names((await show(["network.view", "network.confirm", "suppliers.pay"]))[0])).toEqual(["To'lovni rad etish"]);
+    // Every permission of both books, but not the network's: no step at all, declining included.
+    const closed = await show(["network.view", "payments.record", "suppliers.pay", "entries.cancel"]);
+    expect(closed.map(names)).toEqual([[], [], []]);
   });
 });

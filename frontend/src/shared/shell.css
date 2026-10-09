@@ -80,15 +80,21 @@ a {
   transform: none;
 }
 
-/* Phone first: header, content, and a tab bar fixed to the bottom edge. */
+/*
+ * Phone first: header, content, and a tab bar held to the bottom edge. The bar is the last thing in the
+ * column and sticks to the bottom of the window, so the room kept free for it is its own height,
+ * whatever that is: with larger text its labels wrap and it grows, and the content ends above it all
+ * the same. (A bar taken out of the flow would need its height written down a second time.)
+ */
 .shell {
-  display: grid;
-  grid-template-areas:
-    "header"
-    "main";
-  grid-template-rows: auto 1fr;
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
   min-height: 100dvh;
+}
+
+/* A screen without navigation (sign-in, a closed door) ends where one with the bar ends. */
+.shell:not(:has(> .shell__nav)) {
   padding-bottom: calc(var(--qd-nav-height) + env(safe-area-inset-bottom, 0px));
 }
 
@@ -212,11 +218,13 @@ a {
 }
 
 .shell__nav {
-  position: fixed;
-  right: 0;
+  position: sticky;
   bottom: 0;
-  left: 0;
   z-index: 2;
+  /* After the content, wherever the markup has it. */
+  order: 1;
+  /* Its top line lies over the last pixel of the content's own padding, not under it. */
+  margin-top: -1px;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   border-top: 1px solid var(--qd-line);
   background: var(--qd-bg);
@@ -272,6 +280,8 @@ a {
 
 .shell__main {
   grid-area: main;
+  /* Takes the height the header and the bar leave, and is never squeezed below its content. */
+  flex: 1 0 auto;
   min-width: 0;
   padding: var(--qd-space-4);
 }
@@ -459,7 +469,8 @@ a {
        larger text (the token is in rem) it would otherwise leave the screens no room at all. At the
        ordinary text size the third is never the smaller of the two. */
     grid-template-columns: min(var(--qd-side-width), 33.34vw) 1fr;
-    padding-bottom: 0;
+    grid-template-rows: auto 1fr;
+    display: grid;
   }
 
   /* A screen without navigation (sign-in, a closed door) has no side column to leave empty. */
@@ -468,6 +479,7 @@ a {
       "header"
       "main";
     grid-template-columns: 1fr;
+    padding-bottom: 0;
   }
 
   .shell__header {
@@ -485,10 +497,12 @@ a {
   }
 
   .shell__nav {
-    position: sticky;
     top: 0;
+    bottom: auto;
     grid-area: nav;
     align-self: start;
+    order: 0;
+    margin-top: 0;
     height: 100vh;
     height: 100dvh;
     padding: var(--qd-space-3);

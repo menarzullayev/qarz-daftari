@@ -72,6 +72,7 @@ from qarz.application.stock_moves import StockInsufficient, lock_items, move
 from qarz.application.stock_moves import switched_on as stock_switched_on
 from qarz.domain import network, permissions, stock
 from qarz.domain.access import Capability, Role
+from qarz.domain.cash import Method
 from qarz.domain.goods import format_qty
 from qarz.domain.ledger import EntryKind
 from qarz.domain.money import Currency
@@ -697,10 +698,16 @@ class OrderService:
             )
 
 
-async def sell_in(there: TenantSession, note_id: UUID, *, now: datetime) -> tuple[UUID, UUID | None]:
+async def sell_in(
+    there: TenantSession, note_id: UUID, *, now: datetime, method: Method | None = None
+) -> tuple[UUID, UUID | None]:
     """The supplier's side of a confirmed delivery, written as the supplier (see the module docstring):
     a credit sale to the buyer's account for the note's total, the goods of its counted items out of its
     stock, and a payment for what was handed over on delivery. Returns the two entries.
+
+    `method` is how the buyer says the money was handed over (cash when it says nothing). It is one
+    payment between two shops, so the supplier's cash book takes it by the method the buyer's does: the
+    ledger writes it there while the cash book is on, and nowhere while it is off.
 
     The goods leave whatever the stock holds: they were carried out when they were delivered, and
     "refuse sales beyond stock" was asked when the note was issued.
@@ -759,6 +766,7 @@ async def sell_in(there: TenantSession, note_id: UUID, *, now: datetime) -> tupl
             promised_date=None,
             now=now,
             currency=currency,
+            method=method,
         )
         paid_entry = UUID(paid["entry"]["id"])
     return entry_id, paid_entry
@@ -1100,7 +1108,7 @@ class NoteService:
                     with refusals():
                         async with session.network_peer(link.peer_shop_id, note_id) as there:
                             try:
-                                return await sell_in(there, note_id, now=now)
+                                return await sell_in(there, note_id, now=now, method=paid_by)
                             except AppError as error:
                                 # Why the supplier's books refused is the supplier's own business.
                                 raise PartnerRefused() from error

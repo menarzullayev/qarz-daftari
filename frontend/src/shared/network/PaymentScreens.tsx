@@ -22,21 +22,35 @@ export function useMayPay(): (role: NetLink["role"]) => boolean {
   return (role) => can("network.confirm") && can(role === "buyer" ? "suppliers.pay" : "payments.record");
 }
 
+export type PaymentSteps = { confirm: boolean; decline: boolean; withdraw: boolean };
+
 /**
- * Whether the member may take the step an awaiting payment offers them. Answering one the partner
- * recorded writes this shop's own entry (`useMayPay`). Taking back one this shop recorded CANCELS its
- * own entry: a payment to a supplier by "suppliers.pay", a customer's payment by "entries.cancel" (not
- * "payments.record", which only writes one); when that entry was already cancelled by hand, nothing
- * more is asked. These are the server's own checks (`PaymentService.withdraw`).
+ * The steps an awaiting payment offers the member; each is the server's own check (`PaymentService`).
+ * Every one asks for "network.confirm". Confirming one the partner recorded writes this shop's own
+ * entry, so it also asks for that book's permission (`useMayPay`). Declining it writes nothing anywhere
+ * and asks for nothing more. Taking back one this shop recorded CANCELS its own entry: a payment to a
+ * supplier by "suppliers.pay", a customer's payment by "entries.cancel" (not "payments.record", which
+ * only writes one); when that entry was already cancelled by hand, nothing more is asked.
  */
-export function useMayStep(): (payment: Pick<Payment, "role" | "recordedBy" | "inOwnBooks">) => boolean {
+export function usePaymentSteps(): (payment: Pick<Payment, "role" | "recordedBy" | "inOwnBooks">) => PaymentSteps {
   const can = useMay();
   const mayPay = useMayPay();
   return (payment) => {
+    const network = can("network.confirm");
     if (payment.recordedBy === "partner") {
-      return mayPay(payment.role);
+      return { confirm: mayPay(payment.role), decline: network, withdraw: false };
     }
-    return can("network.confirm") && (!payment.inOwnBooks || can(payment.role === "buyer" ? "suppliers.pay" : "entries.cancel"));
+    const withdraw = network && (!payment.inOwnBooks || can(payment.role === "buyer" ? "suppliers.pay" : "entries.cancel"));
+    return { confirm: false, decline: false, withdraw };
+  };
+}
+
+/** Whether an awaiting payment offers the member any step at all. */
+export function useMayStep(): (payment: Pick<Payment, "role" | "recordedBy" | "inOwnBooks">) => boolean {
+  const steps = usePaymentSteps();
+  return (payment) => {
+    const offered = steps(payment);
+    return offered.confirm || offered.decline || offered.withdraw;
   };
 }
 
@@ -161,11 +175,12 @@ type Step = "confirm" | "decline" | "withdraw";
 
 /**
  * What may be done with one payment that awaits an answer: the side that did not record it confirms or
- * declines, the side that did may take it back. Offered only to a member who may move that money.
+ * declines, the side that did may take it back. Each step is offered by what the server asks for it
+ * (`usePaymentSteps`): declining by "network.confirm" alone, the other two also by the book's permission.
  */
 export function PaymentActions({ payment, onChanged }: { payment: Payment; onChanged: () => void }) {
   const { t } = useI18n();
-  const mayStep = useMayStep();
+  const steps = usePaymentSteps();
   const network = useNetwork();
   const cashBook = useCashBook();
   const [step, setStep] = useState<Step | null>(null);
@@ -177,11 +192,12 @@ export function PaymentActions({ payment, onChanged }: { payment: Payment; onCha
   const confirm = useSubmit((chosen: Method | null, key) => network.confirmPayment(payment.id, chosen, key).then(done));
   const decline = useSubmit((reason: string, key) => network.declinePayment(payment.id, reason, key).then(done));
   const withdraw = useSubmit((_: null, key) => network.withdrawPayment(payment.id, key).then(done));
-  if (payment.status !== "awaiting" || !mayStep(payment)) {
+  const offered = steps(payment);
+  if (payment.status !== "awaiting" || !(offered.confirm || offered.decline || offered.withdraw)) {
     return null;
   }
   const id = `net-payment-${payment.id}`;
-  if (step === "confirm") {
+  if (step === "confirm" && offered.confirm) {
     const pending = confirm.state.status === "pending";
     return (
       <div className="form notice" role="group" aria-label={t("net.payment.confirm")}>
@@ -211,7 +227,7 @@ export function PaymentActions({ payment, onChanged }: { payment: Payment; onCha
       </div>
     );
   }
-  if (step === "decline") {
+  if (step === "decline" && offered.decline) {
     return (
       <ReasonBox
         id={`${id}-reason`}
@@ -227,7 +243,7 @@ export function PaymentActions({ payment, onChanged }: { payment: Payment; onCha
       />
     );
   }
-  if (step === "withdraw") {
+  if (step === "withdraw" && offered.withdraw) {
     return (
       <Confirm
         question={t("net.payment.withdraw.question")}
@@ -243,20 +259,23 @@ export function PaymentActions({ payment, onChanged }: { payment: Payment; onCha
       />
     );
   }
-  return payment.recordedBy === "partner" ? (
+  return (
     <p className="actions">
-      <button type="button" className="button button--primary button--small" onClick={() => setStep("confirm")}>
-        {t("net.payment.confirm")}
-      </button>
-      <button type="button" className="button button--small" onClick={() => setStep("decline")}>
-        {t("net.payment.decline")}
-      </button>
-    </p>
-  ) : (
-    <p className="actions">
-      <button type="button" className="button button--small" onClick={() => setStep("withdraw")}>
-        {t("net.payment.withdraw")}
-      </button>
+      {offered.confirm ? (
+        <button type="button" className="button button--primary button--small" onClick={() => setStep("confirm")}>
+          {t("net.payment.confirm")}
+        </button>
+      ) : null}
+      {offered.decline ? (
+        <button type="button" className="button button--small" onClick={() => setStep("decline")}>
+          {t("net.payment.decline")}
+        </button>
+      ) : null}
+      {offered.withdraw ? (
+        <button type="button" className="button button--small" onClick={() => setStep("withdraw")}>
+          {t("net.payment.withdraw")}
+        </button>
+      ) : null}
     </p>
   );
 }

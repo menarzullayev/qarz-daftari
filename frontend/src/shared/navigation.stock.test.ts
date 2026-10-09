@@ -70,6 +70,30 @@ describe("the stock's sections while the stock is on", () => {
     expect(ids("manager", new Set(["ledger.view"]), ON, true)).toEqual(["overview", "customers", "catalog"]);
   });
 
+  it("open the Mini App's stock section for any permission of the stock, since its documents are reached through it", () => {
+    const mini = (held: string[]) => ids("seller", new Set(held), ON).filter((id) => STOCK_SECTION_IDS.includes(id));
+    expect(mini(["stock.view"])).toEqual(["stock"]);
+    expect(mini(["stock.receive"])).toEqual(["stock"]);
+    expect(mini(["stock.adjust"])).toEqual(["stock"]);
+    expect(mini(["stock.receive", "stock.adjust"])).toEqual(["stock"]);
+    expect(mini(["stock.view", "stock.receive", "stock.adjust"])).toEqual(["stock"]);
+    // Nothing of the stock, or only what opens another screen of it, opens no section.
+    expect(mini(["ledger.view"])).toEqual([]);
+    expect(mini(["stock.costs.view", "goods.edit", "suppliers.pay"])).toEqual([]);
+    // Never while the stock is off, whatever is held.
+    expect(ids("seller", new Set(["stock.receive", "stock.adjust"]))).toEqual([]);
+    expect(ids("seller", new Set(["stock.receive"]), { stock: false })).toEqual([]);
+  });
+
+  it("leave the panel's two sections each to its own permission, as they were", () => {
+    const panel = (held: string[]) => ids("seller", new Set(held), ON, true).filter((id) => STOCK_SECTION_IDS.includes(id));
+    expect(panel(["stock.receive"])).toEqual(["stockDocuments"]);
+    expect(panel(["stock.adjust"])).toEqual(["stockDocuments"]);
+    expect(panel(["stock.receive", "stock.adjust"])).toEqual(["stockDocuments"]);
+    expect(panel(["stock.view"])).toEqual(["stock"]);
+    expect(panel(["stock.view", "stock.receive"])).toEqual(["stock", "stockDocuments"]);
+  });
+
   it("keep the phone's tab bar to three tabs and More once a seller has five sections", () => {
     const seller = staffSections("seller", null, ON);
     expect(primaryTabCount(seller)).toBe(3);

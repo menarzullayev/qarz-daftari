@@ -19,6 +19,7 @@ from uuid import UUID, uuid4
 from qarz.application.cash_feed import ensure_categories, switched_on
 from qarz.application.cash_ports import CashCategoryRecord, NewCashCategory
 from qarz.application.errors import ValidationFailed
+from qarz.application.export_texts import word
 from qarz.application.ports import Membership, TenantSession
 from qarz.domain import cash
 from qarz.domain.cash import Direction, Method
@@ -45,12 +46,13 @@ async def _category(session: TenantSession, system_key: str, now: datetime) -> C
         return found
     settings = await session.shop_settings()
     lang = "uz" if settings is None else settings.lang
-    uz, ru = cash.STOCK_CATEGORIES[system_key]
+    assert system_key in cash.STOCK_CATEGORIES
     await session.lock_cash_categories()
     found = await session.cash_system_category(system_key)
     if found is not None:
         return found
-    wanted = ru if lang == "ru" else uz
+    # Named in the shop's language now; from then on the name is the shop's own data.
+    wanted = word(lang, f"cash_category_{system_key}")
     for attempt in range(1, 50):
         # A shop may have named a category of its own exactly so: the stock's then carries a number.
         shown, norm = cash.category_name(wanted if attempt == 1 else f"{wanted} {attempt}")

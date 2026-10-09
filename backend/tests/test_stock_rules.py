@@ -4,7 +4,6 @@ Each rule has the case that must work and the case that must be refused.
 """
 
 import random
-import re
 from decimal import Decimal
 
 import pytest
@@ -22,14 +21,12 @@ def level(on_hand: str, value: int, currency: str | None = "UZS", last: str | No
 # --- units and reasons ----------------------------------------------------------------------------------
 
 
-def test_every_unit_and_reason_is_named_in_uzbek_and_in_russian() -> None:
-    cyrillic = re.compile("[а-яА-ЯёЁ]")
-    for item in (*stock.UNITS, *stock.WRITE_OFF_REASONS):
-        assert item.uz.strip() and item.ru.strip(), item.key
-        assert not cyrillic.search(item.uz), item.key
-        assert cyrillic.search(item.ru), item.key
+def test_the_units_and_the_reasons_are_keys_and_their_names_are_texts() -> None:
+    """What a unit or a reason is called is a text of the catalogs, in every language
+    (tests/test_text_tables.py); the domain holds the keys alone."""
     assert len(stock.UNIT_KEYS) == len(stock.UNITS), "no unit twice"
-    assert {reason.key for reason in stock.WRITE_OFF_REASONS} == {"damaged", "expired", "lost", "own_use"}
+    assert set(stock.WRITE_OFF_REASONS) == stock.WRITE_OFF_KEYS == {"damaged", "expired", "lost", "own_use"}
+    assert {unit.key for unit in stock.UNITS if unit.weighed} == {"kg", "g", "l", "ml", "m"}
 
 
 def test_the_units_are_the_forms_the_catalogue_folds_spellings_to() -> None:

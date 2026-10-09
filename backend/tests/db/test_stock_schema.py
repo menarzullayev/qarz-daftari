@@ -542,9 +542,9 @@ _INDEX_OF: dict[str, tuple[str, ...]] = {
     "the documents of a kind": ("stock_document_by_kind", "stock_document_recent"),
     # Narrowed to one supplier: that supplier's documents, or the shop's newest read until the page is full.
     "the documents of a supplier": ("stock_document_supplier", "stock_document_recent"),
-    # A state has no index of its own, by design: the shop's documents are walked newest first and the page
-    # stops when it is full. Drafts and cancellations are few and recent; the walk is the shop's, never more.
-    "the documents in a state": ("stock_document_recent",),
+    # A state has an index of its own (migration 0047), and only that one will do: through the shop's
+    # newest documents a rare state is a walk over all of them (the two tests after the next one).
+    "the documents in a state": ("stock_document_by_status",),
     "the lines of a document": ("stock_document_line_pkey",),
     "the suppliers by name": ("supplier_shop_id_name_norm_key",),
     # By supplier, or the shop's few balances by currency: both are read by key.
@@ -559,6 +559,11 @@ _INDEX_OF: dict[str, tuple[str, ...]] = {
 }
 
 
+# A `:name` parameter of the storage layer, and the same as psycopg writes it.
+_PARAMETER = re.compile(r"(?<!:):([a-z_]+)")
+_PSYCOPG = r"%(\1)s"
+
+
 def _plan(conn: psycopg.Connection, statement: str, values: dict[str, Any]) -> str:
     """The plan of a statement written with the storage layer's `:name` parameters, with a sequential
     scan made the planner's last choice: on tables as small as a test's it would pick one for anything."""
@@ -566,7 +571,7 @@ def _plan(conn: psycopg.Connection, statement: str, values: dict[str, Any]) -> s
     # with a handful of rows the planner would as soon sort them.
     for setting in ("enable_seqscan", "enable_sort", "enable_bitmapscan"):
         conn.execute(f"SET LOCAL {setting} = off")
-    rows = conn.execute("EXPLAIN (COSTS OFF) " + re.sub(r"(?<!:):([a-z_]+)", r"%(\1)s", statement), values).fetchall()
+    rows = conn.execute("EXPLAIN (COSTS OFF) " + _PARAMETER.sub(_PSYCOPG, statement), values).fetchall()
     return " ".join(str(row[0]) for row in rows)
 
 
@@ -591,6 +596,68 @@ def test_the_plan_check_catches_a_read_that_has_no_index_of_its_own(as_app: AppS
         plan = _plan(app, "SELECT m.id FROM stock_movement m WHERE m.author_id = :who", {"who": shop_a.member_id})
     assert "Filter: (author_id" in plan, plan
     assert not any(index in plan for index in ("stock_movement_item", "stock_movement_entry", "stock_movement_doc"))
+
+
+_IN_A_STATE = (
+    "SELECT d.id FROM stock_document d WHERE d.status = :status ORDER BY d.created_at DESC, d.id DESC LIMIT :limit"
+)
+
+
+def _many_documents_and_two_drafts(owner: psycopg.Connection, shop: Shop, posted: int = 400) -> None:
+    """A shop whose drafts are its two OLDEST documents, under several hundred posted ones."""
+    owner.execute(
+        "INSERT INTO stock_document (id, shop_id, kind, number, status, doc_date, draft, created_by, created_at, "
+        "  posted_by, posted_at) "
+        "SELECT gen_random_uuid(), %(shop)s, 'stocktake', n, CASE WHEN n <= 2 THEN 'draft' ELSE 'posted' END, "
+        "  current_date, CASE WHEN n <= 2 THEN '{}'::jsonb END, %(member)s, now() - interval '1 day' + n * interval "
+        "  '1 second', CASE WHEN n > 2 THEN %(member)s::uuid END, CASE WHEN n > 2 THEN now() END "
+        "FROM generate_series(1, %(count)s) n",
+        {"shop": shop.shop_id, "member": shop.member_id, "count": posted + 2},
+    )
+
+
+def _measured(conn: psycopg.Connection, statement: str, values: dict[str, Any]) -> str:
+    """Like `_plan`, but run: the plan says how many rows it read and threw away."""
+    for setting in ("enable_seqscan", "enable_sort", "enable_bitmapscan"):
+        conn.execute(f"SET LOCAL {setting} = off")
+    rows = conn.execute(
+        "EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) " + _PARAMETER.sub(_PSYCOPG, statement),
+        values,
+    ).fetchall()
+    return " ".join(str(row[0]) for row in rows)
+
+
+def test_a_rare_state_is_found_without_walking_the_shops_documents(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+) -> None:
+    """The documents list narrowed to a state (`GET stock/documents?status=draft`): two drafts under four
+    hundred posted documents are read from the index of the state, and no other document is looked at."""
+    _many_documents_and_two_drafts(owner, shop_a)
+    with as_app(shop_a.shop_id) as app:
+        plan = _measured(app, _IN_A_STATE, {"status": "draft", "limit": 51})
+    assert "stock_document_by_status" in plan, plan
+    assert "Rows Removed by Filter" not in plan, plan
+    assert "rows=2 " in plan, plan
+
+
+def test_without_its_index_a_rare_state_is_a_walk_over_every_document_of_the_shop(
+    owner: psycopg.Connection, database_url: str, shop_a: Shop
+) -> None:
+    """The counterpart, and what the list did before migration 0047: with the index taken away (inside a
+    transaction that is rolled back) the same read goes through the shop's newest documents and throws
+    away every one that is not a draft. So the test above passes because of the index, not by luck."""
+    _many_documents_and_two_drafts(owner, shop_a)
+    with psycopg.connect(database_url) as conn:
+        try:
+            conn.execute("DROP INDEX stock_document_by_status")
+            conn.execute("SET LOCAL ROLE qd_app")
+            conn.execute("SELECT set_config('qd.shop_id', %s, true)", (str(shop_a.shop_id),))
+            plan = _measured(conn, _IN_A_STATE, {"status": "draft", "limit": 51})
+        finally:
+            conn.rollback()
+    assert "stock_document_by_status" not in plan, plan
+    assert "Rows Removed by Filter: 400" in plan, plan
+    assert owner.execute("SELECT 1 FROM pg_indexes WHERE indexname = 'stock_document_by_status'").fetchone() == (1,)
 
 
 def test_a_sale_and_its_movement_are_one_shops(owner: psycopg.Connection, as_app: AppSession, shop_a: Shop) -> None:

@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { fakeServer, ok, refusal, SHOP_BASE, SHOP_ID } from "../../testing/fakeServer";
 import { type ApiError, BAD_RESPONSE, createApi } from "../api";
-import { documentBody as requestBody, stockOf } from "./stockApi";
+import { LANGUAGES } from "../../i18n/types";
+import { documentBody as requestBody, labelIn, stockOf } from "./stockApi";
 import {
   costedItemBody,
   DOCUMENT_ID,
@@ -57,6 +58,40 @@ describe("whether the stock exists", () => {
     expect((await client(fakeServer(() => ok(stockSettingsBody()))).stock.settings()).cashBook).toBe(false);
     expect((await client(fakeServer(() => ok(stockSettingsBody({ cash_book: true })))).stock.settings()).cashBook).toBe(true);
     expect((await client(fakeServer(() => ok(stockSettingsBody({ cash_book: "yes" })))).stock.settings()).cashBook).toBe(false);
+  });
+});
+
+describe("the name of a unit or a write-off reason", () => {
+  const names = { uz: "qop", "uz-Cyrl": "қоп", ru: "мешок", tg: "халта", kaa: "qap", en: "sack" };
+
+  it("is read in every language the server sends and shown in the reader's", async () => {
+    const server = fakeServer(() =>
+      ok({
+        ...stockSettingsBody(),
+        units: [{ key: "qop", label: names, weighed: false }],
+        write_off_reasons: [{ key: "lost", label: { uz: "Yo'qolgan", ru: "Утерян", en: "Lost" } }],
+      }),
+    );
+    const settings = await client(server).stock.settings();
+    const unit = settings.units[0]?.label ?? { uz: "" };
+    expect(unit).toEqual(names);
+    for (const language of LANGUAGES) {
+      expect(labelIn(unit, language)).toBe(names[language]);
+    }
+    expect(settings.writeOffReasons.map((reason) => labelIn(reason.label, "en"))).toEqual(["Lost"]);
+  });
+
+  it("is shown in Uzbek to a reader whose language the answer lacks or has empty, never as a blank", () => {
+    expect(labelIn({ uz: "qop", ru: "мешок" }, "tg")).toBe("qop");
+    expect(labelIn({ uz: "qop", ru: "мешок", kaa: "" }, "kaa")).toBe("qop");
+    expect(labelIn({ uz: "qop" }, "ru")).toBe("qop");
+    expect(labelIn({ uz: "qop", ru: "мешок" }, "de")).toBe("qop");
+  });
+
+  it("ignores a name that is not a text", async () => {
+    const server = fakeServer(() => ok({ ...stockSettingsBody(), units: [{ key: "kg", label: { uz: "kg", ru: 7, en: null }, weighed: true }] }));
+    const settings = await client(server).stock.settings();
+    expect(settings.units[0]?.label).toEqual({ uz: "kg" });
   });
 });
 

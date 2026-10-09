@@ -29,12 +29,40 @@ afterEach(cleanup);
 
 const bearer = async (): Promise<ApiAuth> => ({ kind: "bearer", token: "session-token" });
 
+/**
+ * The permissions that open a read of the stock on the server, any one of them (the stock's API table
+ * of docs/08-technical-spec/OUTPUT.md); null for a path that is not the stock's.
+ */
+function opens(path: string): readonly string[] | null {
+  if (path === `${SHOP_BASE}/stock/report`) {
+    return ["stock.costs.view"];
+  }
+  if (path.startsWith(`${SHOP_BASE}/stock/documents`)) {
+    return ["stock.receive", "stock.adjust"];
+  }
+  if (path.startsWith(`${SHOP_BASE}/stock/`)) {
+    return ["stock.view"];
+  }
+  return path.startsWith(`${SHOP_BASE}/suppliers`) ? ["suppliers.view"] : null;
+}
+
+/** What the server refused for want of a permission, by server: a screen must never have asked for it. */
+const REFUSED = new WeakMap<object, string[]>();
+const refused = (server: ReturnType<typeof fakeServer>) => REFUSED.get(server) ?? [];
+
 function backend(role: Role, header: Record<string, string>, options: { permissions?: string[]; shops?: number } = {}) {
   const items = [{ shop_id: SHOP_ID, name: "Baraka savdo", role, membership_id: "33333333-3333-4333-8333-333333333333" }];
   if (options.shops === 2) {
     items.push({ shop_id: OTHER_SHOP, name: "Ziyo market", role: "owner", membership_id: "33333333-3333-4333-8333-333333333334" });
   }
-  return fakeServer((sent) => {
+  const turnedAway: string[] = [];
+  const server = fakeServer((sent) => {
+    // With the member's own permissions named, the stock answers as the server does: 403 without one.
+    const needs = options.permissions ? opens(sent.path) : null;
+    if (needs && !needs.some((key) => options.permissions?.includes(key))) {
+      turnedAway.push(`${sent.method} ${sent.path}`);
+      return refusal(403, "FORBIDDEN_PERMISSION", "Ruxsat yo'q.");
+    }
     switch (sent.path) {
       case "/api/v1/me/shops":
         return {
@@ -64,6 +92,8 @@ function backend(role: Role, header: Record<string, string>, options: { permissi
         return NOT_FOUND;
     }
   });
+  REFUSED.set(server, turnedAway);
+  return server;
 }
 
 async function miniApp(server: ReturnType<typeof fakeServer>, hash = "") {
@@ -77,6 +107,11 @@ const asked = (server: ReturnType<typeof fakeServer>) =>
   server.sent.filter((sent) => sent.path.includes("/stock") || sent.path.includes("/suppliers"));
 const links = () => [...document.querySelectorAll("nav a")].map((link) => link.getAttribute("href"));
 const heading = () => screen.getByRole("heading", { level: 1 }).textContent;
+/** The phone's "More" screen, where the sections that do not fit the tab bar are listed. */
+async function miniAppMore() {
+  go("#/more");
+  await waitFor(() => expect(screen.queryByText("Yuklanmoqda…")).toBeNull());
+}
 
 describe("the stock switched off", () => {
   it("offers nothing of the stock to an owner, and its addresses are unknown routes", async () => {
@@ -192,5 +227,137 @@ describe("the stock switched on", () => {
     go("#/stock/receipt");
     expect(await screen.findByText("Bosh sahifaga qaytish")).toBeTruthy();
     expect(server.writes()).toEqual([]);
+  });
+});
+
+/**
+ * The stock's section in the Mini App holds the items and, because the Mini App has no documents
+ * section, the documents too. The server opens the two by different permissions: the items, a barcode
+ * and the stock's settings by "stock.view"; the documents by "stock.receive" or "stock.adjust". So the
+ * section opens for any of the three, and each screen asks only for what the member may read. The fake
+ * server here refuses as the real one does, and nothing may be refused.
+ */
+describe("the stock's section by what the member holds", () => {
+  const LEDGER = "ledger.view";
+  const paths = (server: ReturnType<typeof fakeServer>) => [...new Set(asked(server).map((sent) => sent.path.slice(SHOP_BASE.length)))].sort();
+  const inMain = (name: string) => within(screen.getByRole("main")).queryByRole("link", { name });
+  const notFound = async (server: ReturnType<typeof fakeServer>, address: string) => {
+    const before = asked(server).length;
+    go("#/");
+    go(address);
+    // Not a screen for them (inside the section its heading stays, and the screen says "not found") ...
+    expect(await within(screen.getByRole("main")).findByText("Bosh sahifaga qaytish"), address).toBeTruthy();
+    // ... and nothing of the stock was asked on the way to saying so.
+    expect(asked(server).length, address).toBe(before);
+  };
+  const DOCUMENT = `/stock/documents/${DOCUMENT_ID}`;
+  const ITEM = "#/stock/items/44444444-4444-4444-8444-444444444441";
+
+  it("stock.view alone: the items, and nothing of the documents", async () => {
+    const server = backend("seller", ON, { permissions: [LEDGER, "stock.view"] });
+    await miniApp(server);
+    await waitFor(() => expect(links()).toContain("#/stock"));
+    go("#/stock");
+    expect(await screen.findByRole("list", { name: "Ombordagi tovarlar" })).toBeTruthy();
+    expect(inMain("Hujjatlar va qoralamalar")).toBeNull();
+    expect(inMain("Tez kirim")).toBeNull();
+    for (const address of ["#/stock/documents", `#${DOCUMENT}`, "#/stock/receipt", "#/stock/report"]) {
+      await notFound(server, address);
+    }
+    expect(paths(server)).toEqual(["/stock/items"]);
+    expect(refused(server)).toEqual([]);
+  });
+
+  it.each([
+    ["stock.receive alone", ["stock.receive"], ["Ochish", "Qoralamani o'chirish"], ["O'tkazish", "Qoralamani o'chirish"]],
+    // A receipt is not theirs to post or drop: it is read, since the server lets them, and that is all.
+    ["stock.adjust alone", ["stock.adjust"], [], []],
+    ["stock.receive and stock.adjust without stock.view", ["stock.receive", "stock.adjust"], ["Ochish", "Qoralamani o'chirish"], ["O'tkazish", "Qoralamani o'chirish"]],
+  ])("%s: the documents, read and decided, and no item, setting or form", async (_name, held, onRow, onDocument) => {
+    const server = backend("seller", ON, { permissions: [LEDGER, ...held] });
+    await miniApp(server);
+    // The section is there, and its first screen is the list of documents: the items are not theirs.
+    await waitFor(() => expect(links()).toContain("#/stock"));
+    go("#/stock");
+    expect(heading()).toBe("Ombor");
+    const list = await screen.findByRole("list", { name: "Ombor hujjatlari" });
+    expect(screen.queryByRole("list", { name: "Ombordagi tovarlar" })).toBeNull();
+    const row = within(list).getAllByRole("listitem")[0] as HTMLElement;
+    expect([...row.querySelectorAll(".actions a, .actions button")].map((control) => control.textContent)).toEqual(onRow);
+    // What they cannot do is said, and not linked: no quick receipt, no way "back" to items.
+    expect(screen.getByText(/«Omborni ko'rish» ruxsati ham kerak/)).toBeTruthy();
+    expect(inMain("Tez kirim")).toBeNull();
+    expect(inMain("Ombor")).toBeNull();
+    expect(paths(server)).toEqual(["/stock/documents"]);
+
+    // The same list by its own address.
+    go("#/stock/documents");
+    expect(heading()).toBe("Ombor hujjatlari");
+    expect(await screen.findByRole("list", { name: "Ombor hujjatlari" })).toBeTruthy();
+
+    // A draft opens as it stands, not in the form: the form would search items they may not read.
+    go(`#${DOCUMENT}`);
+    expect(await screen.findByRole("heading", { name: /Kirim № 7/ })).toBeTruthy();
+    expect(screen.queryByLabelText("Miqdor (kg)")).toBeNull();
+    const offered = ["O'tkazish", "Tahrirlash", "Qoralamani o'chirish"].filter((name) => screen.queryByRole("button", { name }) !== null);
+    expect(offered).toEqual(onDocument);
+
+    for (const address of ["#/stock/receipt", ITEM, "#/stock/report", "#/stock-documents", "#/suppliers"]) {
+      await notFound(server, address);
+    }
+    // Only the documents were ever asked for: no item, no barcode, no setting, no supplier.
+    expect(paths(server)).toEqual(["/stock/documents", DOCUMENT]);
+    expect(refused(server)).toEqual([]);
+    expect(server.writes()).toEqual([]);
+  });
+
+  it("none of the three: no section, no screen, no request", async () => {
+    const server = backend("seller", ON, { permissions: [LEDGER, "stock.costs.view", "goods.edit"] });
+    await miniApp(server);
+    expect(links()).not.toContain("#/stock");
+    await miniAppMore();
+    expect(screen.queryByRole("link", { name: "Ombor" })).toBeNull();
+    for (const address of ["#/stock", "#/stock/documents", `#${DOCUMENT}`, "#/stock/receipt", ITEM, "#/stock/report"]) {
+      await notFound(server, address);
+    }
+    expect(asked(server)).toEqual([]);
+    expect(refused(server)).toEqual([]);
+  });
+
+  it("all three: the items, the documents from them, a draft in its form and the quick receipt", async () => {
+    const server = backend("seller", ON, { permissions: [LEDGER, "stock.view", "stock.receive", "stock.adjust"] });
+    await miniApp(server);
+    await waitFor(() => expect(links()).toContain("#/stock"));
+    go("#/stock");
+    expect(await screen.findByRole("list", { name: "Ombordagi tovarlar" })).toBeTruthy();
+    expect(inMain("Hujjatlar va qoralamalar")?.getAttribute("href")).toBe("#/stock/documents");
+    expect(inMain("Tez kirim")?.getAttribute("href")).toBe("#/stock/receipt");
+    go("#/stock/documents");
+    const list = await screen.findByRole("list", { name: "Ombor hujjatlari" });
+    expect(within(list).getByRole("link", { name: "Davom ettirish" })).toBeTruthy();
+    expect(screen.queryByText(/«Omborni ko'rish» ruxsati ham kerak/)).toBeNull();
+    expect(inMain("Ombor")?.getAttribute("href")).toBe("#/stock");
+    go(`#${DOCUMENT}`);
+    expect(((await screen.findByLabelText("Miqdor (kg)")) as HTMLInputElement).value).toBe("2");
+    go("#/stock/receipt");
+    expect(await screen.findByRole("heading", { name: "Kirim" })).toBeTruthy();
+    expect(paths(server)).toEqual(["/stock/documents", DOCUMENT, "/stock/items", "/stock/settings"]);
+    expect(refused(server)).toEqual([]);
+  });
+
+  it("would be noticed: the fake server refuses what the real one refuses", async () => {
+    const server = backend("seller", ON, { permissions: [LEDGER, "stock.receive"] });
+    const answer = async (path: string) => (await server.fetch(`https://qarz.test${SHOP_BASE}${path}`, { method: "GET", headers: {} })).status;
+    expect(await answer("/stock/settings")).toBe(403);
+    expect(await answer("/stock/items")).toBe(403);
+    expect(await answer("/stock/lookup?code=1")).toBe(403);
+    expect(await answer("/suppliers")).toBe(403);
+    expect(await answer("/stock/documents")).toBe(200);
+    expect(refused(server)).toEqual([
+      `GET ${SHOP_BASE}/stock/settings`,
+      `GET ${SHOP_BASE}/stock/items`,
+      `GET ${SHOP_BASE}/stock/lookup`,
+      `GET ${SHOP_BASE}/suppliers`,
+    ]);
   });
 });

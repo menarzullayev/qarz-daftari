@@ -71,3 +71,28 @@
   background: var(--qd-bg);
   object-fit: cover;
 }
+
+/*
+ * A searchable choice (OptionPicker): the matches open under their field, in the flow, as the other
+ * pick lists do. An option is a row of the list and not a button; the one the arrow keys are on is
+ * marked by a line down its side as well as by its ground, never by color alone.
+ */
+.combo .picks {
+  margin-bottom: 0;
+}
+
+.combo .pick[aria-selected="true"] {
+  background: var(--qd-surface);
+  box-shadow: inset 3px 0 0 var(--qd-link);
+}
+
+/* The row that asks for the next page. */
+.combo .pick--more {
+  justify-content: center;
+  color: var(--qd-link);
+  font-weight: 700;
+}
+
+.combo .state {
+  margin: var(--qd-space-2) 0 0;
+}

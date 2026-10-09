@@ -129,20 +129,34 @@ def test_the_export_holds_the_shops_own_side_of_the_network_and_nothing_of_the_p
     assert work(worker_database_url, file_root) == 1
     book = workbook(client, world, job)
     assert list(book)[-4:] == sheets
-    assert book["Hamkorlar"][1][:4] == ["Shop B", "+998901112233", "Xaridor", "active"]
+    assert book["Hamkorlar"][1][:4] == ["Shop B", "+998901112233", "Xaridor", "Faol"]
     assert [row[1:5] + row[9:15] for row in book["Hamkor buyurtmalari"][1:]] == [
-        ["Xaridor", 1, "received", row[4], 1, "Guruch", "kg", 10, 10, 12_000]
+        ["Xaridor", 1, "Olingan", row[4], 1, "Guruch", "kg", 10, 10, 12_000]
         if row[9] == 1
-        else ["Xaridor", 1, "received", row[4], 2, "Shakar", "kg", 5, Decimal("4.5"), 11_000]
+        else ["Xaridor", 1, "Olingan", row[4], 2, "Shakar", "kg", 5, Decimal("4.5"), 11_000]
         for row in book["Hamkor buyurtmalari"][1:]
     ]
     assert [(row[2], row[4], row[7], row[8], row[10], row[14]) for row in book["Yuk xatlari"][1:]] == [
-        (1, "received", TOTAL, 20_000, "Guruch", 120_000),
-        (1, "received", TOTAL, 20_000, "Shakar", 49_500),
+        (1, "Qabul qilingan", TOTAL, 20_000, "Guruch", 120_000),
+        (1, "Qabul qilingan", TOTAL, 20_000, "Shakar", 49_500),
     ]
     assert [(row[2], row[3], row[6], row[7], row[9]) for row in book["Hamkor to'lovlari"][1:]] == [
-        ("Biz", "awaiting", 50_000, "Naqd", "Ha")
+        ("Biz", "Javob kutilmoqda", 50_000, "Naqd", "Ha")
     ]
+    # The states are words of the shop's language, like every other cell of the workbook that is a word:
+    # no sheet shows the server's own `active`, `received`, `awaiting`.
+    states = {"active", "requested", "ended", "sent", "accepted", "delivered", "received", "issued", "awaiting"}
+    assert not [cell for sheet in sheets for row in book[sheet][1:] for cell in row if cell in states]
+    owner.execute("UPDATE shop SET lang = 'en' WHERE id = %s", (world.shop_a,))
+    job = ask(client, world).json()["id"]
+    assert work(worker_database_url, file_root) == 1
+    english = workbook(client, world, job)
+    named = list(english)[-4:]
+    assert english[named[0]][1][3] == "Active"
+    assert {row[3] for row in english[named[1]][1:]} == {"Received"}
+    assert {row[4] for row in english[named[2]][1:]} == {"Accepted"}
+    assert [row[3] for row in english[named[3]][1:]] == ["Waiting for an answer"]
+    owner.execute("UPDATE shop SET lang = 'uz' WHERE id = %s", (world.shop_a,))
     # Nothing that identifies the partner beyond its name and phone, and none of its rows.
     text = str(book)
     partner_things = owner.execute(

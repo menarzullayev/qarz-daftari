@@ -29,7 +29,7 @@ from uuid import UUID, uuid4
 
 from qarz.application import idempotency, notify, removal
 from qarz.application.chat_texts import both, say
-from qarz.application.currencies import USD, UZS, dollars_on, tag
+from qarz.application.currencies import USD, UZS, dollars_held, dollars_on, tag
 from qarz.application.customers import (
     FreePlanFull,
     customer_body,
@@ -626,12 +626,13 @@ async def apply_in(session: TenantSession, batch_id: UUID, parsed: ParsedFile | 
         await _refuse(session, record, VALIDATED, parsed, "import_refused")
         return
     # A dollar row is written only by a shop that works in dollars: looked at again here, in the
-    # transaction that writes. The setting is not held as a request's writer holds it (`dollars_on` with
-    # `lock`): the worker's role may only read the shop's row. An owner who turns dollars off in the very
-    # moment their own import is being applied can so be left with dollar debts in a shop without dollars,
-    # which is the state a platform switch turned off leaves too: kept, counted by INV-13, shown again
-    # when dollars are on.
-    dollars = await dollars_on(session)
+    # transaction that writes, and held until it commits. A request's writer holds the shop's row
+    # (`dollars_on` with `lock`); the worker's role may only read that row, so it holds the shop's lock
+    # for the setting instead (`dollars_held`), which turning dollars off takes before it writes. So an
+    # owner who turns dollars off in the very moment their own import is applied either sees the import
+    # refused (`usd_off`) or is refused themselves (`USD_BALANCE_OPEN`): never both done. The lock comes
+    # after the batch's row and before the customers', and is taken only for a file with dollar rows.
+    dollars = await dollars_held(session) if _has_dollars(parsed) else await dollars_on(session)
     if _has_dollars(parsed) and not dollars:
         await _refuse(session, record, VALIDATED, USD_OFF, "import_refused")
         return

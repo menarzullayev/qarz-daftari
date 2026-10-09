@@ -140,6 +140,58 @@ def test_a_shop_that_already_named_a_category_so_keeps_it_and_the_stocks_gets_a_
     assert cash_rows(owner, world)[0][0] == f"{PURCHASES} 2"
 
 
+def categories(owner: psycopg.Connection, world: World) -> list[str]:
+    rows = owner.execute(
+        "SELECT name FROM cash_category WHERE shop_id = %s ORDER BY direction DESC, created_at, name", (world.shop_a,)
+    ).fetchall()
+    return sorted(str(name) for (name,) in rows)
+
+
+@pytest.mark.parametrize(
+    ("lang", "purchases", "refunds", "note", "sales"),
+    [
+        ("tg", "Анбор: хариди мол", "Анбор: ба мизоҷ баргардонида шуд", "Воридоти мол № 1", "Фурӯш"),
+        ("kaa", "Sklad: tovar satıp alıw", "Sklad: qarıydarǵa qaytarıldı", "Kiris № 1", "Sawda"),
+        ("en", "Stock: goods purchase", "Stock: refund to customer", "Goods receipt No. 1", "Sales"),
+        ("uz-Cyrl", "Омбор: товар хариди", "Омбор: мижозга қайтарилди", "Кирим № 1", "Савдо"),
+    ],
+)
+def test_the_categories_and_the_notes_are_written_in_the_shops_language_and_stay_as_written(
+    client: TestClient,
+    world: World,
+    on: None,
+    owner: psycopg.Connection,
+    lang: str,
+    purchases: str,
+    refunds: str,
+    note: str,
+    sales: str,
+) -> None:
+    """What the stock writes into the cash book and the accounts is in the shop's language at that moment,
+    in each of the six (it was Uzbek for every language but Russian). And it is then the shop's own data:
+    a shop that changes its language later keeps the names and notes it has, and what is made after the
+    change is in the new language."""
+    book.switch(owner)
+    owner.execute("UPDATE shop SET lang = %s WHERE id = %s", (lang, world.shop_a))
+    who = supplier(client, world)
+    rice = counted_item(client, world, "Guruch", 15_000, "kg")
+    receive(client, world, [line(rice, "10", 10_000)], supplier_id=who, paid=30_000)
+    assert [(row[0], row[5]) for row in cash_rows(owner, world)] == [(purchases, note)]
+    named = categories(owner, world)
+    assert purchases in named and sales in named and len(named) == 11, named
+    assert refunds not in named, "the stock's second category is made when money is first handed back"
+    supplier_note = owner.execute(
+        "SELECT note FROM supplier_entry WHERE shop_id = %s ORDER BY created_at, seq", (world.shop_a,)
+    ).fetchall()
+    assert {text for (text,) in supplier_note if text is not None} == {note}
+
+    # The shop turns to Russian: nothing it has is renamed, and the next thing made is Russian.
+    owner.execute("UPDATE shop SET lang = 'ru' WHERE id = %s", (world.shop_a,))
+    receive(client, world, [line(rice, "1", 10_000)], supplier_id=who, paid=10_000)
+    assert [(row[0], row[5]) for row in cash_rows(owner, world)] == [(purchases, note), (purchases, "Приход № 2")]
+    assert categories(owner, world) == named
+
+
 def test_a_purchase_for_cash_and_what_is_paid_at_once_to_a_supplier_are_in_the_cash_book(
     client: TestClient, world: World, on: None, owner: psycopg.Connection
 ) -> None:

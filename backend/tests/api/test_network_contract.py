@@ -133,11 +133,13 @@ def test_how_money_was_paid_is_never_required_and_is_refused_only_where_nothing_
         ("expense", "card", 30_000),
         ("expense", "transfer", 9_000),
     ]
-    # The supplier was not there when its two sales were confirmed: what it was handed is cash. Its own
-    # confirmation of the payment said nothing, so that is cash too.
+    # Money paid on delivery is one payment between the two shops: the supplier's cash book takes it by
+    # the method the buyer named when it confirmed (cash where it named none), not always as cash. A
+    # payment recorded apart is different: each side says how its own money moved, and the supplier's own
+    # confirmation said nothing, so that one is cash whatever the buyer's side called it.
     assert cash_entries(owner, d.supplier.shop) == [
         ("income", "cash", 20_000),
-        ("income", "cash", 30_000),
+        ("income", "card", 30_000),
         ("income", "cash", 9_000),
     ]
 

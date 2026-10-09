@@ -21,6 +21,7 @@ from uuid import UUID, uuid4
 
 from qarz.application.cash_ports import CashCategoryRecord, NewCashCategory
 from qarz.application.errors import NotFound, ValidationFailed
+from qarz.application.export_texts import word
 from qarz.application.ports import Membership, TenantSession
 from qarz.domain import cash
 from qarz.domain.cash import Direction, Method
@@ -49,6 +50,14 @@ def clean_method(kind: str, method: object) -> Method | None:
     return parsed
 
 
+def default_names(lang: str) -> list[tuple[Direction, str, str | None]]:
+    """Direction, name and system key of each default category, named in the shop's language."""
+    return [
+        (category.direction, word(lang, f"cash_category_{category.key}"), category.system_key)
+        for category in cash.DEFAULT_CATEGORIES
+    ]
+
+
 async def ensure_categories(session: TenantSession, now: datetime) -> CashCategoryRecord:
     """The shop's categories exist: the default set is written the first time the book is used.
 
@@ -63,7 +72,7 @@ async def ensure_categories(session: TenantSession, now: datetime) -> CashCatego
         raise NotFound()
     await session.lock_cash_categories()
     defaults = []
-    for direction, name, system_key in cash.default_names(settings.lang):
+    for direction, name, system_key in default_names(settings.lang):
         shown, norm = cash.category_name(name)
         defaults.append(NewCashCategory(uuid4(), direction.value, shown, norm, system_key))
     await session.add_cash_categories(defaults, now)

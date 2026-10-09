@@ -13,6 +13,7 @@ import { Badge, Empty, Failure, formatInstant, Loading, LoadMore } from "../work
 import type { ScanHost } from "./barcode";
 import { draftOf } from "./documentDraft";
 import { DocumentEditor, DocumentRefusal } from "./DocumentEditor";
+import type { PickOption } from "./OptionPicker";
 import {
   CancelForm,
   DOCUMENT_KIND_LABELS,
@@ -35,8 +36,8 @@ import {
   type StockDocument,
   type StockDocumentKind,
   type StockSettings,
-  type Supplier,
 } from "./stockApi";
+import { SupplierPicker } from "./SupplierPicker";
 
 /** The kind a quick receipt writes. */
 const RECEIPT: StockDocumentKind = "receipt";
@@ -78,7 +79,9 @@ export function DocumentView({
   const can = useMay();
   const stock = useStock();
   const allowed = can(permissionOfKind(document.kind));
-  const editable = document.status === "draft" && draftOf(document) !== null;
+  // The form finds items and reads the stock's settings, which "stock.view" alone opens: without it a
+  // draft is posted or dropped as it stands, and is not changed here.
+  const editable = document.status === "draft" && draftOf(document) !== null && mayComposeDocuments(can);
   const [mode, setMode] = useState<"view" | "edit" | "cancel">(resume && allowed && editable ? "edit" : "view");
   const post = useSubmit((id: string, key) => stock.postDocument(id, key).then(onChanged));
   const cancel = useSubmit((job: { id: string; reason: string }, key) =>
@@ -90,7 +93,7 @@ export function DocumentView({
   const { money } = document;
   const stocktake = document.kind === "stocktake";
 
-  if (mode === "edit" && document.status === "draft") {
+  if (mode === "edit" && allowed && editable) {
     return (
       <DocumentEditor
         kind={document.kind}
@@ -267,10 +270,41 @@ export function mayWriteDocuments(can: (permission: "stock.receive" | "stock.adj
   return can("stock.receive") || can("stock.adjust");
 }
 
+/**
+ * Whether the document form can be drawn for the member at all. It finds items by name or barcode and
+ * reads the units, the reasons and the currencies, and the server opens all of that by "stock.view"
+ * alone (`stock/items`, `stock/lookup`, `stock/settings`). A member who writes documents without it
+ * reads, posts and cancels them, and is not shown a form that every search would be refused in.
+ */
+export function mayComposeDocuments(can: (permission: "stock.view") => boolean): boolean {
+  return can("stock.view");
+}
+
+/**
+ * What a document is drawn with for a member who may not read the stock's settings: no names for the
+ * units and the reasons, so the server's own words for them are shown, and nothing to choose from.
+ */
+const UNREAD_SETTINGS: StockSettings = { refuseNegative: false, currencies: ["UZS"], units: [], writeOffReasons: [], cashBook: false };
+
+/** The stock's settings for one who may read them; for anyone else nothing is asked. */
+function useSettingsIfReadable(): ReturnType<typeof useStockSettings> {
+  const can = useMay();
+  const stock = useStock();
+  const readable = can("stock.view");
+  return useLoad((signal) => (readable ? stock.settings(signal) : Promise.resolve(UNREAD_SETTINGS)), [stock, readable]);
+}
+
+/** Said in a list of documents to a member who writes them and may not see the stock: why no form is offered. */
+export function NeedsView() {
+  const { t } = useI18n();
+  const can = useMay();
+  return mayWriteDocuments(can) && !mayComposeDocuments(can) ? <p className="hint">{t("stock.docs.needView")}</p> : null;
+}
+
 function OneDocument({ documentId, host, counter }: { documentId: string; host?: ScanHost | undefined; counter: boolean }) {
   const { t } = useI18n();
   const stock = useStock();
-  const settings = useStockSettings();
+  const settings = useSettingsIfReadable();
   const { state, reload } = useLoad((signal) => stock.document(documentId, signal), [stock, documentId]);
   // What a change made here answered with; shown until the address changes.
   const [changed, setChanged] = useState<StockDocument | null>(null);
@@ -298,8 +332,9 @@ function OneDocument({ documentId, host, counter }: { documentId: string; host?:
 /** A new document of a kind, in the web panel; once saved, its own page opens. */
 export function NewDocumentScreen({ kind, host }: { kind: StockDocumentKind; host?: ScanHost | undefined }) {
   const can = useMay();
-  // A kind the member may not write is not a screen for them, and nothing is asked on their behalf.
-  return can(permissionOfKind(kind)) ? <NewDocument kind={kind} host={host} /> : <NotFoundScreen />;
+  // A kind the member may not write is not a screen for them, and nothing is asked on their behalf;
+  // nor is the form for one who could not find an item in it.
+  return can(permissionOfKind(kind)) && mayComposeDocuments(can) ? <NewDocument kind={kind} host={host} /> : <NotFoundScreen />;
 }
 
 function NewDocument({ kind, host }: { kind: StockDocumentKind; host?: ScanHost | undefined }) {
@@ -322,7 +357,7 @@ function NewDocument({ kind, host }: { kind: StockDocumentKind; host?: ScanHost 
  */
 export function ReceiptScreen({ host }: { host?: ScanHost | undefined }) {
   const can = useMay();
-  return can("stock.receive") ? <QuickReceipt host={host} /> : <NotFoundScreen />;
+  return can("stock.receive") && mayComposeDocuments(can) ? <QuickReceipt host={host} /> : <NotFoundScreen />;
 }
 
 function QuickReceipt({ host }: { host?: ScanHost | undefined }) {
@@ -361,36 +396,6 @@ function QuickReceipt({ host }: { host?: ScanHost | undefined }) {
   );
 }
 
-/** How many suppliers of each state the filter offers: one page of the list, as the document form asks. */
-const SUPPLIER_CHOICES = 100;
-
-/**
- * The suppliers a list of documents can be narrowed to: those the shop works with, then the archived
- * ones, whose documents are still in the books. Only for a member who may read the suppliers; for
- * anyone else nothing is asked and no filter is drawn.
- */
-function useSupplierChoices(): { active: Supplier[]; archived: Supplier[] } | null {
-  const can = useMay();
-  const stock = useStock();
-  const allowed = can("suppliers.view");
-  const { state } = useLoad(
-    (signal) =>
-      allowed
-        ? Promise.all(
-            (["active", "archived"] as const).map((status) =>
-              stock.suppliers({ status, limit: SUPPLIER_CHOICES }, signal).then((page) => page.suppliers),
-            ),
-          )
-        : Promise.resolve(null),
-    [stock, allowed],
-  );
-  if (state.status !== "ready" || state.data === null) {
-    return null;
-  }
-  const [active = [], archived = []] = state.data;
-  return active.length + archived.length > 0 ? { active, archived } : null;
-}
-
 /** Every document of the stock, newest first, by kind, by state and by supplier. */
 export function DocumentsScreen() {
   const { t, language } = useI18n();
@@ -399,14 +404,17 @@ export function DocumentsScreen() {
   const { membershipId } = useWorkspace();
   const [kind, setKind] = useState("");
   const [status, setStatus] = useState("");
-  const [supplierId, setSupplierId] = useState("");
-  const suppliers = useSupplierChoices();
+  // The supplier the list is narrowed to: any of them, found by name, the archived ones too, whose
+  // documents are still in the books. Only a member who may read the suppliers is given the choice;
+  // for anyone else no filter is drawn and nothing of the suppliers is asked.
+  const [supplier, setSupplier] = useState<PickOption | null>(null);
+  const supplierId = supplier?.id ?? "";
   const { state, reload, loadMore } = usePagedList(
     (cursor, signal) => stock.documents({ kind, status, supplierId, cursor }, signal),
     [stock, kind, status, supplierId],
   );
   // Each kind is offered to those who may write it: receiving goods is one permission, correcting another.
-  const kinds = STOCK_DOCUMENT_KINDS.filter((known) => can(permissionOfKind(known)));
+  const kinds = mayComposeDocuments(can) ? STOCK_DOCUMENT_KINDS.filter((known) => can(permissionOfKind(known))) : [];
 
   const columns: Column<DocumentSummary>[] = [
     {
@@ -460,6 +468,7 @@ export function DocumentsScreen() {
           </Link>
         ))}
       </nav>
+      <NeedsView />
       <section className="stock-filters" aria-label={t("stock.docs.filters")}>
         <div className="field">
           <label htmlFor="stock-docs-kind">{t("stock.docs.kind")}</label>
@@ -483,32 +492,8 @@ export function DocumentsScreen() {
             ))}
           </select>
         </div>
-        {suppliers ? (
-          <div className="field">
-            <label htmlFor="stock-docs-supplier">{t("stock.doc.supplier")}</label>
-            <select
-              id="stock-docs-supplier"
-              className="input"
-              value={supplierId}
-              onChange={(event) => setSupplierId(event.target.value)}
-            >
-              <option value="">{t("stock.docs.supplier.all")}</option>
-              {suppliers.active.map((known) => (
-                <option key={known.id} value={known.id}>
-                  {known.name}
-                </option>
-              ))}
-              {suppliers.archived.length > 0 ? (
-                <optgroup label={t("supplier.status.archived")}>
-                  {suppliers.archived.map((known) => (
-                    <option key={known.id} value={known.id}>
-                      {known.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-            </select>
-          </div>
+        {can("suppliers.view") ? (
+          <SupplierPicker id="stock-docs-supplier" value={supplier} archived noneLabel={t("stock.docs.supplier.all")} onChange={setSupplier} />
         ) : null}
       </section>
       {body}
