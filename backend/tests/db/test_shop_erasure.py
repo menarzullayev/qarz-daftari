@@ -303,4 +303,10 @@ def test_the_application_role_still_cannot_delete_from_the_ledger_itself(
 
 
 # Tables `fill` leaves empty: they need files, administrators or imports that do not exist in this test.
-UNFILLED = {"import_batch", "stored_file", "subscription_receipt", "support_access", "ownership_transfer"}
+UNFILLED = {
+    "import_batch", "stored_file", "subscription_receipt", "support_access", "ownership_transfer",
+    # The network between shops needs a second shop on the other side of every row: erasing a linked
+    # shop, and what its partner keeps, is tests/db/test_network_schema.py.
+    "network_invite", "network_link", "network_order_draft", "network_order", "network_order_line",
+    "network_note", "network_note_line", "network_payment", "network_event",
+}  # fmt: skip

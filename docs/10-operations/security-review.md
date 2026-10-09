@@ -158,6 +158,55 @@ cannot be made to carry tenant content (`render` in `application/ops_watch.py`),
 named in `QD_ALERT_CHAT_IDS` is one whose members may know that, for example, an administrator opened a
 support access.
 
+## Added after the review: the network between shops (expansion module J)
+
+Written by the agent that built the module, not by an independent reviewer: it says what was built to be reviewed, how it was checked, and where a reviewer should look first. The trust model and every function are in the technical specification ("The network between shops"); the rules are BR-80 to BR-96.
+
+**Why it needs a review of its own.** Until this module no step of one shop could change a row of another. Now six kinds of step do (asking for and answering a link, ending it, an order and its answer, a delivery note and its answer, a payment and its answer), and one step, confirming a delivery note, writes the books of two shops in one transaction.
+
+**How it was built to be safe.**
+
+- No row-level-security policy was changed and none is wider than `shop_id = qd.shop_id`. Shared things are stored once per side.
+- `qd_app` has no write on any shared table (`tests/db/test_database_roles.py`, `test_the_application_cannot_write_a_shared_table`, seven tables, three statements each) and cannot set `supplier.linked_shop_id`.
+- 17 `SECURITY DEFINER` functions, each with a pinned `search_path`, closed to PUBLIC and granted to `qd_app` alone, each listed in `DEFINER_FUNCTIONS`. No dynamic SQL, no temporary tables, every argument typed; the JSON arguments are read with `jsonb_to_recordset` and never executed.
+- One place moves the tenant setting to a second shop: `network_enter_peer`, for the supplier of a note the tenant is confirming as its buyer.
+
+**Cross-tenant tests** (`tests/db/test_network_schema.py`, 93 cases at the database as `qd_app`; `tests/api/test_network.py`, `test_network_more.py`, `test_network_races.py` through the API; the authorization suite and the permission matrix for all 32 operations):
+
+| What is attempted | Expected | Test |
+|---|---|---|
+| Each side, and a third shop, reads every shared table, by identifier too | Own copy only; the third shop nothing | `test_each_side_holds_its_own_copy_and_a_third_shop_holds_nothing` |
+| What each copy contains | Only what that side may know; the partner's member, customer and items absent | `test_a_copy_holds_only_what_that_side_may_know` |
+| `qd_app` updates, deletes, inserts into a shared table; sets `linked_shop_id`; marks a code used | Refused: no privilege | `test_the_application_cannot_write_a_shared_table`, `..._cannot_link_a_supplier_to_a_shop_itself`, `test_a_draft_and_an_invitation_are_ordinary_tenant_rows` |
+| A third shop calls each of the 15 crossing functions naming either party, and naming things that do not exist | `NETWORK_NOT_FOUND` both ways, nothing changed | `test_a_shop_that_is_no_party_is_refused_as_if_nothing_were_there` |
+| Each function called for shop A from a stranger's transaction, from the partner's, and with no tenant | `NETWORK_NOT_FOUND`, nothing changed | `test_a_function_acts_only_for_the_tenant_of_the_transaction` |
+| Each function called naming a member of the other shop, or a suspended member | `NETWORK_NOT_FOUND`, nothing changed | `test_a_member_of_another_shop_cannot_be_named_as_the_one_who_acts` |
+| Each function with `network_on` off, and with `stock_on` off | `NETWORK_NOT_FOUND`, nothing changed | `test_with_a_switch_off_every_function_refuses` |
+| Each step taken by the wrong side or in the wrong state; every step after the link ended | `NETWORK_STATE`, nothing changed | `test_each_step_belongs_to_one_side_and_one_state`, `test_ending_a_link_closes_what_waited_and_leaves_both_histories` |
+| Moving the tenant: to an unrelated shop, for an order's identifier, from the supplier's side, by a stranger, for a rejected note, over an ended link; leaving without having entered, or to another home | Refused; when entered, only the supplier's rows are visible and the setting ends with the transaction | `test_the_tenant_moves_only_to_the_supplier_of_a_note_its_buyer_is_confirming`, `test_the_tenant_does_not_move_for_a_note_that_is_not_waiting` |
+| Marking a note received with a receipt of another total, paid amount, note or status; a credit entry of another amount, customer or kind; a missing or wrong payment entry | `NETWORK_BOOKS_MISMATCH`, nothing changed | `test_a_note_is_received_only_when_both_books_say_what_it_says` |
+| Changing what an issued note says, as the owner of the tables | Refused by trigger | `test_what_a_note_says_cannot_be_changed_by_anyone` |
+| A wrong, used, withdrawn, expired, own or wrong-role code | One answer for all; nothing linked | `test_a_code_works_once_and_every_reason_it_does_not_is_the_same_refusal` (database), `test_a_code_is_shown_once_works_once_and_fails_the_same_way_for_every_reason` (API) |
+| A third shop's owner calls every route with the real identifiers of a link, order, note, payment, draft and code of two other shops | The 404 of an identifier that never existed, byte for byte; nothing changed; it is told nothing | `test_a_shop_that_is_no_party_gets_the_answer_a_missing_thing_gets`; and for shop B against shop A linked to shop C, every operation: `test_a_member_of_one_shop_cannot_reach_another` in the authorization suite |
+| A member of one side calls the partner's shop, or takes the partner's step through its own shop; any answer of either side is searched for the partner's identifiers (shop, members, customers, items, suppliers) | 404; `NETWORK_STATE`; none found | `test_a_member_of_one_side_cannot_reach_or_act_as_the_other_side` |
+| Naming the other shop's customer as one's own row, the other shop's item on a line | Validation error | `test_a_shop_says_which_of_its_own_rows_the_partner_is`, `test_what_is_typed_into_an_order_or_an_answer_is_checked` |
+| One side's books refuse during a confirmation, with either shop written first | Nothing written anywhere; the buyer is not told why the supplier's refused | `test_if_either_side_cannot_be_written_neither_is` |
+| Confirming with `network.confirm` but without `stock.receive` or `suppliers.pay` | Refused naming the missing permission | `test_confirming_asks_for_the_books_own_permissions_as_well`, the matrix's `HELD_BACK` |
+| No route lists or searches shops | None exists; no parameter that could | `test_there_is_no_way_to_look_for_a_shop` |
+
+**Where a reviewer should look first.**
+
+1. `network_enter_peer` and `network_leave_peer` (migration 0045) and `NoteService.confirm` with `sell_in` (`application/network_orders.py`): the one place the application acts as a second shop. Check that nothing but the supplier's sale can happen inside the block, and that an error inside it can only end the transaction.
+2. `sell_in` writes the supplier's ledger with a synthetic owner's authority in the issuing member's name (BR-91). The alternatives were to refuse a confirmation whenever that member's permissions had changed, or to write as nobody. Is the note's authority the right one?
+3. `network_receipt_finish`: it is the only check that ties the two postings to the note. It does not compare lines, only totals, currency, parties and author.
+4. `network_notice_recipients` returns the partner's members' Telegram chat ids and permission data to the application in the acting shop's transaction. They are used to address the outbox and are in no answer. Is that acceptable, or should the partner's own worker address them?
+5. `PARTNER_REFUSED` hides the reason from the buyer, and nobody tells the supplier that a confirmation failed in its books. Functionally safe; operationally someone has to phone.
+6. The reconciliation never reads the partner's books, so a difference made by an entry the partner cancelled on its own side is invisible to this side until they talk. That is the rule (BR-93), stated here so it is not mistaken for an oversight.
+7. The free text one side types (an order's note, line names, reasons) is stored on the other side and shown to its staff: it is escaped by the clients like any text, and limited in length, but it is the first user-supplied text that crosses tenants.
+8. Rate limits: presenting a code is an ordinary write (30 a minute per user). A code is 256 bits, so guessing is not the risk; noise is.
+
+**Not verified.** Behaviour under load; the migration against a copy of production data; a restore that splits two shops' copies (a point-in-time restore is of the whole database, so the copies stay together); the owner of the tables in production bypassing row-level security as the test database's does (every earlier definer function relies on the same).
+
 ## What was read
 
 | Area | Files |

@@ -429,13 +429,14 @@ class StockQueries:
         draft: dict[str, Any],
         created_by: UUID,
         created_at: datetime,
+        origin_ref: UUID | None = None,
     ) -> None:
         await self._conn.execute(
             text(
                 "INSERT INTO stock_document (id, shop_id, kind, number, doc_date, supplier_id, customer_id, currency, "
-                "  total, paid, reason, note, draft, created_by, created_at) "
+                "  total, paid, reason, note, draft, created_by, created_at, origin_ref) "
                 "VALUES (:id, :shop_id, :kind, :number, :doc_date, :supplier_id, :customer_id, :currency, :total, "
-                "  :paid, :reason, :note, CAST(:draft AS jsonb), :created_by, :created_at)"
+                "  :paid, :reason, :note, CAST(:draft AS jsonb), :created_by, :created_at, :origin_ref)"
             ),
             {
                 "id": document_id,
@@ -453,6 +454,7 @@ class StockQueries:
                 "draft": json.dumps(draft, sort_keys=True),
                 "created_by": created_by,
                 "created_at": created_at,
+                "origin_ref": origin_ref,
             },
         )
 

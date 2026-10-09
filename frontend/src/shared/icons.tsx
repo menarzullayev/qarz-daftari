@@ -234,6 +234,7 @@ const NAV_ICONS: Readonly<Record<string, IconComponent | undefined>> = {
   stock: BoxIcon,
   stockDocuments: ListIcon,
   suppliers: UsersIcon,
+  network: UsersIcon,
   reminders: BellIcon,
   reports: ChartIcon,
   disputes: MessageIcon,

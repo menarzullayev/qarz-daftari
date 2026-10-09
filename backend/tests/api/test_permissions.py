@@ -48,12 +48,20 @@ STATES = ["none", "granted", "denied"]
 OWN_ROUTES = [name for name in SHOP_OPS if CALLS[name].prepare is _permissions_on]
 BEYOND = (403, "BEYOND_OWN_PERMISSIONS")
 
+BOOK = (403, "FORBIDDEN_PERMISSION")
+
 # A member who was given `staff.manage` is let through the gate and then held to their own rights: the
 # suite's request for these operations changes a role, or names the seller who is calling.
 HELD_BACK: dict[tuple[str, str], tuple[int, str]] = {
     ("staff.update", "manager_a"): BEYOND,  # makes the seller a manager: a role is the owner's to give
     ("staff.update", "seller_a"): BEYOND,  # the seller's own membership
     ("staff.remove", "seller_a"): BEYOND,  # the seller's own membership
+    # The network is never a way around a book's own permission: a seller given `network.confirm` alone is
+    # let through the gate and then asked for what the step writes with (tests/api/test_network.py).
+    ("network.notes.confirm", "seller_a"): BOOK,  # a stock receipt: `stock.receive`
+    ("network.payments.record", "seller_a"): BOOK,  # a payment to a supplier: `suppliers.pay`
+    ("network.payments.confirm", "seller_a"): BOOK,
+    ("network.payments.withdraw", "seller_a"): BOOK,
 }
 
 

@@ -96,6 +96,16 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
         "CASH_CATEGORY_NAME_TAKEN",
         "CASH_CATEGORY_FIXED",
         "CASH_CATEGORY_IN_USE",
+        # The network between shops is worked in the Mini App and the panel; the chat only tells.
+        "NETWORK_STATE",
+        "NETWORK_INVITE_INVALID",
+        "NETWORK_LINK_EXISTS",
+        "NETWORK_TOO_MANY_INVITES",
+        "NETWORK_PARTNER_UNAVAILABLE",
+        "NETWORK_COUNTERPART_INVALID",
+        "NETWORK_CURRENCY",
+        "NETWORK_BOOKS_MISMATCH",
+        "NETWORK_PARTNER_REFUSED",
     }
     assert set(_STATUS) - spoken_elsewhere <= set(UZ)
 

@@ -84,6 +84,7 @@ GROUPS: tuple[Group, ...] = (
     Group("goods", "Tovarlar", "Товары"),
     Group("stock", "Ombor", "Склад"),
     Group("suppliers", "Ta'minotchilar", "Поставщики"),
+    Group("network", "Hamkorlar", "Партнёры"),
     Group("reminders", "Eslatmalar", "Напоминания"),
     Group("reports", "Hisobot va fayllar", "Отчёты и файлы"),
     Group("cash", "Kassa", "Касса"),
@@ -307,6 +308,85 @@ CATALOGUE: tuple[Permission, ...] = (
         "Записывать оплату поставщику и отменять её",
         _MANAGERS,
         ("suppliers.entries.create", "suppliers.entries.cancel"),
+    ),
+    # --- the network between shops (expansion module J; every operation below exists only while ---------
+    # --- `network_on` and `stock_on` are on) --------------------------------------------------------------
+    # Five jobs, each a permission: looking; connecting to another shop, which is the owner's; ordering
+    # as a buyer; answering orders and issuing delivery notes as a supplier; and confirming what the other
+    # side recorded, which is what writes this shop's books. A step that writes the stock or a ledger asks
+    # for that book's own permission as well, inside the service (`stock.receive`, `suppliers.pay`,
+    # `credits.record`, `payments.record`, `entries.cancel`): the network is never a way around them.
+    Permission(
+        "network.view",
+        "network",
+        "Hamkorlar, buyurtmalar va yuk xatlarini ko'rish",
+        "Видеть партнёров, заказы и накладные",
+        _MANAGERS,
+        (
+            "network.overview",
+            "network.links.read",
+            "network.orders.list",
+            "network.orders.read",
+            "network.notes.list",
+            "network.notes.read",
+            "network.payments.list",
+            "network.payments.read",
+        ),
+    ),
+    Permission(
+        "network.manage",
+        "network",
+        "Boshqa do'kon bilan bog'lanish: taklif, qabul qilish, tugatish",
+        "Связь с другим магазином: приглашение, принятие, завершение",
+        _OWNER,
+        (
+            "network.invites.create",
+            "network.invites.revoke",
+            "network.links.request",
+            "network.links.accept",
+            "network.links.decline",
+            "network.links.end",
+            "network.links.attach",
+        ),
+    ),
+    Permission(
+        "network.order",
+        "network",
+        "Ta'minotchiga buyurtma yozish, yuborish va bekor qilish",
+        "Составлять, отправлять и отменять заказы поставщику",
+        _MANAGERS,
+        (
+            "network.drafts.list",
+            "network.drafts.read",
+            "network.drafts.create",
+            "network.drafts.update",
+            "network.drafts.delete",
+            "network.orders.send",
+            "network.orders.cancel",
+        ),
+    ),
+    Permission(
+        "network.fulfil",
+        "network",
+        "Kelgan buyurtmani qabul qilish yoki rad etish, yuk xati berish",
+        "Принимать или отклонять входящие заказы, оформлять накладные",
+        _MANAGERS,
+        ("network.orders.accept", "network.orders.decline", "network.notes.issue", "network.notes.correct"),
+    ),
+    Permission(
+        "network.confirm",
+        "network",
+        "Yuk xatini va hamkor to'lovini tasdiqlash yoki rad etish",
+        "Подтверждать или отклонять накладные и оплаты партнёра",
+        _MANAGERS,
+        (
+            "network.notes.confirm",
+            "network.notes.reject",
+            "network.payments.record",
+            "network.payments.confirm",
+            "network.payments.decline",
+            "network.payments.withdraw",
+        ),
     ),
     # --- reminders ------------------------------------------------------------------------------------
     Permission(
@@ -553,12 +633,18 @@ STOCK_VIEW = "stock.view"
 STOCK_RECEIVE = "stock.receive"
 STOCK_ADJUST = "stock.adjust"
 STOCK_COSTS_VIEW = "stock.costs.view"
+SUPPLIERS_VIEW = "suppliers.view"
 SUPPLIERS_MANAGE = "suppliers.manage"
 SUPPLIERS_PAY = "suppliers.pay"
 PERMISSIONS_MANAGE = "permissions.manage"
 CASH_VIEW = "cash.view"
 CASH_RECORD_INCOME = "cash.record_income"
 CASH_RECORD_EXPENSE = "cash.record_expense"
+NETWORK_VIEW = "network.view"
+NETWORK_MANAGE = "network.manage"
+NETWORK_ORDER = "network.order"
+NETWORK_FULFIL = "network.fulfil"
+NETWORK_CONFIRM = "network.confirm"
 ALL_KEYS: frozenset[str] = frozenset(_BY_KEY)
 FIXED_KEYS: frozenset[str] = frozenset(key for key, permission in _BY_KEY.items() if permission.fixed)
 _NO_OVERRIDES: frozenset[str] = frozenset()

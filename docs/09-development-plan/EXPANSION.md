@@ -37,7 +37,7 @@ possible. The founder's decisions stand.
 | G | Permission matrix | - | `permissions_on` | 0039 | | |
 | H | Cash book | F, G | `cash_book_on` | 0042 | | |
 | I | Stock | F, G | `stock_on` | 0043 | | |
-| J | Suppliers and the network between shops | I | `network_on` | 0044 | | |
+| J | Suppliers and the network between shops | I | `network_on` (and `stock_on`) | 0045 | | |
 | E | Four more languages | all texts final (built beside H and I, before J: see below) | - | 0044 | | |
 
 Module E was built while H, I and J were still being written (H and I were merged first and are

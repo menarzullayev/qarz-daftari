@@ -25,6 +25,7 @@ from qarz.application.customers import require_viewable
 from qarz.application.errors import AppError, NotFound, StorageTimeout
 from qarz.application.export_texts import header, word
 from qarz.application.files import CheckedFile, FileService, FileStoreUnavailable, StagedFile
+from qarz.application.network_export import write_network
 from qarz.application.operations import operation
 from qarz.application.ports import ExportJobRecord, Storage
 from qarz.application.shops import require_member
@@ -213,6 +214,8 @@ class ExportService:
             # The stock and the suppliers follow, as sheets of their own after the ones every workbook
             # has: only for a shop that has any, so a shop without them gets the workbook it always got.
             await write_stock(book, self._storage, shop_id, settings.lang, until)
+            # And the shop's own side of the network between shops, for a shop that has a link.
+            await write_network(book, self._storage, shop_id, settings.lang)
             # Packing compresses everything written so far; done off the event loop so that messages
             # keep being delivered meanwhile.
             content = await asyncio.to_thread(book.finish)

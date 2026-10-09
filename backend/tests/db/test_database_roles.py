@@ -57,6 +57,27 @@ DEFINER_FUNCTIONS: dict[str, set[str]] = {
     "review_group_receipt(bigint,uuid,boolean)": {APP},
     "review_group_decide_receipt(bigint,bigint,uuid,text,smallint,text,text,date,text,jsonb,"
     "timestamp with time zone)": {APP},
+    # --- the network between shops (migration 0045) -----------------------------------------------------
+    # The only way anything two shops share is written, and the only way a transaction is given a second
+    # tenant. Each verifies the link first (tests/db/test_network_schema.py); all are the ordinary
+    # application's, since it is a member of staff who takes each step.
+    "network_lock(uuid,uuid,uuid)": {APP},
+    "network_invite_redeem(uuid,bytea,text,uuid,timestamp with time zone)": {APP},
+    "network_link_decide(uuid,uuid,uuid,boolean,uuid,timestamp with time zone)": {APP},
+    "network_link_end(uuid,uuid,uuid,uuid,timestamp with time zone)": {APP},
+    "network_link_attach(uuid,uuid,uuid,boolean,uuid)": {APP},
+    "network_notice_recipients(uuid,uuid,uuid)": {APP},
+    "network_order_send(uuid,uuid,uuid,uuid,uuid,text,date,jsonb,timestamp with time zone)": {APP},
+    "network_order_accept(uuid,uuid,uuid,uuid,text,jsonb,timestamp with time zone)": {APP},
+    "network_order_close(uuid,uuid,uuid,uuid,text,timestamp with time zone)": {APP},
+    "network_note_issue(uuid,uuid,uuid,uuid,uuid,uuid,bigint,text,jsonb,timestamp with time zone)": {APP},
+    "network_note_reject(uuid,uuid,uuid,uuid,text,jsonb,timestamp with time zone)": {APP},
+    "network_enter_peer(uuid,uuid,uuid)": {APP},
+    "network_leave_peer(uuid,uuid,uuid)": {APP},
+    "network_receipt_finish(uuid,uuid,uuid,uuid,uuid,uuid,uuid,timestamp with time zone)": {APP},
+    "network_payment_record(uuid,uuid,uuid,uuid,uuid,bigint,text,text,uuid,timestamp with time zone)": {APP},
+    "network_payment_decide(uuid,uuid,uuid,uuid,boolean,text,uuid,timestamp with time zone)": {APP},
+    "network_payment_withdraw(uuid,uuid,uuid,uuid,timestamp with time zone)": {APP},
     # --- the administrators' side ---------------------------------------------------------------------
     "admin_shop_search(uuid,date,text,text,uuid,timestamp with time zone,uuid,integer)": {ADMIN},
     "admin_shop_receipts(uuid,uuid)": {ADMIN},
@@ -175,6 +196,18 @@ TABLE_RIGHTS: dict[str, tuple[str, str, str]] = {
     "stock_document_line": ("SELECT; INSERT", "", "SELECT"),
     "stock_movement": ("SELECT; INSERT", "", "SELECT"),
     "stock_level": ("SELECT", "", "SELECT"),
+    # The network between shops (migration 0045). What two shops share is written by the functions
+    # above and by nothing else: the application only reads its own side. Its own are an invitation it
+    # made (and its withdrawal) and an order it has not sent. The worker reads for the owner's export.
+    "network_invite": ("SELECT; INSERT; UPDATE(revoked_at)", "", ""),
+    "network_order_draft": ("SELECT; INSERT; DELETE; UPDATE(note, wanted_date, lines, updated_at)", "", ""),
+    "network_link": ("SELECT", "", "SELECT"),
+    "network_order": ("SELECT", "", "SELECT"),
+    "network_order_line": ("SELECT", "", "SELECT"),
+    "network_note": ("SELECT", "", "SELECT"),
+    "network_note_line": ("SELECT", "", "SELECT"),
+    "network_payment": ("SELECT", "", "SELECT"),
+    "network_event": ("SELECT", "", ""),
     "customer": ("SELECT; INSERT; UPDATE; DELETE", "SELECT", "SELECT; INSERT; UPDATE"),
     "customer_link": ("SELECT; INSERT; UPDATE; DELETE", "", "SELECT; UPDATE"),
     # A customer's read-only link (migration 0040). The application makes one, ends it and notes that it

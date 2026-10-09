@@ -34,6 +34,9 @@ from qarz.application.files import FileService
 from qarz.application.imports import ImportService
 from qarz.application.ledger_service import LedgerService
 from qarz.application.links import LinkService
+from qarz.application.network import NetworkService
+from qarz.application.network_orders import NoteService, OrderService
+from qarz.application.network_payments import PaymentService
 from qarz.application.online_payment import OnlinePaymentService, PaymentKeys
 from qarz.application.ownership import OwnershipService
 from qarz.application.payment_notices import PaymentNoticeService
@@ -67,6 +70,7 @@ from qarz.interface.exports_api import add_export_routes
 from qarz.interface.imports_api import IMPORT_UPLOAD, add_import_routes
 from qarz.interface.links_api import add_link_routes
 from qarz.interface.me_api import add_me_routes
+from qarz.interface.network_api import add_network_routes
 from qarz.interface.observability import Metrics, Observe
 from qarz.interface.online_payment_api import add_online_order_routes, add_provider_routes
 from qarz.interface.payment_notices_api import RECEIPT_UPLOAD, add_file_route, add_payment_notice_routes
@@ -249,6 +253,14 @@ def create_app(
             StockService(storage, now),
             DocumentService(storage, now),
             SupplierService(storage, now),
+            current_user,
+        )
+        add_network_routes(
+            app,
+            NetworkService(storage, now),
+            OrderService(storage, now),
+            NoteService(storage, now),
+            PaymentService(storage, now),
             current_user,
         )
         add_account_routes(
