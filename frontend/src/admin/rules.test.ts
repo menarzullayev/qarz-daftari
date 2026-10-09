@@ -51,9 +51,21 @@ describe("reasons and codes", () => {
 });
 
 describe("platform settings, by type and range", () => {
-  it("knows the nine settings of the platform", () => {
+  it("knows the eleven settings of the platform", () => {
     expect(Object.keys(SETTING_RULES).sort()).toEqual(
-      ["online_pay_on", "payment_cards", "price_uzs", "review_group", "sms_monthly_quota", "sms_on", "trial_days", "trial_on", "usd_on"].sort(),
+      [
+        "free_plan_customers",
+        "free_plan_on",
+        "online_pay_on",
+        "payment_cards",
+        "price_uzs",
+        "review_group",
+        "sms_monthly_quota",
+        "sms_on",
+        "trial_days",
+        "trial_on",
+        "usd_on",
+      ].sort(),
     );
   });
 
@@ -66,6 +78,9 @@ describe("platform settings, by type and range", () => {
     ["review_group", "-1001234567890", -1001234567890],
     ["review_group", "  ", null],
     ["trial_on", "false", false],
+    ["free_plan_on", "true", true],
+    ["free_plan_customers", "1", 1],
+    ["free_plan_customers", "10 000", 10000],
   ] as const)("reads %s %j", (key, text, value) => {
     expect(parseSetting(SETTING_RULES[key] as never, text)).toEqual({ ok: true, value });
   });
@@ -85,6 +100,11 @@ describe("platform settings, by type and range", () => {
     ["review_group", "-10000000000000000"],
     ["review_group", "-12.5"],
     ["trial_on", "yes"],
+    ["free_plan_on", "1"],
+    ["free_plan_customers", "0"],
+    ["free_plan_customers", "10001"],
+    ["free_plan_customers", "30.5"],
+    ["free_plan_customers", ""],
   ] as const)("refuses %s %j", (key, text) => {
     expect(parseSetting(SETTING_RULES[key] as never, text)).toEqual({ ok: false });
   });

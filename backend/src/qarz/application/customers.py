@@ -13,13 +13,14 @@ from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import operation
 from qarz.application.ports import CustomerRecord, Membership, Storage, TenantSession
 from qarz.application.shops import ShopSuspended, require_member
+from qarz.domain import platform_settings
 from qarz.domain.access import Capability, Role
 from qarz.domain.credit import MAX_LIMIT, MIN_LIMIT, valid_limit
 from qarz.domain.money import Currency
 from qarz.domain.names import normalize_name
 from qarz.domain.phones import normalize_phone
 from qarz.domain.promise import tashkent_date
-from qarz.domain.subscription import effective_state
+from qarz.domain.subscription import LIMITED, effective_state, may_add_customers, with_free_plan
 
 CREATE_CUSTOMER = operation("customers.create", Capability.RECORD)
 LIST_CUSTOMERS = operation("customers.list", Capability.RECORD)
@@ -37,6 +38,17 @@ class SubscriptionLimited(AppError):
     code = "SUBSCRIPTION_LIMITED"
 
 
+class FreePlanFull(AppError):
+    """BR-34: the free plan holds no more customers, and the shop has no trial or paid period that would.
+    `limit` is how many it holds."""
+
+    code = "FREE_PLAN_FULL"
+
+    def __init__(self, limit: int) -> None:
+        super().__init__({"limit": str(limit)})
+        self.limit = limit
+
+
 class CustomerArchived(AppError):
     code = "CUSTOMER_ARCHIVED"
 
@@ -47,13 +59,48 @@ class CustomerHasBalance(AppError):
     code = "CUSTOMER_HAS_BALANCE"
 
 
-async def effective_subscription(session: TenantSession, today: date) -> str:
-    """trial, active, limited or suspended, taking the end dates into account (BR-29, BR-30)."""
+FREE_PLAN_ON = "free_plan_on"
+FREE_PLAN_CUSTOMERS = "free_plan_customers"
+
+
+async def free_plan_customers(session: TenantSession) -> int | None:
+    """How many customers the free plan holds; None while the platform switch is off (BR-33)."""
+    if await session.platform_setting(FREE_PLAN_ON) is not True:
+        return None
+    return platform_settings.free_plan_customers(True, await session.platform_setting(FREE_PLAN_CUSTOMERS))
+
+
+async def stored_subscription(session: TenantSession, today: date) -> str:
+    """trial, active, limited or suspended by the stored row and its end dates alone (BR-29, BR-30)."""
     row = await session.subscription()
     if row is None:
-        return "limited"
+        return LIMITED
     state, trial_ends, paid_through = row
     return effective_state(state, trial_ends, paid_through, today)
+
+
+async def effective_subscription(session: TenantSession, today: date) -> str:
+    """trial, active, free, limited or suspended: the end dates and the free plan taken into account
+    (BR-29, BR-30, BR-33). The plan is looked at only for a shop that would otherwise be limited."""
+    state = await stored_subscription(session, today)
+    if state != LIMITED:
+        return state
+    held = await free_plan_customers(session)
+    if held is None:
+        return LIMITED
+    return with_free_plan(state, held, await session.active_customers())
+
+
+async def require_room(session: TenantSession, today: date, adding: int = 1) -> None:
+    """BR-34: refuse `adding` more active customers when the free plan would not hold them and no trial
+    or paid period is running. Called inside the transaction that adds them; the count is locked, so two
+    requests at once cannot both take the last place. With the switch off nothing is read but the switch."""
+    held = await free_plan_customers(session)
+    if held is None or adding <= 0:
+        return
+    state = await stored_subscription(session, today)
+    if not may_add_customers(state, held, await session.active_customers(lock=True), adding):
+        raise FreePlanFull(held)
 
 
 async def require_writable(session: TenantSession, today: date, *, new_credit: bool) -> None:
@@ -121,8 +168,11 @@ async def owes_anything(session: TenantSession, customer_id: UUID) -> bool:
     return False
 
 
-async def create_customer_in(session: TenantSession, actor: Membership, name: str, phone: str | None) -> CustomerRecord:
+async def create_customer_in(
+    session: TenantSession, actor: Membership, name: str, phone: str | None, today: date
+) -> CustomerRecord:
     """Add a customer inside a tenant transaction the caller has opened and authorized."""
+    await require_room(session, today)
     customer = await session.create_customer(
         customer_id=uuid4(), display_name=name, name_norm=normalize_name(name), phone=phone
     )
@@ -209,7 +259,7 @@ class CustomerService:
             await require_writable(session, self._today(), new_credit=False)
 
             async def apply() -> dict[str, Any]:
-                created = await create_customer_in(session, actor, clean_name(name), number)
+                created = await create_customer_in(session, actor, clean_name(name), number, self._today())
                 return customer_body(created, 0, 0 if await dollars_on(session) else None)
 
             return await idempotency.run_once(
@@ -335,6 +385,9 @@ class CustomerService:
                 if archived and await owes_anything(session, customer_id):
                     raise CustomerHasBalance()
                 dollars = await dollar_balances(session, [customer_id])
+                if not archived and customer.status != "active":
+                    # A customer taken out of the archive counts again (BR-33), so needs a place (BR-34).
+                    await require_room(session, self._today())
                 updated = await session.set_customer_status(customer_id, "archived" if archived else "active")
                 await session.record_activity(
                     membership_id=actor.membership_id,

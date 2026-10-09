@@ -196,6 +196,7 @@ describe("subscription", () => {
     const server = fakeServer(() => ok(subscriptionBody()));
     expect(await shopOf(server.fetch).readSubscription()).toEqual({
       state: "trial",
+      plan: null,
       endsOn: "2026-10-26",
       daysLeft: 20,
       priceUzs: 100000,
@@ -214,6 +215,23 @@ describe("subscription", () => {
       cardNumber: null,
       cards: [],
     });
+  });
+
+  it("reads the free plan when the server sends it, and refuses one that is not the contract", async () => {
+    const plan = { free_customers: 30, customers: 12, after_period: "free", sms: { offered: true, included: false, quota: 50, left: 0 } };
+    const server = fakeServer(() => ok(subscriptionBody({ plan })));
+    expect((await shopOf(server.fetch).readSubscription()).plan).toEqual({
+      freeCustomers: 30,
+      customers: 12,
+      afterPeriod: "free",
+      sms: { offered: true, included: false, quota: 50, left: 0 },
+    });
+    const free = fakeServer(() => ok(subscriptionBody({ state: "free", ends_on: null, days_left: null, plan: { ...plan, after_period: null } })));
+    expect(await shopOf(free.fetch).readSubscription()).toMatchObject({ state: "free", plan: { afterPeriod: null } });
+    for (const broken of [{ ...plan, customers: "12" }, { ...plan, sms: null }, { ...plan, sms: { ...plan.sms, included: 1 } }, "free"]) {
+      const bad = fakeServer(() => ok(subscriptionBody({ plan: broken })));
+      await expect(shopOf(bad.fetch).readSubscription()).rejects.toMatchObject({ code: BAD_RESPONSE });
+    }
   });
 
   it("reads the cards in the server's order: the first is the primary", async () => {

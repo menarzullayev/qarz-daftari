@@ -17,6 +17,7 @@ _STATUS = {
     "TRANSFER_TARGET_INVALID": 409,
     "NOT_TRANSFER_TARGET": 409,
     "SUBSCRIPTION_LIMITED": 402,
+    "FREE_PLAN_FULL": 402,
     "SHOP_SUSPENDED": 403,
     "RATE_LIMITED": 429,
     "TIMEOUT": 503,
@@ -80,6 +81,10 @@ _MESSAGES = {
         "TRANSFER_TARGET_INVALID": "Egalikni faqat shu do'konning faol menejeriga o'tkazish mumkin.",
         "NOT_TRANSFER_TARGET": "Bu taklifga faqat taklif qilingan menejer javob bera oladi.",
         "SUBSCRIPTION_LIMITED": "Obuna tugagan: yangi nasiya yozilmaydi. To'lov qabul qilish va ko'rish ishlayveradi.",
+        "FREE_PLAN_FULL": (
+            "Bepul tarif {limit} tagacha mijozni o'z ichiga oladi, yangi mijoz qo'shilmadi. "
+            "Ko'proq mijoz uchun obuna to'lang: botda /obuna yoki «Obuna» sahifasi."
+        ),
         "SHOP_SUSPENDED": "Do'kon to'xtatilgan. Faqat do'kon egasi ma'lumotlarni ko'ra oladi va eksport qila oladi.",
         "CUSTOMER_ARCHIVED": "Bu mijoz arxivda. Avval arxivdan chiqaring.",
         "CUSTOMER_HAS_BALANCE": "Qarzi bor mijozni arxivlab bo'lmaydi.",
@@ -144,6 +149,10 @@ _MESSAGES = {
         "TRANSFER_TARGET_INVALID": "Магазин можно передать только активному менеджеру этого магазина.",
         "NOT_TRANSFER_TARGET": "Ответить на предложение может только менеджер, которому оно адресовано.",
         "SUBSCRIPTION_LIMITED": "Подписка истекла: новые продажи в долг недоступны. Оплаты и просмотр работают.",
+        "FREE_PLAN_FULL": (
+            "Бесплатный тариф вмещает до {limit} клиентов, новый клиент не добавлен. "
+            "Чтобы добавить больше, оплатите подписку: /obuna в боте или страница «Подписка»."
+        ),
         "SHOP_SUSPENDED": "Магазин временно приостановлен. Только владелец может просматривать и выгружать данные.",
         "CUSTOMER_ARCHIVED": "Этот клиент в архиве. Сначала верните его из архива.",
         "CUSTOMER_HAS_BALANCE": "Клиента с долгом нельзя отправить в архив.",
@@ -201,9 +210,16 @@ _MESSAGES = {
 }
 
 
+# The messages that name a number the refusal carries in its fields.
+_WITH_FIELDS = {"FREE_PLAN_FULL": ("limit",)}
+
+
 def error_response(code: str, lang: str, fields: dict[str, str] | None = None) -> JSONResponse:
     messages = _MESSAGES.get(lang, _MESSAGES["uz"])
-    body = {"error": {"code": code, "message": messages.get(code, messages["ERROR"]), "fields": fields or {}}}
+    message = messages.get(code, messages["ERROR"])
+    if code in _WITH_FIELDS:
+        message = message.format(**{name: (fields or {}).get(name, "") for name in _WITH_FIELDS[code]})
+    body = {"error": {"code": code, "message": message, "fields": fields or {}}}
     return JSONResponse(body, status_code=_STATUS.get(code, 500))
 
 

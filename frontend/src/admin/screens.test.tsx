@@ -335,6 +335,11 @@ describe("platform settings", () => {
     expect(document.getElementById("setting-sms_monthly_quota-hint")?.textContent).toBe("0 dan 100000 gacha butun son.");
     expect((screen.getByLabelText("Yangi do'konlarga sinov muddati beriladi") as HTMLInputElement).checked).toBe(true);
     expect((screen.getByLabelText("SMS yoqilgan") as HTMLInputElement).type).toBe("checkbox");
+    // The free plan: a switch that is off and asks for the code, and the number of customers it holds.
+    const freePlan = screen.getByLabelText("Bepul tarif yoqilgan (SMS faqat to'lagan do'konlarga)") as HTMLInputElement;
+    expect([freePlan.type, freePlan.checked]).toEqual(["checkbox", false]);
+    expect((screen.getByLabelText("Bepul tarifdagi mijozlar soni (do'kon boshiga)") as HTMLInputElement).value).toBe("30");
+    expect(document.getElementById("setting-free_plan_customers-hint")?.textContent).toBe("1 dan 10000 gacha butun son.");
     const cards = screen.getByRole("group", { name: "To'lov qabul qilinadigan kartalar" });
     expect((within(cards).getByLabelText("1-karta nomi") as HTMLInputElement).value).toBe("Humo · Anorbank");
     expect((within(cards).getByLabelText("1-karta raqami") as HTMLInputElement).value).toBe("8600123456789012");

@@ -13,7 +13,13 @@ from uuid import UUID
 from qarz.application import idempotency
 from qarz.application.chat_texts import CATALOGS, both, money, say
 from qarz.application.currencies import USD, UZS, dollars_on, shop_currencies
-from qarz.application.customers import effective_subscription, require_viewable, require_writable
+from qarz.application.customers import (
+    effective_subscription,
+    free_plan_customers,
+    require_viewable,
+    require_writable,
+    stored_subscription,
+)
 from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import operation
 from qarz.application.ports import ReminderCandidate, ReminderSettings, Storage, TenantSession
@@ -31,6 +37,7 @@ from qarz.domain.reminders import (
     plan_automatic,
     plan_manual,
 )
+from qarz.domain.subscription import sms_included
 
 READ_REMINDER_SETTINGS = operation("reminders.settings.read", Capability.MANAGE)
 UPDATE_REMINDER_SETTINGS = operation("reminders.settings.update", Capability.MANAGE)
@@ -60,6 +67,20 @@ class LimitReached(AppError):
 
 class CustomerUnreachable(AppError):
     code = "CUSTOMER_UNREACHABLE"
+
+
+async def sms_allowance(session: TenantSession, today: date) -> tuple[bool, int, int]:
+    """Whether the platform offers SMS, the month's quota of a shop, and how many this shop may still
+    send this month. With the free plan on, a shop that is not in a paid period may send none (BR-35);
+    what the platform offers is still told, so that its owner can be shown what paying adds."""
+    on = await session.platform_setting(SMS_ON) is True
+    quota = platform_settings.effective(SMS_QUOTA, await session.platform_setting(SMS_QUOTA))
+    if not on or isinstance(quota, bool) or not isinstance(quota, int) or quota <= 0:
+        return on, 0, 0
+    free_plan_on = await free_plan_customers(session) is not None
+    if free_plan_on and not sms_included(await stored_subscription(session, today), free_plan_on):
+        return on, quota, 0
+    return on, quota, max(0, quota - await session.sms_reminders_since(today.replace(day=1)))
 
 
 def reminder_text(lang: str, template: int, plan: ReminderPlan, channel: Channel, *, shop: str, name: str) -> str:
@@ -180,11 +201,8 @@ class ReminderService:
 
     async def _sms_left(self, session: TenantSession, today: date) -> tuple[bool, int]:
         """Whether SMS is on for the platform, and how many the shop may still send this month."""
-        on = await session.platform_setting(SMS_ON) is True
-        quota = platform_settings.effective(SMS_QUOTA, await session.platform_setting(SMS_QUOTA))
-        if not on or isinstance(quota, bool) or not isinstance(quota, int) or quota <= 0:
-            return on, 0
-        return on, max(0, quota - await session.sms_reminders_since(today.replace(day=1)))
+        on, _, left = await sms_allowance(session, today)
+        return on, left
 
     async def _send(
         self,

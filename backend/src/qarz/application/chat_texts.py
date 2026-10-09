@@ -38,6 +38,10 @@ UZ = {
         "✅ «{shop}» do'koni ochildi.\n\nBepul sinov muddati faqat birinchi do'konga beriladi. "
         "Bu do'konda nasiya yozish uchun obuna to'lovini qiling."
     ),
+    "shop_created_free": (
+        "✅ «{shop}» do'koni ochildi.\n\nBepul sinov muddati faqat birinchi do'konga beriladi. Bu do'kon "
+        "bepul tarifda ishlaydi: nasiya yozishingiz mumkin, masalan: Ali 45000. Tarif haqida: /obuna"
+    ),
     "shop_created": "✅ «{shop}» do'koni ochildi.\n\nEndi nasiya yozishingiz mumkin, masalan: Ali 45000",
     "lang_prompt": "Tilni tanlang:",
     "lang_set": "Til o'zgartirildi: o'zbekcha.",
@@ -90,6 +94,10 @@ UZ = {
     "PROMISE_BEFORE_SALE": "Muddat savdo kunidan oldin bo'lishi mumkin emas.",
     "PROMISE_TOO_FAR": "Muddat savdo kunidan ko'pi bilan 365 kun keyin bo'lishi mumkin.",
     "SUBSCRIPTION_LIMITED": "Obuna tugagan: yangi nasiya yozilmaydi. To'lov qabul qilish ishlayveradi. /obuna",
+    "FREE_PLAN_FULL": (
+        "Bepul tarif {limit} tagacha mijozni o'z ichiga oladi, yangi mijoz qo'shilmadi. "
+        "Ko'proq mijoz uchun obuna to'lang: /obuna"
+    ),
     "SHOP_SUSPENDED": "Do'kon vaqtincha to'xtatilgan.",
     "EXCEEDS_BALANCE": "To'lov mijozning qarzidan katta bo'lishi mumkin emas.",
     "CUSTOMER_ARCHIVED": "Bu mijoz arxivda. Avval arxivdan chiqaring.",
@@ -209,6 +217,17 @@ UZ = {
         "Muddat tugagan: yangi nasiya yozilmaydi. To'lov qabul qilish, ko'rish va mijozlarga xabarlar ishlayveradi."
     ),
     "sub_state_suspended": "Do'kon vaqtincha to'xtatilgan. Qo'llab-quvvatlashga murojaat qiling.",
+    "sub_state_free": "Bepul tarif: muddati yo'q, do'kon to'liq ishlaydi.",
+    "sub_customers": "Mijozlar: {used} ta. Bepul tarif {limit} tagacha mijozni o'z ichiga oladi.",
+    "sub_then_free": "To'lov qilinmasa, do'kon bepul tarifda to'liq ishlayveradi ({limit} tagacha mijoz).",
+    "sub_then_limited": (
+        "To'lov qilinmasa, yangi nasiya yozilmaydi: sizda {used} ta mijoz bor, bepul tarif esa {limit} tagacha."
+    ),
+    "sub_quota_left": "SMS eslatmalar obunaga kiradi: shu oyda {left} ta qoldi (oyiga {quota} ta).",
+    "sub_paying_adds": "To'lov qilsangiz, mijozlar soni cheklanmaydi.",
+    "sub_paying_adds_quota": (
+        "To'lov qilsangiz, mijozlar soni cheklanmaydi va oyiga {quota} tagacha SMS eslatma yuboriladi."
+    ),
     "sub_price": "Narxi: oyiga {price}.",
     "sub_pay_to": "To'lov uchun karta — {label}: {card}. O'tkazmadan so'ng chekni shu yerga yuboring.",
     "sub_other_cards_button": "Boshqa karta ({count})",
@@ -253,6 +272,10 @@ UZ = {
     "sub_limited": (
         "«{shop}»: obuna muddati tugadi. Endi yangi nasiya yozilmaydi; to'lov qabul qilish, ko'rish va "
         "mijozlarga xabarlar ishlayveradi. To'lash: /obuna"
+    ),
+    "sub_free_now": (
+        "«{shop}»: muddat tugadi. Do'kon bepul tarifga o'tdi va to'liq ishlayveradi: {limit} tagacha mijoz. "
+        "Ko'proq mijoz kerak bo'lsa: /obuna"
     ),
     "move_date_button": "📅 Muddatni ko'chirish",
     "ask_move_date": "To'lash muddati qaysi sanaga ko'chirilsin? kun.oy ko'rinishida yozing, masalan 25.10",
@@ -300,6 +323,10 @@ UZ = {
     "import_unreadable": "📥 {shop}\nImport faylini jadval sifatida o'qib bo'lmadi. Sababi ilovada ko'rsatilgan.",
     "import_refused": (
         "📥 {shop}\nImport qo'llanmadi: tekshiruvdan keyin ma'lumotlar o'zgargan. Ilovada qayta ko'rib chiqing."
+    ),
+    "import_refused_free_plan": (
+        "📥 {shop}\nImport qo'llanmadi: bepul tarif {limit} tagacha mijozni o'z ichiga oladi. "
+        "Ko'proq mijoz uchun obuna to'lang: /obuna"
     ),
     "import_undo_refused": (
         "↩️ {shop}\nImportni bekor qilib bo'lmadi: uning yozuvlariga to'lov qilingan. Hech narsa o'zgarmadi."
@@ -397,6 +424,10 @@ RU = {
         "✅ Магазин «{shop}» открыт.\n\nБесплатный пробный период даётся только первому магазину. "
         "Чтобы записывать долги в этом магазине, оплатите подписку."
     ),
+    "shop_created_free": (
+        "✅ Магазин «{shop}» открыт.\n\nБесплатный пробный период даётся только первому магазину. Этот "
+        "магазин работает на бесплатном тарифе: можно записывать долги, например: Али 45000. О тарифе: /obuna"
+    ),
     "shop_created": "✅ Магазин «{shop}» открыт.\n\nТеперь можно записывать долги, например: Али 45000",
     "lang_prompt": "Выберите язык:",
     "lang_set": "Язык изменён: русский.",
@@ -448,6 +479,10 @@ RU = {
     "PROMISE_BEFORE_SALE": "Срок не может быть раньше дня продажи.",
     "PROMISE_TOO_FAR": "Срок может быть не позже чем через 365 дней после продажи.",
     "SUBSCRIPTION_LIMITED": "Подписка истекла: новые продажи в долг недоступны. Приём оплат работает. /obuna",
+    "FREE_PLAN_FULL": (
+        "Бесплатный тариф вмещает до {limit} клиентов, новый клиент не добавлен. "
+        "Чтобы добавить больше, оплатите подписку: /obuna"
+    ),
     "SHOP_SUSPENDED": "Магазин временно приостановлен.",
     "EXCEEDS_BALANCE": "Оплата не может быть больше долга клиента.",
     "CUSTOMER_ARCHIVED": "Этот клиент в архиве. Сначала верните его из архива.",
@@ -563,6 +598,18 @@ RU = {
         "Срок истёк: новые продажи в долг не записываются. Приём оплат, просмотр и сообщения клиентам работают."
     ),
     "sub_state_suspended": "Магазин временно приостановлен. Обратитесь в поддержку.",
+    "sub_state_free": "Бесплатный тариф: без срока, магазин работает полностью.",
+    "sub_customers": "Клиентов: {used}. Бесплатный тариф вмещает до {limit} клиентов.",
+    "sub_then_free": "Без оплаты магазин продолжит работать полностью на бесплатном тарифе (до {limit} клиентов).",
+    "sub_then_limited": (
+        "Без оплаты новые продажи в долг не записываются: у вас клиентов: {used}, "
+        "а бесплатный тариф вмещает до {limit}."
+    ),
+    "sub_quota_left": "SMS-напоминания входят в подписку: в этом месяце осталось {left} (в месяц: {quota}).",
+    "sub_paying_adds": "С оплатой число клиентов не ограничено.",
+    "sub_paying_adds_quota": (
+        "С оплатой число клиентов не ограничено и отправляется до {quota} SMS-напоминаний в месяц."
+    ),
     "sub_price": "Цена: {price} в месяц.",
     "sub_pay_to": "Карта для оплаты — {label}: {card}. После перевода отправьте чек сюда.",
     "sub_other_cards_button": "Другая карта ({count})",
@@ -605,6 +652,10 @@ RU = {
         "«{shop}»: срок подписки истёк. Новые продажи в долг не записываются; приём оплат, просмотр и "
         "сообщения клиентам работают. Оплатить: /obuna"
     ),
+    "sub_free_now": (
+        "«{shop}»: срок истёк. Магазин перешёл на бесплатный тариф и работает полностью: до {limit} клиентов. "
+        "Если нужно больше клиентов: /obuna"
+    ),
     "move_date_button": "📅 Перенести срок",
     "ask_move_date": "На какую дату перенести срок оплаты? Напишите день.месяц, например 25.10",
     "move_date_invalid": "Не понял дату. Напишите день.месяц, например 25.10",
@@ -645,6 +696,10 @@ RU = {
     "import_unreadable": "📥 {shop}\nФайл импорта не удалось прочитать как таблицу. Причина указана в приложении.",
     "import_refused": (
         "📥 {shop}\nИмпорт не применён: после проверки данные изменились. Просмотрите его в приложении ещё раз."
+    ),
+    "import_refused_free_plan": (
+        "📥 {shop}\nИмпорт не применён: бесплатный тариф вмещает до {limit} клиентов. "
+        "Чтобы добавить больше, оплатите подписку: /obuna"
     ),
     "import_undo_refused": (
         "↩️ {shop}\nИмпорт отменить не удалось: по его записям уже есть оплаты. Ничего не изменено."

@@ -29,7 +29,14 @@ from uuid import UUID, uuid4
 
 from qarz.application import idempotency, notify, removal
 from qarz.application.chat_texts import money, say
-from qarz.application.customers import customer_body, owes_anything, require_viewable, require_writable
+from qarz.application.customers import (
+    FreePlanFull,
+    customer_body,
+    owes_anything,
+    require_room,
+    require_viewable,
+    require_writable,
+)
 from qarz.application.errors import AppError, NotFound, StorageTimeout, ValidationFailed
 from qarz.application.files import CheckedFile, FileService, FileStoreUnavailable, StagedFile
 from qarz.application.ledger_service import DEFAULT_ACTOR, STAFF_ACTOR, expire_settled_date_requests
@@ -76,6 +83,10 @@ TEMPLATE_SHEET = "Import"
 TEMPLATE_WIDTHS = (28, 20, 18, 18, 36)
 
 log = logging.getLogger("qarz.imports")
+
+
+# Why the worker did not apply a batch whose customers the free plan would not hold (BR-34).
+FREE_PLAN_FULL = "free_plan_full"
 
 
 class ImportNotApplicable(AppError):
@@ -320,6 +331,11 @@ class ImportService:
                 if record.plan != plan_token:
                     # Not the preview this batch has now: nothing is applied on what nobody was shown.
                     raise ImportNotApplicable({"reason": "stale"})
+                # BR-34: refused now when the free plan would not hold the customers the preview adds.
+                # The worker asks again, with the count locked, before it adds them.
+                preview = await session.import_preview(batch_id)
+                counts = (preview or {}).get("counts") or {}
+                await require_room(session, self._today(), int(counts.get("new_customers", 0)))
                 await self._queue(session, actor, record, APPLYING, "import.apply_requested")
                 return batch_body(await _batch(session, batch_id))
 
@@ -573,6 +589,18 @@ async def apply_in(session: TenantSession, batch_id: UUID, parsed: ParsedFile | 
     settings = await session.shop_settings()
     if settings is None:
         raise NotFound()
+    try:
+        # BR-34, where the customers are added: nothing of the batch is applied when they do not fit.
+        await require_room(session, tashkent_date(now), sum(item.action == imports.CREATE for item in plan.rows))
+    except FreePlanFull as full:
+        await session.set_import_batch(
+            batch_id,
+            status=VALIDATED,
+            summary={**record.summary, "refused": {"step": "apply", "reason": FREE_PLAN_FULL}},
+            plan=record.plan,
+        )
+        await _tell(session, record, "import_refused_free_plan", limit=full.limit)
+        return
 
     author = record.step_by
     existing = sorted({item.customer_id for item in plan.rows if item.customer_id is not None})
