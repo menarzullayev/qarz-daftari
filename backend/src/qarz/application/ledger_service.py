@@ -409,6 +409,7 @@ async def append_entry_in(
 
     account = await session.entries_of(customer_id)
     everything = [row.entry for row in account]
+    now = ledger.not_before(everything, now)
     book = ledger.in_currency(everything, currency)
     refusal = ledger.validate_new_entry(book, kind, amount)
     if refusal is not None:
@@ -550,6 +551,7 @@ async def reverse_entry_in(
         raise NotFound()
     account = await session.entries_of(customer_id)
     everything = [row.entry for row in account]
+    now = ledger.not_before(everything, now)
     original = next((entry for entry in everything if entry.id == entry_id), None)
     if original is None:
         raise NotFound()

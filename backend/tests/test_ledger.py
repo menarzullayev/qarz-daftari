@@ -18,6 +18,7 @@ from qarz.domain.ledger import (
     Refusal,
     allocate,
     balance,
+    not_before,
     overdue,
     payment_history,
     validate_new_entry,
@@ -948,3 +949,19 @@ def test_property_allocate_as_of_never_covers_more_than_was_paid_by_then(account
             assert sum(a.covered for a in allocations) <= paid
             assert all(p.paid_at <= as_of for a in allocations for p in a.parts)
         assert allocate(g.entries, datetime(2030, 1, 1, tzinfo=UTC)) == allocate(g.entries)
+
+
+# --- the time a new entry is written with -----------------------------------------------------------------
+
+
+def test_a_new_entry_is_never_dated_before_the_accounts_last_entry() -> None:
+    """Two writers at once: the one that read its clock first may be numbered second."""
+    last = credit(2, 5_000, at=BASE + timedelta(seconds=10))
+    account = [credit(1, 5_000, at=BASE), last]
+    # Read before the other writer's, written after it: it takes the other's time.
+    assert not_before(account, BASE + timedelta(seconds=9)) == last.created_at
+    # The ordinary case, and an empty account, keep the clock's time.
+    assert not_before(account, BASE + timedelta(seconds=11)) == BASE + timedelta(seconds=11)
+    assert not_before([], BASE) == BASE
+    # The latest time counts, not the last in the list.
+    assert not_before(list(reversed(account)), BASE) == last.created_at

@@ -391,3 +391,13 @@ def payment_history(entries: Iterable[Entry], today: date) -> PaymentHistory | N
         on_time_percent=(200 * on_time_amount + due_amount) // (2 * due_amount),
         longest_delay_days=longest_delay,
     )
+
+
+def not_before(entries: Iterable[Entry], now: datetime) -> datetime:
+    """The time a new entry of this account is written with: `now`, but never earlier than its last entry.
+
+    The time is read before the customer is locked and the sequence number is taken under the lock, so of
+    two writers at once the one that read its time first may be numbered second. Its entry is then written
+    with the other's time: within an account the times follow the numbers, as every reader assumes.
+    """
+    return max([now, *(entry.created_at for entry in entries)])
