@@ -356,7 +356,12 @@ class ChatService:
         elif command == "/dokon":
             shops = await session.my_memberships(incoming.user_id)
             if shops:
-                await replies.send(say(lang, "choose_shop"), self._shop_buttons(shops))
+                # A person may have any number of shops (DEC-065): this list is also where the next one
+                # is opened, since the offer to open one is otherwise made only to a person with none.
+                await replies.send(
+                    say(lang, "choose_shop"),
+                    [*self._shop_buttons(shops), [(say(lang, "new_shop"), callback("newshop"))]],
+                )
             else:
                 await replies.send(say(lang, "no_shops"), self._open_shop(lang))
         elif command == "/qarzim":

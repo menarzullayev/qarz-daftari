@@ -225,6 +225,10 @@ for _ in $(seq 1 "$AUTH_BURST"); do
   if [ -n "$STATUS" ] && [ "$STATUS" != "429" ]; then let_through=$((let_through + 1)); fi
 done
 check "the first $((AUTH_BURST + 1)) sign-in calls are let through (got $let_through)" [ "$let_through" -eq $((AUTH_BURST + 1)) ]
+# Through a tunnel the calls above can arrive slowly enough for the limit to refill between them, and
+# four more, one after another, may then all be let through. A volley at once empties it whatever the
+# pace; the calls after it are the ones that are looked at.
+seq 1 $((AUTH_BURST + 10)) | xargs -P $((AUTH_BURST + 10)) -I{} curl -sS -o /dev/null --max-time 30 "${TLS[@]}"   -X POST -H "Content-Type: application/json" --data '{}' "$HTTPS/api/v1/auth/telegram-webapp" 2>/dev/null || true
 limited=0
 for _ in 1 2 3 4; do
   probe -X POST -H "Content-Type: application/json" --data '{}' "$HTTPS/api/v1/auth/telegram-webapp"
