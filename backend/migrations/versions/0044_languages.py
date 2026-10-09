@@ -1,7 +1,7 @@
 """Four more languages: Uzbek Cyrillic, Tajik, Karakalpak and English beside Uzbek and Russian.
 
 Revision ID: 0044
-Revises: 0041
+Revises: 0042
 """
 
 from pathlib import Path
@@ -9,7 +9,7 @@ from pathlib import Path
 from alembic import op
 
 revision = "0044"
-down_revision = "0041"
+down_revision = "0042"
 branch_labels = None
 depends_on = None
 

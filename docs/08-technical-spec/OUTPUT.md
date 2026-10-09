@@ -198,6 +198,7 @@ Every write takes an `Idempotency-Key`, is refused in a suspended shop and allow
 **Export and erasure.** The shop's export (`exports.request`) has a sheet "Kassa" with every entry, cancelled ones marked with their reason, only for a shop that has cash entries: the workbook of a shop without them is unchanged. Erasing a shop erases its cash book.
 
 **Not built**, and left out rather than half done: an export of one period of the cash book alone; writing to the book from the chat; a method chosen when a payment notice is accepted; bars or charts in the summary.
+
 ## Languages
 
 Expansion module E (decision 11 of 2026-10-09). Six languages, all simply available: there is no switch. Uzbek in Latin script and Russian existed; Uzbek in Cyrillic script, Tajik, Karakalpak and English are added.

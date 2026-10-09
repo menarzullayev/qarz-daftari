@@ -20,7 +20,17 @@ refusals, permission names).
 | customer | mijoz | мизоҷ | Plural «мизоҷон». |
 | shop | do'kon | мағоза | «Дӯкон» is also understood; «мағоза» was chosen as the neutral word in both countries. |
 | ledger (the book) | daftar | дафтар | The product name «Qarz Daftari» is never translated. |
-| cash book | — | дафтари касса | Not used in the texts yet; reserved so that a later text does not coin another word. |
+| cash book (the module) | kassa | касса | Menu item, sheet name, permission group. Spelled out once as «дафтари воридот ва хароҷот»; «дафтари рӯзона» = the day's book. |
+| income (money in) | kirim | воридот | Not «даромад»: that word is already the sign-in title, and a customer repaying a debt is an inflow, not earnings. |
+| expense (money out) | chiqim | хароҷот | |
+| cash balance | qoldiq | бақия | Only in the cash book; a customer's balance stays «қарз». |
+| category (of cash entries) | toifa | категория | Russian has «статья»; «навъ» was the alternative. |
+| direction (in or out) | yo'nalish | самт | |
+| payment method | to'lov usuli | тарзи пардохт | |
+| cash (method) | naqd | нақд | |
+| card (method) | karta | корт | The same word as the subscription payment card. |
+| bank transfer (method) | o'tkazma | интиқол | Colloquially «перевод». |
+| to carry earlier payments into the cash book | kassaga ko'chirish | ба касса гузаронидан | The same verb as moving a due date. |
 | entry | yozuv | сабт | Noun only. The act is «навиштан» («насия навишта шуд»), so that «сабт» stays the name of the row. |
 | opening debt | boshlang'ich qarz | қарзи аввала | The debt a customer had before the shop started using the book. |
 | reversal | bekor qilish yozuvi | сабти бекоркунӣ | To reverse = «бекор кардан»; reversed = «бекор шудааст». |
@@ -87,7 +97,7 @@ refusals, permission names).
 ## Conventions
 
 - **Never translated:** the product name `Qarz Daftari`, bot commands (`/obuna`, `/til`, `/dokon`,
-  `/yordam`, `/qarzim`, `/uzish`, `/ochirish`, `/start`), `Telegram`, `SMS`, `QR`, `PDF`, `Excel`, `CSV`,
+  `/yordam`, `/kassa`, `/qarzim`, `/uzish`, `/ochirish`, `/start`), `Telegram`, `SMS`, `QR`, `PDF`, `Excel`, `CSV`,
   `UUID`, file extensions, and the language autonyms (`O'zbekcha`, `Русский`, `Ўзбекча`, `Тоҷикӣ`,
   `Qaraqalpaqsha`, `English`).
 - **Typed examples stay Uzbek.** The chat parser reads Uzbek and Russian input only, so the example

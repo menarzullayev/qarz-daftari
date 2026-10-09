@@ -37,7 +37,17 @@ refusals, permission names).
 | staff member | xodim | xızmetker | |
 | role | rol | rol | |
 | permission | ruxsat | ruqsat | |
-| cash book | kassa daftari | kassa dápteri | Not yet in the texts; reserved for the module. |
+| cash book | kassa (kirim va chiqim daftari) | kassa (kassa dápteri) | The screen and the bot command are "Kassa" / `/kassa`; the long form is "kiris hám shıǵıs dápteri". |
+| income (money in) | kirim | kiris | |
+| expense (money out) | chiqim | shıǵıs | |
+| closing balance (cash) | qoldiq | qaldıq | |
+| category (of cash entries) | toifa | kategoriya | Loan preferred over a guess; "túr" already means "kind". |
+| payment method | to'lov usuli | tólem usılı | |
+| cash (method) | naqd | naq | |
+| card (method) | karta | karta | |
+| transfer (method) | o'tkazma | ótkerme | |
+| direction (in / out) | yo'nalish | baǵıt | |
+| to copy earlier payments in | ko'chirish | kóshiriw | The same verb as moving a due date. |
 | stock | ombor (tovar qoldig'i) | sklad | Russian loan, the everyday word; not yet in the texts. |
 | counter code | peshtaxta kodi | prilavka kodı | Everyday Russian loan for the shop counter. The permission label says "kassa kodı" as the source does. |
 | balance (remaining) | qolgan qarz | qalǵan qarız | |

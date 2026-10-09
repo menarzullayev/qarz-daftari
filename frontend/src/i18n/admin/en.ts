@@ -167,6 +167,7 @@ export const enAdmin: PartialCatalog<typeof uzAdmin, EnPlural> = {
   "admin.setting.permissions_on": "Separate permissions for staff are on",
   "admin.setting.customer_links_on": "Customer link and QR code (without Telegram) are on",
   "admin.setting.usd_on": "Dollars (USD) are on",
+  "admin.setting.cash_book_on": "Cash book (income and expense book) is on",
 
   "admin.audit.filters": "Audit filters",
   "admin.audit.at": "Time",

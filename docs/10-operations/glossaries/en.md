@@ -96,7 +96,18 @@ words, no exclamation mark unless the source has one, “curly quotes” where U
 | reason | sabab | |
 | account | hisob | A customer's account at a shop; also a Telegram account. |
 | data | ma'lumotlar | "Delete my data" for *ma'lumotlarimni o'chirish*. |
-| cash book | kassa daftari | Not in the texts yet; kept for when it appears. Not the same as the counter code. |
+| cash book | kassa | The shop's book of money in and out (`/kassa` stays as typed). "Day book" for *kunlik daftar*. Not the same as the counter code. |
+| income | kirim | Money into the cash book. |
+| expense | chiqim | Money out of the cash book. |
+| category | toifa | A heading that cash book entries are grouped under. |
+| balance | qoldiq (kassa) | Money left in the cash book. Used for the cash book only; what a customer owes is "debt". |
+| payment method | to'lov usuli | Cash, card or transfer. |
+| cash | naqd | Payment method. |
+| card | karta | Payment method; also the card a subscription is paid to. |
+| transfer | o'tkazma | Payment method (bank transfer). "Transfer ownership" is a different use. |
+| direction | yo'nalish | Income or expense. |
+| cancel (a cash book entry) | kassa yozuvini bekor qilish | A cash book entry is "cancelled" with a reason and stays in the book; a ledger entry is "reversed". |
+| copy earlier payments | avvalgi to'lovlarni ko'chirish | The one-time copy of old customer payments into the cash book. |
 | stock | ombor qoldig'i, qoldiq | Not in the texts yet; kept for when it appears. |
 
 ## Kept as in the source
