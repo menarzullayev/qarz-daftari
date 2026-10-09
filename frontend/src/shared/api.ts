@@ -272,9 +272,27 @@ export type SentReminder = { channel: string; amount: number };
 /** A customer with something due and no channel to be reminded through (REQ-043). */
 export type UnreachableCustomer = { customerId: string; displayName: string; phone: string | null; amount: number };
 
-/** The shop's subscription as its owner sees it. `state`: trial, active, limited or suspended. */
+/**
+ * The free plan as it stands for the shop, sent only while the platform has it switched on: how many
+ * customers it holds and how many the shop has, what follows the running period if it is not paid
+ * ("free" or "limited"; null when none runs), and SMS: whether the platform offers it, whether this
+ * shop has it (a paid period alone does), and how many of the month's quota are left.
+ */
+export type SubscriptionPlan = {
+  freeCustomers: number;
+  customers: number;
+  afterPeriod: string | null;
+  sms: { offered: boolean; included: boolean; quota: number; left: number };
+};
+
+/**
+ * The shop's subscription as its owner sees it. `state`: trial, active, limited or suspended, and free
+ * while the free plan holds a shop that has no period.
+ */
 export type Subscription = {
   state: string;
+  /** Null from a server whose free plan is switched off. */
+  plan: SubscriptionPlan | null;
   /** The last day of the trial or paid period, as an ISO date; null when no period is running. */
   endsOn: string | null;
   daysLeft: number | null;
@@ -765,12 +783,24 @@ function subscription(value: unknown): Subscription {
   const body = record(value);
   return {
     state: text(body["state"]),
+    plan: body["plan"] === undefined || body["plan"] === null ? null : subscriptionPlan(body["plan"]),
     endsOn: textOrNull(body["ends_on"]),
     daysLeft: wholeOrNull(body["days_left"]),
     priceUzs: whole(body["price_uzs"]),
     cardNumber: textOrNull(body["card_number"]),
     // A server from before there were several cards sends none: its one card is then the list.
     cards: body["cards"] === undefined ? [] : list(body["cards"], paymentCard),
+  };
+}
+
+function subscriptionPlan(value: unknown): SubscriptionPlan {
+  const body = record(value);
+  const sms = record(body["sms"]);
+  return {
+    freeCustomers: whole(body["free_customers"]),
+    customers: whole(body["customers"]),
+    afterPeriod: textOrNull(body["after_period"]),
+    sms: { offered: flag(sms["offered"]), included: flag(sms["included"]), quota: whole(sms["quota"]), left: whole(sms["left"]) },
   };
 }
 

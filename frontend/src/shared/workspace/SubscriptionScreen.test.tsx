@@ -94,6 +94,68 @@ describe("the owner's subscription screen (REQ-053, REQ-054)", () => {
     expect(screen.queryByText(TEXT)).toBeNull();
   });
 
+  describe("while the free plan is on (BR-33 to BR-35)", () => {
+    const SMS_OFF = { offered: false, included: false, quota: 0, left: 0 };
+    const plan = (overrides: Record<string, unknown> = {}) => ({ free_customers: 30, customers: 12, after_period: null, sms: SMS_OFF, ...overrides });
+    const LIMITED_TITLE = { level: 2, name: "Cheklangan rejim" } as const;
+    const THEN_FREE = "To'lov qilinmasa, do'kon bepul tarifda to'liq ishlayveradi.";
+    const THEN_LIMITED = "To'lov qilinmasa, yangi nasiya yozilmaydi: mijozlar bepul tarifdagidan ko'p.";
+    const ADDS = "To'lov qilsangiz, mijozlar soni cheklanmaydi.";
+
+    it("names the free plan, the customers used of those it holds and what paying adds, and does not speak of limited mode", async () => {
+      await open({ state: "free", ends_on: null, days_left: null, plan: plan() });
+      expect(facts()).toEqual(["Holat", "Bepul tarif", "Mijozlar", "12 ta; bepul tarifda 30 tagacha", "Narxi", "oyiga 100\u00a0000 so'm"]);
+      expect(screen.getByText(ADDS)).toBeTruthy();
+      expect(screen.queryByRole("heading", LIMITED_TITLE)).toBeNull();
+      expect(screen.queryByText(THEN_FREE)).toBeNull();
+    });
+
+    it("says of a trial that the shop stays free afterwards when the plan holds it, and limited when it does not", async () => {
+      await open({ plan: plan({ after_period: "free" }) });
+      expect(screen.getByText(THEN_FREE)).toBeTruthy();
+      expect(screen.queryByText(THEN_LIMITED)).toBeNull();
+      expect(screen.queryByRole("heading", LIMITED_TITLE)).toBeNull();
+      cleanup();
+      await open({ plan: plan({ customers: 45, after_period: "limited" }) });
+      expect(screen.getByText(THEN_LIMITED)).toBeTruthy();
+      expect(screen.queryByText(THEN_FREE)).toBeNull();
+      expect(screen.getByRole("heading", LIMITED_TITLE)).toBeTruthy();
+      expect(facts().slice(4, 6)).toEqual(["Mijozlar", "45 ta; bepul tarifda 30 tagacha"]);
+    });
+
+    it("offers SMS as what paying adds to a shop that does not pay, and counts what is left for one that does", async () => {
+      const offered = { offered: true, included: false, quota: 50, left: 0 };
+      await open({ plan: plan({ after_period: "free", sms: offered }) });
+      expect(screen.getByText("To'lov qilsangiz, mijozlar soni cheklanmaydi va oyiga 50 tagacha SMS eslatma yuboriladi.")).toBeTruthy();
+      expect(screen.queryByText("SMS eslatmalar")).toBeNull();
+      cleanup();
+      const paid = { state: "active", trial_ends: null, paid_through: "2026-11-06", ends_on: "2026-11-06", days_left: 31 };
+      await open({ ...paid, plan: plan({ after_period: "free", sms: { ...offered, included: true, left: 37 } }) });
+      expect(facts().slice(6, 8)).toEqual(["SMS eslatmalar", "shu oyda 37 ta qoldi (oyiga 50 ta)"]);
+      expect(screen.queryByText(/To'lov qilsangiz/)).toBeNull();
+    });
+
+    it("tells a suspended shop about its suspension alone", async () => {
+      await open({ ...SUSPENDED, plan: plan() });
+      expect(facts()).toEqual(["Holat", "To'xtatilgan", "Narxi", "oyiga 100\u00a0000 so'm"]);
+      expect(screen.queryByText(ADDS)).toBeNull();
+    });
+
+    it("says the same in Russian", async () => {
+      await open({ state: "free", ends_on: null, days_left: null, plan: plan() }, "ru");
+      expect(facts().slice(0, 4)).toEqual(["Состояние", "Бесплатный тариф", "Клиенты", "12; на бесплатном тарифе до 30"]);
+      expect(screen.getByText("С оплатой число клиентов не ограничено.")).toBeTruthy();
+    });
+
+    it("shows none of it while the server sends no plan", async () => {
+      await open();
+      expect(screen.queryByText("Mijozlar")).toBeNull();
+      expect(screen.queryByText(/To'lov qilsangiz/)).toBeNull();
+      expect(screen.queryByText(/To'lov qilinmasa/)).toBeNull();
+      expect(screen.getByRole("heading", LIMITED_TITLE)).toBeTruthy();
+    });
+  });
+
   it("shows a state it does not know as the server named it", async () => {
     await open({ state: "frozen", ends_on: null, days_left: null });
     expect(facts().slice(0, 2)).toEqual(["Holat", "frozen"]);
@@ -287,6 +349,22 @@ describe("the subscription banner on the overview (REQ-057)", () => {
     expect(banner()?.querySelector("p")?.textContent).toBe(text);
     expect(screen.getByRole("link", { name: "Obuna sahifasi" }).getAttribute("href")).toBe("#/subscription");
     expect(subscriptionCalls(server)).toHaveLength(1);
+  });
+
+  it.each([
+    ["free", "Obuna muddati 7 kundan keyin tugaydi. To'lov qilinmasa, do'kon bepul tarifda to'liq ishlayveradi."],
+    ["limited", "Obuna muddati 7 kundan keyin tugaydi. To'lov qilinmasa, yangi nasiya yozilmaydi: mijozlar bepul tarifdagidan ko'p."],
+    [null, "Obuna muddati 7 kundan keyin tugaydi."],
+  ])("says what follows the period while the free plan is on: %s", async (after, text) => {
+    const plan = { free_customers: 30, customers: 12, after_period: after, sms: { offered: false, included: false, quota: 0, left: 0 } };
+    await show("owner", () => ok(subscriptionBody({ days_left: 7, plan })));
+    expect(banner()?.querySelector("p")?.textContent).toBe(text);
+  });
+
+  it("shows a free shop's owner no banner: nothing is ending and nothing is refused", async () => {
+    const plan = { free_customers: 30, customers: 12, after_period: null, sms: { offered: false, included: false, quota: 0, left: 0 } };
+    await show("owner", () => ok(subscriptionBody({ state: "free", ends_on: null, days_left: null, plan })));
+    expect(banner()).toBeNull();
   });
 
   it.each([8, 20, 300])("tells the owner nothing when %i days are left", async (days) => {

@@ -87,7 +87,7 @@ catalogue and the checks that stay by role are in the technical specification ("
 - Authorization of every shop operation no longer reads the role table directly. `require_member` asks
   `qarz.application.authorization`, which asks `qarz.domain.permissions.effective`. With the switch off
   it is given no per-member changes and returns the role's defaults.
-- `membership` has two new columns, `permissions_granted` and `permissions_denied` (migration 0041), and
+- `membership` has two new columns, `permissions_granted` and `permissions_denied` (migration 0039), and
   `activity` has `detail`. No new table, no new SECURITY DEFINER function, no new right for any database
   role; `membership` was already under forced row-level security.
 - Four new routes, three of them the owner's alone. Two new refusals: `FORBIDDEN_PERMISSION` and

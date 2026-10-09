@@ -126,7 +126,11 @@ class ShopService:
                 await session.record_activity(
                     membership_id=membership_id, action="shop.created", subject_type="shop", subject_id=shop_id
                 )
-                return {**_as_body(settings), "subscription_state": "trial" if claim == "trial" else "limited"}
+                started = "trial" if claim == "trial" else "limited"
+                if started == "limited" and await session.platform_setting("free_plan_on") is True:
+                    # Nothing else is stored: a shop without a period and without customers is free (BR-33).
+                    started = "free"
+                return {**_as_body(settings), "subscription_state": started}
 
             body = await idempotency.run_once(
                 session,

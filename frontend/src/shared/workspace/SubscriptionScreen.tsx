@@ -17,6 +17,13 @@ const STATE_LABELS: Readonly<Record<string, MessageKey>> = {
   active: "subscription.state.active",
   limited: "subscription.state.limited",
   suspended: "subscription.state.suspended",
+  free: "subscription.state.free",
+};
+
+/** What follows the running period if it is not paid, in words; nothing when the server did not say. */
+const THEN_TEXT: Readonly<Record<string, MessageKey>> = {
+  free: "subscription.plan.then.free",
+  limited: "subscription.plan.then.limited",
 };
 
 const MODE_TEXT: Readonly<Record<ShopMode, MessageKey>> = {
@@ -117,6 +124,11 @@ function Details({ subscription }: { subscription: Subscription }) {
   const days = subscription.daysLeft;
   // The place, in the list, of the card being paid to. The primary one until another is chosen.
   const [chosen, setChosen] = useState(0);
+  // The free plan, while the platform has it on. A suspended shop is told about its suspension alone.
+  const plan = subscription.state === "suspended" ? null : subscription.plan;
+  const then = plan === null || plan.afterPeriod === null ? undefined : THEN_TEXT[plan.afterPeriod];
+  // Limited mode is not what awaits a shop the free plan holds: saying so would be untrue.
+  const mayBeLimited = plan === null || (subscription.state !== "free" && plan.afterPeriod !== "free");
   return (
     <>
       <dl className="facts">
@@ -135,9 +147,28 @@ function Details({ subscription }: { subscription: Subscription }) {
             </dd>
           </>
         ) : null}
+        {plan ? (
+          <>
+            <dt>{t("subscription.plan.customers")}</dt>
+            <dd>{t("subscription.plan.customers.value", { used: plan.customers, limit: plan.freeCustomers })}</dd>
+          </>
+        ) : null}
+        {plan?.sms.included ? (
+          <>
+            <dt>{t("subscription.plan.sms")}</dt>
+            <dd>{t("subscription.plan.sms.value", { left: plan.sms.left, quota: plan.sms.quota })}</dd>
+          </>
+        ) : null}
         <dt>{t("subscription.price")}</dt>
         <dd>{t("subscription.price.value", { amount: formatMoney(subscription.priceUzs, language) })}</dd>
       </dl>
+
+      {then ? <p className="hint">{t(then)}</p> : null}
+      {plan && subscription.state !== "active" ? (
+        <p className="hint">
+          {plan.sms.offered ? t("subscription.plan.adds.sms", { quota: plan.sms.quota }) : t("subscription.plan.adds")}
+        </p>
+      ) : null}
 
       {subscription.state === "suspended" ? (
         <p className="notice notice--error">{t("subscription.suspended.body")}</p>
@@ -154,17 +185,21 @@ function Details({ subscription }: { subscription: Subscription }) {
         <ReceiptSection priceUzs={subscription.priceUzs} card={subscription.cards[chosen] ?? null} />
       </Suspense>
 
-      <section aria-labelledby="subscription-limited-title">
-        <h2 id="subscription-limited-title">{t("subscription.limited.title")}</h2>
-        <p>{t("subscription.limited.body")}</p>
-      </section>
+      {mayBeLimited ? (
+        <section aria-labelledby="subscription-limited-title">
+          <h2 id="subscription-limited-title">{t("subscription.limited.title")}</h2>
+          <p>{t("subscription.limited.body")}</p>
+        </section>
+      ) : null}
     </>
   );
 }
 
 /**
  * The shop's subscription for its owner (REQ-053, REQ-054): the state, when the period ends, the price,
- * where to pay, and what the limited mode still allows. Nobody else is shown it or asks the server.
+ * where to pay, and what the limited mode still allows. While the free plan is on (BR-33 to BR-35): the
+ * plan, the customers used of those it holds, what follows the period, and what paying adds. Nobody else
+ * is shown it or asks the server.
  */
 export function SubscriptionScreen() {
   const { api, role } = useWorkspace();
@@ -210,6 +245,11 @@ export function SubscriptionBanner() {
       subscription.daysLeft <= 0
         ? t("subscription.banner.lastDay")
         : t("subscription.banner.ending", { count: subscription.daysLeft });
+    // With the free plan on, what follows the period is said too: free for a shop it holds, else limited.
+    const then = THEN_TEXT[subscription.plan?.afterPeriod ?? ""];
+    if (then) {
+      text = `${text} ${t(then)}`;
+    }
   }
   if (text === null) {
     return null;

@@ -20,7 +20,7 @@ from qarz.application.admin_receipts import AdminReceiptService, ReceiptAlreadyD
 from qarz.application.authorization import may
 from qarz.application.chat_texts import CONSENT_VERSION, LANGUAGE_NAMES, day, money, say
 from qarz.application.customer_account import CustomerAccountService
-from qarz.application.customers import CREATE_CUSTOMER, create_customer_in, require_writable
+from qarz.application.customers import CREATE_CUSTOMER, FreePlanFull, create_customer_in, require_writable
 from qarz.application.date_requests import (
     ACCEPT_ACTION,
     ACCEPT_DATE_REQUEST,
@@ -1589,7 +1589,10 @@ class ChatService:
         await session.set_active_shop(incoming.user_id, UUID(body["id"]))
         # A person's later shops start without a trial, and a shop without one cannot record credit yet:
         # saying "you can write debts now" would be untrue.
-        opened = "shop_created_limited" if body.get("subscription_state") == "limited" else "shop_created"
+        # With the free plan on such a shop is free: it can, within what the plan holds.
+        opened = {"limited": "shop_created_limited", "free": "shop_created_free"}.get(
+            str(body.get("subscription_state")), "shop_created"
+        )
         await replies.send(say(incoming.lang, opened, shop=body["name"]))
 
     async def _join(self, session: PlatformSession, incoming: Incoming, replies: Replies, token: str) -> None:
@@ -1621,6 +1624,8 @@ class ChatService:
             if reason in ("PROMISE_BEFORE_SALE", "PROMISE_TOO_FAR"):
                 return say(lang, reason)
             return say(lang, "amount_range" if "amount" in error.fields else "parse_hint")
+        if isinstance(error, FreePlanFull):
+            return say(lang, error.code, limit=error.limit)
         try:
             return say(lang, error.code)
         except KeyError:
@@ -1680,7 +1685,7 @@ class ChatService:
         async def apply() -> dict[str, Any]:
             target = customer_id
             if new_name is not None:
-                target = (await create_customer_in(session, actor, new_name, None)).customer_id
+                target = (await create_customer_in(session, actor, new_name, None, self._today())).customer_id
             if target is None:
                 raise NotFound()
             return await append_entry_in(

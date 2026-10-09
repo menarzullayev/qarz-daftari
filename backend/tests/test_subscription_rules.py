@@ -1,3 +1,4 @@
+import json
 from datetime import date, timedelta
 
 import pytest
@@ -6,9 +7,13 @@ from qarz.domain.subscription import (
     add_months,
     effective_state,
     extend_paid_through,
+    may_add_customers,
     period_end,
+    sms_included,
     warning_days,
+    with_free_plan,
 )
+from qarz.interface.errors import error_response
 
 TODAY = date(2026, 10, 7)
 YESTERDAY, TOMORROW = TODAY - timedelta(days=1), TODAY + timedelta(days=1)
@@ -74,3 +79,61 @@ def test_a_payment_extends_from_the_later_of_today_and_the_paid_date() -> None:
 def test_months_out_of_range_are_refused(months: int) -> None:
     with pytest.raises(ValueError, match="months"):
         extend_paid_through(None, TODAY, months)
+
+
+# --- the free plan (BR-33 to BR-35) ------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("effective", "held", "customers", "expected"),
+    [
+        ("limited", 30, 0, "free"),
+        ("limited", 30, 30, "free"),  # the last place still counts
+        ("limited", 30, 31, "limited"),
+        ("limited", None, 0, "limited"),  # the plan is switched off
+        ("trial", 30, 5, "trial"),
+        ("active", 30, 5, "active"),
+        ("active", 30, 500, "active"),
+        ("suspended", 30, 0, "suspended"),  # BR-30 is not the plan's to change
+    ],
+)
+def test_a_shop_without_a_period_is_free_while_the_plan_holds_its_customers(
+    effective: str, held: int | None, customers: int, expected: str
+) -> None:
+    assert with_free_plan(effective, held, customers) == expected
+
+
+@pytest.mark.parametrize(
+    ("effective", "held", "customers", "adding", "expected"),
+    [
+        ("limited", 30, 29, 1, True),
+        ("limited", 30, 30, 1, False),
+        ("limited", 30, 31, 1, False),  # a shop already over the number takes no more either
+        ("limited", 30, 20, 10, True),
+        ("limited", 30, 20, 11, False),
+        ("trial", 30, 30, 1, True),
+        ("active", 30, 3000, 500, True),
+        ("limited", None, 3000, 500, True),  # switched off: nothing is counted
+    ],
+)
+def test_only_a_running_period_goes_beyond_what_the_plan_holds(
+    effective: str, held: int | None, customers: int, adding: int, expected: bool
+) -> None:
+    assert may_add_customers(effective, held, customers, adding) is expected
+
+
+def test_sms_belongs_to_a_paid_period_alone_while_the_plan_is_on() -> None:
+    assert sms_included("active", True)
+    for state in ("trial", "limited", "free", "suspended"):
+        assert not sms_included(state, True)
+        assert sms_included(state, False), "with the plan off SMS does not depend on the subscription"
+
+
+@pytest.mark.parametrize(("lang", "word"), [("uz", "tagacha"), ("ru", "клиентов")])
+def test_the_refusal_names_how_many_the_plan_holds_in_both_languages(lang: str, word: str) -> None:
+    response = error_response("FREE_PLAN_FULL", lang, {"limit": "30"})
+    assert response.status_code == 402
+    error = json.loads(bytes(response.body))["error"]
+    assert error["fields"] == {"limit": "30"}
+    assert "30" in error["message"] and word in error["message"] and "/obuna" in error["message"]
+    assert "{" not in error["message"], "the number is written into the sentence"

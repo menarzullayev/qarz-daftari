@@ -1,0 +1,11 @@
+-- The free plan (module A of docs/09-development-plan/EXPANSION.md; BR-33 to BR-35) changes nothing in
+-- the database.
+--
+-- Whether a shop is free is not stored: its subscription row still says that no period runs, and "free"
+-- is worked out from the number of its active customers, which the index customer_shop (shop_id, status)
+-- of 0001 already serves. The two settings, free_plan_on and free_plan_customers, are rows of
+-- platform_setting like every other and exist only once an administrator has set them; nothing is
+-- inserted here, so the plan is off until then. No table, function or right is added.
+--
+-- The revision exists so that the numbers the modules agreed on stay a chain: 0039 follows it.
+SELECT 1;
