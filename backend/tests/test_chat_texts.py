@@ -74,6 +74,18 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
         "SUPPORT_ACCESS_ALREADY_OPEN",
         "SUPPORT_ACCESS_NOT_OPEN",  # the owner ends it in the panel
         "RECEIPT_ALREADY_DECIDED",  # receipts are decided in the administrator's panel
+        # The stock and the suppliers are worked in the Mini App and the panel. The one refusal of theirs
+        # the chat can meet, cancelling the entry of a customer's return, has its text (ENTRY_OF_DOCUMENT).
+        "STOCK_INSUFFICIENT",  # a sale typed in the chat names no goods, so it takes nothing from the stock
+        "STOCK_ALREADY_USED",
+        "COST_CURRENCY_MISMATCH",
+        "BARCODE_TAKEN",
+        "ITEM_NOT_COUNTABLE",
+        "DOCUMENT_NOT_DRAFT",
+        "DOCUMENT_CANCELLED",
+        "SUPPLIER_NAME_TAKEN",
+        "SUPPLIER_ARCHIVED",
+        "SUPPLIER_HAS_BALANCE",
     }
     assert set(_STATUS) - spoken_elsewhere <= set(UZ)
 

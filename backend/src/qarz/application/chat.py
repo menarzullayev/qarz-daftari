@@ -61,9 +61,10 @@ from qarz.application.shops import ShopService, require_member
 from qarz.application.staff import StaffService, token_hash
 from qarz.application.subscription import SubscriptionService
 from qarz.application.subscription_receipts import REVIEW_GROUP, SubscriptionReceiptService
-from qarz.domain import permissions, platform_settings
+from qarz.domain import permissions, platform_settings, stock
 from qarz.domain.chat_entry import ParsedEntry, ParseError, ParseErrorCode, parse_entry, parse_money
 from qarz.domain.disputes import clean_reason
+from qarz.domain.goods import format_qty
 from qarz.domain.ledger import EntryKind
 from qarz.domain.money import Currency, parse_code
 from qarz.domain.promise import QuickChoice, parse_day_month, quick_choice_date, tashkent_date
@@ -73,6 +74,8 @@ from qarz.domain.subscription_receipts import clean_reason as clean_receipt_reas
 CALLBACK_VERSION = "v2"
 PENDING_LIFETIME = timedelta(minutes=15)
 MAX_CANDIDATES = 6
+# How many goods running low `/ombor` lists before it points to the application.
+LOW_STOCK_SHOWN = 15
 STAFF_INVITATION_PREFIX = "s_"
 _NAMESPACE = UUID("3d0c2a51-6c1e-5b0e-8a3e-9f5b6a7c8d90")
 
@@ -450,6 +453,17 @@ class ChatService:
                 await self._subscription_offer(incoming, replies, shop)
         elif command == "/toladim":
             await self._notice_start(session, incoming, replies)
+        elif command == "/ombor" and await session.platform_setting(stock.SWITCH) is True:
+            # While the stock is switched off the command does not exist: it falls through to the
+            # help, like any text the bot does not know.
+            shops = await session.my_memberships(incoming.user_id)
+            shop = await self._active_shop(session, incoming.user_id, shops)
+            if not shops:
+                await replies.send(say(lang, "no_shops"), self._open_shop(lang))
+            elif shop is None:
+                await replies.send(say(lang, "choose_shop"), self._shop_buttons(shops))
+            else:
+                await self._low_stock(incoming, replies, shop)
         elif command == "/yordam":
             await replies.send(say(lang, "help"))
         elif command in _LATER_COMMANDS:
@@ -1023,6 +1037,39 @@ class ChatService:
             return None
         place = int(place_text)
         return place if place < len(cards) and cards[place]["number"][-4:] == last4 else None
+
+    async def _low_stock(self, incoming: Incoming, replies: Replies, shop: MyShop) -> None:
+        """`/ombor`: the counted goods of the active shop that are at or below their threshold.
+
+        A summary to read, nothing to press: recording anything about the stock is the application's.
+        A member who may not see the stock is answered with the help, as for an unknown command.
+        """
+        lang = incoming.lang
+        async with self._storage.tenant(shop.shop_id) as tenant:
+            member = await tenant.active_membership(incoming.user_id)
+            if member is None or not may(member, permissions.STOCK_VIEW):
+                await replies.send(say(lang, "help"))
+                return
+            low = await tenant.stock_items(name_part=None, only="low", after=None, limit=LOW_STOCK_SHOWN + 1)
+        if not low:
+            await replies.send(say(lang, "ombor_none", shop=shop.name))
+            return
+        units = {unit.key: unit.ru if lang == "ru" else unit.uz for unit in stock.UNITS}
+        lines = [say(lang, "ombor_low", shop=shop.name), ""]
+        lines += [
+            say(
+                lang,
+                "ombor_line",
+                name=item.name,
+                qty=format_qty(item.level.on_hand),
+                unit=units.get(item.unit, item.unit),
+                low=format_qty(item.low_stock or stock.ZERO),
+            )
+            for item in low[:LOW_STOCK_SHOWN]
+        ]
+        if len(low) > LOW_STOCK_SHOWN:
+            lines += ["", say(lang, "ombor_more")]
+        await replies.send("\n".join(lines))
 
     async def _subscription_offer(
         self, incoming: Incoming, replies: Replies, shop: MyShop, *, card: int = 0, edit: bool = False

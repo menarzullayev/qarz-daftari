@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from qarz.application.operations import all_operations
 
 from .conftest import World, as_user, set_overrides, switch_permissions_on
+from .test_chat import chat_of
 from .test_customers_ledger import key, new_customer, read, record, reverse, shop, write
 from .test_goods_lines import add, chosen, sell, typed
 
@@ -591,3 +592,37 @@ def test_the_movements_of_an_item_are_paged_newest_first(client: TestClient, wor
     assert [row["seq"] for row in rest["movements"]] == [3, 2, 1] and rest["next_cursor"] is None
     assert read(client, world.seller_a, f"{stock(world)}/items/{uuid.uuid4()}/movements").status_code == 404
     assert read(client, world.seller_a, f"{stock(world)}/items/{rice}/movements", cursor="x").status_code == 422
+
+
+# --- the bot ----------------------------------------------------------------------------------------------------
+
+
+def test_the_bot_lists_what_runs_low_and_only_while_the_stock_is_on(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    """`/ombor` is a summary to read. With the switch off the command does not exist: the bot answers
+    with its help, exactly as it answers any command it does not know."""
+    seller = chat_of(client, owner, world.seller_a)
+    unknown = seller.say("/shunaqabuyruqyoq")
+    off = seller.say("/ombor")
+    assert off.text == unknown.text and off.buttons == {}
+
+    switch(owner)
+    assert seller.say("/ombor").text == "📦 Shop A: kam qolgan tovar yo'q."
+    rice = counted_item(client, world, "Guruch", 15_000, "kg")
+    tea = counted_item(client, world, "Choy", 8_000)
+    assert patch_item(client, world, rice, low_stock="5").status_code == 200
+    assert patch_item(client, world, tea, low_stock="2").status_code == 200
+    receive(client, world, [line(rice, "3.5", 10_000), line(tea, "10", 5_000)])
+    said = seller.say("/ombor")
+    assert said.text == "📦 Shop A: kam qolgan tovarlar\n\n• Guruch: 3.5 kg (chegara 5)"
+    assert said.buttons == {}, "nothing to press: nothing here can be mistaken for an entry"
+    assert "10000" not in said.text and "10 000" not in said.text, "no cost in the chat"
+
+    owner.execute("UPDATE app_user SET lang = 'ru' WHERE id = %s", (world.seller_a,))
+    assert seller.say("/ombor").text == "📦 Shop A: товары на исходе\n\n• Guruch: 3.5 кг (порог 5)"
+    # A member who may not see the stock is told nothing of it.
+    owner.execute("UPDATE app_user SET lang = 'uz' WHERE id = %s", (world.seller_a,))
+    switch_permissions_on(owner)
+    set_overrides(owner, world.seller_a_membership, denied=["stock.view"])
+    assert seller.say("/ombor").text == unknown.text

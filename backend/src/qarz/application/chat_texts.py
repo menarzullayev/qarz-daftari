@@ -29,6 +29,11 @@ UZ = {
         "/yordam — shu yordam"
     ),
     "soon": "Bu buyruq hali tayyor emas.",
+    # /ombor: what runs low in the active shop (only while the stock is switched on).
+    "ombor_low": "📦 {shop}: kam qolgan tovarlar",
+    "ombor_line": "• {name}: {qty} {unit} (chegara {low})",
+    "ombor_more": "…va yana boshqalar. To'liq ro'yxat ilovadagi «Ombor» bo'limida.",
+    "ombor_none": "📦 {shop}: kam qolgan tovar yo'q.",
     "only_text": "Hozircha faqat matnli xabarlarni tushunaman. Namuna: Ali 45000",
     "open_shop": "🏪 Do'kon ochish",
     "new_shop": "➕ Yangi do'kon",
@@ -103,6 +108,11 @@ UZ = {
     "EXCEEDS_BALANCE": "To'lov mijozning qarzidan katta bo'lishi mumkin emas.",
     "CUSTOMER_ARCHIVED": "Bu mijoz arxivda. Avval arxivdan chiqaring.",
     "ALREADY_REVERSED": "Bu yozuv allaqachon bekor qilingan.",
+    # The entry a customer's return of goods wrote: it is cancelled with its document, in the application.
+    "ENTRY_OF_DOCUMENT": (
+        "Bu yozuvni tovar qaytarish hujjati yaratgan. Uni bekor qilish uchun ilovadagi «Ombor» bo'limida "
+        "hujjatning o'zini bekor qiling."
+    ),
     "CANNOT_REVERSE_REVERSAL": "Bekor qilish yozuvini bekor qilib bo'lmaydi.",
     "WOULD_GO_NEGATIVE": "Bekor qilinsa qarz manfiy bo'lib qoladi. Avval keyingi to'lovni bekor qiling.",
     "error": "Xatolik yuz berdi. Qaytadan urinib ko'ring.",
@@ -416,6 +426,10 @@ RU = {
         "/yordam — эта справка"
     ),
     "soon": "Эта команда пока не готова.",
+    "ombor_low": "📦 {shop}: товары на исходе",
+    "ombor_line": "• {name}: {qty} {unit} (порог {low})",
+    "ombor_more": "…и другие. Полный список в разделе «Склад» приложения.",
+    "ombor_none": "📦 {shop}: товаров на исходе нет.",
     "only_text": "Пока я понимаю только текстовые сообщения. Пример: Али 45000",
     "open_shop": "🏪 Открыть магазин",
     "new_shop": "➕ Новый магазин",
@@ -489,6 +503,10 @@ RU = {
     "EXCEEDS_BALANCE": "Оплата не может быть больше долга клиента.",
     "CUSTOMER_ARCHIVED": "Этот клиент в архиве. Сначала верните его из архива.",
     "ALREADY_REVERSED": "Эта запись уже отменена.",
+    "ENTRY_OF_DOCUMENT": (
+        "Эту запись создал документ возврата товара. Чтобы отменить её, отмените сам документ "
+        "в разделе «Склад» приложения."
+    ),
     "CANNOT_REVERSE_REVERSAL": "Запись об отмене отменить нельзя.",
     "WOULD_GO_NEGATIVE": "После такой отмены долг стал бы отрицательным. Сначала отмените более позднюю оплату.",
     "error": "Произошла ошибка. Попробуйте ещё раз.",
