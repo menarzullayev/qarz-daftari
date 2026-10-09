@@ -569,6 +569,39 @@ def test_chat_entry_applies_to_the_chosen_shop_only(
     assert entries(owner, world.shop_b) == before[1]
 
 
+def test_an_owner_opens_another_shop_from_the_list_of_shops(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    """DEC-065: a person may have any number of shops, so the one who has a shop must be able to open the next."""
+    chat = chat_of(client, owner, world.owner_a)
+    listed = chat.say("/dokon")
+    assert listed.text == say("uz", "choose_shop")
+    assert list(listed.buttons)[-1] == say("uz", "new_shop"), "the shops come first, then the offer"
+
+    assert chat.press(listed.buttons[say("uz", "new_shop")]).text == say("uz", "ask_shop_name")
+    chat.say("Second shop")
+    owned = owner.execute(
+        "SELECT s.name FROM membership m JOIN shop s ON s.id = m.shop_id JOIN app_user u ON u.id = m.user_id "
+        "WHERE u.id = %s AND m.role = 'owner' AND m.status = 'active' ORDER BY s.name",
+        (world.owner_a,),
+    ).fetchall()
+    assert ("Second shop",) in owned and len(owned) >= 2
+    # Both are offered from now on, and the offer stays.
+    assert {"Second shop", say("uz", "new_shop")} <= set(chat.say("/dokon").buttons)
+
+
+def test_the_offer_of_another_shop_is_made_only_in_the_list_of_shops(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    """Choosing a shop for an entry is a question about that entry: it does not offer to open a shop."""
+    owner.execute(
+        "INSERT INTO membership (id, shop_id, user_id, role, status) VALUES (%s, %s, %s, 'seller', 'active')",
+        (uuid.uuid4(), world.shop_b, world.seller_a),
+    )
+    asked = chat_of(client, owner, world.seller_a).say("Ali 1000")
+    assert sorted(asked.buttons) == ["Shop A", "Shop B"]
+
+
 def test_a_shop_one_is_not_a_member_of_cannot_be_made_active(
     client: TestClient, world: World, owner: psycopg.Connection
 ) -> None:

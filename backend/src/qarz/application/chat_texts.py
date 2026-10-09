@@ -30,6 +30,7 @@ UZ = {
     "soon": "Bu buyruq hali tayyor emas.",
     "only_text": "Hozircha faqat matnli xabarlarni tushunaman. Namuna: Ali 45000",
     "open_shop": "🏪 Do'kon ochish",
+    "new_shop": "➕ Yangi do'kon",
     "ask_shop_name": "Do'koningiz nomini yozing (80 belgigacha).",
     "shop_name_invalid": "Do'kon nomi 1 dan 80 belgigacha bo'lishi kerak. Qaytadan yozing.",
     "shop_created_limited": (
@@ -375,6 +376,7 @@ RU = {
     "soon": "Эта команда пока не готова.",
     "only_text": "Пока я понимаю только текстовые сообщения. Пример: Али 45000",
     "open_shop": "🏪 Открыть магазин",
+    "new_shop": "➕ Новый магазин",
     "ask_shop_name": "Напишите название вашего магазина (до 80 символов).",
     "shop_name_invalid": "Название магазина должно быть от 1 до 80 символов. Напишите ещё раз.",
     "shop_created_limited": (
