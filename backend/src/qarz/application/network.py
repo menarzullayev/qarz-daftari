@@ -199,11 +199,15 @@ async def ensure_counterpart_in(session: TenantSession, actor: Membership, link:
     """
     if link.counterpart_id is not None:
         return link.counterpart_id
-    name = (link.peer_name or "Hamkor")[:80]
+    settings = await session.shop_settings()
+    lang = "uz" if settings is None else settings.lang
+    # A partner without a name, and the word that tells a partner's row from a namesake, in the shop's language.
+    name = (link.peer_name or say(lang, "net_partner_name"))[:80]
+    mark = say(lang, "net_partner_suffix")
     made: UUID | None = None
     if link.role == network.BUYER:
         # A supplier's name is unique in a shop: if the partner's is taken, say which shop it is.
-        for candidate in (name, f"{name[:68]} (hamkor)", f"{name[:60]} (hamkor {str(link.link_id)[:6]})"):
+        for candidate in (name, f"{name[:68]} ({mark})", f"{name[:60]} ({mark} {str(link.link_id)[:6]})"):
             supplier = await session.insert_supplier(
                 supplier_id=uuid4(),
                 name=candidate,

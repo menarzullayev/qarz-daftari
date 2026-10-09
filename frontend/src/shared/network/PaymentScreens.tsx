@@ -22,6 +22,24 @@ export function useMayPay(): (role: NetLink["role"]) => boolean {
   return (role) => can("network.confirm") && can(role === "buyer" ? "suppliers.pay" : "payments.record");
 }
 
+/**
+ * Whether the member may take the step an awaiting payment offers them. Answering one the partner
+ * recorded writes this shop's own entry (`useMayPay`). Taking back one this shop recorded CANCELS its
+ * own entry: a payment to a supplier by "suppliers.pay", a customer's payment by "entries.cancel" (not
+ * "payments.record", which only writes one); when that entry was already cancelled by hand, nothing
+ * more is asked. These are the server's own checks (`PaymentService.withdraw`).
+ */
+export function useMayStep(): (payment: Pick<Payment, "role" | "recordedBy" | "inOwnBooks">) => boolean {
+  const can = useMay();
+  const mayPay = useMayPay();
+  return (payment) => {
+    if (payment.recordedBy === "partner") {
+      return mayPay(payment.role);
+    }
+    return can("network.confirm") && (!payment.inOwnBooks || can(payment.role === "buyer" ? "suppliers.pay" : "entries.cancel"));
+  };
+}
+
 /** The shop keeps a cash book: money that moves is then asked how it was paid. */
 function useCashBook(): boolean {
   const settings = useStockSettings();
@@ -147,7 +165,7 @@ type Step = "confirm" | "decline" | "withdraw";
  */
 export function PaymentActions({ payment, onChanged }: { payment: Payment; onChanged: () => void }) {
   const { t } = useI18n();
-  const mayPay = useMayPay();
+  const mayStep = useMayStep();
   const network = useNetwork();
   const cashBook = useCashBook();
   const [step, setStep] = useState<Step | null>(null);
@@ -159,7 +177,7 @@ export function PaymentActions({ payment, onChanged }: { payment: Payment; onCha
   const confirm = useSubmit((chosen: Method | null, key) => network.confirmPayment(payment.id, chosen, key).then(done));
   const decline = useSubmit((reason: string, key) => network.declinePayment(payment.id, reason, key).then(done));
   const withdraw = useSubmit((_: null, key) => network.withdrawPayment(payment.id, key).then(done));
-  if (payment.status !== "awaiting" || !mayPay(payment.role)) {
+  if (payment.status !== "awaiting" || !mayStep(payment)) {
     return null;
   }
   const id = `net-payment-${payment.id}`;
@@ -268,6 +286,7 @@ type Filter = PaymentStatus | typeof ALL;
 export function PaymentsScreen() {
   const { t, language } = useI18n();
   const mayPay = useMayPay();
+  const mayStep = useMayStep();
   const network = useNetwork();
   const [status, setStatus] = useState<Filter>(ALL);
   const [adding, setAdding] = useState(false);
@@ -306,7 +325,7 @@ export function PaymentsScreen() {
           columns={columns}
           items={state.items}
           rowKey={(row) => row.id}
-          expanded={(row) => (row.status === "awaiting" && mayPay(row.role) ? <PaymentActions payment={row} onChanged={reload} /> : null)}
+          expanded={(row) => (row.status === "awaiting" && mayStep(row) ? <PaymentActions payment={row} onChanged={reload} /> : null)}
         />
         {state.nextCursor !== null ? <LoadMore loading={state.loadingMore} error={state.moreError} onClick={loadMore} /> : null}
       </>

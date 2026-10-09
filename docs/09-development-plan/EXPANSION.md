@@ -44,8 +44,9 @@ possible. The founder's decisions stand.
 Module E was built while H, I and J were still being written (H and I were merged first and are
 translated; J is not), so it does not wait for their texts: a key
 that Tajik, Karakalpak or English lacks reads Uzbek at run time, Uzbek Cyrillic is generated from Uzbek,
-and the tests of the four new languages check what is there and not what is missing. A final pass after
-J is merged translates the rest and makes completeness strict
+and the tests of the four new languages checked what was there and not what was missing. The final pass
+after J was merged (2026-10-09) translated the network into Tajik, Karakalpak and English and made
+completeness strict: CI and the tests now fail on a text that one of them lacks
 (`docs/08-technical-spec/OUTPUT.md`, "Languages"; `docs/10-operations/translation-review.md`). Tajik and
 Karakalpak were written by a model and need a native speaker's review before they are announced.
 

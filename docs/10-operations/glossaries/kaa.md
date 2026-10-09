@@ -70,6 +70,17 @@ refusals, permission names).
 | opening debt | boshlang'ich qarz | baslanǵısh qarız | |
 | reversal | bekor qilish | biykarlaw | "Biykarlaw jazbası" = the reversing entry; biykarlanǵan = reversed. Also plain "cancel". |
 | decline / reject | rad etish | ret etiw | Kept apart from biykarlaw (cancel, reverse). |
+| partner (another shop of the service) | hamkor | sherik | Plural "sherikler"; the section is "Sherikler". This shop is "biz", the other "sherik"; nobody of either is named. |
+| partnership (the link between two shops) | hamkorlik, aloqa | sheriklik | Asking for one: "sheriklik sorawı"; ending one: "tamamlaw". Connecting by a code: "jalǵanıw". |
+| buyer (a shop's role in a partnership) | xaridor | satıp alıwshı | Not "qarıydar", which is a customer of the shop. |
+| order (to a supplier) | buyurtma | buyırtpa | An unsent one is a "qaralama", as a stock document's draft. |
+| delivery note | yuk xati | júk xatı | To issue one: "júk xatın beriw". |
+| to confirm (a delivery note, a payment) | tasdiqlash | tastıyıqlaw | A note is rejected and an order or a payment declined with "ret etiw"; an order is cancelled with "biykarlaw". |
+| to correct (a delivery note) | tuzatish | dúzetiw | |
+| invitation code | taklif kodi | mirát kodı | |
+| reconciliation | hisob-kitobni solishtirish | esap-kitaptı salıstırıw | "Óz dápterimiz" = our own books. |
+| to take back (a recorded payment, an invitation) | qaytarib olish | qaytarıp alıw | |
+| line (of an order or a note) | qator | qatar | |
 | dispute | e'tiroz | narazılıq | "Narazılıq bildiriw". |
 | request | so'rov | soraw | A customer's date request, a deletion request, an HTTP request. |
 | payment notice | to'lov xabari | tólem xabarı | |

@@ -234,7 +234,7 @@ function ConnectForm({ onDone }: { onDone: () => void }) {
           id="net-connect-code"
           className="input"
           value={code}
-          maxLength={200}
+          maxLength={100}
           autoComplete="off"
           spellCheck={false}
           disabled={pending}
@@ -274,6 +274,8 @@ function ConnectForm({ onDone }: { onDone: () => void }) {
 }
 
 type Option = { id: string; name: string };
+/** How many suppliers or customers the picker asks for at once: the rest are reached by searching. */
+const PICKER_PAGE = 50;
 
 /**
  * The row of this shop's own books a link stands for: one of its suppliers when it is the buyer, one
@@ -302,9 +304,9 @@ function CounterpartPicker({
   const options: { state: Loaded<Option[]> } = useLoad(
     (signal) =>
       role === "buyer"
-        ? stock.suppliers({ q: query, status: "active", limit: 50 }, signal).then((page) => page.suppliers.map((row) => ({ id: row.id, name: row.name })))
+        ? stock.suppliers({ q: query, status: "active", limit: PICKER_PAGE }, signal).then((page) => page.suppliers.map((row) => ({ id: row.id, name: row.name })))
         : api
-            .listCustomers({ q: query, status: "active", limit: 50 }, signal)
+            .listCustomers({ q: query, status: "active", limit: PICKER_PAGE }, signal)
             .then((page) => page.items.map((row) => ({ id: row.id, name: row.displayName }))),
     [api, stock, role, query],
   );
@@ -338,6 +340,9 @@ function CounterpartPicker({
               ))
             : null}
         </select>
+        {options.state.status === "ready" && options.state.data.length >= PICKER_PAGE ? (
+          <p className="field__hint">{t("net.counterpart.more", { count: PICKER_PAGE })}</p>
+        ) : null}
         {options.state.status === "error" ? (
           <p className="field__error" role="alert">
             {errorText(options.state.error, t)}
@@ -589,7 +594,7 @@ function ReconciliationBlock({ row, link }: { row: Reconciliation; link: NetLink
   if (row.difference === undefined || row.ownBalance === undefined) {
     verdict = (
       <div className="notice">
-        <p>{t("net.recon.hidden")}</p>
+        <p>{t(link.counterpart === null ? "net.recon.unlinked" : "net.recon.hidden")}</p>
         {list ? <p>{t("net.recon.awaiting")}</p> : null}
         {list}
       </div>

@@ -179,6 +179,7 @@ export const tgAdmin: PartialCatalog<typeof uzAdmin> = {
   "admin.setting.usd_on": "Доллар (USD) фаъол аст",
   "admin.setting.cash_book_on": "Касса (дафтари воридот ва хароҷот) фаъол аст",
   "admin.setting.stock_on": "Анбор, воридоти мол ва таъминкунандагон фаъоланд",
+  "admin.setting.network_on": "Шабакаи байни мағозаҳо (шарикон, фармоишҳо, борхатҳо) фаъол аст",
 
   "admin.audit.filters": "Филтрҳои аудит",
   "admin.audit.at": "Вақт",

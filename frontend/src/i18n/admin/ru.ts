@@ -169,6 +169,7 @@ export const ruAdmin: RuAdminCatalog = {
   "admin.setting.usd_on": "Доллары (USD) включены",
   "admin.setting.cash_book_on": "Касса (книга прихода и расхода) включена",
   "admin.setting.stock_on": "Склад, приход и поставщики включены",
+  "admin.setting.network_on": "Сеть между магазинами (партнёры, заказы, накладные) включена",
 
   "admin.audit.filters": "Фильтры аудита",
   "admin.audit.at": "Время",

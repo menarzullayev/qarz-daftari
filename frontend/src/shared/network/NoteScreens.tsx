@@ -95,14 +95,16 @@ type Target =
   | { mode: "item"; itemId: string; name: string | null }
   | { mode: "new"; price: string; barcode: string };
 
-/** The line of the form a refusal speaks of: by a field's name ("lines.2.new_price"), else the only new item. */
+/**
+ * The line of the form a refusal speaks of. The server names it in `fields.line`: its place in the
+ * receipt, counted from zero, which is its place among the note's lines (a receipt has every line of the
+ * note, in the note's order). Without one, the only new item there is.
+ */
 function refusedLine(error: ApiError, note: Note, targets: Readonly<Record<number, Target>>): number | null {
-  for (const field of Object.keys(error.fields)) {
-    const index = /^lines\.(\d+)(?:\.|$)/.exec(field)?.[1];
-    const line = index === undefined ? undefined : note.lines[Number(index)];
-    if (line && targets[line.lineNo]?.mode === "new") {
-      return line.lineNo;
-    }
+  const said = error.fields["line"];
+  const line = said !== undefined && /^\d+$/.test(said) ? note.lines[Number(said)] : undefined;
+  if (line && targets[line.lineNo]?.mode === "new") {
+    return line.lineNo;
   }
   const added = note.lines.filter((line) => targets[line.lineNo]?.mode === "new");
   return added.length === 1 ? (added[0]?.lineNo ?? null) : null;
@@ -346,7 +348,9 @@ function RejectForm({ note, onDone, onClose }: { note: Note; onDone: () => void;
 
 /**
  * The supplier issues a new note in place of this one: why, what was handed over on delivery, and the
- * lines as they should have been. Lines that were not touched are not sent: the note keeps them.
+ * lines as they should have been. The new note is always said in full. Left out, the server reads
+ * `paid` as nothing paid and the lines as the ORDER's accepted ones, which are not this note's after an
+ * earlier correction. A line of which nothing was delivered is typed as 0 and left out of the new note.
  */
 function CorrectForm({ note, onDone, onClose }: { note: Note; onDone: (corrected: Note) => void; onClose: () => void }) {
   const { t, language } = useI18n();
@@ -355,7 +359,6 @@ function CorrectForm({ note, onDone, onClose }: { note: Note; onDone: (corrected
   const initial = () => Object.fromEntries(note.lines.map((line) => [line.lineNo, { qty: line.qty.replace(".", ","), price: priceInput(line.unitPrice, note) }]));
   const [rows, setRows] = useState<Record<number, { qty: string; price: string }>>(initial);
   const [paid, setPaid] = useState(priceInput(note.paid, note));
-  const [touched, setTouched] = useState(false);
   const [problem, setProblem] = useState(false);
   const save = useSubmit(
     (job: { reason: string; paid: number | null; lines: { lineNo: number; qty: string; unitPrice: number }[] | null }, key) =>
@@ -373,17 +376,18 @@ function CorrectForm({ note, onDone, onClose }: { note: Note; onDone: (corrected
         setProblem(true);
         return;
       }
-      lines.push({ lineNo: line.lineNo, qty: qty.api, unitPrice: price.amount });
+      if (qty.thousandths > 0) {
+        lines.push({ lineNo: line.lineNo, qty: qty.api, unitPrice: price.amount });
+      }
     }
-    if (!paidRead.ok) {
+    if (!paidRead.ok || lines.length === 0) {
       setProblem(true);
       return;
     }
-    save.submit({ reason, paid: paidRead.amount === note.paid ? null : paidRead.amount, lines: touched ? lines : null });
+    save.submit({ reason, paid: paidRead.amount, lines });
   };
   const change = (lineNo: number, patch: Partial<{ qty: string; price: string }>) => {
     setRows((current) => ({ ...current, [lineNo]: { ...(current[lineNo] ?? { qty: "", price: "" }), ...patch } }));
-    setTouched(true);
     setProblem(false);
   };
   return (

@@ -10,8 +10,8 @@ from itertools import product
 
 import pytest
 
+from qarz.domain import catalog, permissions
 from qarz.domain import network as n
-from qarz.domain import permissions
 from qarz.domain.access import Role
 from qarz.domain.money import Currency
 
@@ -80,6 +80,7 @@ def test_a_code_is_long_random_and_kept_only_as_its_hash() -> None:
 
 def test_what_is_typed_is_cleaned_or_refused() -> None:
     assert n.line_name("  Guruch   oliy ") == "Guruch oliy"
+    assert n.line_name("x" * 80) == "x" * 80 and n.MAX_LINE_NAME == catalog.MAX_NAME_LENGTH
     assert n.text("  ", limit=5) is None and n.text(None, limit=5) is None
     assert n.reason("  Tovar   kam keldi ") == "Tovar kam keldi"
     assert n.unit("kg") == "kg" and n.offered_qty("0") == Decimal("0")
@@ -88,6 +89,9 @@ def test_what_is_typed_is_cleaned_or_refused() -> None:
     for wrong in (
         lambda: n.line_name(" "),
         lambda: n.line_name("x" * (n.MAX_LINE_NAME + 1)),
+        # A name the buyer's catalogue would refuse when the line is taken as a new item.
+        lambda: n.line_name("x" * 81),
+        lambda: n.line_name("ь"),
         lambda: n.text("x" * 6, limit=5),
         lambda: n.reason("xx"),
         lambda: n.reason("x" * (n.MAX_REASON + 1)),

@@ -25,6 +25,7 @@ from uuid import UUID, uuid4
 from qarz.application import idempotency, stock_cash
 from qarz.application import suppliers as supplier_account
 from qarz.application.authorization import require_permission
+from qarz.application.chat_texts import say
 from qarz.application.customers import MAX_PAGE, decode_cursor, encode_cursor, require_viewable, require_writable
 from qarz.application.errors import NotFound, ValidationFailed
 from qarz.application.ledger_service import append_entry_in, reverse_entry_in
@@ -59,8 +60,6 @@ RECORD_PAYMENT = operation("network.payments.record", Capability.MANAGE)
 CONFIRM_PAYMENT = operation("network.payments.confirm", Capability.MANAGE)
 DECLINE_PAYMENT = operation("network.payments.decline", Capability.MANAGE)
 WITHDRAW_PAYMENT = operation("network.payments.withdraw", Capability.MANAGE)
-
-_WITHDRAWN = {"uz": "Hamkor to'lovi qaytarib olindi", "ru": "Запись об оплате партнёра отозвана"}
 
 
 def payment_body(payment: PaymentRecord) -> dict[str, Any]:
@@ -391,7 +390,7 @@ class PaymentService:
                             raise NotFound()
                         await session.get_supplier(entry.supplier_id, for_update=True)
                         await supplier_account.reverse_entry_in(
-                            session, actor, entry, reason=_WITHDRAWN.get(lang, _WITHDRAWN["uz"]), now=now
+                            session, actor, entry, reason=say(lang, "net_withdrawn_reason"), now=now
                         )
                     elif payment.ledger_entry_id is not None:
                         require_permission(actor, permissions.ENTRIES_CANCEL)

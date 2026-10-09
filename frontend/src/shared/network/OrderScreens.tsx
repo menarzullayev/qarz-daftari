@@ -362,7 +362,11 @@ export function OrderScreen({ orderId }: { orderId: string }) {
   const answers = supplier && order.status === "sent" && can("network.fulfil");
   // Issuing the note writes a sale on credit when the buyer confirms: it needs that permission too.
   const delivers = supplier && order.status === "accepted" && can("network.fulfil") && can("credits.record");
-  const cancels = !supplier && (order.status === "sent" || order.status === "accepted") && can("network.order");
+  // An order is closed while nothing of it is received: before a delivery, and after one whose note the
+  // buyer rejected (the server's `may_close_order`). The buyer cancels, the supplier declines.
+  const open = order.status === "sent" || order.status === "accepted" || (order.status === "delivered" && order.deliveryNote?.status === "rejected");
+  const cancels = !supplier && open && can("network.order");
+  const declines = supplier && open && can("network.fulfil");
   const answered = order.lines.some((line) => line.acceptedQty !== null);
 
   const columns: Column<OrderLine>[] = [
@@ -445,21 +449,21 @@ export function OrderScreen({ orderId }: { orderId: string }) {
         <Listing caption={t("net.order.lines")} columns={columns} items={order.lines} rowKey={(line) => String(line.lineNo)} />
       )}
 
-      {mode === "view" && (answers || delivers || cancels) ? (
+      {mode === "view" && (answers || delivers || cancels || declines) ? (
         <p className="actions">
           {answers ? (
-            <>
-              <button type="button" className="button button--primary" onClick={() => setMode("accept")}>
-                {t("net.order.accept")}
-              </button>
-              <button type="button" className="button" onClick={() => setMode("decline")}>
-                {t("net.order.decline")}
-              </button>
-            </>
+            <button type="button" className="button button--primary" onClick={() => setMode("accept")}>
+              {t("net.order.accept")}
+            </button>
           ) : null}
           {delivers ? (
             <button type="button" className="button button--primary" onClick={() => setMode("deliver")}>
               {t("net.order.deliver")}
+            </button>
+          ) : null}
+          {declines ? (
+            <button type="button" className="button" onClick={() => setMode("decline")}>
+              {t("net.order.decline")}
             </button>
           ) : null}
           {cancels ? (
