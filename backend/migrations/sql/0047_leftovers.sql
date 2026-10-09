@@ -1,4 +1,4 @@
--- A leftover of the expansion that needs the database.
+-- Two leftovers of the expansion that need the database.
 --
 -- 1. `network_receipt_finish` (migration 0045) marked a delivery note received when both shops' books
 --    held its totals, currency, parties and author. That the LINES were the note's was the application's
@@ -12,6 +12,9 @@
 --        entry), and the sale moved nothing else.
 --    Same name, same arguments, same refusal (`NETWORK_BOOKS_MISMATCH`), same rights: the function is
 --    replaced, so it stays closed to PUBLIC and granted to `qd_app` alone (said again below).
+--
+-- 2. The documents list narrowed to a state walked the shop's documents newest first until a page was
+--    full: for a rare state in a shop with many documents, all of them. It gets an index of its own.
 --
 -- Nothing else changes: no table, no column, no policy, no right on a table.
 
@@ -133,3 +136,7 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION network_receipt_finish(uuid, uuid, uuid, uuid, uuid, uuid, uuid, timestamptz) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION network_receipt_finish(uuid, uuid, uuid, uuid, uuid, uuid, uuid, timestamptz) TO qd_app;
+
+-- The documents of a shop in one state, newest first: a page is read from the index and costs what it
+-- holds, however many documents of other states the shop has (drafts among thousands of posted ones).
+CREATE INDEX stock_document_by_status ON stock_document (shop_id, status, created_at DESC, id DESC);
