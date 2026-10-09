@@ -1012,3 +1012,32 @@ def test_a_promise_on_a_covered_sale_changes_no_figure(
     assert (listed()["balance"], listed()["overdue"]) == (21_000, expected)
     assert detail(client, world, customer)["overdue"] == expected
     assert read(client, world.seller_a, f"{shop(world)}/overview").json() == before
+
+
+def test_an_entry_written_after_another_is_never_dated_before_it(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    """The time is read before the customer is locked: a writer numbered second may have read it first.
+
+    The account's last entry here is dated a minute ahead of the clock, as the other writer's would be by
+    milliseconds. What is written next, a credit and then its reversal, takes that time and not an earlier one.
+    """
+    customer = uuid.UUID(new_customer(client, world, "Vaqt"))
+    ahead = seed_entry(
+        owner, world, customer, 1, "credit", 10_000, promised=today() + timedelta(days=5), days_ago=-1 / 1440
+    )
+    last = owner.execute("SELECT created_at FROM ledger_entry WHERE id = %s", (ahead,)).fetchone()
+    assert last is not None
+
+    made = record(client, world, customer, "credit", 5_000)
+    assert made.status_code == 201, made.text
+    assert reverse(client, world, made.json()["entry"]["id"]).status_code == 201
+    times = [
+        row[0]
+        for row in owner.execute(
+            "SELECT created_at FROM ledger_entry WHERE customer_id = %s ORDER BY seq", (customer,)
+        ).fetchall()
+    ]
+    assert len(times) == 3
+    assert times == sorted(times), "within an account the times follow the numbers"
+    assert times[1] == times[2] == last[0]
