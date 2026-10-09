@@ -437,6 +437,8 @@ In the database nothing decides what a member may do by role: the functions that
 
 **API.** `GET /shops/{id}/permissions` (catalogue, owner), `GET` and `PUT /shops/{id}/staff/{membership}/permissions` (one member's permissions with the source of each answer; set replaces the member's changes as a whole, is idempotent, and two empty lists are the role's defaults), `GET /shops/{id}/permissions/mine` (every member: what they hold, for a client to decide what to offer). While the switch is on, `GET /me/shops` carries the header `X-Qarz-Permissions: on`; a client asks for `permissions/mine` only then, and otherwise offers by role as before. The server remains the authority either way.
 
+**Clients.** The Mini App and the panel decide what to offer through one helper (`may` in `frontend/src/shared/permissions.ts`; `useMay()` in a component): by the list `permissions/mine` named, or by the role's preset when the switch is off. While the switch is on, nothing of the shop is drawn until that list has arrived for the active shop: no section, button or link is offered by role first and taken away after. If the list cannot be read the workspace stays closed with the error and a "try again"; the role is never a substitute for it. If the route answers 404 (the switch was turned off in between) the role decides, as with the switch off. A test reads the front end's source and fails on any decision by role outside a list of the places named under "Checks that stay by role on purpose" (`frontend/src/shared/roleGating.test.ts`).
+
 **Adding permissions (later modules: cash book, stock, suppliers).** The steps are in the docstring of `qarz.domain.permissions`; in short:
 
 1. add a `Group` to `GROUPS` if the module is a new area;

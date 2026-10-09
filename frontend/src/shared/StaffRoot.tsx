@@ -211,9 +211,12 @@ export function StaffWorkspace({
     return ready.shops.find((candidate) => candidate.shopId === ready.activeShop) ?? only ?? null;
   }, [ready]);
   const shopApi = useMemo(() => (ready && shop ? ready.api.shop(shop.shopId) : undefined), [ready, shop]);
-  // What the member may do in the active shop, when the server says (the permission matrix is on). Until
-  // it answers, and whenever it does not, the role decides what is offered; the server decides each call.
-  const [held, setHeld] = useState<{ shopId: string; permissions: Held } | null>(null);
+  // What the member may do in the active shop, when the server says (the permission matrix is on). While
+  // the matrix is on nothing of the shop is offered until the server has answered for this shop, and
+  // nothing is offered when the answer could not be read: the role is not a substitute for it. With the
+  // matrix off none of this is asked and the role decides at once, as it always did.
+  const [held, setHeld] = useState<{ shopId: string; permissions: Held; error: ApiError | null } | null>(null);
+  const [heldAttempt, setHeldAttempt] = useState(0);
   const permissionsOn = ready?.permissionsOn ?? false;
   useEffect(() => {
     // Asked only when the server said there is something to ask: with the matrix off, nothing changes.
@@ -223,21 +226,22 @@ export function StaffWorkspace({
     let cancelled = false;
     const shopId = shop.shopId;
     shopApi.myPermissions().then(
+      // Null is the server's own word that it keeps to roles here (the route answered "not found").
       (permissions) => {
         if (!cancelled) {
-          setHeld({ shopId, permissions });
+          setHeld({ shopId, permissions, error: null });
         }
       },
-      () => {
+      (error: unknown) => {
         if (!cancelled) {
-          setHeld({ shopId, permissions: null });
+          setHeld({ shopId, permissions: null, error: toApiError(error) });
         }
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [shopApi, shop, permissionsOn]);
+  }, [shopApi, shop, permissionsOn, heldAttempt]);
   const reloadSession = useCallback(() => setAttempt((count) => count + 1), []);
   // The parts of the product the platform has switched on; one object for as long as none changes.
   const cashBookOn = ready?.cashBookOn ?? false;
@@ -329,6 +333,28 @@ export function StaffWorkspace({
     );
   }
 
+  // The matrix is on: until the server has said what this member holds in this shop there is no
+  // workspace, so no button or link is drawn by the role and then taken away. A failure keeps it closed
+  // and offers to ask again.
+  const answered = held?.shopId === shop.shopId ? held : null;
+  if (phase.permissionsOn && (answered === null || answered.error !== null)) {
+    return (
+      <Gate entryKey={entryKey} title={answered === null ? shop.name : t("state.error")}>
+        {answered?.error ? (
+          <Failure
+            error={answered.error}
+            onRetry={() => {
+              setHeld(null);
+              setHeldAttempt((count) => count + 1);
+            }}
+          />
+        ) : (
+          <Loading />
+        )}
+      </Gate>
+    );
+  }
+
   // On a wide screen of the web panel the shop switcher and sign-out sit under the side navigation;
   // on a narrow one they join the overview's buttons, where the Mini App has its switcher.
   const side =
@@ -345,7 +371,7 @@ export function StaffWorkspace({
         shopName: shop.name,
         role: shop.role,
         membershipId: shop.membershipId,
-        permissions: held?.shopId === shop.shopId ? held.permissions : null,
+        permissions: phase.permissionsOn ? (answered?.permissions ?? null) : null,
         features,
       }}
       api={shopApi}
