@@ -134,6 +134,9 @@ async function walk(page: Page, entry: string, screens: readonly string[], traff
         const where = `${entry}#${path} at 200% text, ${name} width (${size.width}px)`;
         expect(await page.evaluate(() => getComputedStyle(document.documentElement).fontSize), where).toBe("32px");
         const findings = await textSizeFindings(page);
+        // Held to at every width, a phone's included: the bar keeps free the room it takes, however
+        // tall the text makes it, so the end of a screen is never under it.
+        expect.soft(await navigationFindings(page), where).toEqual([]);
         if (strict) {
           await expectNoSidewaysScroll(page, where, { soft: true });
           expect.soft(findings, where).toEqual([]);
@@ -159,9 +162,9 @@ type Finding = string;
  * What goes wrong when text grows and the layout does not follow, measured on the screen as drawn:
  *
  *  - text cut off: an element that hides what does not fit, and holds more than fits;
- *  - controls on top of each other: two links, buttons or fields of the screen whose boxes intersect;
- *  - the navigation over the content: with the page scrolled to its end, the bar and the screen's last
- *    lines share space.
+ *  - controls on top of each other: two links, buttons or fields of the screen whose boxes intersect.
+ *
+ * The navigation over the content is measured apart (`navigationFindings`): it is held to at every width.
  */
 async function textSizeFindings(page: Page): Promise<Finding[]> {
   return page.evaluate(() => {
@@ -205,19 +208,51 @@ async function textSizeFindings(page: Page): Promise<Finding[]> {
       }
     }
 
+    return found;
+  });
+}
+
+/**
+ * The navigation over the content, measured with the page scrolled to its end, where the bar of a
+ * phone and the screen's last lines would share space:
+ *
+ *  - the bar's box and the screen's box overlap by more than the bar's own top line (which lies over
+ *    the last pixel of the screen's padding by design, and may land on a fraction of a pixel);
+ *  - the last thing drawn on the screen, whatever it is, ends below the bar's top edge.
+ */
+async function navigationFindings(page: Page): Promise<Finding[]> {
+  return page.evaluate(() => {
+    const found: string[] = [];
     const bar = document.querySelector(".shell__nav");
     const content = document.querySelector(".shell__main");
-    if (bar && content) {
-      window.scrollTo(0, document.documentElement.scrollHeight);
-      const a = bar.getBoundingClientRect();
-      const b = content.getBoundingClientRect();
-      const across = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+    if (!bar || !content) {
+      return found;
+    }
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    const a = bar.getBoundingClientRect();
+    const b = content.getBoundingClientRect();
+    const across = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+    if (across > 1) {
       const down = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
-      if (across > 1 && down > 1) {
+      if (down > 2) {
         found.push(`the navigation covers the last ${Math.round(down)}px of the screen (the bar is ${Math.round(a.height)}px tall)`);
       }
-      window.scrollTo(0, 0);
+      let last: Element | null = null;
+      let end = Number.NEGATIVE_INFINITY;
+      for (const element of content.querySelectorAll("*")) {
+        const box = element.getBoundingClientRect();
+        const drawn = box.width > 2 && box.height > 2 && getComputedStyle(element).visibility !== "hidden" && !element.closest(".visually-hidden");
+        if (drawn && box.bottom > end && Math.min(a.right, box.right) - Math.max(a.left, box.left) > 1) {
+          last = element;
+          end = box.bottom;
+        }
+      }
+      if (last && end - a.top > 0.5) {
+        const words = (last.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
+        found.push(`the screen's last content is ${Math.round(end - a.top)}px under the navigation: <${last.tagName.toLowerCase()}> "${words}"`);
+      }
     }
+    window.scrollTo(0, 0);
     return found;
   });
 }
@@ -242,8 +277,9 @@ test("the Mini App: no screen is wider than its window at any width, and the mai
     screens: ["/", "/customers", `/customers/${customerId}`, `/customers/${customerId}/credit`, "/customers/new"],
     // Twice the text at a tablet's width is the width WCAG's reflow asks for (640px and up).
     strict: [WIDTHS[1]],
-    // A phone at twice the text size is narrower than any width the screens are designed for: measured
-    // and printed, so that it is known, and not yet a failure.
+    // A phone at twice the text size is narrower than any width the screens are designed for: its
+    // sideways scroll, cut text and crowded controls are measured and printed, so that they are known,
+    // and are not yet a failure. The navigation over the end of a screen is one there too (`walk`).
     printed: [WIDTHS[0]],
   });
 });
