@@ -15,6 +15,8 @@ export const kaa: PartialCatalog<typeof uz> = {
   "nav.stock": "Sklad",
   "nav.stockDocuments": "Sklad hújjetleri",
   "nav.suppliers": "Támiyinlewshiler",
+  "nav.cashSale": "Naq sawda",
+  "nav.cashSales": "Naq sawdalar",
   "nav.network": "Sherikler",
   "nav.reminders": "Eskertiwler",
   "nav.reports": "Esabatlar",

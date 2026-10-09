@@ -223,6 +223,8 @@ export const ruPanel: RuPanelCatalog = {
   "activity.action.stock.document_changed": "Изменён черновик складского документа",
   "activity.action.stock.document_posted": "Складской документ проведён",
   "activity.action.stock.document_cancelled": "Складской документ отменён",
+  "activity.action.stock.sale_recorded": "Записана продажа за наличные",
+  "activity.action.stock.sale_cancelled": "Продажа за наличные отменена",
   "activity.action.supplier.created": "Добавлен поставщик",
   "activity.action.supplier.updated": "Поставщик изменён",
   "activity.action.supplier.archived": "Поставщик отправлен в архив",

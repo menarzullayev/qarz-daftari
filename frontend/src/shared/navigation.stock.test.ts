@@ -85,6 +85,21 @@ describe("the stock's sections while the stock is on", () => {
     expect(ids("seller", new Set(["stock.receive"]), { stock: false })).toEqual([]);
   });
 
+  it("gain no section for selling for cash: its screens are the stock's, which stock.view opens", () => {
+    for (const office of [false, true]) {
+      const offered = (held: string[]) => ids("seller", new Set(held), ON, office).filter((id) => STOCK_SECTION_IDS.includes(id));
+      // Selling without seeing the stock opens nothing: the sale's form finds items by stock.view.
+      expect(offered(["stock.sell"])).toEqual([]);
+      expect(offered(["stock.sell", "stock.sell.cancel"])).toEqual([]);
+      expect(offered(["stock.view", "stock.sell"])).toEqual(["stock"]);
+    }
+    // And the sections are the three they were: no fourth one for the sale.
+    expect(STOCK_SECTION_IDS).toEqual(["stock", "stockDocuments", "suppliers"]);
+    // Never while the stock is off, whatever is held.
+    expect(ids("seller", new Set(["stock.view", "stock.sell"]))).toEqual([]);
+    expect(ids("seller", new Set(["stock.view", "stock.sell"]), { stock: false, cashBook: true })).toEqual([]);
+  });
+
   it("leave the panel's two sections each to its own permission, as they were", () => {
     const panel = (held: string[]) => ids("seller", new Set(held), ON, true).filter((id) => STOCK_SECTION_IDS.includes(id));
     expect(panel(["stock.receive"])).toEqual(["stockDocuments"]);
@@ -123,6 +138,10 @@ describe("the stock's addresses", () => {
     // The documents as a phone lists them are the stock's: the Mini App has no documents section.
     expect(section("/stock/documents")).toBe("/stock");
     expect(section(`/stock/documents/${ID}`)).toBe("/stock");
+    // A sale for cash, the day's sales and one of them: the stock's, in the Mini App and in the panel.
+    expect(section("/stock/sale")).toBe("/stock");
+    expect(section("/stock/sales")).toBe("/stock");
+    expect(section(`/stock/sales/${ID}`)).toBe("/stock");
     expect(section("/stock-documents")).toBe("/stock-documents");
     expect(section(`/stock-documents/${ID}`)).toBe("/stock-documents");
     expect(section("/suppliers")).toBe("/suppliers");
@@ -135,6 +154,11 @@ describe("the stock's addresses", () => {
     expect(matchWorkspaceRoute("/stock/documents")?.route).toEqual({ screen: "stock", view: { name: "counterDocuments" } });
     expect(matchWorkspaceRoute(`/stock/documents/${ID}`)?.route).toEqual({ screen: "stock", view: { name: "counterDocument", documentId: ID } });
     expect(matchWorkspaceRoute(`/stock-documents/${ID}`)?.route).toEqual({ screen: "stock", view: { name: "document", documentId: ID } });
+    expect(matchWorkspaceRoute("/stock/sale")?.route).toEqual({ screen: "stock", view: { name: "sell" } });
+    expect(matchWorkspaceRoute("/stock/sales")?.route).toEqual({ screen: "stock", view: { name: "sales" } });
+    expect(matchWorkspaceRoute(`/stock/sales/${ID}`)?.route).toEqual({ screen: "stock", view: { name: "sale", saleId: ID } });
+    // A sale is no document of the documents' screens: its kind is not one a new document can be of.
+    expect(matchWorkspaceRoute("/stock-documents/new/sale")).toBeNull();
     for (const kind of STOCK_DOCUMENT_KINDS) {
       expect(matchWorkspaceRoute(`/stock-documents/new/${kind}`)?.route).toEqual({ screen: "stock", view: { name: "newDocument", kind } });
     }
@@ -153,6 +177,12 @@ describe("the stock's addresses", () => {
       "/stock-documents/new/receipt/x",
       "/suppliers/abc",
       "/stock/settings",
+      "/stock/sales/7",
+      "/stock/sales/",
+      `/stock/sales/${ID}/cancel`,
+      "/stock/sale/new",
+      `/stock/sale/${ID}`,
+      "/stock/sell",
       "/stocks",
     ]) {
       expect(matchWorkspaceRoute(path), path).toBeNull();
@@ -160,9 +190,11 @@ describe("the stock's addresses", () => {
   });
 
   it("have a title that is loaded with the first screen", () => {
-    for (const path of ["/stock", "/stock/receipt", "/stock-documents", "/suppliers"]) {
+    for (const path of ["/stock", "/stock/receipt", "/stock-documents", "/suppliers", "/stock/sale", "/stock/sales", `/stock/sales/${ID}`]) {
       const key = matchWorkspaceRoute(path)?.titleKey;
       expect(key && catalogs.uz[key]).toBeTypeOf("string");
+      expect(key && catalogs.ru[key]).toBeTypeOf("string");
     }
+    expect(catalogs.uz[matchWorkspaceRoute("/stock/sale")?.titleKey ?? "nav.stock"]).toBe("Naqd savdo");
   });
 });

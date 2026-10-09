@@ -249,6 +249,17 @@ export function StockScreen({ host, office = false }: { host?: ScanHost | undefi
             </button>
           ))}
         </div>
+        {/* A sale for cash: for one who sells; seeing the stock, which this screen is, they do already. */}
+        {can("stock.sell") ? (
+          <>
+            <Link to="/stock/sale" className="button button--primary">
+              {t("nav.cashSale")}
+            </Link>
+            <Link to="/stock/sales" className="button">
+              {t("nav.cashSales")}
+            </Link>
+          </>
+        ) : null}
         {can("stock.receive") ? (
           <Link to="/stock/receipt" className="button button--primary">
             {t("stock.receipt.quick")}

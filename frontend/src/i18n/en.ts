@@ -15,6 +15,8 @@ export const en: PartialCatalog<typeof uz, EnPlural> = {
   "nav.stock": "Stock",
   "nav.stockDocuments": "Stock documents",
   "nav.suppliers": "Suppliers",
+  "nav.cashSale": "Cash sale",
+  "nav.cashSales": "Cash sales",
   "nav.network": "Partners",
   "nav.reminders": "Reminders",
   "nav.reports": "Reports",

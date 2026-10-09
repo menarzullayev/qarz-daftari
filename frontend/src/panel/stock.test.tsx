@@ -152,6 +152,8 @@ describe("the activity log names what the stock records", () => {
     "stock.document_changed",
     "stock.document_posted",
     "stock.document_cancelled",
+    "stock.sale_recorded",
+    "stock.sale_cancelled",
     "supplier.created",
     "supplier.updated",
     "supplier.archived",

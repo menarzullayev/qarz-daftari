@@ -226,6 +226,8 @@ export const tgPanel: PartialCatalog<typeof uzPanel> = {
   "activity.action.stock.document_changed": "Сиёҳнависи ҳуҷҷати анбор тағйир дода шуд",
   "activity.action.stock.document_posted": "Ҳуҷҷати анбор ба қайд гирифта шуд",
   "activity.action.stock.document_cancelled": "Ҳуҷҷати анбор бекор шуд",
+  "activity.action.stock.sale_recorded": "Фурӯши нақд навишта шуд",
+  "activity.action.stock.sale_cancelled": "Фурӯши нақд бекор шуд",
   "activity.action.supplier.created": "Таъминкунанда илова шуд",
   "activity.action.supplier.updated": "Таъминкунанда тағйир дода шуд",
   "activity.action.supplier.archived": "Таъминкунанда ба архив гузошта шуд",

@@ -7,11 +7,10 @@ import { renderScreen } from "../../testing/renderScreen";
 import { StockReportScreen } from "./StockReportScreen";
 import { SupplierScreen, SuppliersScreen } from "./SupplierScreens";
 import {
-  costedItemBody,
   DOCUMENT_ID,
   ENTRY_ID,
-  ITEM_ID,
   STOCK,
+  stockReportBody,
   stockSettingsBody,
   SUPPLIER_ID,
   supplierBody,
@@ -249,29 +248,7 @@ describe("one supplier's account", () => {
   });
 });
 
-function reportBody() {
-  return {
-    days: 30,
-    totals: {
-      items: 12,
-      low: 2,
-      cost: [
-        { currency: "UZS", value: 900000 },
-        { currency: "USD", value: 45000 },
-      ],
-      selling: 1500000,
-      margin: { selling: 1200000, cost: 900000, margin: 300000 },
-    },
-    not_sold: { items: [costedItemBody({ last_sale_at: null })], more: true },
-    sold_below_cost: {
-      sales: [
-        { item_id: ITEM_ID, name: "Shakar", unit: "kg", qty: "2", sale_total: 20000, cost_total: 24000, loss: 4000, created_at: "2026-10-05T06:00:00+00:00" },
-      ],
-      more: false,
-    },
-    low_stock: { items: [], more: false },
-  };
-}
+const reportBody = stockReportBody;
 
 describe("the stock report", () => {
   it("shows the cost of the stock as one figure for each currency, never added, and the three lists", async () => {
@@ -286,6 +263,9 @@ describe("the stock report", () => {
       "Ombor tannarxi, dollarda olinganlari450.00 $",
       "Sotish narxida qiymati1 500 000 so'm",
       "Kutilayotgan foyda300 000 so'mTannarxi so'mda yuritiladigan tovarlar: sotish narxida 1 200 000 so'm, tannarxda 900 000 so'm.",
+      // The cash sales of the period, of which this shop has none (sales.test.tsx holds the figures).
+      "Savdolar soni0",
+      "Jami tushum0 so'm",
     ]);
     // 900 000 so'm and 45 000 cents are not 945 000 of anything.
     expect(container.textContent).not.toContain("945");
