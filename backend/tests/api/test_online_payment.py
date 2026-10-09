@@ -535,7 +535,9 @@ def test_money_taken_for_a_shop_suspended_meanwhile_is_counted_but_does_not_lift
     ("state", "dates", "paid_through"),
     [
         ("limited", {}, date(2050, 4, 9)),
-        ("trial", {"trial_ends": date(2050, 3, 20)}, date(2050, 4, 9)),
+        # A trial that still runs keeps its days: the month follows its last day.
+        ("trial", {"trial_ends": date(2050, 3, 20)}, date(2050, 4, 20)),
+        ("trial", {"trial_ends": date(2050, 3, 9)}, date(2050, 4, 9)),  # ended yesterday: from today
         ("active", {"paid_through": date(2050, 3, 25)}, date(2050, 4, 25)),
         ("active", {"paid_through": TODAY}, date(2050, 4, 10)),
         ("active", {"paid_through": date(2050, 3, 9)}, date(2050, 4, 9)),

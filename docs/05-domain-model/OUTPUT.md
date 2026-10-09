@@ -160,7 +160,7 @@ Subscription:
 | No. | Rule | Source |
 |---|---|---|
 | BR-26 | A new shop gets a 30-day trial if the trial switch is on when it is created. | REQ-052 |
-| BR-27 | An approved receipt extends the paid-through date by the whole months the administrator records, starting from the later of today and the current paid-through date. | REQ-055; start rule decided here |
+| BR-27 | An approved receipt extends the paid-through date by the whole months the administrator records, starting from the later of today and the current paid-through date. A shop still on trial keeps the trial days it has left: its months start from the trial's last day. | REQ-055; start rule decided here; trial days kept by the founder's decision of 2026-10-09 |
 | BR-28 | Seven days and one day before the trial or paid period ends, the owner is warned. | REQ-057; timing decided here |
 | BR-29 | In limited mode, recording new credit sales and imports is refused; viewing, exporting, recording payments, reversals, disputes, customer views, and reminders continue. | REQ-057; reminders continuing decided here |
 | BR-30 | A suspended shop, an administrator action, allows only viewing and export by the owner. | REQ-058 |

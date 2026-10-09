@@ -573,6 +573,7 @@ class GroupReceipt:
     stated_months: int | None
     status: str
     state: str | None  # the subscription's; None when the shop has no subscription row
+    trial_ends: date | None
     paid_through: date | None
     owner_tg: int | None
     owner_lang: str | None

@@ -3607,7 +3607,7 @@ class PgPlatformSession:
             await self._conn.execute(
                 text(
                     "SELECT receipt_id, shop_id, shop_name, stated_amount, stated_months, status, state, "
-                    "  paid_through, owner_tg, owner_lang "
+                    "  trial_ends, paid_through, owner_tg, owner_lang "
                     "FROM review_group_receipt(:group_id, :receipt, :lock)"
                 ),
                 {"group_id": group_id, "receipt": receipt_id, "lock": lock},
@@ -3623,6 +3623,7 @@ class PgPlatformSession:
             stated_months=None if row.stated_months is None else int(row.stated_months),
             status=str(row.status),
             state=None if row.state is None else str(row.state),
+            trial_ends=row.trial_ends,
             paid_through=row.paid_through,
             owner_tg=None if row.owner_tg is None else int(row.owner_tg),
             owner_lang=row.owner_lang,

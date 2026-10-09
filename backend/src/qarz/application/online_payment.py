@@ -183,6 +183,7 @@ class OnlinePaymentService:
         # The same rule as a transfer an administrator approves (qarz.application.admin_receipts).
         state, paid_through, prior_state = after_payment(
             LIMITED if stored is None else stored[0],
+            None if stored is None else stored[1],
             None if stored is None else stored[2],
             self._today(),
             order.months,

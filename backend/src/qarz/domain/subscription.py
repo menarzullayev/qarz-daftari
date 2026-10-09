@@ -55,14 +55,23 @@ def extend_paid_through(paid_through: date | None, today: date, months: int) -> 
     return add_months(today, months) - timedelta(days=1)
 
 
-def after_payment(state: str, paid_through: date | None, today: date, months: int) -> tuple[str, date, str | None]:
+def after_payment(
+    state: str, trial_ends: date | None, paid_through: date | None, today: date, months: int
+) -> tuple[str, date, str | None]:
     """The state, paid-through date and remembered state of a subscription once `months` are paid for.
 
     One rule for every way of paying: a transfer an administrator approves and an online payment. The
     period is extended by BR-27 and the shop is active again, except that a shop an administrator
     suspended stays suspended (BR-30) and will be active when the suspension is lifted.
+
+    A shop that pays while its trial still runs keeps the days of the trial it has left: the months are
+    counted from the trial's last day, as they are from a paid period's (the founder's decision of
+    2026-10-09). Paying early must not cost the owner what was already theirs.
     """
-    until = extend_paid_through(paid_through, today, months)
+    counted_from = paid_through
+    if state == TRIAL and trial_ends is not None and trial_ends >= today:
+        counted_from = trial_ends if paid_through is None else max(trial_ends, paid_through)
+    until = extend_paid_through(counted_from, today, months)
     if state == SUSPENDED:
         return SUSPENDED, until, ACTIVE
     return ACTIVE, until, None

@@ -66,7 +66,7 @@ class GroupReceiptService:
         if row.state is None:
             # No subscription to extend, as on the administrator's side.
             raise NotFound()
-        state, paid_through, prior_state = after_payment(row.state, row.paid_through, today, paid_for)
+        state, paid_through, prior_state = after_payment(row.state, row.trial_ends, row.paid_through, today, paid_for)
         decided = await session.review_group_decide_receipt(
             group_id,
             decider_tg,
