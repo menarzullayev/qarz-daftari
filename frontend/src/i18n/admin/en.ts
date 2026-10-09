@@ -39,6 +39,8 @@ export const enAdmin: PartialCatalog<typeof uzAdmin, EnPlural> = {
   "admin.shops.paidThrough": "Paid through",
   "admin.shops.staff": "Staff count",
   "admin.shops.customers": "Customer count",
+  "admin.shops.plan": "Customers (not archived) / free plan",
+  "admin.shops.plan.value": "{used} / {limit}",
   "admin.shops.created": "Opened",
   "admin.shops.none": "No shops yet.",
   "admin.shops.noMatch": "No shop found for this search.",
@@ -46,6 +48,7 @@ export const enAdmin: PartialCatalog<typeof uzAdmin, EnPlural> = {
   "admin.state.active": "Active",
   "admin.state.limited": "Limited",
   "admin.state.suspended": "Suspended",
+  "admin.state.free": "Free plan",
 
   "admin.shop.title": "Shop",
   "admin.shop.status": "Shop status",

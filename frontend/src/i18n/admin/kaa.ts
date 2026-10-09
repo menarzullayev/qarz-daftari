@@ -39,6 +39,8 @@ export const kaaAdmin: PartialCatalog<typeof uzAdmin> = {
   "admin.shops.paidThrough": "Tólengen múddet",
   "admin.shops.staff": "Xızmetkerler sanı",
   "admin.shops.customers": "Qarıydarlar sanı",
+  "admin.shops.plan": "Qarıydarlar (arxivsiz) / biypul tarif",
+  "admin.shops.plan.value": "{used} / {limit}",
   "admin.shops.created": "Ashılǵan",
   "admin.shops.none": "Ele hesh bir dúkan joq.",
   "admin.shops.noMatch": "Bul izlew boyınsha dúkan tabılmadı.",
@@ -46,6 +48,7 @@ export const kaaAdmin: PartialCatalog<typeof uzAdmin> = {
   "admin.state.active": "Aktiv",
   "admin.state.limited": "Sheklengen",
   "admin.state.suspended": "Toqtatılǵan",
+  "admin.state.free": "Biypul tarif",
 
   "admin.shop.title": "Dúkan",
   "admin.shop.status": "Dúkan jaǵdayı",

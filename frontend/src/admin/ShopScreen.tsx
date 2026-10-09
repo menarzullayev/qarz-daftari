@@ -15,7 +15,7 @@ import type { AdminApi, AdminShop, AdminShopDetail, AuditRow, SubscriptionAction
 import "./messages";
 import { OwnerSection } from "./OwnerSection";
 import { actorName, cleanReason, dateInRange, dateRange, isChangeRefusal, offeredActions, REASON_MAX, REASON_MIN } from "./rules";
-import { known, NONE, stateText } from "./ShopsScreen";
+import { known, NONE, planText, stateText } from "./ShopsScreen";
 import { SupportSection, type Who } from "./SupportSection";
 
 const ACTION_LABELS: Readonly<Record<SubscriptionAction, MessageKey>> = {
@@ -183,7 +183,8 @@ function Subscription({ subscription }: { subscription: SubscriptionState }) {
       <dt>{t("admin.shops.state")}</dt>
       <dd>
         {stateText(subscription.state, t)}
-        {subscription.storedState !== subscription.state ? (
+        {/* A free shop's row says "limited" and stays so: free is never stored, and no review changes it. */}
+        {subscription.storedState !== subscription.state && subscription.state !== "free" ? (
           <span className="facts__note">{t("admin.shop.storedState", { state: stateText(subscription.storedState, t) })}</span>
         ) : null}
         {subscription.priorState ? (
@@ -263,6 +264,12 @@ function Detail({ api, loaded, now, who, reload }: { api: AdminApi; loaded: Admi
         <dd>{shop.staffCount}</dd>
         <dt>{t("admin.shops.customers")}</dt>
         <dd>{shop.customerCount}</dd>
+        {shop.plan !== null ? (
+          <>
+            <dt>{t("admin.shops.plan")}</dt>
+            <dd>{planText(shop, t)}</dd>
+          </>
+        ) : null}
       </dl>
 
       <section aria-labelledby="shop-subscription">

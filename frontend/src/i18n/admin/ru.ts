@@ -38,6 +38,8 @@ export const ruAdmin: RuAdminCatalog = {
   "admin.shops.paidThrough": "Оплачено до",
   "admin.shops.staff": "Сотрудников",
   "admin.shops.customers": "Клиентов",
+  "admin.shops.plan": "Клиентов (без архива) / бесплатный тариф",
+  "admin.shops.plan.value": "{used} / {limit}",
   "admin.shops.created": "Открыт",
   "admin.shops.none": "Магазинов пока нет.",
   "admin.shops.noMatch": "По этому запросу магазины не найдены.",
@@ -45,6 +47,7 @@ export const ruAdmin: RuAdminCatalog = {
   "admin.state.active": "Активна",
   "admin.state.limited": "Ограничена",
   "admin.state.suspended": "Приостановлена",
+  "admin.state.free": "Бесплатный тариф",
 
   "admin.shop.title": "Магазин",
   "admin.shop.status": "Состояние магазина",

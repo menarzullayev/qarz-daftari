@@ -53,6 +53,12 @@ export type AdminShop = {
   ownerTgId: number | null;
   staffCount: number;
   customerCount: number;
+  /**
+   * With the free plan switched on: how many customers the plan holds and how many of the shop's count
+   * for it (the archived do not). Null while the plan is off: the server then sends no such field, and
+   * no state is "free".
+   */
+  plan: { freeCustomers: number; customers: number } | null;
 };
 
 export type SubscriptionReceipt = {
@@ -178,6 +184,11 @@ function authStatus(value: unknown): AuthStatus {
   };
 }
 
+function shopPlan(value: unknown): { freeCustomers: number; customers: number } {
+  const plan = record(value);
+  return { freeCustomers: whole(plan["free_customers"]), customers: whole(plan["customers"]) };
+}
+
 function adminShop(value: unknown): AdminShop {
   const body = record(value);
   const subscription = record(body["subscription"]);
@@ -200,6 +211,7 @@ function adminShop(value: unknown): AdminShop {
     ownerTgId: owner ?? null,
     staffCount: whole(body["staff_count"]),
     customerCount: whole(body["customer_count"]),
+    plan: body["plan"] === undefined || body["plan"] === null ? null : shopPlan(body["plan"]),
   };
 }
 

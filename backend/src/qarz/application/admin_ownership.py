@@ -20,7 +20,7 @@ from typing import Any
 from uuid import UUID
 
 from qarz.application import idempotency
-from qarz.application.admin import clean_reason, shop_body
+from qarz.application.admin import clean_reason, shop_bodies
 from qarz.application.admin_access import AdminAccess, AdminRequestKeys
 from qarz.application.chat_texts import day, say
 from qarz.application.errors import AppError, NotFound, Unauthenticated
@@ -130,8 +130,9 @@ class AdminOwnershipService:
                 )
                 if not rows:
                     raise NotFound()
+                (shop,) = await shop_bodies(session, rows)
                 return {
-                    **shop_body(rows[0]),
+                    **shop,
                     "deletion_due": None if done.deletion_due is None else done.deletion_due.isoformat(),
                     "previous_owner_tg_id": done.previous_owner_tg,
                     "previous_owner_membership": None if done.previous_owner is None else "suspended",

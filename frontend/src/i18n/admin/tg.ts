@@ -40,6 +40,8 @@ export const tgAdmin: PartialCatalog<typeof uzAdmin> = {
   "admin.shops.paidThrough": "Мӯҳлати пардохтшуда",
   "admin.shops.staff": "Шумораи кормандон",
   "admin.shops.customers": "Шумораи мизоҷон",
+  "admin.shops.plan": "Мизоҷон (бе архив) / тарифи ройгон",
+  "admin.shops.plan.value": "{used} / {limit}",
   "admin.shops.created": "Кушода шудааст",
   "admin.shops.none": "Ҳоло ягон мағоза нест.",
   "admin.shops.noMatch": "Аз рӯи ин ҷустуҷӯ мағоза ёфт нашуд.",
@@ -47,6 +49,7 @@ export const tgAdmin: PartialCatalog<typeof uzAdmin> = {
   "admin.state.active": "Фаъол",
   "admin.state.limited": "Маҳдуд",
   "admin.state.suspended": "Боздошта шудааст",
+  "admin.state.free": "Тарифи ройгон",
 
   "admin.shop.title": "Мағоза",
   "admin.shop.status": "Ҳолати мағоза",

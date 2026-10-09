@@ -45,6 +45,8 @@ export const uzAdmin = {
   "admin.shops.paidThrough": "To'langan muddat",
   "admin.shops.staff": "Xodimlar soni",
   "admin.shops.customers": "Mijozlar soni",
+  "admin.shops.plan": "Mijozlar (arxivsiz) / bepul tarif",
+  "admin.shops.plan.value": "{used} / {limit}",
   "admin.shops.created": "Ochilgan",
   "admin.shops.none": "Hali birorta do'kon yo'q.",
   "admin.shops.noMatch": "Bu qidiruv bo'yicha do'kon topilmadi.",
@@ -52,6 +54,7 @@ export const uzAdmin = {
   "admin.state.active": "Faol",
   "admin.state.limited": "Cheklangan",
   "admin.state.suspended": "To'xtatilgan",
+  "admin.state.free": "Bepul tarif",
 
   "admin.shop.title": "Do'kon",
   "admin.shop.status": "Do'kon holati",
