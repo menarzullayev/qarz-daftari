@@ -168,3 +168,50 @@ before the texts were translated stay in the language they were written in.
 Only a person can do: try every module in a test shop with its switch on; have the two translations
 reviewed; try the installed app, the camera scanner and a printed QR code on a phone; an independent
 security review of the network; the Eskiz contract; the one release.
+
+## After the measured expansion (9 to 10 October 2026)
+
+Not part of the 7 hours 3 minutes above. The founder took further decisions and these were merged:
+
+| Pull request | What | Migration |
+|---|---|---|
+| #105 | Leftovers that needed no decision (line-by-line check of a delivery note, phone bottom navigation at 200 % text, searchable pickers, a lock for the dollars setting, the remaining two-language tables) | 0047 |
+| #106 | Advances accepted behind a per-shop setting; a delivery note whose issuer has left is posted in the owner's name; switching the free plan off is previewed and announced | 0048 |
+| #107 | One definition of the product's name (`backend/src/qarz/domain/brand.json`) and the name HisoBox, with a mark chosen by the founder; the `single-host` flake fixed | - |
+| #108 | A sale for cash without a customer | 0049 |
+
+`main` is at `f205323`, migration 0049. **Not deployed:** the CI run on that commit failed three times on
+Docker Hub (500, 504 and 429 from `auth.docker.io` and `registry-1.docker.io`), not on the code; every pull
+request was green before its merge. Production still runs `2c638ba`, migration 0037.
+
+### What the expansion cost
+
+The clock measured time and not tokens. The session's own counter on 10 October: 12.6 million output
+tokens, 140 million written to cache and 3.1 billion read from cache; 53 % of the plan's week in about three
+days, most of it on 9 October. Each agent re-reads its whole conversation at every step, about thirty
+agents ran, several started helpers of their own, and each module was brought onto the others two or three
+times with a full test run each time. Parallel work was fast and not cheap.
+
+### Planned, not started (decided by the founder on 10 October, stopped to save the plan's limit)
+
+In this order, one agent at a time, each told not to start helpers:
+
+1. **Deploy** `main` once its CI is green: twelve migrations (0038 to 0049) tested first on a copy of
+   production; every switch stays off.
+2. **`e2e/stack.sh down` removes every tag of the images production uses** (the rollback images too) when
+   run on the production machine. Make it remove only what it built. Small; before the next local e2e run.
+3. **The new bot and address:** `@hisoboxbot`, `hisobox.bugvector.uz` (the old address redirects), the two
+   Telegram groups renamed. The founder has yet to say who creates the bot.
+4. **Village shops** (switch `village_on`): family members under a customer with "who took it" on an entry,
+   no limit per member; reminders to the head of the household naming the member; a shop's own list of
+   places with filter and a report by place; a fast entry screen for moving a paper book in, on the import path.
+5. **Countries** (switch `countries_on`): a shop's country decides its base currency (UZS, KZT, KGS, TJS, TMT)
+   with USD as the optional second, its time zone and default language; phones of the five countries, and the
+   same phone on several customers; prices per country; a country opens only when a lawyer's texts are ready.
+6. **Offline writing** (switch `offline_on`): credit sales and payments queued on the device and sent exactly
+   once when the connection returns; opt-in per device.
+
+Languages stay at six. Open questions for the founder are in the table above, plus: whether members with
+`stock.receive` but without `stock.view` may see the items list (question 9); whether the consent text's
+version must change because the product's name in it changed.
+
