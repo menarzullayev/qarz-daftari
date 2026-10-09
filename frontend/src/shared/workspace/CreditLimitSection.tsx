@@ -6,8 +6,7 @@ import { formatUzs } from "../money";
 import type { CreditSettings, Customer } from "../api";
 import { formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
-import { canManage } from "../navigation";
-import { useWorkspace } from "./context";
+import { useMay, useWorkspace } from "./context";
 import { effectiveLimit, mayExceed, parseLimit } from "./creditRules";
 import { errorText, Failure, FieldError, Loading } from "./parts";
 
@@ -116,7 +115,8 @@ function LimitForm({
  * member of staff sees it; a manager or an owner sets, changes or removes the customer's own.
  */
 export function CreditLimitSection({ customer, onSaved }: { customer: Customer; onSaved: () => void }) {
-  const { api, role } = useWorkspace();
+  const { api, role, permissions } = useWorkspace();
+  const can = useMay();
   const { t, language } = useI18n();
   const { state, reload } = useLoad((signal) => api.readCreditSettings(signal), [api]);
   const [editing, setEditing] = useState(false);
@@ -138,8 +138,8 @@ export function CreditLimitSection({ customer, onSaved }: { customer: Customer; 
                 amount: formatMoney(limit, language),
               })}
         </p>
-        {limit !== null && !mayExceed(role, settings) ? <p className="hint">{t("credit.limit.sellersStopped")}</p> : null}
-        {!canManage(role) ? null : editing ? (
+        {limit !== null && !mayExceed({ role, permissions }, settings) ? <p className="hint">{t("credit.limit.sellersStopped")}</p> : null}
+        {!can("customers.edit") ? null : editing ? (
           <LimitForm
             customer={customer}
             bounds={settings.bounds}

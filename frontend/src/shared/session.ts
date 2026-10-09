@@ -1,4 +1,5 @@
 import { isRole, type Role } from "./navigation";
+import type { Held } from "./permissions";
 
 /**
  * What the shell needs to know about the signed-in staff member. StaffRoot builds it from the sign-in
@@ -10,6 +11,8 @@ export type StaffSession = {
   role: Role;
   /** The person's membership in the active shop, when the server says which it is. */
   membershipId?: string | null;
+  /** What the server said the person may do in the active shop; absent or null when it keeps to roles. */
+  permissions?: Held | undefined;
 };
 
 /**

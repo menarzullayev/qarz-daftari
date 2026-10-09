@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, Query
+from fastapi import Depends, FastAPI, Query, Response
 from pydantic import BaseModel, ConfigDict
 
 from qarz.application.account import (
@@ -26,6 +26,9 @@ from qarz.interface.answers import MyShops
 from qarz.interface.shops_api import IdempotencyKey
 
 CurrentUser = Callable[..., Awaitable[UUID]]
+
+# Sent with the caller's shops while the per-member permissions are switched on (expansion module G).
+PERMISSIONS_HEADER = "X-Qarz-Permissions"
 
 
 class ActiveShop(BaseModel):
@@ -51,8 +54,13 @@ def add_account_routes(
     user = Annotated[UUID, Depends(current_user)]
 
     @app.get("/api/v1/me/shops", name=LIST_MY_SHOPS.name, response_model=MyShops)
-    async def my_shops(user_id: user) -> dict[str, Any]:
-        return await account.my_shops(user_id)
+    async def my_shops(user_id: user, response: Response) -> dict[str, Any]:
+        body = await account.my_shops(user_id)
+        if await account.permissions_on():
+            # Tells a client that each shop now answers what the member may do there. Absent while the
+            # switch is off: nothing in the answer differs from before then.
+            response.headers[PERMISSIONS_HEADER] = "on"
+        return body
 
     @app.put("/api/v1/me/active-shop", name=SET_ACTIVE_SHOP.name)
     async def set_active_shop(body: ActiveShop, user_id: user) -> dict[str, Any]:

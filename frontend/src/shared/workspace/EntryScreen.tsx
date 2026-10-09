@@ -6,7 +6,6 @@ import { type CalendarDay, formatCalendarDay, formatMoney, tashkentDay } from ".
 import { linesSumProblem, MAX_LINES_SUM, MIN_LINES_SUM } from "../goods";
 import { useLoad, useSubmit } from "../hooks";
 import { type AmountProblem, formatUzs, MAX_AMOUNT, MIN_AMOUNT, parseAmount } from "../money";
-import { canManage } from "../navigation";
 import {
   addDays,
   MAX_PROMISE_DAYS,
@@ -19,7 +18,7 @@ import {
 } from "../promise";
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
-import { useWorkspace } from "./context";
+import { useMay, useWorkspace } from "./context";
 import { effectiveLimit, exceedsLimit, refusedLimit } from "./creditRules";
 import { type DraftLine, GoodsEditor, GoodsList, readDrafts } from "./GoodsEditor";
 import { errorText, Failure, FieldError, Loading } from "./parts";
@@ -176,7 +175,8 @@ function Recorded({ saved, today, onAnother }: { saved: Saved; today: CalendarDa
 }
 
 function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; kind: EntryKind; onRecorded: () => void }) {
-  const { api, now, role } = useWorkspace();
+  const { api, now } = useWorkspace();
+  const can = useMay();
   const { t, language } = useI18n();
   // The shop's default limit and its rule for sellers; a payment meets no limit and asks for nothing.
   const credit = useLoad(
@@ -216,7 +216,7 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
   const limit = effectiveLimit(customer.creditLimit, creditSettings?.defaultLimit ?? null);
   const sale = itemized ? reading.sum : parsed.ok ? parsed.amount : null;
   const overLimit = kind === "credit" && limit !== null && sale !== null && exceedsLimit(limit, customer.balance, sale);
-  const mayProceed = canManage(role) ? true : (creditSettings?.sellersMayExceed ?? null);
+  const mayProceed = can("entries.over_limit") ? true : (creditSettings?.sellersMayExceed ?? null);
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();

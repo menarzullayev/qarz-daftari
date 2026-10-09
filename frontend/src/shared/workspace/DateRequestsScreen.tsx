@@ -6,11 +6,10 @@ import type { ApiError, OpenDateRequest } from "../api";
 import { DATE_REASON_MAX, reasonFits, tidyReason } from "../dateRules";
 import { formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
-import { canManage } from "../navigation";
 import { dayText } from "../promiseParts";
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
-import { useWorkspace } from "./context";
+import { useMay, useWorkspace } from "./context";
 import { Confirm, Empty, errorText, Failure, FieldError, formatInstant, Loading } from "./parts";
 
 type Panel = { kind: "accept" | "decline"; id: string } | null;
@@ -239,6 +238,6 @@ function OpenRequests() {
  * no such list: the route is not in their navigation, and this screen calls nothing for them.
  */
 export default function DateRequestsScreen() {
-  const { role } = useWorkspace();
-  return canManage(role) ? <OpenRequests /> : <NotFoundScreen />;
+  const can = useMay();
+  return can("promises.change") ? <OpenRequests /> : <NotFoundScreen />;
 }

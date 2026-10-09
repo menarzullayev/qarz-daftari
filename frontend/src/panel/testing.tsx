@@ -76,6 +76,8 @@ export function renderOffice(
   options: {
     fetch: Fetch;
     role?: Role;
+    /** What the server said the member holds (the permission matrix is on); absent: the role decides. */
+    permissions?: readonly string[];
     language?: Language;
     membershipId?: string | null;
     botUsername?: string | null;
@@ -91,6 +93,7 @@ export function renderOffice(
         value={{
           api,
           role: options.role ?? "owner",
+          permissions: options.permissions ? new Set(options.permissions) : null,
           membershipId: options.membershipId === undefined ? OWNER_ID : options.membershipId,
           botUsername: options.botUsername === undefined ? BOT : options.botUsername,
           now: () => NOON,

@@ -344,7 +344,11 @@ export type ShopMembership = {
   /** The signed-in person's membership in this shop; null when the server does not say. */
   membershipId: string | null;
 };
-export type MyShops = { items: ShopMembership[]; activeShop: string | null };
+/**
+ * `permissionsOn`: the server keeps a set of permissions per member, and each shop answers what the
+ * signed-in member may do there (`myPermissions`). Off, the role alone says it.
+ */
+export type MyShops = { items: ShopMembership[]; activeShop: string | null; permissionsOn: boolean };
 
 /** A customer's objection to one entry. `status`: open, declined, withdrawn, or reversed (the shop agreed). */
 export type Dispute = { id: string; status: string; reason: string; declineReason: string | null };
@@ -864,9 +868,13 @@ function linesBody(lines: readonly NewLine[]): Wire["GoodsLine"][] {
   });
 }
 
-function myShops(value: unknown): MyShops {
+/** The header the server sends with a person's shops while the permission matrix is switched on. */
+export const PERMISSIONS_HEADER = "X-Qarz-Permissions";
+
+function myShops(value: unknown, headers: Headers): MyShops {
   const body = fieldsOf<Wire["MyShops"]>(value);
   return {
+    permissionsOn: headers.get(PERMISSIONS_HEADER) === "on",
     items: list(body.raw("items"), (element) => {
       const shop = fieldsOf<Wire["MyShop"]>(element);
       const role = shop.raw("role");
@@ -1051,7 +1059,8 @@ export type Call<T> = {
   binary?: boolean;
   idempotencyKey?: string;
   signal?: AbortSignal | undefined;
-  read: (value: unknown) => T;
+  /** Reads the answer's body; the headers are there for the one answer that says something in them. */
+  read: (value: unknown, headers: Headers) => T;
 };
 
 export type Transport = {
@@ -1122,9 +1131,9 @@ export async function call<T>(transport: Transport, request: Call<T>): Promise<T
   }
   try {
     if (request.binary) {
-      return request.read(await response.blob());
+      return request.read(await response.blob(), response.headers);
     }
-    return request.read(response.status === 204 ? null : await response.json());
+    return request.read(response.status === 204 ? null : await response.json(), response.headers);
   } catch (error) {
     if (isAbort(error)) {
       throw error;
@@ -1157,6 +1166,24 @@ function shopApi(transport: Transport, shopId: string) {
     /** Sends a request with this session: the same headers, CSRF token and refusal hooks as the rest. */
     send<T>(request: Call<T>): Promise<T> {
       return call(transport, request);
+    },
+
+    /**
+     * What the signed-in member may do in this shop (keys of the server's permission catalogue), or null
+     * when the server keeps to roles: the route exists only while the permission matrix is switched on.
+     */
+    myPermissions(signal?: AbortSignal): Promise<ReadonlySet<string> | null> {
+      return call(transport, {
+        method: "GET",
+        path: `${base}/permissions/mine`,
+        signal,
+        read: (value): ReadonlySet<string> => new Set(list(record(value)["permissions"], text)),
+      }).catch((error: unknown) => {
+        if (toApiError(error).status === 404) {
+          return null;
+        }
+        throw error;
+      });
     },
 
     listCustomers(

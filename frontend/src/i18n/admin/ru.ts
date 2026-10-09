@@ -156,6 +156,7 @@ export const ruAdmin: RuAdminCatalog = {
   "admin.setting.online_pay_on": "Онлайн-оплата включена",
   "admin.setting.free_plan_on": "Бесплатный тариф включён (SMS только платящим магазинам)",
   "admin.setting.free_plan_customers": "Клиентов на бесплатном тарифе (на магазин)",
+  "admin.setting.permissions_on": "Отдельные разрешения для сотрудников включены",
 
   "admin.audit.filters": "Фильтры аудита",
   "admin.audit.at": "Время",

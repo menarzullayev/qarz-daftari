@@ -58,6 +58,7 @@ describe("platform settings, by type and range", () => {
         "free_plan_on",
         "online_pay_on",
         "payment_cards",
+        "permissions_on",
         "price_uzs",
         "review_group",
         "sms_monthly_quota",

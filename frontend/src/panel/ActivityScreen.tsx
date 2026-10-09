@@ -7,7 +7,7 @@ import type { Customer } from "../shared/api";
 import { useLoad, usePagedList } from "../shared/hooks";
 import { Link } from "../shared/router";
 import { NotFoundScreen } from "../shared/screens";
-import { useWorkspace } from "../shared/workspace/context";
+import { useMay, useWorkspace } from "../shared/workspace/context";
 import { Empty, Failure, formatInstant, Loading, LoadMore } from "../shared/workspace/parts";
 import type { Activity, Member } from "./backoffice";
 import { type Column, DataTable } from "./DataTable";
@@ -253,6 +253,6 @@ function Log() {
  * the kind of action, the member of staff and the customer. It is the owner's alone.
  */
 export function ActivityScreen() {
-  const { role } = useWorkspace();
-  return role === "owner" ? <Log /> : <NotFoundScreen />;
+  const can = useMay();
+  return can("activity.view") ? <Log /> : <NotFoundScreen />;
 }

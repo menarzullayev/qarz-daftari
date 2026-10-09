@@ -317,3 +317,68 @@ describe("catalog, goods and settings in the workspace", () => {
     expect(current.map((candidate) => candidate.textContent)).toEqual(["Mijozlar"]);
   });
 });
+
+describe("what the workspace offers when the server keeps permissions per member", () => {
+  const navLinks = () => within(screen.getByRole("navigation")).getAllByRole("link").map((link) => link.textContent);
+  const MINE = `${SHOP_BASE}/permissions/mine`;
+
+  /** The person's shops with the header the server sends while the matrix is on, and what they hold. */
+  function withPermissions(role: Role, held: string[] | "broken") {
+    return backend({}, (sent) => {
+      if (sent.path === "/api/v1/me/shops") {
+        return {
+          status: 200,
+          body: { items: [membership(role)], active_shop: SHOP_ID },
+          headers: { "X-Qarz-Permissions": "on" },
+        };
+      }
+      if (sent.path === MINE) {
+        return held === "broken" ? refusal(503, "TIMEOUT", "") : ok({ membership_id: "m-1", role, permissions: held });
+      }
+      return null;
+    });
+  }
+
+  it("asks nothing about permissions while the server does not say it keeps them", async () => {
+    const server = backend({ items: [membership("seller")], active_shop: SHOP_ID });
+    start(server);
+    await screen.findByText("Ali Valiyev");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(server.sent.filter((sent) => sent.path === MINE)).toHaveLength(0);
+    expect(navLinks()).toEqual(["Umumiy ko'rinish", "Mijozlar", "Yangi yozuv", "Katalog"]);
+  });
+
+  it("opens for a seller what the owner granted, and nothing the seller was not given", async () => {
+    const server = withPermissions("seller", ["ledger.view", "credits.record", "reports.view"]);
+    start(server);
+    await screen.findByText("Ali Valiyev");
+    await waitFor(() => expect(navLinks()).toContain("Hisobotlar"));
+    expect(server.sent.filter((sent) => sent.path === MINE)).toHaveLength(1);
+    go("#/staff");
+    expect(heading()).toBe("Sahifa topilmadi");
+    go("#/disputes");
+    expect(heading()).toBe("Sahifa topilmadi");
+  });
+
+  it("closes for a manager what the owner denied, and asks the server nothing for it", async () => {
+    const server = withPermissions("manager", ["ledger.view", "credits.record", "payments.record"]);
+    start(server);
+    await screen.findByText("Ali Valiyev");
+    await waitFor(() => expect(navLinks()).not.toContain("Hisobotlar"));
+    const before = server.sent.length;
+    go("#/reports");
+    expect(heading()).toBe("Sahifa topilmadi");
+    go("#/catalog");
+    expect(await screen.findByText("Non")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Yangi mahsulot" })).toBeNull();
+    expect(server.sent.slice(before).some((sent) => sent.path.includes("/reports"))).toBe(false);
+  });
+
+  it("keeps to the role when the member's permissions cannot be read", async () => {
+    const server = withPermissions("seller", "broken");
+    start(server);
+    await screen.findByText("Ali Valiyev");
+    await waitFor(() => expect(server.sent.some((sent) => sent.path === MINE)).toBe(true));
+    expect(navLinks()).toEqual(["Umumiy ko'rinish", "Mijozlar", "Yangi yozuv", "Katalog"]);
+  });
+});

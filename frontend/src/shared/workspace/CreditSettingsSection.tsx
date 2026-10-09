@@ -5,8 +5,7 @@ import type { CreditSettings, CreditSettingsPatch } from "../api";
 import { formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
 import { formatUzs } from "../money";
-import { canManage } from "../navigation";
-import { useWorkspace } from "./context";
+import { useMay, useWorkspace } from "./context";
 import { limitMessage } from "./CreditLimitSection";
 import { parseLimit } from "./creditRules";
 import { errorText, Failure, FieldError, Loading } from "./parts";
@@ -143,7 +142,8 @@ function CreditForm({ settings }: { settings: CreditSettings }) {
  * only reads them.
  */
 export function CreditSettingsSection() {
-  const { api, role } = useWorkspace();
+  const { api } = useWorkspace();
+  const can = useMay();
   const { t } = useI18n();
   const { state, reload } = useLoad((signal) => api.readCreditSettings(signal), [api]);
 
@@ -153,7 +153,7 @@ export function CreditSettingsSection() {
   } else if (state.status === "error") {
     body = <Failure error={state.error} onRetry={reload} />;
   } else {
-    body = canManage(role) ? <CreditForm settings={state.data} /> : <ReadOnly settings={state.data} />;
+    body = can("settings.edit") ? <CreditForm settings={state.data} /> : <ReadOnly settings={state.data} />;
   }
   return (
     <section aria-labelledby="credit-settings-title">

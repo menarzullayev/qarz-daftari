@@ -12,6 +12,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from qarz.application import idempotency
+from qarz.application.authorization import holders
 from qarz.application.chat_texts import money, say
 from qarz.application.customer_account import resolve_link
 from qarz.application.customers import require_viewable, require_writable
@@ -22,7 +23,7 @@ from qarz.application.notice_view import notice_body, staff_notice_body
 from qarz.application.operations import operation, self_operation
 from qarz.application.ports import CustomerRecord, Membership, PaymentNoticeRecord, Storage, TenantSession
 from qarz.application.shops import require_member
-from qarz.domain import ledger
+from qarz.domain import ledger, permissions
 from qarz.domain.access import Capability
 from qarz.domain.disputes import clean_reason
 from qarz.domain.files import receipt_delete_after
@@ -49,7 +50,6 @@ DECLINE_NOTICE = operation("payment_notices.decline", Capability.DECIDE_PAYMENT_
 READ_RECEIPT = operation("payment_notices.receipt", Capability.DECIDE_PAYMENT_NOTICE)
 
 # Every staff member handles payment notices (specification, resources table).
-STAFF = ("seller", "manager", "owner")
 FILE_PURPOSE = "payment_notice"
 # Where a signed link points; served outside the API, to whoever holds a valid link.
 FILE_LINK_PATH = "/files"
@@ -78,7 +78,7 @@ async def _tell_staff(session: TenantSession, record: PaymentNoticeRecord, name:
     settings = await session.shop_settings()
     shop = "" if settings is None else settings.name
     key = "s_notice" if record.file_id is None else "s_notice_receipt"
-    for tg_id, lang in await session.staff_recipients(list(STAFF)):
+    for tg_id, lang in holders(await session.staff_contacts(), permissions.PAYMENT_NOTICES_DECIDE):
         text = say(lang, key, shop=shop, name=name, amount=money(lang, record.amount), balance=money(lang, balance))
         if record.receipt_seen_before:
             # The same file was sent to this shop before: staff are told, the customer is not.

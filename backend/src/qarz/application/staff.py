@@ -1,4 +1,8 @@
-"""Staff of a shop: members, roles, invitations (REQ-031 to REQ-035). Owner-only operations."""
+"""Staff of a shop: members, roles, invitations (REQ-031 to REQ-035).
+
+The owner's by default. While the per-member permissions are on, the owner may give `staff.manage` to
+another member; that member then manages sellers only, and never above their own rights (`_within_own`).
+"""
 
 import hashlib
 import secrets
@@ -8,10 +12,12 @@ from typing import Any
 from uuid import UUID
 
 from qarz.application import idempotency
-from qarz.application.errors import AppError, NotFound, ValidationFailed
+from qarz.application.authorization import effective_of
+from qarz.application.errors import AppError, BeyondOwnPermissions, NotFound, ValidationFailed
 from qarz.application.operations import operation, self_operation
-from qarz.application.ports import MemberRecord, Storage
+from qarz.application.ports import MemberRecord, Membership, Storage
 from qarz.application.shops import refuse_suspended, require_member
+from qarz.domain import permissions
 from qarz.domain.access import Capability, Role
 
 LIST_STAFF = operation("staff.list", Capability.ADMINISTER_SHOP)
@@ -30,6 +36,30 @@ class OwnerMembershipFixed(AppError):
     """The owner's membership changes only through an ownership transfer (REQ-036)."""
 
     code = "OWNER_MEMBERSHIP_FIXED"
+
+
+def _within_own(
+    actor: Membership,
+    role: Role,
+    granted: frozenset[str] = frozenset(),
+    denied: frozenset[str] = frozenset(),
+    *,
+    target: UUID | None = None,
+) -> None:
+    """Refuse a member who manages staff without being the owner anything above their own rights.
+
+    The owner is never refused here. Anyone else may act only on a seller, never on themselves, and only
+    when everything that seller holds (or an invited seller would hold) is something they hold too: a
+    member cannot hand out, or bring back into the shop, a permission they do not have. Roles and
+    permissions themselves are changed by the owner alone.
+    """
+    if actor.role is Role.OWNER:
+        return
+    if role is not Role.SELLER or target == actor.membership_id:
+        raise BeyondOwnPermissions()
+    held = permissions.effective(role, granted, denied) if actor.permissions_on else permissions.effective(role)
+    if not held <= effective_of(actor):
+        raise BeyondOwnPermissions()
 
 
 def token_hash(token: str) -> bytes:
@@ -63,6 +93,7 @@ class StaffService:
             key = idempotency.validate_key(request_key)
             if role not in {r.value for r in INVITABLE_ROLES}:
                 raise ValidationFailed({"role": "must be manager or seller"})
+            _within_own(actor, Role(role))
 
             async def apply() -> dict[str, Any]:
                 # The token is returned once, here, and only its hash is stored. The stored response of
@@ -119,6 +150,11 @@ class StaffService:
                 raise NotFound()
 
             async def apply() -> dict[str, Any]:
+                if actor.role is not Role.OWNER:
+                    # Whom the owner invited as a manager is not this member's to turn away.
+                    for invitation in await session.list_staff_invitations(self._now()):
+                        if invitation.token_hash == digest:
+                            _within_own(actor, invitation.role)
                 if not await session.cancel_staff_invitation(digest):
                     raise NotFound()
                 await session.record_activity(
@@ -168,6 +204,10 @@ class StaffService:
                     raise NotFound()
                 if member.role is Role.OWNER:
                     raise OwnerMembershipFixed()
+                _within_own(actor, member.role, member.granted, member.denied, target=membership_id)
+                if role is not None and Role(role) is not member.role:
+                    # A new role is a new set of rights: the owner's to give.
+                    _within_own(actor, Role.OWNER)
                 updated = await session.update_member(membership_id, role=Role(role) if role else None, status=status)
                 await session.record_activity(
                     membership_id=actor.membership_id,
@@ -200,6 +240,7 @@ class StaffService:
                     raise NotFound()
                 if member.role is Role.OWNER:
                     raise OwnerMembershipFixed()
+                _within_own(actor, member.role, member.granted, member.denied, target=membership_id)
                 # The row is kept: entries the person recorded stay attributed to them (REQ-034).
                 updated = await session.update_member(membership_id, role=None, status="removed")
                 await session.record_activity(

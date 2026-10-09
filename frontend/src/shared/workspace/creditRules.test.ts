@@ -26,10 +26,16 @@ describe("the limit that applies (REQ-044)", () => {
   });
 
   it("stops only a seller, and only where the shop has not let sellers proceed", () => {
-    expect(mayExceed("seller", { sellersMayExceed: false })).toBe(false);
-    expect(mayExceed("seller", { sellersMayExceed: true })).toBe(true);
-    expect(mayExceed("manager", { sellersMayExceed: false })).toBe(true);
-    expect(mayExceed("owner", { sellersMayExceed: false })).toBe(true);
+    expect(mayExceed({ role: "seller" }, { sellersMayExceed: false })).toBe(false);
+    expect(mayExceed({ role: "seller" }, { sellersMayExceed: true })).toBe(true);
+    expect(mayExceed({ role: "manager" }, { sellersMayExceed: false })).toBe(true);
+    expect(mayExceed({ role: "owner" }, { sellersMayExceed: false })).toBe(true);
+    // What the server said the member holds decides, whatever the role.
+    const none = new Set<string>();
+    expect(mayExceed({ role: "manager", permissions: none }, { sellersMayExceed: false })).toBe(false);
+    expect(mayExceed({ role: "manager", permissions: none }, { sellersMayExceed: true })).toBe(true);
+    const granted = new Set(["entries.over_limit"]);
+    expect(mayExceed({ role: "seller", permissions: granted }, { sellersMayExceed: false })).toBe(true);
   });
 });
 
