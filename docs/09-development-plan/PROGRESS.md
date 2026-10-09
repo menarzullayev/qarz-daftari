@@ -213,7 +213,7 @@ Decided by the founder on 2026-10-07, and so not awaiting review: DEC-058 (nginx
 | 3 | Registration if required | Open; founder |
 | 4 | M1 to M8 complete, acceptance criteria pass in CI | 42 of 49 stories done in code and CI; S1.5, S16.1, S19.1, S19.2, S19.3 and S19.4 are partly done and each waits on something only people or real servers can give; S2.2's generated API client was never built. Every story's screens exist; fourteen end-to-end tests run the front end and back end together with signed stand-in data (EVID-076) |
 | 5 | Authorization and tenant suite covers every operation | In place and blocking; grows with each story |
-| 6 | Load test | Not met: measured on a developer machine only; the slow overview was cured and re-measured in single statements, not in a full run (EVID-063, EVID-070) |
+| 6 | Load test | Partly: the full 30-minute run was repeated on main with open debts stored; it first exposed a missing index that made every write read a whole table (corrected, migration 0033), and with it every target is met, the large shop included (EVID-063, EVID-070, EVID-083). Run on the planned host but outside its containers, with no proxy, tunnel or worker and the driver on the same machine |
 | 7 | Security review | An agent's review is done; findings 1 to 8 and 10 to 12 are fixed and 9 and 13 in part (EVID-059, EVID-061, EVID-074, EVID-078); the administrator side still shares the API process; a person's review remains |
 | 8 | Failover and restore rehearsals | Rehearsed locally in containers (EVID-044); a weekly automatic restore test is written and proven in containers (EVID-072); not on real servers |
 | 9 | Alerts triggered and received | Not started: rules are written (EVID-062), no monitoring system exists |

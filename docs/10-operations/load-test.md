@@ -310,6 +310,71 @@ of run B and run C stand as measured before it, and the cost added to each write
 from the single-statement figure above. A customer with a very long account pays the most for each entry.
 Launch criterion 6 is as open as it was.
 
+## The full run repeated with open debts stored, and what it found (run D)
+
+On 2026-10-09 the 30-minute run was repeated for the first time since migration 0026, on main at commit
+516e4d6, with the same generated data (seed 1), the same rates and four server processes.
+
+**The first attempt could not keep up.** Recording an entry took 188 ms at the median on the server (26 ms
+in run B) and the chat route 199 ms (41 ms). Four processes answered about 80 requests a second of the 100
+offered, the queue grew without end, the driver saw answers of 20 to 30 seconds, and every target was
+missed; the driver itself stopped making progress and was ended by hand after four hours. One insert into
+`ledger_entry` under `EXPLAIN ANALYZE` showed the insert at 0.2 ms and the trigger `open_debt_after_entries`
+at 27 to 37 ms, for a customer with three entries. The refresh begins by deleting the customer's stored
+rows, `WHERE customer_id = ANY (...)`, and the only index of `open_debt` led with `shop_id`: each write read
+the whole table (738 523 rows removed by the filter). The "about 31 ms" for rewriting one customer's rows
+in the table above was this scan, not the length of that customer's account as was written then.
+
+**The correction** is migration 0033, an index of `open_debt` on `customer_id` (pull request 80). On the
+same data the trigger then takes 1 to 5 ms.
+
+**Run D, with the index:** 30 minutes, 182,572 requests, 92,226 entries recorded (51.2 a second), no
+request abandoned, no call refused, no error.
+
+| Operation | Shop | Calls | p50 ms | p95 ms | p99 ms | max ms | Refused | 429 | Errors | Target (p95) | Result |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
+| chat_credit | large | 575 | 47 | 63 | 166 | 567 | 0 | 0 | 0 | 500 ms (NFR-001) | met |
+| chat_credit | other | 27,393 | 44 | 59 | 78 | 1,600 | 0 | 0 | 0 | 500 ms (NFR-001) | met |
+| chat_payment | large | 194 | 45 | 62 | 119 | 138 | 0 | 0 | 0 | 500 ms (NFR-001) | met |
+| chat_payment | other | 8,900 | 42 | 56 | 77 | 1,074 | 0 | 0 | 0 | 500 ms (NFR-001) | met |
+| api_credit | large | 486 | 33 | 47 | 196 | 1,023 | 0 | 0 | 0 | - | no target |
+| api_credit | other | 22,572 | 31 | 43 | 58 | 1,109 | 0 | 0 | 0 | - | no target |
+| api_payment | large | 366 | 31 | 43 | 58 | 199 | 0 | 0 | 0 | - | no target |
+| api_payment | other | 17,966 | 29 | 40 | 56 | 1,172 | 0 | 0 | 0 | - | no target |
+| api_itemized_10 | large | 266 | 44 | 59 | 101 | 222 | 0 | 0 | 0 | 400 ms (NFR-009) | met |
+| api_itemized_10 | other | 13,508 | 43 | 57 | 76 | 1,171 | 0 | 0 | 0 | 400 ms (NFR-009) | met |
+| customers_list | large | 578 | 32 | 42 | 53 | 471 | 0 | 0 | 0 | 300 ms (NFR-005) | met |
+| customers_list | other | 12,962 | 20 | 29 | 39 | 1,025 | 0 | 0 | 0 | 300 ms (NFR-005) | met |
+| customers_search | large | 1,130 | 28 | 40 | 49 | 378 | 0 | 0 | 0 | 300 ms (NFR-005) | met |
+| customers_search | other | 26,118 | 19 | 28 | 38 | 1,149 | 0 | 0 | 0 | 300 ms (NFR-005) | met |
+| customers_search_phone | large | 174 | 21 | 33 | 41 | 48 | 0 | 0 | 0 | 300 ms (NFR-005) | met |
+| customers_search_phone | other | 4,376 | 19 | 28 | 36 | 958 | 0 | 0 | 0 | 300 ms (NFR-005) | met |
+| overview | large | 533 | 22 | 32 | 39 | 121 | 0 | 0 | 0 | 300 ms (NFR-005) | met |
+| overview | other | 12,940 | 18 | 28 | 37 | 789 | 0 | 0 | 0 | 300 ms (NFR-005) | met |
+| debtors | large | 397 | 25 | 35 | 55 | 988 | 0 | 0 | 0 | 300 ms (NFR-005) | met |
+| debtors | other | 8,618 | 20 | 29 | 40 | 807 | 0 | 0 | 0 | 300 ms (NFR-005) | met |
+| debtors_overdue | large | 186 | 24 | 33 | 50 | 56 | 0 | 0 | 0 | 300 ms (NFR-005) | met |
+| debtors_overdue | other | 4,301 | 20 | 29 | 41 | 943 | 0 | 0 | 0 | 300 ms (NFR-005) | met |
+| customer_page | large | 731 | 26 | 38 | 71 | 801 | 0 | 0 | 0 | - | no target |
+| customer_page | other | 17,260 | 22 | 33 | 44 | 1,075 | 0 | 0 | 0 | - | no target |
+| report_period_year | large | 23 | 1,920 | 2,098 | 2,112 | 2,112 | 0 | 0 | 0 | 5,000 ms (NFR-011) | met |
+| report_overdue | large | 19 | 38 | 139 | 139 | 139 | 0 | 0 | 0 | - | no target |
+
+Checks on the run itself: 55,164 API calls answered 201 and 37,062 chat messages answered 200 against
+92,226 new entries in the database; 46,351 messages were queued in the outbox and none sent, since no
+worker ran. The driver sent its requests on time (lateness 23 ms at the 99th percentile).
+
+Every target that has one is met, among them the three of the large shop that runs B and C missed
+(overview 349 ms then, 32 ms now; debtors 409 ms, 35 ms; overdue debtors 414 ms, 33 ms at the 95th
+percentile). Writes cost a few milliseconds more than in run B (API credit 43 ms against 37 ms at the 95th
+percentile), which is the price of keeping the table.
+
+What this run is and is not: the machine is the one the service is now planned to run on (DEC-070), but the
+servers were started by the driver on Windows, outside the containers, without the proxy, the tunnel or the
+worker, the driver ran on the same machine, and the index was created by hand in the load database with the
+statement of migration 0033 rather than by running the migration. Points 1, 3 and 4 below are as open as
+they were; points 2 and 5 are answered by this run.
+
 ## Decisions taken where the documents are silent
 
 | Question | Decision | Reason |
