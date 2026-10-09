@@ -263,6 +263,7 @@ CHAT: dict[str, str] = {
     "sub_receipt_rejected": "«{shop}»: {amount} tólem chegi ret etildi. Sebep: {reason}",
     "a_receipt_new": "Jańa jazılıw chegi: «{shop}», {amount}, {months} ay. Admin panelde kórip shıǵıń.",
     "a_receipt_copies": "⚠️ Tap usı fayl aldın da jiberilgen: {count} chekte.",
+    "a_receipt_no_file": "⚠️ Chek faylın xabarǵa qosıp bolmadı. Onı admin panelde kóriń.",
     "receipt_approve_button": "✅ Tastıyıqlaw",
     "receipt_reject_button": "Ret etiw",
     "a_sign_in_first": ("Aldın admin panelge kirip, kodıńızdı tastıyıqlań. Sonnan keyin bul túymeler isleydi."),

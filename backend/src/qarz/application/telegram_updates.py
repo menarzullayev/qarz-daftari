@@ -208,6 +208,8 @@ class UpdateProcessor:
                     None,
                     group,
                     administers,
+                    # An announcement sent with the receipt's file is edited as a caption.
+                    media=bool(message.get("photo")) or isinstance(message.get("document"), dict),
                 )
                 if isinstance(data, str):
                     replies = Replies(session, incoming)

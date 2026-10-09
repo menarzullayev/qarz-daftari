@@ -114,6 +114,10 @@ services:
       <<: *shared-env
       QD_WORKER_DATABASE_URL: ${QD_WORKER_DATABASE_URL:?QD_WORKER_DATABASE_URL is not set}
       QD_WORKER_STATEMENT_TIMEOUT_MS: ${QD_WORKER_STATEMENT_TIMEOUT_MS:-60000}
+      # The administrators' allow-list, as the API has it: the worker sends a subscription receipt's
+      # file with its announcement to these people's chats and to the review group, and to nobody else.
+      # Without it the administrators get the announcement as text, the group still gets the file.
+      QD_ADMIN_TG_IDS: ${QD_ADMIN_TG_IDS:-}
       # The SMS provider's account. The worker alone sends, so the API is not given it.
       QD_ESKIZ_EMAIL: ${QD_ESKIZ_EMAIL:-}
       QD_ESKIZ_PASSWORD: ${QD_ESKIZ_PASSWORD:-}

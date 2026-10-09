@@ -18,6 +18,7 @@ from qarz.application.imports import ImportService
 from qarz.application.measurement import MeasurementService
 from qarz.application.ops_watch import OpsWatch, Sources, WorkerHealth
 from qarz.application.payment_notices import PaymentNoticeService
+from qarz.application.receipt_attachment import ReceiptAttachingSender
 from qarz.application.reminders import ReminderService
 from qarz.application.scheduler import Scheduler
 from qarz.application.shop_deletion import ShopDeletionService
@@ -76,9 +77,12 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
     # SMS goes through Eskiz when its account is configured and the platform switch `sms_on` is on at the
     # moment of sending; otherwise the SMS path refuses to send. The switch is off by default.
     sms = build_sms_provider(settings, switched_on=platform_switch(database))
-    dispatcher = Dispatcher(database, ChannelSender(telegram=TelegramSender(bot), sms=sms))
     file_store = build_file_store(settings, max_object_bytes=MAX_EXPORT_BYTES)
     files = FileService(database, file_store)
+    # A waiting receipt is announced with its file, to the review group and to the administrators on the
+    # allow-list and to nobody else (qarz.application.receipt_attachment).
+    telegram = ReceiptAttachingSender(TelegramSender(bot), database, files, admin_tg_ids=settings.admin_allow_list())
+    dispatcher = Dispatcher(database, ChannelSender(telegram=telegram, sms=sms))
     scheduler = Scheduler(
         database,
         ReminderService(database),

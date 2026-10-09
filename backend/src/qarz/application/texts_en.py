@@ -263,6 +263,7 @@ CHAT: dict[str, str] = {
     "sub_receipt_rejected": "“{shop}”: the payment receipt for {amount} was rejected. Reason: {reason}",
     "a_receipt_new": "New subscription receipt: “{shop}”, {amount}, months: {months}. Review it in the admin panel.",
     "a_receipt_copies": "⚠️ This exact file was sent before. Receipts with it: {count}.",
+    "a_receipt_no_file": "⚠️ The receipt file could not be attached to this message. See it in the admin panel.",
     "receipt_approve_button": "✅ Approve",
     "receipt_reject_button": "Reject",
     "a_sign_in_first": "First sign in to the admin panel and confirm your code. After that these buttons will work.",
