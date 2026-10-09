@@ -398,7 +398,7 @@ function Detail({
       {customer.paymentNotices.length > 0 ? (
         <p className="notice">
           <span>{t("notices.card.open", { count: customer.paymentNotices.length })}</span>{" "}
-          <Link to="/payment-notices">{t("notices.title")}</Link>
+          {can("payment_notices.decide") ? <Link to="/payment-notices">{t("notices.title")}</Link> : null}
         </p>
       ) : null}
       <PaymentHistoryNote

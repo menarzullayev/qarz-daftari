@@ -6,7 +6,8 @@ import { formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
 import { amountInput, type Currency, currencyOf, parseMoney } from "../money";
 import { Link } from "../router";
-import { useWorkspace } from "./context";
+import { NotFoundScreen } from "../screens";
+import { useMay, useWorkspace } from "./context";
 import { amountMessage } from "./EntryScreen";
 import { Empty, errorText, Failure, FieldError, formatInstant, Loading, ReasonForm } from "./parts";
 
@@ -137,12 +138,7 @@ function AcceptForm({
   );
 }
 
-/**
- * Payment notices that wait for the shop (REQ-061). Any member of staff accepts one, which records a
- * payment in their name for the stated or a corrected amount, or declines it with a reason the customer
- * receives. The receipt, when there is one, is opened through a short-lived link.
- */
-export default function PaymentNoticesScreen() {
+function OpenNotices() {
   const { api } = useWorkspace();
   const { t, language } = useI18n();
   const { state, reload } = useLoad((signal) => api.listPaymentNotices(signal), [api]);
@@ -281,4 +277,15 @@ export default function PaymentNoticesScreen() {
       {body}
     </>
   );
+}
+
+/**
+ * Payment notices that wait for the shop (REQ-061). A member who may decide them accepts one, which
+ * records a payment in their name for the stated or a corrected amount, or declines it with a reason the
+ * customer receives. The receipt, when there is one, is opened through a short-lived link. Anyone else
+ * is shown nothing and asks the server nothing.
+ */
+export default function PaymentNoticesScreen() {
+  const can = useMay();
+  return can("payment_notices.decide") ? <OpenNotices /> : <NotFoundScreen />;
 }

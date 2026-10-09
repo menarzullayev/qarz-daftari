@@ -103,7 +103,7 @@ function refusedFields(error: ApiError | null, settings: ReminderSettings, t: Tr
   };
 }
 
-function SettingsForm({ settings }: { settings: ReminderSettings }) {
+function SettingsForm({ settings, editable }: { settings: ReminderSettings; editable: boolean }) {
   const { api } = useWorkspace();
   const { t } = useI18n();
   // What the server holds now: the loaded settings, then whatever the last save answered.
@@ -153,7 +153,9 @@ function SettingsForm({ settings }: { settings: ReminderSettings }) {
 
   const failure = state.status === "error" ? state.error : null;
   const refused = refusedFields(failure, saved, t);
-  const pending = state.status === "pending";
+  const saving = state.status === "pending";
+  // A member who reads the settings without the right to change them sees them, fixed, with no "save".
+  const pending = saving || !editable;
 
   return (
     <form className="form" onSubmit={onSubmit} noValidate aria-labelledby="reminder-settings-title">
@@ -225,16 +227,18 @@ function SettingsForm({ settings }: { settings: ReminderSettings }) {
         <p className="field__hint">{t("reminders.sms.hint")}</p>
       </div>
 
-      <p className="actions">
-        <button type="submit" className="button button--primary" disabled={pending}>
-          {pending ? t("state.saving") : t("action.save")}
-        </button>
-      </p>
+      {editable ? (
+        <p className="actions">
+          <button type="submit" className="button button--primary" disabled={saving}>
+            {saving ? t("state.saving") : t("action.save")}
+          </button>
+        </p>
+      ) : null}
     </form>
   );
 }
 
-function Settings() {
+function Settings({ editable }: { editable: boolean }) {
   const { api } = useWorkspace();
   const { t } = useI18n();
   const { state, reload } = useLoad((signal) => api.readReminders(signal), [api]);
@@ -244,7 +248,7 @@ function Settings() {
   } else if (state.status === "error") {
     body = <Failure error={state.error} onRetry={reload} />;
   } else {
-    body = <SettingsForm settings={state.data} />;
+    body = <SettingsForm settings={state.data} editable={editable} />;
   }
   return (
     <section aria-labelledby="reminder-settings-title">
@@ -308,8 +312,8 @@ export function RemindersScreen() {
   }
   return (
     <>
-      <Settings />
-      <Unreachable />
+      {can("settings.view") ? <Settings editable={can("settings.edit")} /> : null}
+      {can("reminders.send") ? <Unreachable /> : null}
     </>
   );
 }
