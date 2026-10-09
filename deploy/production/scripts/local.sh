@@ -5,7 +5,7 @@
 #   local.sh up [<git-ref>]   generate the certificate and an env file, then run deploy.sh (default HEAD)
 #   local.sh smoke            smoke.sh from outside, then a look at the proxy's access log
 #   local.sh rollback <ref>   rollback.sh against the local stack
-#   local.sh down             remove the containers, networks, volumes, the images and the generated files
+#   local.sh down             remove the containers, networks, volumes, this release's unused images, generated files
 #
 # Everything generated lives in deploy/production/.local/ (ignored by git). The images are built from the
 # COMMIT, not from the working tree: commit first.
@@ -118,15 +118,19 @@ smoke() {
 down() {
   RELEASE="$(current_release)"; RELEASE="${RELEASE:-none}"
   compose down --volumes --remove-orphans
-  # Only the images this proof built: every tag of the two local image names.
-  local images
-  images="$(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -E '^qarz-daftari/(backend|proxy):' || true)"
-  if [ -n "$images" ]; then
-    # shellcheck disable=SC2086
-    docker image rm $images >/dev/null
+  # Only the images of the release this proof ran, and only when nothing else uses them. The two image
+  # names are shared with a deployment on the same machine (single-host.sh): removing every tag of them
+  # would take that deployment's earlier releases, which are what a rollback starts from.
+  local image
+  if [ "$RELEASE" != "none" ]; then
+    for image in "qarz-daftari/backend:$RELEASE" "qarz-daftari/proxy:$RELEASE"; do
+      docker image inspect "$image" >/dev/null 2>&1 || continue
+      # Without --force: an image a container of another project still runs is refused, and kept.
+      docker image rm "$image" >/dev/null 2>&1 || say "kept $image: something else still uses it"
+    done
   fi
   rm -rf "$LOCAL_DIR"
-  say "removed: project $PROJECT, its volumes and networks, the proof's images, $LOCAL_DIR"
+  say "removed: project $PROJECT, its volumes and networks, this release's images when unused, $LOCAL_DIR"
 }
 
 case "${1:-}" in

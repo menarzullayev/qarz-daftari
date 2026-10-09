@@ -297,3 +297,32 @@ def test_a_runtime_dependency_absent_from_the_lock_is_refused() -> None:
     pyproject = '[project]\ndependencies = ["fastapi>=0.1", "left-out>=1"]\n'
     with pytest.raises(ValueError, match="left-out"):
         module.select(lock, pyproject)
+
+
+_LISTS_A_NAME = re.compile(r"docker image ls[^\n]*\|\s*grep[^\n]*qarz-daftari/")
+
+
+def _removes_every_tag(script: str) -> bool:
+    """Whether a script removes images found by listing a repository name, whatever their tag."""
+    return _LISTS_A_NAME.search(script) is not None and "docker image rm $images" in script
+
+
+def test_taking_the_local_stack_down_leaves_other_releases_images() -> None:
+    """The local stack shares its two image names with a deployment on the same machine.
+
+    Its teardown once removed every tag of them: on the production machine that takes the earlier
+    releases a rollback starts from. It may remove the images of its own release only, and without force.
+    """
+    script = (REPO / "deploy/production/scripts/local.sh").read_text(encoding="utf-8")
+    assert not _removes_every_tag(script)
+    assert "qarz-daftari/backend:$RELEASE" in script and "qarz-daftari/proxy:$RELEASE" in script
+    removal = [line for line in script.splitlines() if "docker image rm" in line]
+    assert removal and all("--force" not in line and " -f " not in line for line in removal)
+
+
+def test_the_check_notices_a_teardown_that_removes_every_tag() -> None:
+    old = (
+        "images=\"$(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -E '^qarz-daftari/(backend|proxy):')\"\n"
+        "docker image rm $images >/dev/null\n"
+    )
+    assert _removes_every_tag(old)
