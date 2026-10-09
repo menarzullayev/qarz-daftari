@@ -144,6 +144,10 @@ _MESSAGES = {
         "LINES_ALREADY_ADDED": "Bu yozuvga mahsulotlar allaqachon qo'shilgan.",
         "LINES_SUM_MISMATCH": "Mahsulotlar yig'indisi yozuv summasiga teng emas.",
         "LINES_WINDOW_CLOSED": "Mahsulot qo'shish muddati o'tgan: bu faqat sotuvdan keyingi kun oxirigacha mumkin.",
+        "GOODS_NOT_IN_DOLLARS": (
+            "Dollardagi nasiyaga mahsulotlar ro'yxati qo'shilmaydi: mahsulot narxlari so'mda yuritiladi. "
+            "Dollardagi savdoni summasi bilan yozing."
+        ),
         "REMINDERS_OFF": "Eslatmalar do'kon yoki shu mijoz uchun o'chirilgan.",
         "REMINDER_NOT_DUE": "Bu mijozda muddati o'tgan yoki bugun to'lanadigan qarz yo'q.",
         "REMINDER_LIMIT_REACHED": "Bu mijozga bugun eslatma allaqachon yuborilgan. Kuniga bitta mumkin.",
@@ -252,6 +256,10 @@ _MESSAGES = {
         "LINES_ALREADY_ADDED": "К этой записи товары уже добавлены.",
         "LINES_SUM_MISMATCH": "Сумма товаров не равна сумме записи.",
         "LINES_WINDOW_CLOSED": "Срок добавления товаров истёк: это возможно только до конца дня после продажи.",
+        "GOODS_NOT_IN_DOLLARS": (
+            "К продаже в долларах список товаров не добавляется: цены товаров ведутся в сумах. "
+            "Запишите продажу в долларах суммой."
+        ),
         "REMINDERS_OFF": "Напоминания выключены для магазина или для этого клиента.",
         "REMINDER_NOT_DUE": "У этого клиента нет просроченного долга и долга со сроком сегодня.",
         "REMINDER_LIMIT_REACHED": "Этому клиенту сегодня уже отправлено напоминание. Можно одно в день.",
@@ -334,8 +342,17 @@ def message_text(lang: str, code: str) -> str:
 _WITH_FIELDS = {"FREE_PLAN_FULL": ("limit",)}
 
 
-def error_response(code: str, lang: str, fields: dict[str, str] | None = None) -> JSONResponse:
-    message = message_text(lang, code if code in _MESSAGES["uz"] else "ERROR")
+# The messages that say more than their code does (`AppError.wording`), and the code each belongs to.
+# They are not codes: a client never sees their names, only their words under the code's own name.
+_WORDINGS = {"GOODS_NOT_IN_DOLLARS": "VALIDATION"}
+
+
+def error_response(
+    code: str, lang: str, fields: dict[str, str] | None = None, wording: str | None = None
+) -> JSONResponse:
+    """`wording` picks a more exact message for the same code; one that is not this code's is ignored."""
+    said = wording if wording is not None and _WORDINGS.get(wording) == code else code
+    message = message_text(lang, said if said in _MESSAGES["uz"] else "ERROR")
     if code in _WITH_FIELDS:
         message = message.format(**{name: (fields or {}).get(name, "") for name in _WITH_FIELDS[code]})
     body = {"error": {"code": code, "message": message, "fields": fields or {}}}
@@ -345,7 +362,7 @@ def error_response(code: str, lang: str, fields: dict[str, str] | None = None) -
 async def app_error_handler(request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, AppError)
     lang = getattr(request.state, "lang", "uz")
-    response = error_response(exc.code, lang, exc.fields)
+    response = error_response(exc.code, lang, exc.fields, exc.wording)
     retry_after = getattr(exc, "retry_after", None)
     if retry_after is not None:
         response.headers["Retry-After"] = str(retry_after)

@@ -33,6 +33,14 @@ USD = Currency.USD
 NOT_IN_DOLLARS = "not available in dollars yet"
 
 
+class GoodsNotInDollars(ValidationFailed):
+    """Goods lines were asked for on a sale in dollars. A validation error like any other, on `lines` or
+    `entry`, whose message tells the person why: the catalog's prices are so'm, and a line total is
+    rounded to whole so'm (BR-7), so a dollar sale is recorded by its amount."""
+
+    wording = "GOODS_NOT_IN_DOLLARS"
+
+
 class DollarBalanceOpen(AppError):
     """Dollars cannot be turned off for a shop while any customer still owes dollars."""
 

@@ -731,6 +731,10 @@ ERRORS: dict[str, str] = {
     "LINES_ALREADY_ADDED": "Bul jazbaǵa ónimler álleqashan qosılǵan.",
     "LINES_SUM_MISMATCH": "Ónimler jıyındısı jazba summasına teń emes.",
     "LINES_WINDOW_CLOSED": ("Ónim qosıw múddeti ótken: bul tek sawdadan keyingi kúnniń aqırına shekem múmkin."),
+    "GOODS_NOT_IN_DOLLARS": (
+        "Dollardaǵı nesiyege ónimler dizimi qosılmaydı: ónim bahaları swmda júrgiziledi. "
+        "Dollardaǵı sawdanı summası menen jazıń."
+    ),
     "REMINDERS_OFF": "Eskertiwler dúkan yamasa usı qarıydar ushın óshirilgen.",
     "REMINDER_NOT_DUE": "Bul qarıydarda múddeti ótken yamasa búgin tólenetuǵın qarız joq.",
     "REMINDER_LIMIT_REACHED": "Bul qarıydarǵa búgin eskertiw álleqashan jiberilgen. Kúnine birew múmkin.",

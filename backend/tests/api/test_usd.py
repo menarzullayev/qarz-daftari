@@ -23,6 +23,7 @@ from fastapi.testclient import TestClient
 from qarz.application.chat_texts import both, money, say
 from qarz.domain.money import NBSP, Currency
 from qarz.domain.promise import tashkent_date
+from qarz.interface.errors import message_text
 
 from .conftest import World, as_user
 from .test_chat import chat_of
@@ -427,6 +428,57 @@ def test_a_dollar_sale_has_no_goods_lines_yet(
     assert owner.execute("SELECT count(*) FROM goods_line WHERE entry_id = %s", (sale["id"],)).fetchone() == (0,)
     # A so'm sale has them as before.
     assert record(client, world, "credit", 500, None, lines=lines).status_code == 201
+
+
+def test_the_refusal_of_goods_on_a_dollar_sale_says_why_in_the_readers_language(
+    client: TestClient, world: World, owner: psycopg.Connection, dollars: None
+) -> None:
+    """The code, the status and the fields are a validation error's, as before; the words explain."""
+    lines = [{"name": "Non", "qty": "2", "unit": "dona", "unit_price": 250}]
+    sale = record(client, world, "credit", 500).json()["entry"]
+    for lang in ("uz", "ru", "tg", "kaa", "en", "uz-Cyrl"):
+        owner.execute("UPDATE app_user SET lang = %s WHERE id = %s", (lang, world.manager_a))
+        said = message_text(lang, "GOODS_NOT_IN_DOLLARS")
+        refused = record(client, world, "credit", 500, lines=lines)
+        assert (refused.status_code, refused.json()["error"]) == (
+            422,
+            {"code": "VALIDATION", "message": said, "fields": {"lines": "not available in dollars yet"}},
+        )
+        later = write(client, world.manager_a, "POST", f"{shop(world)}/entries/{sale['id']}/lines", {"lines": lines})
+        assert (later.status_code, later.json()["error"]) == (
+            422,
+            {"code": "VALIDATION", "message": said, "fields": {"entry": "not available in dollars yet"}},
+        )
+        assert said != message_text(lang, "VALIDATION"), "not the words of any validation error"
+    assert message_text("uz", "GOODS_NOT_IN_DOLLARS").startswith(
+        "Dollardagi nasiyaga mahsulotlar ro'yxati qo'shilmaydi:"
+    )
+    assert "so'mda" in message_text("uz", "GOODS_NOT_IN_DOLLARS") and "в сумах" in message_text(
+        "ru", "GOODS_NOT_IN_DOLLARS"
+    )
+    # Other fields that are wrong too are still named: the refusal is the same one, better worded.
+    both_wrong = record(client, world, "credit", 0, lines=lines)
+    assert set(both_wrong.json()["error"]["fields"]) == {"lines", "amount"}
+    assert both_wrong.json()["error"]["message"] == message_text("uz-Cyrl", "GOODS_NOT_IN_DOLLARS")
+
+
+def test_any_other_validation_error_keeps_the_general_words(
+    client: TestClient, world: World, owner: psycopg.Connection, dollars: None
+) -> None:
+    """The counterpart: only goods on a dollar sale are worded so. A dollar sale with a wrong amount, a
+    so'm sale with wrong goods and a sale in a shop without dollars read as they always did."""
+    general = message_text("uz", "VALIDATION")
+    too_large = record(client, world, "credit", 10_000_001)
+    assert (too_large.status_code, too_large.json()["error"]["message"]) == (422, general)
+    bad_lines = record(client, world, "credit", 500, None, lines=[{"name": "", "qty": "2", "unit_price": 250}])
+    assert (bad_lines.status_code, bad_lines.json()["error"]["message"]) == (422, general)
+    write(client, world.owner_a, "PATCH", shop(world), {"usd_on": False})
+    lines = [{"name": "Non", "qty": "2", "unit": "dona", "unit_price": 250}]
+    off = record(client, world, "credit", 500, lines=lines)
+    assert (off.status_code, off.json()["error"]) == (
+        422,
+        {"code": "VALIDATION", "message": general, "fields": {"currency": "must be UZS"}},
+    ), "without dollars the answer does not say that dollars exist"
 
 
 def test_totals_and_lists_show_each_currency_and_never_their_sum(

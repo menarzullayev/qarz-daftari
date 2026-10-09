@@ -96,7 +96,7 @@ export const en: PartialCatalog<typeof uz, EnPlural> = {
   "entry.amount.usd.notWhole": "A dollar amount has at most two digits after the point, for example 12.50.",
   "entry.amount.usd.range": "The amount must be from {min} to {max}.",
   "entry.amount.usd.invalid": "Could not read the amount. Write it in dollars, for example 12.50.",
-  "entry.usd.noGoods": "A list of items cannot be added to a credit sale in dollars yet.",
+  "entry.usd.noGoods": "A credit sale in dollars cannot have a list of items: item prices are kept in soum. Record the sale by its amount.",
   "overview.usd.outstanding": "Total debt, in dollars",
   "overview.usd.overdue": "Overdue, in dollars",
   "overview.usd.dueToday": "Due today, in dollars",

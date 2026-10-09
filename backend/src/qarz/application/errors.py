@@ -5,6 +5,9 @@ from qarz.domain.access import Role
 
 class AppError(Exception):
     code = "ERROR"
+    # The key of a message that says more exactly why, for a refusal whose code is a general one
+    # (`VALIDATION`). The code, the status and the fields are those of the code; only the words differ.
+    wording: str | None = None
 
     def __init__(self, fields: dict[str, str] | None = None) -> None:
         super().__init__(self.code)

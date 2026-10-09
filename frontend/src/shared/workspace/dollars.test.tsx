@@ -414,7 +414,7 @@ describe("recording an entry", () => {
     expect(label()).toBe("Summa, $");
     expect(amount().getAttribute("inputmode")).toBe("decimal");
     expect(screen.queryByRole("button", { name: "Tovarlar bilan yozish" })).toBeNull();
-    expect(screen.getByText("Dollardagi nasiyaga tovarlar ro'yxati hozircha qo'shilmaydi.")).toBeTruthy();
+    expect(screen.getByText("Dollardagi nasiyaga tovarlar ro'yxati qo'shilmaydi: tovar narxlari so'mda yuritiladi. Savdoni summasi bilan yozing.")).toBeTruthy();
     expect(document.getElementById("entry-amount-hint")?.textContent).toBe("Masalan: 12.50");
 
     type(amount(), "12,5");

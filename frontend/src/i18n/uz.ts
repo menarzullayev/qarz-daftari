@@ -99,7 +99,7 @@ export const uz = {
   "entry.amount.usd.notWhole": "Dollarda nuqtadan keyin ko'pi bilan ikki raqam yoziladi, masalan 12.50.",
   "entry.amount.usd.range": "Summa {min} dan {max} gacha bo'lishi kerak.",
   "entry.amount.usd.invalid": "Summani tushunib bo'lmadi. Dollarda yozing, masalan 12.50.",
-  "entry.usd.noGoods": "Dollardagi nasiyaga tovarlar ro'yxati hozircha qo'shilmaydi.",
+  "entry.usd.noGoods": "Dollardagi nasiyaga tovarlar ro'yxati qo'shilmaydi: tovar narxlari so'mda yuritiladi. Savdoni summasi bilan yozing.",
   "overview.usd.outstanding": "Jami qarz, dollarda",
   "overview.usd.overdue": "Muddati o'tgan, dollarda",
   "overview.usd.dueToday": "Bugun to'lanishi kerak, dollarda",

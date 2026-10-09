@@ -162,7 +162,7 @@ The typed response models (`interface/answers.py`) declare these as their only f
 
 **Import.** A file of a shop that works in dollars may have a currency column (`Valyuta`, `Валюта`, `Асъор`, `Currency`; the six languages' titles are all recognised), which the template then has after the amount: `UZS` or `USD` in any case, so'm when the cell is empty or the column absent. A dollar amount is read by `money.to_minor` and bound by `RULES` (`12.5` and `12,50` are 1250 cents); the row problems `currency_unknown` and `amount_too_precise` are added, and so'm rows are read as before. The preview tags a dollar row with `"currency": "USD"`, gives `counts.usd {amount}` beside `counts.amount` (the so'm rows alone) and `customer.usd {balance}` on a matched customer; `GET …/imports` then has `currency_column: true`. Applying writes each opening balance in its row's currency, so a customer with a row in each currency gets two entries, one in each book; an undo compares and reverses each currency by itself. A dollar row is not applied once the shop has stopped working in dollars (the batch goes back to `validated` with `refused.reason` `usd_off`); the worker reads the setting in the transaction that writes but cannot hold it, because its role may only read the shop's row. For every other shop a currency column is an unknown column and the template is the five-column file, byte for byte.
 
-**Not in dollars yet** (BR-43), each refused or left out and tested as such: goods lines on a dollar sale (`VALIDATION`, `not available in dollars yet`); SMS reminders (state so'm only); the weekly product metrics (so'm events only); subscription prices and payments.
+**Not in dollars yet** (BR-43), each refused or left out and tested as such: goods lines on a dollar sale (`VALIDATION`, `not available in dollars yet` on `lines` or `entry`; the message says why in the reader's language, since selling prices are so'm, and the entry screen offers no goods on a dollar sale and says the same); SMS reminders (state so'm only); the weekly product metrics (so'm events only); subscription prices and payments.
 
 ## Cash book
 
@@ -523,7 +523,7 @@ None of these has been measured. NFR-005, NFR-006, NFR-009 and NFR-011 require a
 
 | Situation | Behavior |
 |---|---|
-| Validation error | `VALIDATION` with per-field messages; nothing saved |
+| Validation error | `VALIDATION` with per-field messages; nothing saved. A refusal may carry a more exact message under the same code, status and fields (`AppError.wording`, `interface/errors.py` `_WORDINGS`): goods lines on a dollar sale |
 | Not authorized or not found | `NOT_FOUND`; logged as a security event when it is an authorization failure |
 | Role lacks permission inside own shop | `FORBIDDEN_ROLE` naming the needed role |
 | Credit limit exceeded | Warning with balance and limit; refused for a seller when the shop forbids it |

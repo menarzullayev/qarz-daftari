@@ -96,7 +96,7 @@ export const kaa: PartialCatalog<typeof uz> = {
   "entry.amount.usd.notWhole": "Dollarda noqattan keyin kóp degende eki cifr jazıladı, mısalı 12.50.",
   "entry.amount.usd.range": "Summa {min} – {max} aralıǵında bolıwı kerek.",
   "entry.amount.usd.invalid": "Summanı túsinip bolmadı. Dollarda jazıń, mısalı 12.50.",
-  "entry.usd.noGoods": "Dollardaǵı nesiyege tovarlar dizimi házirshe qosılmaydı.",
+  "entry.usd.noGoods": "Dollardaǵı nesiyege tovarlar dizimi qosılmaydı: tovar bahaları swmda júrgiziledi. Sawdanı summası menen jazıń.",
   "overview.usd.outstanding": "Jámi qarız, dollarda",
   "overview.usd.overdue": "Múddeti ótken, dollarda",
   "overview.usd.dueToday": "Búgin tóleniwi kerek, dollarda",

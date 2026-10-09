@@ -728,6 +728,10 @@ ERRORS: dict[str, str] = {
     "PROMISE_NOT_CHANGEABLE": "This entry has no due date, or the entry was reversed.",
     "LINES_ALREADY_ADDED": "Items were already added to this entry.",
     "LINES_SUM_MISMATCH": "The items do not add up to the entry amount.",
+    "GOODS_NOT_IN_DOLLARS": (
+        "A credit sale in dollars cannot have a list of items: item prices are kept in soum. "
+        "Record a sale in dollars by its amount."
+    ),
     "LINES_WINDOW_CLOSED": (
         "The time to add items has passed: it is possible only until the end of the day after the sale."
     ),

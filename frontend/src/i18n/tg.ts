@@ -96,7 +96,7 @@ export const tg: PartialCatalog<typeof uz> = {
   "entry.amount.usd.notWhole": "Дар доллар пас аз нуқта на зиёда аз ду рақам навишта мешавад, масалан 12.50.",
   "entry.amount.usd.range": "Маблағ бояд аз {min} то {max} бошад.",
   "entry.amount.usd.invalid": "Маблағ фаҳмида нашуд. Бо доллар нависед, масалан 12.50.",
-  "entry.usd.noGoods": "Ба насияи долларӣ ҳоло рӯйхати молҳо илова намешавад.",
+  "entry.usd.noGoods": "Ба насияи долларӣ рӯйхати молҳо илова намешавад: нархи молҳо бо сӯм пеш бурда мешавад. Савдоро бо маблағаш нависед.",
   "overview.usd.outstanding": "Ҳамагӣ қарз, бо доллар",
   "overview.usd.overdue": "Мӯҳлаташ гузашта, бо доллар",
   "overview.usd.dueToday": "Имрӯз бояд пардохт шавад, бо доллар",
