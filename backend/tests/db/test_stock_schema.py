@@ -515,31 +515,36 @@ _STATEMENTS: dict[str, tuple[str, dict[str, Any]]] = {
 # The index each read goes through. Under row-level security every read of a tenant table can fall back
 # on some index that leads with the shop, so "no sequential scan" alone would prove nothing: the read
 # must use the index that finds its own rows.
-_INDEX_OF = {
-    "one item": "catalog_item_pkey",
-    "the stock list": "catalog_item_tracked",
-    "the catalogue with stock": "catalog_item_shop_id",
-    "running low": "catalog_item_low",
-    "a barcode": "catalog_barcode_pkey",
-    "the movements of an item": "stock_movement_item_id_item_seq_key",
-    "the movements of a ledger entry": "stock_movement_entry",
-    "the movements of a document": "stock_movement_document",
-    "the documents, newest first": "stock_document_recent",
-    # On a table this small the planner may as well read the newest documents and filter them by kind.
-    "the documents of a kind": "stock_document_",
-    "the lines of a document": "stock_document_line_pkey",
-    "the suppliers by name": "supplier_shop_id_name_norm_key",
-    "what suppliers are owed": "supplier_balance_pkey",
-    "a supplier's account": "supplier_entry_supplier_id_seq_key",
-    "not sold since": "stock_level_idle",
-    "sold below cost": "stock_movement_below_cost",
+_INDEX_OF: dict[str, tuple[str, ...]] = {
+    "one item": ("catalog_item_pkey",),
+    "the stock list": ("catalog_item_tracked",),
+    "the catalogue with stock": ("catalog_item_shop_id_name_norm_key",),
+    # Every item with a threshold is counted, so on a table this small the two partial indexes cost the same.
+    "running low": ("catalog_item_low", "catalog_item_tracked"),
+    "a barcode": ("catalog_barcode_pkey",),
+    "the movements of an item": ("stock_movement_item_id_item_seq_key",),
+    "the movements of a ledger entry": ("stock_movement_entry",),
+    "the movements of a document": ("stock_movement_document",),
+    "the documents, newest first": ("stock_document_recent",),
+    # Likewise: the newest documents filtered by kind, or the documents of the kind, newest first.
+    "the documents of a kind": ("stock_document_by_kind", "stock_document_recent"),
+    "the lines of a document": ("stock_document_line_pkey",),
+    "the suppliers by name": ("supplier_shop_id_name_norm_key",),
+    # By supplier, or the shop's few balances by currency: both are read by key.
+    "what suppliers are owed": ("supplier_balance_pkey", "supplier_balance_shop"),
+    "a supplier's account": ("supplier_entry_supplier_id_seq_key",),
+    "not sold since": ("stock_level_idle",),
+    "sold below cost": ("stock_movement_below_cost",),
 }
 
 
 def _plan(conn: psycopg.Connection, statement: str, values: dict[str, Any]) -> str:
     """The plan of a statement written with the storage layer's `:name` parameters, with a sequential
     scan made the planner's last choice: on tables as small as a test's it would pick one for anything."""
-    conn.execute("SET LOCAL enable_seqscan = off")
+    # Likewise a sort and a bitmap: a page that is read in order through its index needs neither, and
+    # with a handful of rows the planner would as soon sort them.
+    for setting in ("enable_seqscan", "enable_sort", "enable_bitmapscan"):
+        conn.execute(f"SET LOCAL {setting} = off")
     rows = conn.execute("EXPLAIN (COSTS OFF) " + re.sub(r"(?<!:):([a-z_]+)", r"%(\1)s", statement), values).fetchall()
     return " ".join(str(row[0]) for row in rows)
 
@@ -554,7 +559,7 @@ def test_a_list_of_the_stock_is_read_through_its_index(as_app: AppSession, shop_
     with as_app(shop_a.shop_id) as app:
         plan = _plan(app, statement, values)
     assert "Seq Scan" not in plan, plan
-    assert _INDEX_OF[what] in plan, plan
+    assert any(index in plan for index in _INDEX_OF[what]), plan
 
 
 def test_the_plan_check_catches_a_read_that_has_no_index_of_its_own(as_app: AppSession, shop_a: Shop) -> None:
