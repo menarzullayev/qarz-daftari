@@ -140,3 +140,107 @@ export function supplierListBody(all: readonly Record<string, unknown>[], query:
     next_cursor: start + limit < matching.length ? `c${start + limit}` : null,
   };
 }
+
+export const SALE_ID = "88888888-8888-4888-8888-8888888888a1";
+export const OTHER_SALE = "88888888-8888-4888-8888-8888888888a2";
+export const OTHER_MEMBER = "33333333-3333-4333-8333-333333333334";
+
+/** One line of a sale as a seller is sent it: no cost. */
+export function saleLineBody(overrides: Record<string, unknown> = {}) {
+  return {
+    line_no: 1,
+    item: { id: ITEM_ID, name: "Shakar", unit: "kg" },
+    qty: "2.5",
+    price: 15000,
+    line_total: 37500,
+    counted: true,
+    ...overrides,
+  };
+}
+
+/** A sale in full (POST stock/sales without `warnings`, GET stock/sales/{id}) as a seller is sent it. */
+export function saleBody(overrides: Record<string, unknown> = {}) {
+  return {
+    id: SALE_ID,
+    number: 3,
+    status: "posted",
+    day: "2026-10-06",
+    created_at: "2026-10-06T06:30:00+00:00",
+    created_by: MEMBER,
+    seller_role: "seller",
+    mine: true,
+    method: "cash",
+    currency: "UZS",
+    total: 37500,
+    note: null,
+    cancelled_at: null,
+    cancel_reason: null,
+    in_cash_book: false,
+    lines: [saleLineBody()],
+    ...overrides,
+  };
+}
+
+/** The same with what a member who may see cost is sent: on each line, and on the sale. */
+export function costedSaleBody(overrides: Record<string, unknown> = {}) {
+  return saleBody({
+    lines: [saleLineBody({ cost: { currency: "UZS", total: 30000, margin: 7500 } })],
+    cost: { total: 30000, margin: 7500, complete: true },
+    ...overrides,
+  });
+}
+
+/** A sale as a list writes it: no `in_cash_book`, no cost, and `counted` null on every line. */
+export function saleRowBody(overrides: Record<string, unknown> = {}) {
+  return { ...saleBody(), in_cash_book: undefined, lines: [saleLineBody({ counted: null })], ...overrides };
+}
+
+/** GET stock/sales: one day, its sales, and what those that stand came to. */
+export function salesListBody(sales: readonly Record<string, unknown>[], overrides: Record<string, unknown> = {}) {
+  const standing = sales.filter((sale) => sale["status"] !== "cancelled");
+  const byMethod = new Map<string, number>();
+  for (const sale of standing) {
+    byMethod.set(String(sale["method"]), (byMethod.get(String(sale["method"])) ?? 0) + Number(sale["total"]));
+  }
+  return {
+    day_from: "2026-10-06",
+    day_to: "2026-10-06",
+    sales,
+    totals: {
+      count: standing.length,
+      total: standing.reduce((sum, sale) => sum + Number(sale["total"]), 0),
+      by_method: ["cash", "card", "transfer"].filter((method) => byMethod.has(method)).map((method) => ({ method, total: byMethod.get(method) })),
+    },
+    may_cancel: false,
+    next_cursor: null,
+    ...overrides,
+  };
+}
+
+/** GET stock/report, for a member who may see cost: nobody else is answered. */
+export function stockReportBody(overrides: Record<string, unknown> = {}) {
+  return {
+    days: 30,
+    totals: {
+      items: 12,
+      low: 2,
+      cost: [
+        { currency: "UZS", value: 900000 },
+        { currency: "USD", value: 45000 },
+      ],
+      selling: 1500000,
+      margin: { selling: 1200000, cost: 900000, margin: 300000 },
+    },
+    not_sold: { items: [costedItemBody({ last_sale_at: null })], more: true },
+    sold_below_cost: {
+      sales: [
+        { item_id: ITEM_ID, name: "Shakar", unit: "kg", qty: "2", sale_total: 20000, cost_total: 24000, loss: 4000, created_at: "2026-10-05T06:00:00+00:00" },
+      ],
+      more: false,
+    },
+    low_stock: { items: [], more: false },
+    sold: { items: [], more: false },
+    cash_sales: { count: 0, total: 0, by_method: [] },
+    ...overrides,
+  };
+}

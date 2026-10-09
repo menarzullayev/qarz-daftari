@@ -44,6 +44,7 @@ refusals, permission names).
 | category (of cash entries) | toifa | kategoriya | Loan preferred over a guess; "túr" already means "kind". |
 | payment method | to'lov usuli | tólem usılı | |
 | cash (method) | naqd | naq | |
+| cash sale (a sale without a customer) | naqd savdo | naq sawda | "Satıw" = to sell. The cash book stays "kassa". |
 | card (method) | karta | karta | |
 | transfer (method) | o'tkazma | ótkerme | |
 | direction (in / out) | yo'nalish | baǵıt | |

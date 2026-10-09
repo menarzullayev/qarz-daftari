@@ -306,3 +306,48 @@ def test_any_sequence_of_movements_keeps_the_two_facts_of_a_level() -> None:
             assert after.on_hand > 0 or after.value == 0
             assert effect.cost_total is None or effect.cost_total >= 0
             held = after
+
+
+# --- a sale for cash (BR-98 to BR-104) --------------------------------------------------------------------
+
+
+def test_a_cash_sale_is_stored_as_a_kind_nobody_writes_as_a_document() -> None:
+    assert stock.DOC_SALE not in stock.DOCUMENT_KINDS
+    assert (*stock.DOCUMENT_KINDS, "sale") == stock.STORED_KINDS
+
+
+@pytest.mark.parametrize("price", [1, 15_000, 100_000_000])
+def test_a_selling_price_is_a_price_of_the_catalogue(price: int) -> None:
+    assert stock.sale_price(price) == price
+
+
+@pytest.mark.parametrize("price", [0, -1, 100_000_001, 1.5, "1000", None, True])
+def test_a_selling_price_outside_the_catalogues_bounds_is_refused(price: object) -> None:
+    with pytest.raises(ValueError):
+        stock.sale_price(price)
+
+
+def test_a_sold_line_comes_to_quantity_times_price_rounded_half_up_once() -> None:
+    assert stock.sale_line_total(Decimal("2.5"), 15_000) == 37_500
+    assert stock.sale_line_total(Decimal("0.333"), 10_000) == 3_330
+    assert stock.sale_line_total(Decimal("0.0005") * 1000, 1) == 1  # half a so'm rounds up to one
+    with pytest.raises(ValueError, match="less than one"):
+        stock.sale_line_total(Decimal("0.001"), 1)
+
+
+def test_the_margin_of_a_sold_line_is_never_a_difference_of_two_currencies() -> None:
+    assert stock.sale_margin(30_000, 20_000, "UZS") == 10_000
+    assert stock.sale_margin(20_000, 32_000, "UZS") == -12_000, "sold below what it cost"
+    assert stock.sale_margin(30_000, None, None) is None, "an item never received has no cost"
+    assert stock.sale_margin(30_000, 250, "USD") is None
+
+
+def test_a_cash_sale_leaves_at_the_average_and_leaves_the_average_where_it_was() -> None:
+    level = stock.receive(stock.EMPTY, Decimal(10), 10_000, "UZS").after
+    level = stock.receive(level, Decimal(10), 20_000, "UZS").after
+    out = stock.go_out(level, Decimal(4), may_go_negative=True)
+    assert (out.cost_total, out.after.on_hand, out.after.average) == (60_000, Decimal(16), Decimal("15000.0000"))
+    back = stock.bring_back(out.after, Decimal(4), out.cost_total, "UZS")
+    assert (back.after.on_hand, back.after.value) == (level.on_hand, level.value), "cancelling undoes it exactly"
+    with pytest.raises(stock.NotEnoughOnHand):
+        stock.go_out(level, Decimal(21), may_go_negative=False)

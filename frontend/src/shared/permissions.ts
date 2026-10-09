@@ -29,6 +29,8 @@ export const MIN_ROLE = {
   "stock.receive": "manager",
   "stock.adjust": "manager",
   "stock.costs.view": "manager",
+  "stock.sell": "seller",
+  "stock.sell.cancel": "manager",
   "suppliers.view": "manager",
   "suppliers.manage": "manager",
   "suppliers.pay": "manager",

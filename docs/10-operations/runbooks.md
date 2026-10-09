@@ -874,3 +874,13 @@ SELECT * FROM supplier_balance_mismatches('<shop id>'); -- empty when what is ow
 ```
 
 Both must be empty: the figures are written only by the triggers `stock_movement_apply` and `supplier_entry_apply`. A row here means someone changed a table by hand; nothing in the application can. Do not correct `stock_level` or `supplier_balance` by hand either: a wrong quantity is corrected by a stocktake, a wrong receipt or payment by cancelling it.
+
+**Sales for cash (migration 0049).** With `stock_on` on, the counter records a sale without a customer (`stock.sell`, every member by default); it takes counted goods out of the stock and, while `cash_book_on` is on, writes income to the cash book under "Ombor: naqd savdo". Nothing is switched on separately and nothing is backfilled: goods sold for cash before this existed are still on the books, and a shop brings them into line with a stocktake. A wrong sale is cancelled by a manager or the owner with a reason (`stock.sell.cancel`); it is never deleted, and its cash entry cannot be cancelled in the cash book itself. If a shop says "the till and the sales differ": the sales of a day and their totals by method are in the stock's sales list; with the cash book off, or for sales made while it was off, there is no cash entry by design. As the database owner, a sale that stands without its entry while the cash book was on would be found by:
+
+```sql
+SELECT d.id, d.number, d.total FROM stock_document d
+ WHERE d.shop_id = '<shop id>' AND d.kind = 'sale' AND d.status = 'posted'
+   AND NOT EXISTS (SELECT 1 FROM cash_entry e WHERE e.stock_document_id = d.id AND e.cancelled_at IS NULL);
+```
+
+Rows here are sales made while the cash book was off (compare `created_at` with when the switch was turned); nothing in the application can post a sale and skip its entry while it is on, because both are one transaction.

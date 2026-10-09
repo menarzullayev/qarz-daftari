@@ -1,5 +1,6 @@
 import { reading, type ShopApi } from "../api";
 import type { Currency } from "../money";
+import { isRole, type Role } from "../navigation";
 import { STOCK_DOCUMENT_KINDS, type StockDocumentKind } from "../workspace/routes";
 
 /**
@@ -448,7 +449,206 @@ function supplierBody(input: SupplierInput): Record<string, unknown> {
   return body;
 }
 
-export type CostTotal = { currency: Currency; value: number };
+/**
+ * A sale for cash, without a customer: goods lines at the counter, money in, counted stock out. In the
+ * books it is a document of a kind of its own with routes of its own: the lists of documents never
+ * hold one, and the documents' routes do not answer for it.
+ */
+export const SALE_KIND = "sale";
+
+export type SaleStatus = "posted" | "cancelled";
+export const SALE_STATUSES: readonly SaleStatus[] = ["posted", "cancelled"];
+
+/** What a sold line cost and earned; a part is null where the cost is not known in so'm. */
+export type SaleLineCost = { currency: Currency | null; total: number | null; margin: number | null };
+
+export type SaleLine = {
+  lineNo: number;
+  item: { id: string; name: string; unit: string };
+  qty: string;
+  /** What one unit was sold for, and what the line came to, in whole so'm. */
+  price: number;
+  lineTotal: number;
+  /** False: the item is not counted, and the line took nothing out of the stock. Null: a list does not say. */
+  counted: boolean | null;
+  /** Absent for a member who may not see what goods cost. */
+  cost?: SaleLineCost;
+};
+
+export type SaleSummary = {
+  id: string;
+  number: number;
+  status: SaleStatus;
+  /** The Tashkent day of the sale, "YYYY-MM-DD". */
+  day: string;
+  createdAt: string;
+  createdBy: string;
+  /** The role of who sold; null for a member who has since left the shop. */
+  sellerRole: Role | null;
+  mine: boolean;
+  method: PaymentMethod;
+  total: number;
+  note: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  lines: SaleLine[];
+};
+
+/** A sale in full. `cost` is absent, never a zero, for a member who may not see what goods cost. */
+export type Sale = SaleSummary & {
+  inCashBook: boolean;
+  /** `complete` false: a counted line has no cost in so'm, and the margin is of the others alone. */
+  cost?: { total: number; margin: number | null; complete: boolean };
+};
+
+/** What the seller is told about a sale that was saved. "below_cost" comes only to those who see cost. */
+export type SaleWarning =
+  | { kind: "negative"; itemId: string; name: string; onHand: string }
+  | { kind: "below_cost"; itemId: string; name: string };
+
+export type RecordedSale = Sale & { warnings: SaleWarning[] };
+
+/** What the sales that stand came to; a cancelled one is in none of the figures. */
+export type SaleTotals = { count: number; total: number; byMethod: { method: PaymentMethod; total: number }[] };
+
+export type SalesPage = {
+  items: SaleSummary[];
+  nextCursor: string | null;
+  dayFrom: string;
+  dayTo: string;
+  /** Of every sale the filters match, not of this page alone. */
+  totals: SaleTotals;
+  /** Whether the member may take a sale back: the one thing that offers the action. */
+  mayCancel: boolean;
+};
+
+export type NewSaleLine = { itemId: string; qty: string; price: number };
+export type NewSale = { lines: readonly NewSaleLine[]; method: PaymentMethod; note?: string | null };
+
+export type SalesFilter = {
+  dayFrom?: string | undefined;
+  dayTo?: string | undefined;
+  itemId?: string | undefined;
+  sellerId?: string | undefined;
+  /** The caller's own sales; never sent together with a seller. */
+  mine?: boolean | undefined;
+  status?: SaleStatus | "" | undefined;
+  cursor?: string | null | undefined;
+  limit?: number | undefined;
+};
+
+function paymentMethod(value: unknown): PaymentMethod {
+  const method = PAYMENT_METHODS.find((known) => known === value);
+  if (!method) {
+    throw new RangeError("not a payment method");
+  }
+  return method;
+}
+
+function saleTotals(value: unknown): SaleTotals {
+  const body = record(value);
+  return {
+    count: whole(body["count"]),
+    total: whole(body["total"]),
+    byMethod: list(body["by_method"], (element) => {
+      const row = record(element);
+      return { method: paymentMethod(row["method"]), total: whole(row["total"]) };
+    }),
+  };
+}
+
+function saleLine(value: unknown): SaleLine {
+  const body = record(value);
+  const item = record(body["item"]);
+  const line: SaleLine = {
+    lineNo: whole(body["line_no"]),
+    item: { id: text(item["id"]), name: text(item["name"]), unit: text(item["unit"]) },
+    qty: qty(body["qty"]),
+    price: whole(body["price"]),
+    lineTotal: whole(body["line_total"]),
+    counted: typeof body["counted"] === "boolean" ? body["counted"] : null,
+  };
+  if (body["cost"] !== undefined && body["cost"] !== null) {
+    const cost = record(body["cost"]);
+    line.cost = { currency: currencyOrNull(cost["currency"]), total: wholeOrNull(cost["total"]), margin: wholeOrNull(cost["margin"]) };
+  }
+  return line;
+}
+
+function saleSummary(value: unknown): SaleSummary {
+  const body = record(value);
+  const status = SALE_STATUSES.find((known) => known === body["status"]);
+  // A sale is in so'm, as selling prices are: anything else is not an answer this client can show.
+  if (!status || body["currency"] !== "UZS") {
+    throw new RangeError("not a cash sale");
+  }
+  return {
+    id: text(body["id"]),
+    number: whole(body["number"]),
+    status,
+    day: text(body["day"]),
+    createdAt: text(body["created_at"]),
+    createdBy: text(body["created_by"]),
+    sellerRole: isRole(body["seller_role"]) ? body["seller_role"] : null,
+    mine: flag(body["mine"]),
+    method: paymentMethod(body["method"]),
+    total: whole(body["total"]),
+    note: textOrNull(body["note"]),
+    cancelledAt: textOrNull(body["cancelled_at"]),
+    cancelReason: textOrNull(body["cancel_reason"]),
+    lines: list(body["lines"], saleLine),
+  };
+}
+
+function sale(value: unknown): Sale {
+  const body = record(value);
+  const read: Sale = { ...saleSummary(value), inCashBook: flag(body["in_cash_book"]) };
+  if (body["cost"] !== undefined && body["cost"] !== null) {
+    const cost = record(body["cost"]);
+    read.cost = { total: whole(cost["total"]), margin: wholeOrNull(cost["margin"]), complete: flag(cost["complete"]) };
+  }
+  return read;
+}
+
+function recordedSale(value: unknown): RecordedSale {
+  const warnings: SaleWarning[] = [];
+  for (const element of list(record(value)["warnings"], record)) {
+    const named = { itemId: text(element["item"]), name: text(element["name"]) };
+    if (element["kind"] === "negative") {
+      warnings.push({ kind: "negative", ...named, onHand: qty(element["on_hand"]) });
+    } else if (element["kind"] === "below_cost") {
+      warnings.push({ kind: "below_cost", ...named });
+    }
+    // A kind this client does not know yet is left out: the sale is saved either way.
+  }
+  return { ...sale(value), warnings };
+}
+
+function salesPage(value: unknown): SalesPage {
+  const body = record(value);
+  return {
+    dayFrom: text(body["day_from"]),
+    dayTo: text(body["day_to"]),
+    items: list(body["sales"], saleSummary),
+    totals: saleTotals(body["totals"]),
+    mayCancel: flag(body["may_cancel"]),
+    nextCursor: textOrNull(body["next_cursor"]),
+  };
+}
+
+/** The request body of a sale. The price is always said: what the seller saw is what is saved. */
+export function saleBody(input: NewSale): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    lines: input.lines.map((line) => ({ item_id: line.itemId, qty: line.qty, price: line.price })),
+    method: input.method,
+  };
+  if (input.note !== undefined && input.note !== null && input.note !== "") {
+    body["note"] = input.note;
+  }
+  return body;
+}
+
+export type CostTotal ={ currency: Currency; value: number };
 
 export type StockReport = {
   days: number;
@@ -477,6 +677,25 @@ export type StockReport = {
     more: boolean;
   };
   lowStock: { items: StockItem[]; more: boolean };
+  /**
+   * What sold in those days, one row for each counted item: sales on credit and for cash together,
+   * with how much of it was for cash. The margin is of the sales whose cost is known in so'm.
+   */
+  sold: { items: SoldItem[]; more: boolean };
+  /** The cash sales of those days that stand, every line of them, counted item or not. */
+  cashSales: SaleTotals;
+};
+
+export type SoldItem = {
+  itemId: string;
+  name: string;
+  unit: string;
+  qty: string;
+  revenue: number;
+  cost: number;
+  margin: number;
+  cashQty: string;
+  cashRevenue: number;
 };
 
 function itemsBlock(value: unknown): { items: StockItem[]; more: boolean } {
@@ -489,6 +708,7 @@ function stockReport(value: unknown): StockReport {
   const totals = record(body["totals"]);
   const margin = record(totals["margin"]);
   const below = record(body["sold_below_cost"]);
+  const sold = record(body["sold"]);
   return {
     days: whole(body["days"]),
     totals: {
@@ -519,6 +739,25 @@ function stockReport(value: unknown): StockReport {
       more: flag(below["more"]),
     },
     lowStock: itemsBlock(body["low_stock"]),
+    sold: {
+      items: list(sold["items"], (element) => {
+        const row = record(element);
+        return {
+          itemId: text(row["item_id"]),
+          name: text(row["name"]),
+          unit: text(row["unit"]),
+          qty: qty(row["qty"]),
+          revenue: whole(row["revenue"]),
+          cost: whole(row["cost"]),
+          // Below zero when what sold cost more than it brought.
+          margin: whole(row["margin"]),
+          cashQty: qty(row["cash_qty"]),
+          cashRevenue: whole(row["cash_revenue"]),
+        };
+      }),
+      more: flag(sold["more"]),
+    },
+    cashSales: saleTotals(body["cash_sales"]),
   };
 }
 
@@ -671,6 +910,47 @@ export function stockOf(api: ShopApi) {
         body: { reason },
         idempotencyKey,
         read: stockDocument,
+      });
+    },
+
+    /** Records a sale for cash. Refused as a whole, with nothing kept, when the shop refuses sales beyond stock. */
+    recordSale(input: NewSale, idempotencyKey: string): Promise<RecordedSale> {
+      return api.send({ method: "POST", path: `${stock}/sales`, body: saleBody(input), idempotencyKey, read: recordedSale });
+    },
+
+    /** The cash sales of a day or of a stretch of days, newest first; with no day, today's in Tashkent. */
+    sales(params: SalesFilter, signal?: AbortSignal): Promise<SalesPage> {
+      return api.send({
+        method: "GET",
+        path: `${stock}/sales`,
+        query: {
+          day_from: params.dayFrom,
+          day_to: params.dayTo,
+          item_id: params.itemId,
+          // The server refuses the two together: one's own sales are asked for by `mine` alone.
+          seller_id: params.mine ? undefined : params.sellerId,
+          mine: params.mine ? "true" : undefined,
+          status: params.status,
+          cursor: params.cursor,
+          limit: params.limit?.toString(),
+        },
+        signal,
+        read: salesPage,
+      });
+    },
+
+    sale(saleId: string, signal?: AbortSignal): Promise<Sale> {
+      return api.send({ method: "GET", path: `${stock}/sales/${id(saleId)}`, signal, read: sale });
+    },
+
+    /** Takes a sale back, with a reason that stays in the books. A sale already taken back is refused. */
+    cancelSale(saleId: string, reason: string, idempotencyKey: string): Promise<Sale> {
+      return api.send({
+        method: "POST",
+        path: `${stock}/sales/${id(saleId)}/cancel`,
+        body: { reason },
+        idempotencyKey,
+        read: sale,
       });
     },
 

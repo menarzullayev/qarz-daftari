@@ -103,6 +103,7 @@ words, no exclamation mark unless the source has one, “curly quotes” where U
 | balance | qoldiq (kassa) | Money left in the cash book. Used for the cash book only; what a customer owes is "debt". |
 | payment method | to'lov usuli | Cash, card or transfer. |
 | cash | naqd | Payment method. |
+| cash sale | naqd savdo | A sale at the counter without a customer: goods out of stock, money in. "Sell" for *sotish*. Not "cash book" (*kassa*), and a credit sale stays "credit sale" (*nasiya*). |
 | card | karta | Payment method; also the card a subscription is paid to. |
 | transfer | o'tkazma | Payment method (bank transfer). "Transfer ownership" is a different use. |
 | direction | yo'nalish | Income or expense. |

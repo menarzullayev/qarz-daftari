@@ -69,6 +69,7 @@ UZ = {
     # the cash book, in the shop's language.
     "stock_purchase_note": "Kirim № {number}",
     "stock_return_note": "Tovar qaytarildi, hujjat № {number}",
+    "stock_sale_note": "Naqd savdo № {number}",
     "net_withdrawn_reason": "Hamkor to'lovi qaytarib olindi",
     "net_partner_name": "Hamkor",
     "net_partner_suffix": "hamkor",
@@ -517,6 +518,7 @@ RU = {
     # the cash book, in the shop's language.
     "stock_purchase_note": "Приход № {number}",
     "stock_return_note": "Возврат товара, документ № {number}",
+    "stock_sale_note": "Продажа за наличные № {number}",
     "net_withdrawn_reason": "Запись об оплате партнёра отозвана",
     "net_partner_name": "Партнёр",
     "net_partner_suffix": "партнёр",

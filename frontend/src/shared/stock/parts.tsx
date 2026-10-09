@@ -240,6 +240,15 @@ export function kindText(kind: string, of: "movement" | "entry", t: (key: Messag
   return key ? t(key) : kind;
 }
 
+/**
+ * Whether the screens of a cash sale are drawn for the member: selling and seeing the stock, both. The
+ * section they sit in is the stock's, which "stock.view" opens, and the form finds items by it (the
+ * same decision as for the quick receipt). A seller holds both by default.
+ */
+export function maySell(can: (permission: "stock.sell" | "stock.view") => boolean): boolean {
+  return can("stock.sell") && can("stock.view");
+}
+
 /** The permission a kind of document needs: receiving goods is one job, correcting the books another. */
 export function permissionOfKind(kind: string): "stock.receive" | "stock.adjust" {
   return kind === "receipt" || kind === "supplier_return" ? "stock.receive" : "stock.adjust";

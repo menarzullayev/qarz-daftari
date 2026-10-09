@@ -228,6 +228,8 @@ export const uzPanel = {
   "activity.action.stock.document_changed": "Ombor hujjati qoralamasi o'zgartirildi",
   "activity.action.stock.document_posted": "Ombor hujjati o'tkazildi",
   "activity.action.stock.document_cancelled": "Ombor hujjati bekor qilindi",
+  "activity.action.stock.sale_recorded": "Naqd savdo yozildi",
+  "activity.action.stock.sale_cancelled": "Naqd savdo bekor qilindi",
   "activity.action.supplier.created": "Ta'minotchi qo'shildi",
   "activity.action.supplier.updated": "Ta'minotchi o'zgartirildi",
   "activity.action.supplier.archived": "Ta'minotchi arxivlandi",

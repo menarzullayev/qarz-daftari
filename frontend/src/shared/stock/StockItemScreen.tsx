@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 
 import { useI18n } from "../../i18n/I18nProvider";
 import { formatMoney } from "../format";
@@ -10,10 +10,10 @@ import { useMay } from "../workspace/context";
 import { errorText, Failure, FieldError, formatInstant, Loading, LoadMore } from "../workspace/parts";
 import { stockQtyText } from "../workspace/StockNotes";
 import { type ScanHost, MAX_BARCODES } from "./barcode";
-import { DOCUMENT_KIND_LABELS, Fact, kindText, labelOf, Listing, moneyOrNone, NONE, qtyWithUnit, useStock, useStockSettings } from "./parts";
+import { DOCUMENT_KIND_LABELS, Fact, kindText, labelOf, Listing, maySell, moneyOrNone, NONE, qtyWithUnit, useStock, useStockSettings } from "./parts";
 import { readCount } from "./quantity";
 import { ScanField } from "./ScanField";
-import type { ItemStockPatch, Movement, StockItem, StockSettings } from "./stockApi";
+import { type ItemStockPatch, type Movement, SALE_KIND, type StockItem, type StockSettings } from "./stockApi";
 import { OnHand } from "./StockScreen";
 
 /**
@@ -154,7 +154,9 @@ function ItemStockForm({
 /** Everything that changed how much of the item is on hand, newest first, a page at a time. */
 function Movements({ item, settings }: { item: StockItem; settings: StockSettings | null }) {
   const { t, language } = useI18n();
+  const can = useMay();
   const stock = useStock();
+  const sells = maySell(can);
   const { state, reload, loadMore } = usePagedList((cursor, signal) => stock.movements(item.id, cursor, signal), [stock, item.id]);
   if (state.status === "loading") {
     return <Loading />;
@@ -166,18 +168,28 @@ function Movements({ item, settings }: { item: StockItem; settings: StockSetting
     return <p className="state">{t("stock.moves.none")}</p>;
   }
   const what = (move: Movement) => {
-    const parts = [kindText(move.kind, "movement", t)];
+    const parts: ReactNode[] = [kindText(move.kind, "movement", t)];
     if (move.reason !== null) {
       parts.push(labelOf(settings?.writeOffReasons, move.reason, language));
     }
-    if (move.document !== null) {
+    if (move.document !== null && move.document.kind === SALE_KIND) {
+      // A sale for cash is no document of the documents' screens, whose routes do not answer for it: it
+      // is named as what it is, and leads to its own page for one who may open that.
+      const name = t("stock.sale.ref", { number: move.document.number });
+      parts.push(sells ? <Link to={`/stock/sales/${move.document.id}`}>{name}</Link> : name);
+    } else if (move.document !== null) {
       const kind = DOCUMENT_KIND_LABELS[move.document.kind as keyof typeof DOCUMENT_KIND_LABELS];
       parts.push(t("stock.doc.ref", { kind: kind ? t(kind) : move.document.kind, number: move.document.number }));
     }
     if (move.reversed) {
       parts.push(t("stock.moves.reversed"));
     }
-    return parts.join(" · ");
+    return parts.map((part, index) => (
+      <Fragment key={index}>
+        {index > 0 ? " · " : null}
+        {part}
+      </Fragment>
+    ));
   };
   const columns: Column<Movement>[] = [
     { id: "when", header: t("stock.col.when"), rowHeader: true, cell: (move) => formatInstant(move.createdAt, language) },

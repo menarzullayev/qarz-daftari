@@ -17,6 +17,8 @@ export const ru: RuCatalog = {
   "nav.stock": "Склад",
   "nav.stockDocuments": "Складские документы",
   "nav.suppliers": "Поставщики",
+  "nav.cashSale": "Продажа за наличные",
+  "nav.cashSales": "Продажи за наличные",
   "nav.network": "Партнёры",
   "nav.reminders": "Напоминания",
   "nav.reports": "Отчёты",

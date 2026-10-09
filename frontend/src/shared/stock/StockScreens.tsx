@@ -4,6 +4,8 @@ import type { StockView } from "../workspace/routes";
 import { CounterDocumentsScreen } from "./CounterDocuments";
 import { DocumentScreen, DocumentsScreen, NewDocumentScreen, ReceiptScreen } from "./DocumentScreens";
 import "./messages";
+import { SaleScreen } from "./SaleScreen";
+import { SalesScreen } from "./SalesScreen";
 import "./stock.css";
 import { StockItemScreen } from "./StockItemScreen";
 import { StockReportScreen } from "./StockReportScreen";
@@ -20,6 +22,10 @@ import { SupplierScreen, SuppliersScreen } from "./SupplierScreens";
  * stock ("stock.receive" or "stock.adjust" without "stock.view"). The items are not theirs to read, so
  * nothing of them is asked: the section's first screen is the list of documents, and an item's own
  * address is not a screen for them.
+ *
+ * A sale for cash and the list of such sales are the stock's screens too. They are for a member who
+ * holds "stock.sell" and "stock.view" both (`maySell`): the section itself opens by "stock.view", and
+ * the form finds items by it. Each of the two screens checks that itself and is nothing for anyone else.
  */
 export default function StockScreens({ view, office = false }: { view: StockView; office?: boolean }) {
   const can = useMay();
@@ -44,6 +50,13 @@ export default function StockScreens({ view, office = false }: { view: StockView
       return <CounterDocumentsScreen />;
     case "counterDocument":
       return <DocumentScreen key={view.documentId} documentId={view.documentId} counter />;
+    case "sell":
+      return <SaleScreen />;
+    // The list and one sale opened from it are one screen: the list stays loaded behind the sale, and
+    // says whether the member may take a sale back.
+    case "sales":
+    case "sale":
+      return <SalesScreen office={office} saleId={view.name === "sale" ? view.saleId : null} />;
     case "suppliers":
       return <SuppliersScreen />;
     case "supplier":

@@ -47,6 +47,10 @@ export type StockView =
   // The same documents at the counter: a list a phone can read, and one of them opened from it.
   | { name: "counterDocuments" }
   | { name: "counterDocument"; documentId: string }
+  // A sale for cash, without a customer: the counter's form, the day's sales, and one of them.
+  | { name: "sell" }
+  | { name: "sales" }
+  | { name: "sale"; saleId: string }
   | { name: "suppliers" }
   | { name: "supplier"; supplierId: string };
 
@@ -67,6 +71,7 @@ const ENTRY = new RegExp(`^/customers/(${ID})/(credit|payment)$`, "i");
 const STOCK_ITEM = new RegExp(`^/stock/items/(${ID})$`, "i");
 const STOCK_DOCUMENT = new RegExp(`^/stock-documents/(${ID})$`, "i");
 const COUNTER_DOCUMENT = new RegExp(`^/stock/documents/(${ID})$`, "i");
+const CASH_SALE = new RegExp(`^/stock/sales/(${ID})$`, "i");
 const NEW_STOCK_DOCUMENT = /^\/stock-documents\/new\/([a-z_]+)$/;
 const SUPPLIER = new RegExp(`^/suppliers/(${ID})$`, "i");
 const NETWORK_LINK = new RegExp(`^/network/links/(${ID})$`, "i");
@@ -172,6 +177,11 @@ function matchStockRoute(path: string): WorkspaceMatch | null {
     // documents section, and the quick receipt that leaves a draft is written under the stock too.
     case "/stock/documents":
       return stock({ name: "counterDocuments" }, "/stock", "nav.stockDocuments");
+    // Selling for cash is the counter's work with the stock: its screens are the stock section's.
+    case "/stock/sale":
+      return stock({ name: "sell" }, "/stock", "nav.cashSale");
+    case "/stock/sales":
+      return stock({ name: "sales" }, "/stock", "nav.cashSales");
     case "/stock-documents":
       return stock({ name: "documents" }, "/stock-documents", "nav.stockDocuments");
     case "/suppliers":
@@ -188,6 +198,10 @@ function matchStockRoute(path: string): WorkspaceMatch | null {
   const atCounter = COUNTER_DOCUMENT.exec(path);
   if (atCounter?.[1]) {
     return stock({ name: "counterDocument", documentId: atCounter[1] }, "/stock", "nav.stockDocuments");
+  }
+  const sale = CASH_SALE.exec(path);
+  if (sale?.[1]) {
+    return stock({ name: "sale", saleId: sale[1] }, "/stock", "nav.cashSales");
   }
   const kind = STOCK_DOCUMENT_KINDS.find((known) => known === NEW_STOCK_DOCUMENT.exec(path)?.[1]);
   if (kind) {

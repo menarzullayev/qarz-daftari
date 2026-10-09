@@ -2466,6 +2466,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shops/{shop_id}/stock/sales": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stock.Sales.List */
+        get: operations["stock_sales_list_api_v1_shops__shop_id__stock_sales_get"];
+        put?: never;
+        /** Stock.Sales.Create */
+        post: operations["stock_sales_create_api_v1_shops__shop_id__stock_sales_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/stock/sales/{sale_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stock.Sales.Read */
+        get: operations["stock_sales_read_api_v1_shops__shop_id__stock_sales__sale_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/stock/sales/{sale_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stock.Sales.Cancel */
+        post: operations["stock_sales_cancel_api_v1_shops__shop_id__stock_sales__sale_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/shops/{shop_id}/stock/settings": {
         parameters: {
             query?: never;
@@ -3676,6 +3728,32 @@ export interface components {
             as: string;
             /** Code */
             code: string;
+        };
+        /**
+         * SaleBody
+         * @description A sale for cash, without a customer: recorded and posted in one step.
+         */
+        SaleBody: {
+            /** Currency */
+            currency?: string | null;
+            /** Lines */
+            lines: components["schemas"]["SaleLineBody"][];
+            /** Method */
+            method?: string | null;
+            /** Note */
+            note?: string | null;
+        };
+        /** SaleLineBody */
+        SaleLineBody: {
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /** Price */
+            price?: number | null;
+            /** Qty */
+            qty: string;
         };
         /** SettingsPatch */
         SettingsPatch: {
@@ -10096,6 +10174,161 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_sales_list_api_v1_shops__shop_id__stock_sales_get: {
+        parameters: {
+            query?: {
+                day_from?: string | null;
+                day_to?: string | null;
+                item_id?: string | null;
+                seller_id?: string | null;
+                mine?: boolean;
+                status?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_sales_create_api_v1_shops__shop_id__stock_sales_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaleBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_sales_read_api_v1_shops__shop_id__stock_sales__sale_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shop_id: string;
+                sale_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_sales_cancel_api_v1_shops__shop_id__stock_sales__sale_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+                sale_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelBody"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

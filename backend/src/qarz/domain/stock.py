@@ -43,6 +43,7 @@ import re
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
+from qarz.domain.catalog import MAX_PRICE, MIN_PRICE
 from qarz.domain.goods import parse_qty
 
 QTY_PLACES = 3
@@ -119,6 +120,12 @@ DOCUMENT_KINDS = (DOC_RECEIPT, DOC_CUSTOMER_RETURN, DOC_SUPPLIER_RETURN, DOC_WRI
 # The kinds whose lines carry a price: what was paid for the goods, or what is given back for them.
 PRICED_KINDS = frozenset({DOC_RECEIPT, DOC_CUSTOMER_RETURN, DOC_SUPPLIER_RETURN})
 DRAFT, POSTED, CANCELLED = "draft", "posted", "cancelled"
+# A sale for cash, without a customer, is stored as a document too, but nobody writes it as one: it is
+# made at the counter in one step (`qarz.application.stock_sales`) and is never a draft. The routes of
+# the documents above do not know it.
+DOC_SALE = "sale"
+STORED_KINDS = (*DOCUMENT_KINDS, DOC_SALE)
+MAX_SALE_LINES = 100
 
 # --- barcodes -------------------------------------------------------------------------------------------
 
@@ -214,6 +221,31 @@ def money(amount: Decimal) -> int:
 def line_cost(qty: Decimal, cost: int) -> int:
     """What a line of a document comes to: quantity times unit cost, rounded half up once."""
     return money(qty * cost)
+
+
+def sale_price(value: object) -> int:
+    """What one unit is sold for at the counter, in so'm: a price of the catalogue's bounds."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("must be a whole number of UZS")
+    if not MIN_PRICE <= value <= MAX_PRICE:
+        raise ValueError(f"a whole amount between {MIN_PRICE} and {MAX_PRICE} UZS")
+    return value
+
+
+def sale_line_total(qty: Decimal, price: int) -> int:
+    """What a line of a cash sale comes to. A line that rounds to nothing is no sale."""
+    total = line_cost(qty, price)
+    if total < 1:
+        raise ValueError("the line comes to less than one so'm")
+    return total
+
+
+def sale_margin(sale_total: int, cost_total: int | None, cost_currency: str | None) -> int | None:
+    """What a sold line earned over its cost. None when the cost is unknown or kept in dollars: amounts
+    of two currencies are never subtracted."""
+    if cost_total is None or cost_currency != "UZS":
+        return None
+    return sale_total - cost_total
 
 
 # --- the level and what a movement does to it -------------------------------------------------------------

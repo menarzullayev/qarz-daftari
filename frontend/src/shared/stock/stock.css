@@ -96,3 +96,59 @@
 .combo .state {
   margin: var(--qd-space-2) 0 0;
 }
+
+/*
+ * One line of a cash sale: the quantity between its two steps, then this sale's price. On a narrow
+ * screen, or at a large text size, the price goes under the quantity instead of squeezing it.
+ */
+.sale-line {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+  align-items: center;
+  gap: var(--qd-space-2);
+  max-width: 36rem;
+  margin-top: var(--qd-space-1);
+}
+
+.sale-qty {
+  display: flex;
+  align-items: center;
+  gap: var(--qd-space-1);
+  min-width: 0;
+}
+
+.sale-qty .button {
+  flex: none;
+  font: var(--qd-type-heading);
+}
+
+.sale-qty__input {
+  flex: 1 1 3rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* What the sale comes to: the name on the left, the amount on the right. */
+.sale-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--qd-space-2);
+}
+
+.sale-total strong {
+  font: var(--qd-type-amount);
+}
+
+/* "Naqd savdo № 7" is one name: the number stays with its sign. */
+.sale-ref {
+  white-space: nowrap;
+}
+
+/* What a sale was of, under its name in a list drawn as rows. */
+.sale-goods {
+  display: block;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}

@@ -228,6 +228,8 @@ export const enPanel: PartialCatalog<typeof uzPanel, EnPlural> = {
   "activity.action.stock.document_changed": "Stock document draft changed",
   "activity.action.stock.document_posted": "Stock document posted",
   "activity.action.stock.document_cancelled": "Stock document cancelled",
+  "activity.action.stock.sale_recorded": "Cash sale recorded",
+  "activity.action.stock.sale_cancelled": "Cash sale cancelled",
   "activity.action.supplier.created": "Supplier added",
   "activity.action.supplier.updated": "Supplier changed",
   "activity.action.supplier.archived": "Supplier archived",

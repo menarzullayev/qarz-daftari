@@ -2,7 +2,8 @@
 
 Five more sheets after the ones every workbook has: what is on hand, every movement, the documents, the
 suppliers with what they are owed, and their accounts. They are written only for a shop that has any of
-it, so a shop that never used the stock gets exactly the workbook it always got. An export is the
+it, so a shop that never used the stock gets exactly the workbook it always got. A sixth, the sales for
+cash a line at a time, is written for a shop that made one. An export is the
 owner's copy of everything recorded, so nothing here depends on the platform switch, and the cost
 figures are in it: only managers and owners may ask for an export.
 
@@ -143,6 +144,8 @@ async def write_stock(book: Workbook, storage: Storage, shop_id: UUID, lang: str
                 )
             )
 
+    await _write_cash_sales(book, storage, shop_id, lang, until)
+
     people = book.sheet(word(lang, "sheet_suppliers"), header(lang, "suppliers"), (28, 16, 30, 12, 16, 14, 38))
     for status in (suppliers.ACTIVE, suppliers.ARCHIVED):
         after_name: tuple[str, UUID] | None = None
@@ -198,5 +201,45 @@ async def write_stock(book: Workbook, storage: Storage, shop_id: UUID, lang: str
                     _document(lang, entry.document_kind, entry.document_number),
                     str(entry.entry_id),
                     str(entry.supplier_id),
+                )
+            )
+
+
+async def _write_cash_sales(book: Workbook, storage: Storage, shop_id: UUID, lang: str, until: datetime) -> None:
+    """The sales for cash, a row for each line sold, cancelled sales included and marked. The sheet is
+    written only for a shop that made such a sale, so every other workbook is the one it was."""
+    sheet = None
+    after: tuple[datetime, UUID, int] | None = None
+    while True:
+        async with storage.tenant(shop_id) as session:
+            rows = await session.export_sale_lines(until=until, after=after, limit=PAGE)
+        if not rows:
+            break
+        if sheet is None:
+            sheet = book.sheet(
+                word(lang, "sheet_cash_sales"),
+                header(lang, "cash_sales"),
+                (8, 17, 14, 14, 28, 9, 12, 14, 14, 14, 10, 14, 30, 30, 38),
+            )
+        after = (rows[-1].document.created_at, rows[-1].document.document_id, rows[-1].line.line_no)
+        for row in rows:
+            sale, line = row.document, row.line
+            sheet.append(
+                (
+                    sale.number,
+                    _local(sale.created_at),
+                    word(lang, f"document_{sale.status}", sale.status),
+                    None if sale.method is None else word(lang, f"cash_{sale.method}", sale.method),
+                    row.item_name,
+                    row.unit,
+                    line.qty,
+                    line.unit_cost,
+                    line.line_total,
+                    _amount(row.cost_currency, row.cost_total),
+                    row.cost_currency if row.cost_total is not None else None,
+                    sale.total,
+                    sale.note,
+                    sale.cancel_reason,
+                    str(sale.document_id),
                 )
             )

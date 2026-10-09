@@ -55,11 +55,15 @@ DEBT_REPAID = "debt_repaid"
 # customer for goods returned. Their totals are then exactly what the stock's documents say.
 GOODS_PURCHASE = "goods_purchase"
 CUSTOMER_REFUND = "customer_refund"
+# The stock's one category of income: what a sale for cash, without a customer, brought in. Apart from
+# the shop's own "Savdo", which stays for what a shop writes by hand, so its total is what the sales say.
+CASH_SALE = "cash_sale"
 # Each is named, in the shop's language when it is made, by the text `cash_category_<system key>` of
 # `qarz.application.export_texts`.
-STOCK_CATEGORIES: tuple[str, ...] = (GOODS_PURCHASE, CUSTOMER_REFUND)
+STOCK_CATEGORIES: tuple[str, ...] = (GOODS_PURCHASE, CUSTOMER_REFUND, CASH_SALE)
+STOCK_INCOME = frozenset({CASH_SALE})
 # The categories only the service writes under: a person records nothing there by hand.
-_WRITTEN_BY_THE_SERVICE = frozenset({DEBT_REPAID, GOODS_PURCHASE, CUSTOMER_REFUND})
+_WRITTEN_BY_THE_SERVICE = frozenset({DEBT_REPAID, GOODS_PURCHASE, CUSTOMER_REFUND, CASH_SALE})
 
 
 class Direction(StrEnum):

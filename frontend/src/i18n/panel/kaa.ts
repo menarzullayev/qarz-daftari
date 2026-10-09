@@ -224,6 +224,8 @@ export const kaaPanel: PartialCatalog<typeof uzPanel> = {
   "activity.action.stock.document_changed": "Sklad hújjetiniń qaralaması ózgertildi",
   "activity.action.stock.document_posted": "Sklad hújjeti ótkerildi",
   "activity.action.stock.document_cancelled": "Sklad hújjeti biykarlandı",
+  "activity.action.stock.sale_recorded": "Naq sawda jazıldı",
+  "activity.action.stock.sale_cancelled": "Naq sawda biykarlandı",
   "activity.action.supplier.created": "Támiyinlewshi qosıldı",
   "activity.action.supplier.updated": "Támiyinlewshi ózgertildi",
   "activity.action.supplier.archived": "Támiyinlewshi arxivlendi",

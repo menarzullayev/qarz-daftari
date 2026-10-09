@@ -62,6 +62,16 @@ function staffScreens(customerId: string): string[] {
 }
 
 /**
+ * The two screens of a sale for cash. They are the stock's, which exists only while the platform has it
+ * switched on: journey 10 does that, so in a run of the whole suite they are walked, and on a stack
+ * where the stock is still off they are no screens and are left out.
+ */
+function saleScreens(): string[] {
+  const stockOn = sql("SELECT value::text FROM platform_setting WHERE key = 'stock_on'")[0]?.[0] === "true";
+  return stockOn ? ["/stock/sale", "/stock/sales"] : [];
+}
+
+/**
  * What the page asked of the API while it was walked. The API allows one person a burst of 60 requests
  * and two a second after that (interface/rate_limit.py); a walk that asks faster is answered "too many"
  * and would then be measuring the screens' failure notices, not the screens.
@@ -273,7 +283,7 @@ test("the Mini App: no screen is wider than its window at any width, and the mai
   await expect(page.locator("main dl dd").nth(0)).toHaveText("9 906 000 so'm");
 
   // "More" is the phone's own screen: the sections that do not fit the tab bar.
-  await walk(page, "/app/", [...staffScreens(customerId), "/more"], traffic, {
+  await walk(page, "/app/", [...staffScreens(customerId), ...saleScreens(), "/more"], traffic, {
     screens: ["/", "/customers", `/customers/${customerId}`, `/customers/${customerId}/credit`, "/customers/new"],
     // Twice the text at a tablet's width is the width WCAG's reflow asks for (640px and up).
     strict: [WIDTHS[1]],
@@ -293,7 +303,7 @@ test("the panel: no screen is wider than its window at any width, a phone's incl
   await expect(page.locator("main dl dd").nth(0)).toHaveText("9 906 000 so'm");
 
   // The owner's back office is the panel's own: the staff and what was done in the shop.
-  await walk(page, "/panel/", [...staffScreens(customerId), "/staff", "/activity"], traffic, {
+  await walk(page, "/panel/", [...staffScreens(customerId), ...saleScreens(), "/staff", "/activity"], traffic, {
     screens: ["/", "/customers", `/customers/${customerId}`, `/customers/${customerId}/credit`, "/reports", "/staff"],
     strict: [WIDTHS[2], WIDTHS[1]],
     printed: [],

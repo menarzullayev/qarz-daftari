@@ -266,6 +266,33 @@ CATALOGUE: tuple[Permission, ...] = (
             "stock.documents.cancel",
         ),
     ),
+    # A sale for cash, without a customer: the counter's main task, so every member holds it. Finding the
+    # item is part of selling it, so the list, the barcode and the settings are open to it as to
+    # `stock.view`; there is nothing finer to ask inside those.
+    Permission(
+        "stock.sell",
+        "stock",
+        "Naqd savdo yozish (mijozsiz sotuv)",
+        "Записывать продажу за наличные (без клиента)",
+        _ALL,
+        (
+            "stock.sales.create",
+            "stock.sales.list",
+            "stock.sales.read",
+            "stock.settings.read",
+            "stock.items.list",
+            "stock.lookup",
+        ),
+    ),
+    # Taking a sale back puts goods on the shelf and takes money out of the till.
+    Permission(
+        "stock.sell.cancel",
+        "stock",
+        "Naqd savdoni bekor qilish",
+        "Отменять продажу за наличные",
+        _MANAGERS,
+        ("stock.sales.cancel",),
+    ),
     # What goods were bought for, and the margin: absent from every answer of a member without it.
     Permission(
         "stock.costs.view",
@@ -633,6 +660,8 @@ STOCK_VIEW = "stock.view"
 STOCK_RECEIVE = "stock.receive"
 STOCK_ADJUST = "stock.adjust"
 STOCK_COSTS_VIEW = "stock.costs.view"
+STOCK_SELL = "stock.sell"
+STOCK_SELL_CANCEL = "stock.sell.cancel"
 SUPPLIERS_VIEW = "suppliers.view"
 SUPPLIERS_MANAGE = "suppliers.manage"
 SUPPLIERS_PAY = "suppliers.pay"

@@ -141,7 +141,7 @@ def test_the_units_of_a_counted_item_are_the_domains_list(owner: psycopg.Connect
     ).fetchone()
     assert definition is not None
     assert set(re.findall(r"'([a-z0-9]+)'::text", definition[0])) == stock.UNIT_KEYS
-    for name, wanted in (("stock_movement", stock.MOVEMENT_KINDS), ("stock_document", stock.DOCUMENT_KINDS)):
+    for name, wanted in (("stock_movement", stock.MOVEMENT_KINDS), ("stock_document", stock.STORED_KINDS)):
         row = owner.execute(
             "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = %s", (f"{name}_kind_check",)
         ).fetchone()
@@ -472,20 +472,22 @@ _STATEMENTS: dict[str, tuple[str, dict[str, Any]]] = {
         {"document": uuid.uuid4()},
     ),
     "the documents, newest first": (
-        "SELECT d.id FROM stock_document d ORDER BY d.created_at DESC, d.id DESC LIMIT :limit",
+        "SELECT d.id FROM stock_document d WHERE d.kind <> 'sale' ORDER BY d.created_at DESC, d.id DESC LIMIT :limit",
         {"limit": 51},
     ),
     "the documents of a kind": (
-        "SELECT d.id FROM stock_document d WHERE d.kind = :kind ORDER BY d.created_at DESC, d.id DESC LIMIT :limit",
+        "SELECT d.id FROM stock_document d WHERE d.kind <> 'sale' AND d.kind = :kind "
+        "ORDER BY d.created_at DESC, d.id DESC LIMIT :limit",
         {"kind": "receipt", "limit": 51},
     ),
     "the documents of a supplier": (
-        "SELECT d.id FROM stock_document d WHERE d.supplier_id = :supplier "
+        "SELECT d.id FROM stock_document d WHERE d.kind <> 'sale' AND d.supplier_id = :supplier "
         "ORDER BY d.created_at DESC, d.id DESC LIMIT :limit",
         {"supplier": uuid.uuid4(), "limit": 51},
     ),
     "the documents in a state": (
-        "SELECT d.id FROM stock_document d WHERE d.status = :status ORDER BY d.created_at DESC, d.id DESC LIMIT :limit",
+        "SELECT d.id FROM stock_document d WHERE d.kind <> 'sale' AND d.status = :status "
+        "ORDER BY d.created_at DESC, d.id DESC LIMIT :limit",
         {"status": "draft", "limit": 51},
     ),
     "the lines of a document": (
@@ -542,9 +544,11 @@ _INDEX_OF: dict[str, tuple[str, ...]] = {
     "the documents of a kind": ("stock_document_by_kind", "stock_document_recent"),
     # Narrowed to one supplier: that supplier's documents, or the shop's newest read until the page is full.
     "the documents of a supplier": ("stock_document_supplier", "stock_document_recent"),
-    # A state has an index of its own (migration 0047), and only that one will do: through the shop's
-    # newest documents a rare state is a walk over all of them (the two tests after the next one).
-    "the documents in a state": ("stock_document_by_status",),
+    # A state has an index of its own (migration 0047). On a table as empty as this test's the planner
+    # holds it and the shop's newest documents to cost the same, now that both leave the sales out
+    # (migration 0049), and takes either; that the state's own index is what serves a shop with documents
+    # is measured on four hundred of them by the two tests after the next one.
+    "the documents in a state": ("stock_document_by_status", "stock_document_recent"),
     "the lines of a document": ("stock_document_line_pkey",),
     "the suppliers by name": ("supplier_shop_id_name_norm_key",),
     # By supplier, or the shop's few balances by currency: both are read by key.
@@ -598,8 +602,10 @@ def test_the_plan_check_catches_a_read_that_has_no_index_of_its_own(as_app: AppS
     assert not any(index in plan for index in ("stock_movement_item", "stock_movement_entry", "stock_movement_doc"))
 
 
+# As the storage layer asks it: a cash sale is never in a list of documents (migration 0049).
 _IN_A_STATE = (
-    "SELECT d.id FROM stock_document d WHERE d.status = :status ORDER BY d.created_at DESC, d.id DESC LIMIT :limit"
+    "SELECT d.id FROM stock_document d WHERE d.kind <> 'sale' AND d.status = :status "
+    "ORDER BY d.created_at DESC, d.id DESC LIMIT :limit"
 )
 
 

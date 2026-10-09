@@ -336,6 +336,10 @@ def _supplier_entry_id(world: World) -> uuid.UUID:
     return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-supplier-entry:{world.shop_a}")
 
 
+def _sale_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-cash-sale:{world.shop_a}")
+
+
 def _stock(owner: psycopg.Connection, world: World) -> None:
     """The platform switch `stock_on`, and in shop A what the stock's calls need: "Non" counted and with
     a barcode, a supplier with one payment on their account, and a stocktake still in draft. With the
@@ -368,6 +372,12 @@ def _stock(owner: psycopg.Connection, world: World) -> None:
             json.dumps({"lines": [{"item_id": str(world.catalog_item_a), "qty": "3", "unit_cost": None}]}),
             world.manager_a_membership,
         ),
+    )
+    # A cash sale that stands, for the calls that read one and take one back.
+    owner.execute(
+        "INSERT INTO stock_document (id, shop_id, kind, number, doc_date, status, total, paid, method, created_by, "
+        "  posted_by, posted_at) VALUES (%s, %s, 'sale', 1, current_date, 'posted', 4000, 4000, 'cash', %s, %s, now())",
+        (_sale_id(world), world.shop_a, world.seller_a_membership, world.seller_a_membership),
     )
 
 
@@ -677,6 +687,18 @@ CALLS: dict[str, Call] = {
     "stock.documents.cancel": Call(
         "POST",
         lambda w, shop: f"/api/v1/shops/{shop}/stock/documents/{_stock_document_id(w)}/cancel",
+        {"reason": "Suite uchun"},
+        True,
+        prepare=_stock,
+    ),
+    "stock.sales.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/stock/sales", prepare=_stock),
+    "stock.sales.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/stock/sales/{_sale_id(w)}", prepare=_stock),
+    "stock.sales.create": Call(
+        "POST", lambda w, shop: f"/api/v1/shops/{shop}/stock/sales", None, True, ok_status=201, prepare=_stock
+    ),
+    "stock.sales.cancel": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/stock/sales/{_sale_id(w)}/cancel",
         {"reason": "Suite uchun"},
         True,
         prepare=_stock,
@@ -1266,6 +1288,10 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "stock.documents.update": {Role.MANAGER, Role.OWNER},
     "stock.documents.post": {Role.MANAGER, Role.OWNER},
     "stock.documents.cancel": {Role.MANAGER, Role.OWNER},
+    "stock.sales.create": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "stock.sales.list": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "stock.sales.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "stock.sales.cancel": {Role.MANAGER, Role.OWNER},
     "suppliers.list": {Role.MANAGER, Role.OWNER},
     "suppliers.read": {Role.MANAGER, Role.OWNER},
     "suppliers.create": {Role.MANAGER, Role.OWNER},
@@ -1368,6 +1394,8 @@ def _body(world: World, op_name: str, call: Call) -> dict[str, Any] | None:
         return {"into": str(world.catalog_item_a)}
     if op_name in ("stock.documents.create", "stock.documents.update"):
         return _stocktake(world)
+    if op_name == "stock.sales.create":
+        return {"lines": [{"item_id": str(world.catalog_item_a), "qty": "1"}]}
     if op_name == "network.links.request":
         return {"code": _net_code(world), "as": "buyer"}
     if op_name == "network.links.attach":

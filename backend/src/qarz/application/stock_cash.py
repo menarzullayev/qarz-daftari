@@ -39,7 +39,8 @@ def clean_method(method: str | None) -> Method | None:
 
 
 async def _category(session: TenantSession, system_key: str, now: datetime) -> CashCategoryRecord:
-    """The stock's own category of the cash book, made the first time money goes out under it."""
+    """The stock's own category of the cash book, made the first time money moves under it."""
+    direction = Direction.INCOME if system_key in cash.STOCK_INCOME else Direction.EXPENSE
     await ensure_categories(session, now)
     found = await session.cash_system_category(system_key)
     if found is not None:
@@ -56,10 +57,8 @@ async def _category(session: TenantSession, system_key: str, now: datetime) -> C
     for attempt in range(1, 50):
         # A shop may have named a category of its own exactly so: the stock's then carries a number.
         shown, norm = cash.category_name(wanted if attempt == 1 else f"{wanted} {attempt}")
-        if await session.cash_category_named(Direction.EXPENSE.value, norm) is None:
-            await session.add_cash_categories(
-                [NewCashCategory(uuid4(), Direction.EXPENSE.value, shown, norm, system_key)], now
-            )
+        if await session.cash_category_named(direction.value, norm) is None:
+            await session.add_cash_categories([NewCashCategory(uuid4(), direction.value, shown, norm, system_key)], now)
             break
     found = await session.cash_system_category(system_key)
     assert found is not None
@@ -117,3 +116,36 @@ async def cancel_expense(
         reason=reason,
         now=now,
     )
+
+
+async def record_sale_income(
+    session: TenantSession,
+    actor: Membership,
+    *,
+    amount: int,
+    method: Method,
+    note: str | None,
+    now: datetime,
+    stock_document_id: UUID,
+) -> bool:
+    """Write the cash-book income of a sale for cash, in so'm. False, and nothing written, while the cash
+    book is off: the sale and its total are then on the document alone.
+
+    The database holds the entry to its sale: its shop, its whole total, its method (migration 0049). It
+    is cancelled with the sale by `cancel_expense`, which asks neither the direction nor the switch.
+    """
+    if not await switched_on(session):
+        return False
+    category = await _category(session, cash.CASH_SALE, now)
+    await session.add_sale_cash_entry(
+        entry_id=uuid4(),
+        method=method.value,
+        amount=amount,
+        category_id=category.category_id,
+        note=note,
+        day=tashkent_date(now),
+        author_id=actor.membership_id,
+        stock_document_id=stock_document_id,
+        now=now,
+    )
+    return True

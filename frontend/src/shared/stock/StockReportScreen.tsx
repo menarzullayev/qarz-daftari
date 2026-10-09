@@ -9,7 +9,8 @@ import { NotFoundScreen } from "../screens";
 import { useMay } from "../workspace/context";
 import { Failure, formatInstant, Loading } from "../workspace/parts";
 import { Listing, moneyOrNone, NONE, qtyWithUnit, useStock } from "./parts";
-import type { StockItem, StockReport } from "./stockApi";
+import { SALE_METHOD_LABELS } from "./saleParts";
+import type { SoldItem, StockItem, StockReport } from "./stockApi";
 
 /** The periods "not sold" and "sold below cost" may look back over, in days. */
 export const REPORT_DAYS = [7, 30, 90, 180, 365] as const;
@@ -75,6 +76,16 @@ export function StockReportScreen() {
     { id: "sale", header: t("stock.report.soldFor"), numeric: true, cell: (sale) => formatMoney(sale.saleTotal, language) },
     { id: "cost", header: t("stock.col.cost"), numeric: true, cell: (sale) => formatMoney(sale.costTotal, language) },
     { id: "loss", header: t("stock.report.loss"), numeric: true, cell: (sale) => formatMoney(sale.loss, language) },
+  ];
+  // What sold, by item: on credit and for cash together, and how much of it was for cash.
+  const sold: Column<SoldItem>[] = [
+    { id: "item", header: t("stock.col.item"), rowHeader: true, cell: (row) => itemLink({ id: row.itemId, name: row.name }) },
+    { id: "qty", header: t("stock.col.qty"), numeric: true, cell: (row) => qtyWithUnit(row.qty, row.unit) },
+    { id: "revenue", header: t("stock.report.sold.revenue"), numeric: true, cell: (row) => formatMoney(row.revenue, language) },
+    { id: "cost", header: t("stock.col.cost"), numeric: true, cell: (row) => formatMoney(row.cost, language) },
+    { id: "margin", header: t("stock.sale.col.margin"), numeric: true, cell: (row) => formatMoney(row.margin, language) },
+    { id: "cashQty", header: t("stock.report.sold.cashQty"), numeric: true, cell: (row) => qtyWithUnit(row.cashQty, row.unit) },
+    { id: "cashRevenue", header: t("stock.report.sold.cashRevenue"), numeric: true, cell: (row) => formatMoney(row.cashRevenue, language) },
   ];
   const low: Column<StockItem>[] = [
     { id: "item", header: t("stock.col.item"), rowHeader: true, cell: itemLink },
@@ -152,6 +163,32 @@ export function StockReportScreen() {
         />
       )}
       {report.soldBelowCost.more ? <p className="hint">{t("stock.report.more")}</p> : null}
+
+      <h3 className="section-label">{t("stock.report.sold", { count: report.days })}</h3>
+      {report.sold.items.length === 0 ? (
+        <p className="state">{t("stock.report.sold.none")}</p>
+      ) : (
+        <Listing caption={t("stock.report.sold", { count: report.days })} columns={sold} items={report.sold.items} rowKey={(row) => row.itemId} />
+      )}
+      {report.sold.more ? <p className="hint">{t("stock.report.more")}</p> : null}
+
+      <h3 className="section-label">{t("stock.report.cash", { count: report.days })}</h3>
+      <dl className="figures">
+        <div className="figure">
+          <dt>{t("stock.sales.count")}</dt>
+          <dd>{report.cashSales.count}</dd>
+        </div>
+        <div className="figure">
+          <dt>{t("stock.sales.total")}</dt>
+          <dd className="money">{formatMoney(report.cashSales.total, language)}</dd>
+        </div>
+        {report.cashSales.byMethod.map((paid) => (
+          <div key={paid.method} className="figure">
+            <dt>{t(SALE_METHOD_LABELS[paid.method])}</dt>
+            <dd className="money">{formatMoney(paid.total, language)}</dd>
+          </div>
+        ))}
+      </dl>
 
       <h3 className="section-label">{t("stock.report.low")}</h3>
       {report.lowStock.items.length === 0 ? (
