@@ -2,12 +2,11 @@ import { useEffect, useState } from "react";
 
 import { useI18n } from "../../i18n/I18nProvider";
 import type { ApiError, Customer, WaitingPerson } from "../api";
-import { formatMoney } from "../format";
 import { useLoad, usePagedList, useSubmit } from "../hooks";
 import { Link } from "../router";
 import { useMay, useWorkspace } from "./context";
 import { SEARCH_DELAY_MS } from "./CustomersScreen";
-import { Confirm, Empty, errorText, Failure, formatInstant, Loading, LoadMore } from "./parts";
+import { Confirm, Empty, errorText, Failure, formatInstant, Loading, LoadMore, owedText } from "./parts";
 
 const MAX_QUERY_LENGTH = 80;
 const PICK_PAGE = 10;
@@ -79,7 +78,7 @@ function AttachPanel({
               <li key={customer.id}>
                 <button type="button" className="pick" onClick={() => setTarget(customer)}>
                   <span className="row__name">{customer.displayName}</span>
-                  <span className="row__meta">{formatMoney(customer.balance, language)}</span>
+                  <span className="row__meta">{owedText(customer.balance, language, t)}</span>
                 </button>
               </li>
             ))}

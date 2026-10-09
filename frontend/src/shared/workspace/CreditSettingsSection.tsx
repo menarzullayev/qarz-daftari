@@ -35,6 +35,8 @@ function ReadOnly({ settings }: { settings: CreditSettings }) {
         <dt>{t("credit.settings.sellers.label")}</dt>
         <dd>{t(settings.sellersMayExceed ? "credit.settings.sellers.yes" : "credit.settings.sellers.no")}</dd>
       </dl>
+      {/* Said only where it is so: a shop that does not accept advances reads as it always did. */}
+      {settings.acceptAdvances ? <p className="hint">{t("credit.settings.advances.state")}</p> : null}
     </>
   );
 }
@@ -42,12 +44,16 @@ function ReadOnly({ settings }: { settings: CreditSettings }) {
 const limitText = (limit: number | null, currency: Currency = "UZS") => (limit === null ? "" : amountInput(limit, currency));
 
 function CreditForm({ settings }: { settings: CreditSettings }) {
-  const { api } = useWorkspace();
+  const { api, role } = useWorkspace();
   const { t, language } = useI18n();
+  // Whether the shop accepts advances is the owner's alone to change: the server refuses anyone else,
+  // whatever the permission matrix says, so the switch is offered by the role.
+  const owner = role === "owner";
   // What the server holds now: the loaded settings, then whatever the last save answered.
   const [saved, setSaved] = useState(settings);
   const [text, setText] = useState(limitText(settings.defaultLimit));
   const [sellersMayExceed, setSellersMayExceed] = useState(settings.sellersMayExceed);
+  const [acceptAdvances, setAcceptAdvances] = useState(settings.acceptAdvances === true);
   const [problem, setProblem] = useState<string | null>(null);
   // The default dollar limit: a field of its own, there only in a shop that works in dollars.
   const [usdText, setUsdText] = useState(limitText(settings.usd?.defaultLimit ?? null, "USD"));
@@ -58,6 +64,7 @@ function CreditForm({ settings }: { settings: CreditSettings }) {
       setText(limitText(updated.defaultLimit));
       setUsdText(limitText(updated.usd?.defaultLimit ?? null, "USD"));
       setSellersMayExceed(updated.sellersMayExceed);
+      setAcceptAdvances(updated.acceptAdvances === true);
     }),
   );
 
@@ -91,6 +98,9 @@ function CreditForm({ settings }: { settings: CreditSettings }) {
     }
     if (sellersMayExceed !== saved.sellersMayExceed) {
       patch.sellersMayExceed = sellersMayExceed;
+    }
+    if (owner && acceptAdvances !== (saved.acceptAdvances === true)) {
+      patch.acceptAdvances = acceptAdvances;
     }
     if (Object.keys(patch).length > 0) {
       submit(patch);
@@ -182,6 +192,27 @@ function CreditForm({ settings }: { settings: CreditSettings }) {
         />
         <span>{t("credit.settings.sellersMayExceed")}</span>
       </label>
+      {owner ? (
+        <div className="field">
+          <label className="choice">
+            <input
+              type="checkbox"
+              checked={acceptAdvances}
+              aria-describedby="credit-advances-hint"
+              onChange={(event) => {
+                setAcceptAdvances(event.target.checked);
+                touched();
+              }}
+            />
+            <span>{t("credit.settings.advances")}</span>
+          </label>
+          <p className="field__hint" id="credit-advances-hint">
+            {t("credit.settings.advances.hint")}
+          </p>
+        </div>
+      ) : saved.acceptAdvances ? (
+        <p className="hint">{t("credit.settings.advances.state")}</p>
+      ) : null}
       <p className="actions">
         <button type="submit" className="button button--primary" disabled={pending}>
           {pending ? t("state.saving") : t("credit.settings.save")}
@@ -194,7 +225,8 @@ function CreditForm({ settings }: { settings: CreditSettings }) {
 /**
  * The shop's rules for selling on credit (REQ-044): a default limit for customers who have none of
  * their own, and whether a seller may sell above a limit. A manager or an owner changes them; a seller
- * only reads them.
+ * only reads them. Whether the shop accepts advances (a customer may pay more than they owe) is the
+ * owner's alone: anyone else is told of it only while it is on.
  */
 export function CreditSettingsSection() {
   const { api } = useWorkspace();

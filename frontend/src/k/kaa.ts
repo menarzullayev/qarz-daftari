@@ -23,7 +23,7 @@ export const kaa: Partial<Record<MessageKey, string>> = {
   "shop.phone": "Dúkan telefonı: ",
   "balance.owed": "Qarızıńız",
   "balance.none": "Qarızıńız joq",
-  "balance.credit": "Artıq tólemińiz",
+  "balance.credit": "Sizde aldınnan tólem bar",
   "overdue": "Sonnan múddeti ótkeni: {amount}",
   "dueToday": "Búgin tóleniwi kerek: {amount}",
   "entries.title": "Jazbalar",

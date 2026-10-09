@@ -157,11 +157,13 @@ _SIGNED = "CASE WHEN l.kind IN ('credit', 'opening') THEN l.amount ELSE -l.amoun
 _RECORDED_IN = "{row}.created_at >= :start AND {row}.created_at < :end"
 
 # One statement, so the balances and the movements between them come from one snapshot and reconcile:
-# start + credit + opening - payments = end. `inside` separates the period from what came before it.
+# (owed - held) at the start + credit + opening - payments = (owed - held) at the end, where "owed" is
+# what the customers who owe add up to and "held" what the customers in credit do: the two are kept
+# apart, customer by customer, and neither is ever taken from the other (INV-3). `inside` separates the
+# period from what came before it. The entries are read once, into `l`, for both halves.
 _PERIOD_TOTALS = (
-    "SELECT t.*, r.reversal_count, r.reversal_amount, c.new_customers, d.disputes_opened FROM (SELECT "
-    f"  coalesce(sum({_SIGNED}) FILTER (WHERE NOT l.inside), 0) AS outstanding_start, "
-    f"  coalesce(sum({_SIGNED}), 0) AS outstanding_end, "
+    f"WITH l AS (SELECT e.*, e.created_at >= :start AS inside FROM ({_LIVE_RECORDED}) e WHERE e.created_at < :end) "
+    "SELECT t.*, b.*, r.reversal_count, r.reversal_amount, c.new_customers, d.disputes_opened FROM (SELECT "
     "  coalesce(sum(l.amount) FILTER (WHERE l.inside AND l.kind = 'credit'), 0) AS credit_amount, "
     "  count(*) FILTER (WHERE l.inside AND l.kind = 'credit') AS credit_count, "
     "  count(DISTINCT l.customer_id) FILTER (WHERE l.inside AND l.kind = 'credit') AS credit_customers, "
@@ -170,7 +172,13 @@ _PERIOD_TOTALS = (
     "  count(DISTINCT l.customer_id) FILTER (WHERE l.inside AND l.kind = 'payment') AS payment_customers, "
     "  coalesce(sum(l.amount) FILTER (WHERE l.inside AND l.kind = 'opening'), 0) AS opening_amount, "
     "  count(*) FILTER (WHERE l.inside AND l.kind = 'opening') AS opening_count "
-    f"  FROM (SELECT e.*, e.created_at >= :start AS inside FROM ({_LIVE_RECORDED}) e WHERE e.created_at < :end) l) t, "
+    "  FROM l) t, "
+    "  (SELECT coalesce(sum(greatest(p.at_start, 0)), 0) AS outstanding_start, "
+    "          coalesce(sum(greatest(-p.at_start, 0)), 0) AS advances_start, "
+    "          coalesce(sum(greatest(p.at_end, 0)), 0) AS outstanding_end, "
+    "          coalesce(sum(greatest(-p.at_end, 0)), 0) AS advances_end "
+    f"     FROM (SELECT coalesce(sum({_SIGNED}) FILTER (WHERE NOT l.inside), 0) AS at_start, "
+    f"                  sum({_SIGNED}) AS at_end FROM l GROUP BY l.customer_id) p) b, "
     "  (SELECT count(*) AS reversal_count, coalesce(sum(r.amount), 0) AS reversal_amount FROM ledger_entry r "
     f"    WHERE r.kind = 'reversal' AND r.currency = :currency AND {_RECORDED_IN.format(row='r')}) r, "
     f"  (SELECT count(*) AS new_customers FROM customer c WHERE {_RECORDED_IN.format(row='c')}) c, "
@@ -529,6 +537,78 @@ class PgTenantSession(CashStatements, StockQueries, NetworkQueries):
             text("UPDATE shop SET usd_on = :on WHERE id = :shop_id"), {"on": on, "shop_id": self._shop_id}
         )
 
+    async def accepts_advances(self, *, lock: bool = False) -> bool:
+        # An entry that takes a book below zero holds the row shared until it commits, and turning the
+        # setting off updates the row first: so the two cannot pass each other (set_accept_advances).
+        row = (
+            await self._conn.execute(
+                text("SELECT accept_advances FROM shop WHERE id = :shop_id" + (" FOR SHARE" if lock else "")),
+                {"shop_id": self._shop_id},
+            )
+        ).first()
+        return row is not None and bool(row.accept_advances)
+
+    async def set_accept_advances(self, on: bool) -> bool:
+        await self._conn.execute(text("SELECT 1 FROM shop WHERE id = :shop_id FOR UPDATE"), {"shop_id": self._shop_id})
+        if not on and await self.advances_stand():
+            return False
+        await self._conn.execute(
+            text("UPDATE shop SET accept_advances = :on WHERE id = :shop_id"), {"on": on, "shop_id": self._shop_id}
+        )
+        return True
+
+    async def advances_stand(self) -> bool:
+        row = (await self._conn.execute(text("SELECT EXISTS (SELECT 1 FROM customer_advance) AS any"))).one()
+        return bool(row.any)
+
+    async def advance_totals(self, currency: Currency = Currency.UZS) -> tuple[int, int]:
+        row = (
+            await self._conn.execute(
+                # Anonymized customers stay in: the money is still held, under the anonymous label.
+                text(
+                    "SELECT coalesce(sum(amount), 0)::bigint AS amount, count(*) AS customers "
+                    "FROM customer_advance WHERE currency = :currency"
+                ),
+                {"currency": currency.value},
+            )
+        ).one()
+        return int(row.amount), int(row.customers)
+
+    async def advances_page(
+        self, *, before: tuple[int, UUID] | None, limit: int, currency: Currency = Currency.UZS
+    ) -> list[tuple[CustomerRecord, int]]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    f"SELECT {_CUSTOMER_COLUMNS}, a.amount FROM customer_advance a "
+                    "JOIN customer c ON c.id = a.customer_id "
+                    "WHERE a.currency = :currency AND c.status <> 'anonymized' "
+                    "  AND (CAST(:before_amount AS bigint) IS NULL "
+                    "       OR (a.amount, c.id) < (CAST(:before_amount AS bigint), CAST(:before_id AS uuid))) "
+                    "ORDER BY a.amount DESC, c.id DESC LIMIT :limit"
+                ),
+                {
+                    "currency": currency.value,
+                    "before_amount": before[0] if before else None,
+                    "before_id": before[1] if before else None,
+                    "limit": limit,
+                },
+            )
+        ).all()
+        return [(self._customer(row), int(row.amount)) for row in rows]
+
+    async def advances_of(self, customer_ids: list[UUID], currency: Currency = Currency.UZS) -> dict[UUID, int]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT customer_id, amount FROM customer_advance "
+                    "WHERE customer_id = ANY(CAST(:ids AS uuid[])) AND currency = :currency"
+                ),
+                {"ids": customer_ids, "currency": currency.value},
+            )
+        ).all()
+        return {row.customer_id: int(row.amount) for row in rows}
+
     async def dollars_recorded(self) -> bool:
         row = (
             await self._conn.execute(
@@ -541,7 +621,13 @@ class PgTenantSession(CashStatements, StockQueries, NetworkQueries):
 
     async def dollars_owed(self) -> bool:
         row = (
-            await self._conn.execute(text("SELECT EXISTS (SELECT 1 FROM open_debt WHERE currency = 'USD') AS owed"))
+            await self._conn.execute(
+                # Owed either way: a customer's dollar debt, or a dollar advance the shop holds of theirs.
+                text(
+                    "SELECT EXISTS (SELECT 1 FROM open_debt WHERE currency = 'USD') "
+                    "OR EXISTS (SELECT 1 FROM customer_advance WHERE currency = 'USD') AS owed"
+                )
+            )
         ).one()
         return bool(row.owed)
 
@@ -1262,6 +1348,8 @@ class PgTenantSession(CashStatements, StockQueries, NetworkQueries):
         return PeriodTotals(
             outstanding_start=int(row.outstanding_start),
             outstanding_end=int(row.outstanding_end),
+            advances_start=int(row.advances_start),
+            advances_end=int(row.advances_end),
             credit_amount=int(row.credit_amount),
             credit_count=int(row.credit_count),
             credit_customers=int(row.credit_customers),
@@ -2780,8 +2868,8 @@ class PgTenantSession(CashStatements, StockQueries, NetworkQueries):
         row = (
             await self._conn.execute(
                 text(
-                    "SELECT default_credit_limit, sellers_may_exceed, default_credit_limit_usd FROM shop "
-                    "WHERE status <> 'erased'"
+                    "SELECT default_credit_limit, sellers_may_exceed, default_credit_limit_usd, accept_advances "
+                    "FROM shop WHERE status <> 'erased'"
                 )
             )
         ).one()
@@ -2789,6 +2877,7 @@ class PgTenantSession(CashStatements, StockQueries, NetworkQueries):
             None if row.default_credit_limit is None else int(row.default_credit_limit),
             bool(row.sellers_may_exceed),
             None if row.default_credit_limit_usd is None else int(row.default_credit_limit_usd),
+            bool(row.accept_advances),
         )
 
     async def update_credit_settings(

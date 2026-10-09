@@ -29,7 +29,7 @@ export const uzCyrl: Partial<Record<MessageKey, string>> = {
   "shop.phone": "Дўкон телефони: ",
   "balance.owed": "Қарзингиз",
   "balance.none": "Қарзингиз йўқ",
-  "balance.credit": "Ортиқча тўловингиз",
+  "balance.credit": "Сиз ҳақдорсиз (олдиндан тўлов)",
   "overdue": "Шундан муддати ўтгани: {amount}",
   "dueToday": "Бугун тўланиши керак: {amount}",
   "entries.title": "Ёзувлар",

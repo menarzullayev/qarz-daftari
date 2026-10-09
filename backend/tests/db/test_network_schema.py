@@ -730,6 +730,9 @@ class Books:
             )  # fmt: skip
         self.sugar = self.item(buyer, "kg")
         self.seq = 0
+        # These books are written row by row, and some write the payment before the sale it belongs to:
+        # for a moment the customer is in credit, which the database allows only where advances are accepted.
+        owner.execute("UPDATE shop SET accept_advances = true WHERE id = %s", (supplier.shop_id,))
 
     def item(self, shop: Shop, unit: str, *, tracked: bool = True) -> uuid.UUID:
         item = uuid.uuid4()

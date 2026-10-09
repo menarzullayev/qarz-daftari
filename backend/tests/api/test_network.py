@@ -1408,3 +1408,46 @@ def test_the_partners_customer_row_counts_toward_the_free_plan(
         )
     )
     assert accepted["link"]["counterpart"] == {"kind": "customer", "id": str(world.settled_customer_a)}
+
+
+def test_a_buyers_payment_beyond_its_debt_is_confirmed_only_by_a_supplier_that_accepts_advances(
+    client: TestClient, world: World, on: None, owner: psycopg.Connection
+) -> None:
+    """The founder's decision of 2026-10-10. On the buyer's side an account with a supplier may always
+    stand in the shop's favour; on the supplier's the same money is a customer's advance, which that
+    shop accepts or does not."""
+    d = owing(client, world, owner)
+    a, b = d.shops
+    customer = owner.execute("SELECT customer_id FROM network_link WHERE shop_id = %s", (b,)).fetchone()
+    assert customer is not None
+    over = TOTAL + 30_000
+    payment = ok(pay(client, d.buyer, d.link, over), 201)
+    assert owed_to_supplier(owner, a) == {"UZS": -30_000}
+    path = f"{net(b)}/payments/{payment['id']}"
+
+    # The supplier does not accept advances: refused in the ledger's own words, and nothing moves.
+    before = snapshot(owner, a, b)
+    refused(write(client, world.owner_b, "POST", f"{path}/confirm"), 409, "EXCEEDS_BALANCE")
+    assert snapshot(owner, a, b) == before
+    assert ledger(owner, b, customer[0]) == [("credit", TOTAL)]
+    assert ok(read(client, world.owner_b, path))["status"] == "awaiting", "it waits: to be declined, or accepted later"
+    # Nor may the supplier record such a payment itself from the link.
+    refused(pay(client, d.supplier, d.link, over), 409, "EXCEEDS_BALANCE")
+
+    # Its owner turns advances on: the same confirmation lands as the linked customer's advance.
+    done = write(client, world.owner_b, "PATCH", f"/api/v1/shops/{b}/credit-settings", {"accept_advances": True})
+    assert done.status_code == 200, done.text
+    confirmed = ok(write(client, world.owner_b, "POST", f"{path}/confirm"))
+    assert (confirmed["status"], confirmed["in_own_books"]) == ("confirmed", True)
+    assert ledger(owner, b, customer[0]) == [("credit", TOTAL), ("payment", over)]
+    assert owner.execute(
+        "SELECT currency, amount FROM customer_advance WHERE shop_id = %s AND customer_id = %s", (b, customer[0])
+    ).fetchall() == [("UZS", 30_000)]
+    # The reconciliation shows it on both sides, and the two agree.
+    for side in (d.buyer, d.supplier):
+        row = reconciled(client, side, d.link)
+        assert (row["own_balance"], row["agreed"]["balance"], row["difference"]) == (-30_000, -30_000, 0)
+    assert mismatches(owner, a, b) == []
+    assert owner.execute("SELECT * FROM customer_advance_mismatches(NULL)").fetchall() == []
+    # Still not from the supplier's own hand through the link: that path does not ask, so it does not accept.
+    refused(pay(client, d.supplier, d.link, 1_000), 409, "EXCEEDS_BALANCE")

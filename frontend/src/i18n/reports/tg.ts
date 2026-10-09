@@ -21,6 +21,8 @@ export const tgReports: PartialCatalog<typeof uzReports> = {
 
   "reports.outstanding.start": "Қарз дар аввали давра",
   "reports.outstanding.end": "Қарз дар охири давра",
+  "reports.advances.start": "Авансҳо дар аввали давра",
+  "reports.advances.end": "Авансҳо дар охири давра",
   "reports.netChange": "Тағйирот дар давра",
   "reports.credit": "Насияи додашуда",
   "reports.payments": "Баргардонда шуд (пардохтҳо)",
@@ -35,6 +37,9 @@ export const tgReports: PartialCatalog<typeof uzReports> = {
   "reports.equation.hint":
     "Қарз дар аввали давра + насияи додашуда + қарзи аввала − пардохтҳо = қарз дар охири давра",
   "reports.equation.line": "{start} + {credit} + {opening} − {payments} = {end}",
+  "reports.equation.line.advances":
+    "({start} − {advancesStart}) + {credit} + {opening} − {payments} = ({end} − {advancesEnd})",
+  "reports.equation.hint.advances": "Авансҳои мизоҷон аз қарз тарҳ карда ҳисоб мешаванд: (қарз − авансҳо).",
   "reports.equation.mismatch":
     "Ҳисоб мувофиқ наомад: тарафи чап {computed}, қарз дар охири давра бошад {end}. Ба хадамоти дастгирӣ хабар диҳед.",
 

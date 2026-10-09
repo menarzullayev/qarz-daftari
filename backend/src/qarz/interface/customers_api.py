@@ -87,6 +87,10 @@ class NewEntry(BaseModel):
     # while it is off the field does not exist, and a request that carries it is refused like any other
     # request with an unknown field.
     method: str | None = Field(default=None, max_length=16)
+    # The author's yes to "this payment is more than the debt: keep the rest as the customer's advance".
+    # Without it such a payment is answered 409 `ADVANCE_NOT_CONFIRMED` with `debt` and `advance` in a
+    # shop that accepts advances, and 409 `EXCEEDS_BALANCE` in one that does not, with it or without.
+    advance: bool = Field(default=False, strict=True)
 
 
 class NewLines(BaseModel):
@@ -190,6 +194,7 @@ def add_customer_routes(
             lines=None if body.lines is None else [line.request() for line in body.lines],
             currency=body.currency,
             method=body.method,
+            advance=body.advance,
         )
 
     @app.post("/api/v1/shops/{shop_id}/entries/{entry_id}/lines", name=ADD_LINES.name, status_code=201)
@@ -241,7 +246,12 @@ def add_customer_routes(
         limit: Annotated[int, Query()] = 50,
         # Whose debts are listed, largest first: so'm, or "USD" in a shop that works in dollars.
         currency: Annotated[str | None, Query(max_length=8)] = None,
+        # The other side instead: customers the shop holds an advance of, largest first. Each item's
+        # `balance` is then below zero and nothing of it is overdue; `overdue` does not apply.
+        in_credit: Annotated[bool, Query()] = False,
     ) -> dict[str, Any]:
+        if in_credit:
+            return await ledger.in_credit(user_id, shop_id, cursor=cursor, limit=limit, currency=currency)
         return await ledger.debtors(
             user_id, shop_id, only_overdue=overdue, cursor=cursor, limit=limit, currency=currency
         )

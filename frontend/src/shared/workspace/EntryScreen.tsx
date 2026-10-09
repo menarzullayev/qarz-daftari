@@ -1,8 +1,17 @@
 import { useState, type FormEvent } from "react";
 
 import { useI18n, type Translate } from "../../i18n/I18nProvider";
-import { PAYMENT_METHODS } from "../api";
-import type { ApiError, ChosenPromise, CustomerDetail, EntryKind, NewEntry, PaymentMethod, RecordedEntry } from "../api";
+import { advanceAsked, PAYMENT_METHODS, toApiError } from "../api";
+import type {
+  AdvanceFigures,
+  ApiError,
+  ChosenPromise,
+  CustomerDetail,
+  EntryKind,
+  NewEntry,
+  PaymentMethod,
+  RecordedEntry,
+} from "../api";
 import { type CalendarDay, formatCalendarDay, formatMoney, tashkentDay } from "../format";
 import { linesSumProblem, MAX_LINES_SUM, MIN_LINES_SUM } from "../goods";
 import { useLoad, useSubmit } from "../hooks";
@@ -33,7 +42,7 @@ import { NotFoundScreen } from "../screens";
 import { useMay, useWorkspace } from "./context";
 import { exceedsLimit, limitIn, refusedLimit } from "./creditRules";
 import { type DraftLine, GoodsEditor, GoodsList, readDrafts } from "./GoodsEditor";
-import { CurrencyToggle, errorText, Failure, FieldError, Loading, Money } from "./parts";
+import { BalanceLine, Confirm, CurrencyToggle, errorText, Failure, FieldError, Loading } from "./parts";
 import { StockRefusal, StockWarnings } from "./StockNotes";
 
 export const MAX_NOTE_LENGTH = 200;
@@ -143,12 +152,7 @@ function Recorded({ saved, today, onAnother }: { saved: Saved; today: CalendarDa
           amount: formatMoney(entry.amount, language, currency),
         })}
       </p>
-      <p className="balance">
-        <span>{t("customer.balance.new")}</span>{" "}
-        <strong>
-          <Money uzs={customer.balance} usd={customer.usd?.balance} />
-        </strong>
-      </p>
+      <BalanceLine label={t("customer.balance.new")} uzs={customer.balance} usd={customer.usd?.balance} />
       {/* The server saved the sale above the limit and says so to its author (REQ-044). */}
       {limitWarning ? (
         <p className="row__warning">
@@ -231,11 +235,21 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
   );
   const currency: Currency = dollars === undefined ? "UZS" : chosen;
   const inDollars = currency === "USD";
-  const { state, submit } = useSubmit(
+  // A payment larger than the debt, in a shop that accepts advances: the server asked before saving it.
+  // The payment as it was sent is kept, so "yes" sends that one again with the advance said.
+  const [asked, setAsked] = useState<{ entry: NewEntry; figures: AdvanceFigures } | null>(null);
+  const { state, submit, reset } = useSubmit(
     (entry: NewEntry, key): Promise<Saved> =>
-      api
-        .recordEntry(customer.id, entry, key)
-        .then((recorded) => ({ recorded, offerPromise: entry.kind === "credit" && entry.promisedDate === null })),
+      api.recordEntry(customer.id, entry, key).then(
+        (recorded) => ({ recorded, offerPromise: entry.kind === "credit" && entry.promisedDate === null }),
+        (error: unknown) => {
+          const figures = advanceAsked(toApiError(error));
+          if (figures !== null) {
+            setAsked({ entry, figures });
+          }
+          throw error;
+        },
+      ),
   );
 
   const today = tashkentDay(now());
@@ -299,6 +313,34 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
   };
 
   const failure = state.status === "error" ? state.error : null;
+  if (asked !== null) {
+    const money = (amount: number) => formatMoney(amount, language, currencyOf(asked.entry));
+    const { debt, over, advance } = asked.figures;
+    return (
+      <>
+        <BalanceLine label={t("customer.balance")} uzs={customer.balance} usd={dollars?.balance} />
+        <Confirm
+          question={
+            <>
+              <p>{t("advance.confirm", { over: money(over), debt: money(debt) })}</p>
+              {advance === over ? null : <p>{t("advance.confirm.total", { advance: money(advance) })}</p>}
+            </>
+          }
+          yes={t("advance.confirm.yes")}
+          no={t("action.cancel")}
+          pending={state.status === "pending"}
+          // The question itself came as a refusal; only what the confirmed payment met is an error here.
+          error={failure !== null && advanceAsked(failure) === null ? failure : null}
+          // The same payment with the advance said: another body, so `useSubmit` gives it a new key.
+          onYes={() => submit({ ...asked.entry, advance: true })}
+          onNo={() => {
+            setAsked(null);
+            reset();
+          }}
+        />
+      </>
+    );
+  }
   const refused = refusedFields(failure, t, currency);
   const refusedAt = refusedLimit(failure);
   const shown: FieldErrors = {
@@ -311,12 +353,7 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
 
   return (
     <form className="form" onSubmit={onSubmit} noValidate>
-      <p className="balance">
-        <span>{t("customer.balance")}</span>{" "}
-        <strong>
-          <Money uzs={customer.balance} usd={dollars?.balance} />
-        </strong>
-      </p>
+      <BalanceLine label={t("customer.balance")} uzs={customer.balance} usd={dollars?.balance} />
       {dollars === undefined ? null : (
         <CurrencyToggle
           value={currency}

@@ -9,7 +9,7 @@ from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
-from qarz.application.chat_texts import day, money, say
+from qarz.application.chat_texts import day, money, owed, say
 from qarz.application.currencies import UZS, balance_in, currency_of
 from qarz.application.ports import TenantSession
 from qarz.domain.money import Currency
@@ -47,7 +47,7 @@ async def _send(
     settings = await session.shop_settings()
     shop = "" if settings is None else settings.name
     amount = money(lang, int(values.pop("amount")), currency)
-    balance = money(lang, int(values.pop("balance")), currency)
+    balance = owed(lang, int(values.pop("balance")), currency)
     lines = values.pop("lines", None)
     if lines is not None:
         values["goods"] = _goods(lang, lines)

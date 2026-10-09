@@ -10,7 +10,7 @@ import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
 import { useMay, useWorkspace } from "./context";
 import { amountMessage } from "./EntryScreen";
-import { Empty, errorText, Failure, FieldError, formatInstant, Loading, ReasonForm } from "./parts";
+import { Empty, errorText, Failure, FieldError, formatInstant, Loading, owedText, ReasonForm } from "./parts";
 
 type Panel = { kind: "accept" | "decline"; id: string } | null;
 
@@ -89,7 +89,7 @@ function AcceptForm({
   const [text, setText] = useState(inDollars ? amountInput(notice.amount, currency) : String(notice.amount));
   const [problem, setProblem] = useState<string | null>(null);
   const id = `accept-${notice.id}`;
-  const exceeds = t("notices.accept.exceeds", { balance: formatMoney(notice.customerBalance, language, currency) });
+  const exceeds = t("notices.accept.exceeds", { balance: owedText(notice.customerBalance, language, t, currency) });
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -226,9 +226,10 @@ function OpenNotices() {
               <span className="row__amount">{formatMoney(notice.amount, language, currencyOf(notice))}</span>
             </Link>
             <p className="row__note">
-              {t("notices.row.stated", {
+              {/* A customer in credit has no debt to name: the words of the advance stand in its place. */}
+              {t(notice.customerBalance < 0 ? "notices.row.stated.inCredit" : "notices.row.stated", {
                 amount: formatMoney(notice.amount, language, currencyOf(notice)),
-                balance: formatMoney(notice.customerBalance, language, currencyOf(notice)),
+                balance: owedText(notice.customerBalance, language, t, currencyOf(notice)),
               })}
             </p>
             <p className="row__meta">

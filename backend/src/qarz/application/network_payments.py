@@ -28,7 +28,7 @@ from qarz.application.authorization import require_permission
 from qarz.application.chat_texts import say
 from qarz.application.customers import MAX_PAGE, decode_cursor, encode_cursor, require_viewable, require_writable
 from qarz.application.errors import NotFound, ValidationFailed
-from qarz.application.ledger_service import append_entry_in, reverse_entry_in
+from qarz.application.ledger_service import Advance, append_entry_in, reverse_entry_in
 from qarz.application.network import (
     NetworkState,
     ensure_counterpart_in,
@@ -97,8 +97,14 @@ async def post_own_in(
     note: str | None,
     method: Method | None,
     now: datetime,
+    advance: Advance = Advance.REFUSE,
 ) -> UUID:
-    """Write a payment of the link into this shop's own books, by the path that side always uses."""
+    """Write a payment of the link into this shop's own books, by the path that side always uses.
+
+    `advance` matters on the supplier's side only, where the payment lowers a customer's debt: what to
+    do when it is more than the buyer owes (INV-3). On the buyer's side an account with a supplier
+    has always been allowed to stand in the shop's favour (BR-72).
+    """
     if link.role == network.BUYER:
         supplier = await session.get_supplier(counterpart_id, for_update=True)
         if supplier is None:
@@ -127,6 +133,7 @@ async def post_own_in(
         now=now,
         currency=Currency(currency),
         method=method,
+        advance=advance,
     )
     return UUID(written["entry"]["id"])
 
@@ -323,6 +330,11 @@ class PaymentService:
                         note=payment.note,
                         method=paid_by,
                         now=now,
+                        # The buyer named the amount and this member confirms it: that is the answer
+                        # to "more than they owe?". It lands as the linked customer's advance where
+                        # this shop accepts advances, and is refused with EXCEEDS_BALANCE where it does
+                        # not, as before; the payment then stays awaiting, to be declined with a reason.
+                        advance=Advance.ACCEPT,
                     )
                 with refusals():
                     await session.network_decide_payment(

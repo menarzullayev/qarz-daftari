@@ -3022,6 +3022,8 @@ export interface components {
         };
         /** CreditPatch */
         CreditPatch: {
+            /** Accept Advances */
+            accept_advances?: boolean | null;
             /** Default Credit Limit */
             default_credit_limit?: number | null;
             /** Default Credit Limit Usd */
@@ -3445,6 +3447,11 @@ export interface components {
         };
         /** NewEntry */
         NewEntry: {
+            /**
+             * Advance
+             * @default false
+             */
+            advance: boolean;
             /** Amount */
             amount?: number | null;
             /** Currency */
@@ -3549,6 +3556,7 @@ export interface components {
         };
         /** Overview */
         Overview: {
+            advances?: components["schemas"]["OverviewAdvances"] | null;
             /** Debtors */
             debtors: number;
             /** Due Today */
@@ -3558,8 +3566,16 @@ export interface components {
             overdue: components["schemas"]["OverviewOverdue"];
             usd?: components["schemas"]["OverviewFigures"] | null;
         };
+        /** OverviewAdvances */
+        OverviewAdvances: {
+            /** Amount */
+            amount: number;
+            /** Customers */
+            customers: number;
+        };
         /** OverviewFigures */
         OverviewFigures: {
+            advances?: components["schemas"]["OverviewAdvances"] | null;
             /** Debtors */
             debtors: number;
             /** Due Today */
@@ -8662,6 +8678,7 @@ export interface operations {
                 cursor?: string | null;
                 limit?: number;
                 currency?: string | null;
+                in_credit?: boolean;
             };
             header?: never;
             path: {

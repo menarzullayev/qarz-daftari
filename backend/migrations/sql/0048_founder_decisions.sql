@@ -1,3 +1,170 @@
+-- Three decisions of the founder (2026-10-10). The first and the second change the database; the third
+-- (switching the free plan off is previewed and announced) needs nothing here.
+
+-- =====================================================================================================
+-- Decision 1: an advance is accepted
+-- =====================================================================================================
+--
+-- A customer may pay more than they owe. The excess is their advance: the balance of that currency's
+-- book stands below zero until later credit sales use it up (INV-3 as rewritten). It is the shop's
+-- choice, off by default and changed by the owner, so a shop that never takes advances keeps the
+-- refusal that catches a mistyped payment.
+--
+-- Nothing is stored about an advance in the ledger itself: it is what the payments exceed the debts by.
+-- The oldest-first allocation of 0026/0041 (`open_debts_of`) already gives a debt recorded after such a
+-- payment no unpaid part until the debts outgrow the payments, so `open_debt` is right as it is. What is
+-- new is the other side, kept the same way and for the same reason (an overview must not add up every
+-- entry of a shop): one row per customer and currency in credit, rewritten with the customer's open
+-- debts whenever an entry of theirs is added.
+
+ALTER TABLE shop ADD COLUMN accept_advances boolean NOT NULL DEFAULT false;
+
+CREATE TABLE customer_advance (
+  customer_id uuid NOT NULL REFERENCES customer(id),
+  currency    text NOT NULL CONSTRAINT customer_advance_currency CHECK (currency IN ('UZS', 'USD')),
+  shop_id     uuid NOT NULL REFERENCES shop(id),
+  amount      bigint NOT NULL CHECK (amount > 0),   -- what the payments exceed the debts by, in minor units
+  PRIMARY KEY (customer_id, currency)
+);
+CREATE INDEX customer_advance_shop ON customer_advance (shop_id, currency);
+
+-- Read by the application; written only by the function below, which runs with its owner's rights.
+REVOKE ALL ON customer_advance FROM PUBLIC;
+GRANT SELECT ON customer_advance TO qd_app;
+ALTER TABLE customer_advance ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customer_advance FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant ON customer_advance
+  USING (shop_id = nullif(current_setting('qd.shop_id', true), '')::uuid)
+  WITH CHECK (shop_id = nullif(current_setting('qd.shop_id', true), '')::uuid);
+
+-- What the ledger says each of the given customers is in credit by, per currency. The balance of 0041:
+-- debts minus payments among the entries that stand; a reversal is neither.
+CREATE FUNCTION customer_advances_of(p_customers uuid[])
+RETURNS TABLE (shop_id uuid, customer_id uuid, currency text, amount bigint)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $$
+  SELECT e.shop_id, e.customer_id, e.currency,
+         (-sum(CASE WHEN e.kind IN ('credit', 'opening') THEN e.amount ELSE -e.amount END))::bigint
+    FROM ledger_entry e
+   WHERE e.customer_id = ANY (p_customers) AND e.kind <> 'reversal'
+     AND NOT EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id)
+   GROUP BY e.shop_id, e.customer_id, e.currency
+  HAVING sum(CASE WHEN e.kind IN ('credit', 'opening') THEN e.amount ELSE -e.amount END) < 0;
+$$;
+REVOKE ALL ON FUNCTION customer_advances_of(uuid[]) FROM PUBLIC;
+
+-- The refresh of 0041 with the advances beside the open debts: both from the same entries, in the same
+-- statement of the same transaction, so a reader never sees one without the other.
+CREATE OR REPLACE FUNCTION refresh_open_debts(p_customers uuid[]) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $$
+BEGIN
+  DELETE FROM open_debt d WHERE d.customer_id = ANY (p_customers);
+  INSERT INTO open_debt (shop_id, customer_id, entry_id, currency, remaining, promised_date)
+  SELECT o.shop_id, o.customer_id, o.entry_id, o.currency, o.remaining, o.promised_date
+    FROM open_debts_of(p_customers) o;
+  DELETE FROM customer_advance a WHERE a.customer_id = ANY (p_customers);
+  INSERT INTO customer_advance (shop_id, customer_id, currency, amount)
+  SELECT o.shop_id, o.customer_id, o.currency, o.amount FROM customer_advances_of(p_customers) o;
+END $$;
+
+-- INV-3, held by the database for every writer: after entries are added, none of the customers they
+-- touched is in credit in a shop that does not accept advances. The application refuses such an entry
+-- first and by name (EXCEEDS_BALANCE, WOULD_GO_NEGATIVE); this is what stops a writer that did not ask.
+-- Only here, after entries: the backfill below and a change of a promised date add nothing to a book.
+CREATE OR REPLACE FUNCTION open_debt_after_entries() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $$
+DECLARE
+  touched uuid[] := array(SELECT DISTINCT i.customer_id FROM inserted i);
+BEGIN
+  PERFORM refresh_open_debts(touched);
+  IF EXISTS (SELECT 1 FROM customer_advance a JOIN shop s ON s.id = a.shop_id
+              WHERE a.customer_id = ANY (touched) AND NOT s.accept_advances) THEN
+    RAISE EXCEPTION 'a balance goes below zero only in a shop that accepts advances'
+      USING ERRCODE = 'check_violation', CONSTRAINT = 'ledger_advance_accepted';
+  END IF;
+  RETURN NULL;
+END $$;
+
+-- The same rule from the other side: a shop stops accepting advances only when none stands. The
+-- application says so first (ADVANCES_STAND); a payment that is making an advance holds the shop's row
+-- shared until it commits, so the two cannot pass each other.
+CREATE FUNCTION shop_advances_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM customer_advance a WHERE a.shop_id = NEW.id) THEN
+    RAISE EXCEPTION 'advances stand in this shop: it cannot stop accepting them'
+      USING ERRCODE = 'check_violation', CONSTRAINT = 'shop_advances_stand';
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION shop_advances_guard() FROM PUBLIC;
+
+CREATE TRIGGER shop_advances_guard
+  BEFORE UPDATE OF accept_advances ON shop
+  FOR EACH ROW WHEN (OLD.accept_advances AND NOT NEW.accept_advances)
+  EXECUTE FUNCTION shop_advances_guard();
+
+-- Where the stored advances and the ledger differ, for one shop or for all (NULL). Empty when all is
+-- well. Closed to every role, like `open_debt_mismatches`.
+CREATE FUNCTION customer_advance_mismatches(p_shop uuid)
+RETURNS TABLE (customer_id uuid, currency text, stored_amount bigint, ledger_amount bigint)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $$
+  WITH ledger AS (
+    SELECT e.shop_id, e.customer_id, e.currency,
+           (-sum(CASE WHEN e.kind IN ('credit', 'opening') THEN e.amount ELSE -e.amount END))::bigint AS amount
+      FROM ledger_entry e
+     WHERE (p_shop IS NULL OR e.shop_id = p_shop) AND e.kind <> 'reversal'
+       AND NOT EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id)
+     GROUP BY e.shop_id, e.customer_id, e.currency
+    HAVING sum(CASE WHEN e.kind IN ('credit', 'opening') THEN e.amount ELSE -e.amount END) < 0)
+  SELECT coalesce(s.customer_id, l.customer_id), coalesce(s.currency, l.currency), s.amount, l.amount
+    FROM (SELECT * FROM customer_advance a WHERE p_shop IS NULL OR a.shop_id = p_shop) s
+    FULL JOIN ledger l ON l.customer_id = s.customer_id AND l.currency = s.currency
+   WHERE s.customer_id IS NULL OR l.customer_id IS NULL OR s.amount <> l.amount OR s.shop_id <> l.shop_id;
+$$;
+REVOKE ALL ON FUNCTION customer_advance_mismatches(uuid) FROM PUBLIC;
+
+-- The worker's nightly count (0035) now counts both kept figures of the customer ledger: a difference
+-- in either is the same alarm. Still a number and nothing else, under the same name and right.
+CREATE OR REPLACE FUNCTION open_debt_mismatch_count()
+RETURNS bigint
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT (SELECT count(*) FROM open_debt_mismatches(NULL)) + (SELECT count(*) FROM customer_advance_mismatches(NULL));
+$$;
+
+-- Everything recorded so far. No account is below zero today (the application refused it), so this
+-- writes no row; it is here so that the table is right whatever it finds.
+INSERT INTO customer_advance (shop_id, customer_id, currency, amount)
+SELECT o.shop_id, o.customer_id, o.currency, o.amount
+  FROM customer_advances_of(array(SELECT c.id FROM customer c)) o;
+
+-- Erasing a shop erases its stored advances too, and its tombstone does not accept advances. The
+-- function is not written out again here: two other migrations of these days touch what is around
+-- it, and a copy of its hundred lines would silently undo whichever of them ran first. The two lines
+-- are added to the function as it stands, and the migration fails if it could not add them.
+DO $$
+DECLARE
+  body text := pg_get_functiondef('erase_shop(uuid)'::regprocedure);
+  open_debts constant text := 'DELETE FROM open_debt WHERE shop_id = p_shop_id;';
+  tombstone constant text := 'stock_refuse_negative = false';
+BEGIN
+  IF position(open_debts IN body) = 0 OR position(tombstone IN body) = 0 THEN
+    RAISE EXCEPTION 'erase_shop is not written as migration 0048 expects';
+  END IF;
+  body := replace(body, open_debts, open_debts || E'\n  DELETE FROM customer_advance WHERE shop_id = p_shop_id;');
+  body := replace(body, tombstone, tombstone || ', accept_advances = false');
+  EXECUTE body;
+END $$;
+
+-- =====================================================================================================
 -- Decision 2: a delivery note whose issuer has left is posted in the owner's name
 --
 -- When the buyer confirms a delivery note, the supplier's sale is written with the authority of the note

@@ -143,6 +143,14 @@ UZ = {
         "Faqat summani yozing. So'mda: 50000. Dollarda summadan keyin $ belgisini qo'ying: 50$ yoki 50.25$"
     ),
     "two_amounts": "{first} va {second}",
+    "in_credit": "{zero} (oldindan to'langan: {amount})",
+    "advance_confirm": (
+        "{shop}\n{name}: to'lov {amount}\nQarzi: {debt}\nTo'lov qarzdan {over} ko'p. Ortiqchasi "
+        "mijozning oldindan to'lovi (avans) bo'lib qoladi va keyingi nasiyalar shundan "
+        "qoplanadi.\nShunday yozilsinmi?"
+    ),
+    "advance_yes": "✅ Ha, avans bo'lib qolsin",
+    "ADVANCE_TOO_LARGE": "Oldindan to'lov juda katta: bitta mijozning avansi bitta yozuv chegarasidan oshmaydi.",
     "PROMISE_BEFORE_SALE": "Muddat savdo kunidan oldin bo'lishi mumkin emas.",
     "PROMISE_TOO_FAR": "Muddat savdo kunidan ko'pi bilan 365 kun keyin bo'lishi mumkin.",
     "SUBSCRIPTION_LIMITED": "Obuna tugagan: yangi nasiya yozilmaydi. To'lov qabul qilish ishlayveradi. /obuna",
@@ -582,6 +590,13 @@ RU = {
         "Напишите только сумму. В сумах: 50000. В долларах поставьте знак $ после суммы: 50$ или 50.25$"
     ),
     "two_amounts": "{first} и {second}",
+    "in_credit": "{zero} (предоплата: {amount})",
+    "advance_confirm": (
+        "{shop}\n{name}: оплата {amount}\nДолг: {debt}\nОплата больше долга на {over}. Остаток останется "
+        "предоплатой (авансом) клиента и пойдёт в счёт следующих продаж в долг.\nЗаписать так?"
+    ),
+    "advance_yes": "✅ Да, оставить авансом",
+    "ADVANCE_TOO_LARGE": "Предоплата слишком велика: аванс одного клиента не может превышать предел одной записи.",
     "PROMISE_BEFORE_SALE": "Срок не может быть раньше дня продажи.",
     "PROMISE_TOO_FAR": "Срок может быть не позже чем через 365 дней после продажи.",
     "SUBSCRIPTION_LIMITED": "Подписка истекла: новые продажи в долг недоступны. Приём оплат работает. /obuna",
@@ -939,6 +954,18 @@ def money(lang: str, amount: int, currency: Currency = Currency.UZS) -> str:
     return format_money(currency, amount, lang)
 
 
+def owed(lang: str, balance: int, currency: Currency = Currency.UZS) -> str:
+    """A customer's balance as a message states it under the word "debt".
+
+    What they owe; or, for a customer in credit, that they owe nothing and what they have paid in
+    advance beside it: "0 so'm (oldindan to'langan: 5 000 so'm)". Never an amount with a minus sign: a
+    reader takes that for a mistake, and the sign alone does not say whose money it is.
+    """
+    if balance >= 0:
+        return money(lang, balance, currency)
+    return say(lang, "in_credit", zero=money(lang, 0, currency), amount=money(lang, -balance, currency))
+
+
 def both(lang: str, amount: int, dollars: int | None) -> str:
     """What is owed in so'm and in dollars, side by side and never added: "45 000 so'm va 12.50 $".
 
@@ -946,9 +973,9 @@ def both(lang: str, amount: int, dollars: int | None) -> str:
     always was. Of the two, an amount of zero is left out when the other is not.
     """
     if not dollars:
-        return money(lang, amount)
-    in_dollars = money(lang, dollars, Currency.USD)
-    return in_dollars if amount == 0 else say(lang, "two_amounts", first=money(lang, amount), second=in_dollars)
+        return owed(lang, amount)
+    in_dollars = owed(lang, dollars, Currency.USD)
+    return in_dollars if amount == 0 else say(lang, "two_amounts", first=owed(lang, amount), second=in_dollars)
 
 
 def day(value: date) -> str:

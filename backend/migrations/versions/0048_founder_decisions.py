@@ -1,4 +1,4 @@
-"""The founder's decisions after the expansion: a note whose issuer has left is posted in the owner's name.
+"""The founder's decisions of 2026-10-10: advances are accepted; a departed issuer's note is the owner's.
 
 Revision ID: 0048
 Revises: 0047

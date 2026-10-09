@@ -93,6 +93,14 @@ CHAT: dict[str, str] = {
         "Write the amount only. In soum: 50000. In dollars, put the $ sign after the amount: 50$ or 50.25$"
     ),
     "two_amounts": "{first} and {second}",
+    "in_credit": "{zero} (paid in advance: {amount})",
+    "advance_confirm": (
+        "{shop}\n{name}: payment {amount}\nDebt: {debt}\nThe payment is {over} more than the debt. The "
+        "rest will be kept as the customer's advance and used for the next credit sales.\nRecord it this "
+        "way?"
+    ),
+    "advance_yes": "✅ Yes, keep it as an advance",
+    "ADVANCE_TOO_LARGE": "The advance is too large: one customer's advance cannot be more than one entry may be.",
     "PROMISE_BEFORE_SALE": "The due date cannot be before the day of the sale.",
     "PROMISE_TOO_FAR": "The due date can be at most 365 days after the day of the sale.",
     "SUBSCRIPTION_LIMITED": (
@@ -607,6 +615,8 @@ EXPORT: dict[str, str | tuple[str, ...]] = {
     "owed_usd": "Debt ($)",
     "summary_debtors_usd": "Number of customers in debt in dollars",
     "summary_outstanding_usd": "Total debt ($)",
+    "summary_advances": "Customers' advances",
+    "summary_advances_usd": "Customers' advances ($)",
     "summary_months_usd": "By month, in dollars (reversed entries and reversal entries are left out)",
     "summary_entries": "Number of entries in the ledger",
     "summary_months": "By month (reversed entries and reversal entries are left out)",
@@ -868,6 +878,14 @@ ERRORS: dict[str, str] = {
     "ALREADY_REVERSED": "This entry is already reversed.",
     "CANNOT_REVERSE_REVERSAL": "A reversal entry cannot be reversed.",
     "WOULD_GO_NEGATIVE": "Reversing this would make the debt negative. Reverse the later payment first.",
+    "ADVANCE_NOT_CONFIRMED": (
+        "The payment is larger than the customer's debt. Confirm that the rest is kept as an advance."
+    ),
+    "ADVANCE_TOO_LARGE": "The advance is too large: one customer's advance cannot be more than one entry may be.",
+    "ADVANCES_STAND": (
+        "Advances cannot be turned off: some customers have an advance. First let it be used by credit "
+        "sales, or reverse the payment."
+    ),
     "PROMISE_ALREADY_SET": "The due date is already set. Now a manager or the shop owner changes it.",
     "CATALOG_NAME_TAKEN": "The catalog already has a product with this name (it may be hidden).",
     "CATALOG_ITEM_NOT_LEARNED": "This product was already reviewed.",

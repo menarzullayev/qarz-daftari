@@ -9,8 +9,17 @@ Conventions shared by every function:
 - Entries may be passed in any order; they are sorted by `seq`.
 - A reversed entry and its reversal cancel out and take no further part in any calculation (INV-2).
 - A list that could not have been produced by valid operations (duplicate `seq`, a reversal of a reversal,
-  a running balance below zero, ...) raises `LedgerIntegrityError`: that is corrupt data or a programming
-  error, never a business refusal. Refusals of a proposed entry are returned as a `Refusal` value.
+  ...) raises `LedgerIntegrityError`: that is corrupt data or a programming error, never a business
+  refusal. Refusals of a proposed entry are returned as a `Refusal` value.
+- A balance below zero is an advance: the customer has paid more than they owe, and the shop owes them
+  (the founder's decision of 2026-10-10; INV-3). It is a state valid data can be in, so nothing here
+  raises on it. Whether a NEW entry may take a book below zero is the shop's choice ("accept advances"),
+  asked of `validate_new_entry` by its `advance_cap`; `lowest_balance` says whether a book ever was.
+- An advance is not a kind of entry and is never stored: it is what the payments exceed the debts by.
+  The oldest-first allocation therefore uses it up by itself: a credit sale recorded while the customer
+  is in credit is covered, wholly or partly, by the payment that ran ahead, from the moment the sale
+  is written, and a reversal of either entry lets the allocation fall back to what the entries that
+  remain give.
 - The entries passed are of ONE currency. An account may hold so'm and dollars; they are two books that
   share one sequence, and nothing here ever adds one to the other. `in_currency` picks one book out of
   an account, `currencies_of` says which books it has, and a list that mixes currencies raises
@@ -79,6 +88,7 @@ class Refusal(StrEnum):
     ALREADY_REVERSED = "ALREADY_REVERSED"
     REVERSAL_AMOUNT_MISMATCH = "REVERSAL_AMOUNT_MISMATCH"
     NEGATIVE_BALANCE = "NEGATIVE_BALANCE"
+    ADVANCE_TOO_LARGE = "ADVANCE_TOO_LARGE"
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,7 +151,8 @@ class _Account:
     reversed_ids: frozenset[UUID]
     debts: tuple[Entry, ...]  # credit and opening entries not reversed, oldest first
     payments: tuple[Entry, ...]  # payments not reversed, oldest first
-    balance: int
+    balance: int  # below zero when the customer is in credit
+    lowest: int  # the lowest the running balance has been; zero when it never went below
 
 
 def _is_whole(value: object) -> bool:
@@ -182,7 +193,7 @@ def _load(entries: Iterable[Entry]) -> _Account:
         raise LedgerIntegrityError("entries of different currencies are never calculated together")
     by_id: dict[UUID, Entry] = {}
     reversed_ids: set[UUID] = set()
-    running = 0
+    running = lowest = 0
     previous_seq: int | None = None
     for entry in ordered:
         _check_entry(entry)
@@ -210,8 +221,7 @@ def _load(entries: Iterable[Entry]) -> _Account:
         # A reversal undoes its target: the opposite sign of what the target contributed.
         delta = signed.amount if signed.kind in _DEBT_KINDS else -signed.amount
         running += -delta if entry.kind == EntryKind.REVERSAL else delta
-        if running < 0:
-            raise LedgerIntegrityError(f"balance is negative after seq {entry.seq} (INV-3)")
+        lowest = min(lowest, running)
 
     live = [e for e in ordered if e.kind != EntryKind.REVERSAL and e.id not in reversed_ids]
     return _Account(
@@ -220,12 +230,29 @@ def _load(entries: Iterable[Entry]) -> _Account:
         debts=tuple(e for e in live if e.kind in _DEBT_KINDS),
         payments=tuple(e for e in live if e.kind == EntryKind.PAYMENT),
         balance=running,
+        lowest=lowest,
     )
 
 
 def balance(entries: Iterable[Entry]) -> int:
-    """INV-2: credits and opening balances minus payments, reversed entries and their reversals cancelling out."""
+    """INV-2: credits and opening balances minus payments, reversed entries and their reversals cancelling out.
+
+    Below zero when the customer is in credit: what the shop holds of theirs as an advance (INV-3).
+    """
     return _load(entries).balance
+
+
+def advance(entries: Iterable[Entry]) -> int:
+    """What the customer has paid beyond what they owe: the balance below zero, as a positive amount, else 0."""
+    return max(0, -_load(entries).balance)
+
+
+def lowest_balance(entries: Iterable[Entry]) -> int:
+    """The lowest the running balance has ever been: below zero only in a book that once held an advance.
+
+    INV-3 for a shop that does not accept advances is exactly `lowest_balance(book) == 0`.
+    """
+    return _load(entries).lowest
 
 
 def validate_new_entry(
@@ -233,21 +260,32 @@ def validate_new_entry(
     kind: EntryKind,
     amount: int,
     reverses_id: UUID | None = None,
+    *,
+    advance_cap: int | None = None,
 ) -> Refusal | None:
     """Decide whether one more entry may be appended to the account. Returns None when it may.
 
     Covers only the ledger's own rules (INV-3 to INV-6, BR-5). Role permissions, the credit limit (BR-8),
     and the subscription state are checked elsewhere.
+
+    `advance_cap` is INV-3 as the shop has chosen it. None: the book may not go below zero, so a payment
+    larger than the debt and the reversal of a debt that payments already cover are refused. A number:
+    the shop accepts advances, and the book may stand up to that many minor units in credit; an entry
+    that would take it further is refused with `ADVANCE_TOO_LARGE`. An entry that RAISES the balance (a
+    credit sale, the reversal of a payment) is never refused by either rule, whatever the balance is: it
+    can only use an advance up, never make one.
     """
     account = _load(entries)
     if not _is_whole(amount) or not 0 < amount <= MAX_AMOUNT:
         return Refusal.INVALID_AMOUNT
+    if advance_cap is not None and (not _is_whole(advance_cap) or advance_cap < 0):
+        raise ValueError("advance_cap is a whole number of minor units, or None")
 
     if kind != EntryKind.REVERSAL:
         if reverses_id is not None:
             return Refusal.REVERSAL_TARGET_NOT_ALLOWED
-        if kind == EntryKind.PAYMENT and amount > account.balance:
-            return Refusal.EXCEEDS_BALANCE
+        if kind == EntryKind.PAYMENT:
+            return _below_zero(account.balance - amount, advance_cap, Refusal.EXCEEDS_BALANCE)
         return None
 
     if reverses_id is None:
@@ -261,9 +299,18 @@ def validate_new_entry(
         return Refusal.ALREADY_REVERSED
     if amount != target.amount:
         return Refusal.REVERSAL_AMOUNT_MISMATCH
-    if target.kind in _DEBT_KINDS and account.balance - target.amount < 0:
-        return Refusal.NEGATIVE_BALANCE
+    if target.kind in _DEBT_KINDS:
+        return _below_zero(account.balance - target.amount, advance_cap, Refusal.NEGATIVE_BALANCE)
     return None
+
+
+def _below_zero(balance_after: int, advance_cap: int | None, without_advances: Refusal) -> Refusal | None:
+    """INV-3 for an entry that lowers the balance to `balance_after`."""
+    if balance_after >= 0:
+        return None
+    if advance_cap is None:
+        return without_advances
+    return Refusal.ADVANCE_TOO_LARGE if -balance_after > advance_cap else None
 
 
 def _allocate(debts: Iterable[Entry], payments: Iterable[Entry]) -> list[Allocation]:
@@ -308,7 +355,9 @@ def allocate(entries: Iterable[Entry], as_of: datetime | None = None) -> list[Al
     Returns one allocation per credit or opening entry that is not reversed, oldest first. Reversed entries
     and reversals are ignored, so a reversed payment covers nothing and a payment that used to cover a
     reversed credit flows on to the next debt, even one recorded after the payment; such a debt is settled
-    at the payment's time, which is then earlier than the debt itself.
+    at the payment's time, which is then earlier than the debt itself. An advance is the same thing seen
+    from the other side: the part of a payment that no debt has taken yet covers the next debts recorded,
+    oldest first, and what is left of it after the last debt is the customer's credit.
 
     With `as_of`, entries created after that instant are left out: the result is the allocation as it
     stood then, corrected by every reversal known now (a reversal recorded after `as_of` still removes
@@ -329,7 +378,8 @@ def payment_timeliness(entries: Iterable[Entry], payment_id: UUID) -> tuple[int,
 
     The payment is split by the oldest-first allocation (BR-3). A part is in time when the payment was
     made, in Tashkent, on or before the promised date of the debt it covers. The two amounts add up to
-    the payment; a reversed payment covers nothing and gives (0, 0).
+    what the payment covers: all of it, except a part that stands as an advance and covers nothing yet.
+    A reversed payment covers nothing and gives (0, 0).
     """
     in_time = late = 0
     for allocation in allocate(entries):
