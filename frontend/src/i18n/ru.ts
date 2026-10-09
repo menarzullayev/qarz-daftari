@@ -35,6 +35,10 @@ export const ru: RuCatalog = {
   "shell.activeShop": "Активный магазин",
   "shell.noShop": "Магазин не выбран",
   "shell.language": "Язык",
+  "shell.theme": "Тема",
+  "theme.light": "Светлая",
+  "theme.dark": "Тёмная",
+  "theme.system": "Как в системе",
   "lang.uz": "O'zbekcha",
   "lang.ru": "Русский",
 

@@ -9,7 +9,7 @@ import { useDesktop } from "../layout";
 import { canManage } from "../navigation";
 import { cleanItemName, itemNameProblem, MAX_ITEM_NAME, MAX_UNIT_INPUT, priceMessage } from "./catalogRules";
 import { useWorkspace } from "./context";
-import { Empty, errorText, Failure, FieldError, Loading, LoadMore } from "./parts";
+import { Badge, Empty, errorText, Failure, FieldError, Loading, LoadMore } from "./parts";
 
 /** How long typing must pause before the list is searched again. */
 export const CATALOG_SEARCH_DELAY_MS = 300;
@@ -377,7 +377,11 @@ export function CatalogScreen() {
           {t("catalog.price", { price: formatMoney(item.price, language), unit: item.unit })}
         </span>
       </p>
-      {item.learned ? <p className="row__warning">{t("catalog.learned")}</p> : null}
+      {item.learned ? (
+        <p className="row__meta">
+          <Badge tone="accent">{t("catalog.learned")}</Badge>
+        </p>
+      ) : null}
       {item.mergedInto !== null ? <p className="row__meta">{t("catalog.merged")}</p> : null}
       {mayManage ? controls(item) : null}
     </li>

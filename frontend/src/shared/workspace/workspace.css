@@ -1,86 +1,335 @@
 /*
  * Screens of the staff workspace. Phone first: one column, controls at least 2.75rem tall so a thumb
- * hits them. Only the color variables of shell.css are used, so the Telegram theme and the contrast
- * check of the default theme cover these screens too; state is never shown by color alone.
+ * hits them. Only the tokens of tokens.css are used, so both themes, the Telegram theme and the contrast
+ * check cover these screens too; state is never shown by color alone.
  */
 
 .shell__main h2 {
-  margin: 1.5rem 0 0.5rem;
-  font-size: 1.125rem;
-  line-height: 1.3;
+  margin: var(--qd-space-6) 0 var(--qd-space-2);
+  font: var(--qd-type-heading);
 }
 
 .shell__main h2.subject {
   margin-top: 0;
-  font-size: 1.25rem;
+  font: var(--qd-type-subject);
   overflow-wrap: anywhere;
+}
+
+/* The parts of a section are named by small uppercase labels. */
+.shell__main h3,
+.section-label {
+  margin: var(--qd-space-5) 0 var(--qd-space-2);
+  color: var(--qd-muted);
+  font: var(--qd-type-label);
+  letter-spacing: var(--qd-tracking-label);
+  text-transform: uppercase;
 }
 
 .state,
 .hint {
-  margin: 0.75rem 0;
+  margin: var(--qd-space-3) 0;
   color: var(--qd-muted);
 }
 
+/* ---------- Notice (inline message) ---------- */
+
+/*
+ * The kind of a notice is its mark as well as its color: "i" for information, "!" for an error or a
+ * warning, a tick for something done. The marks are drawn here, not written in the markup, like the
+ * mark of a field's error; `/ ""` keeps a screen reader from reading them out.
+ */
 .notice {
-  margin: 0.75rem 0;
-  padding: 0.75rem;
-  border: 1px solid var(--qd-border);
-  border-left-width: 0.375rem;
-  border-radius: 0.5rem;
-  background: var(--qd-surface);
+  position: relative;
+  margin: var(--qd-space-3) 0;
+  padding: var(--qd-space-3) var(--qd-space-4) var(--qd-space-3) calc(var(--qd-space-4) + 1.25rem + var(--qd-space-3));
+  border: 1px solid var(--qd-accent-soft-border);
+  border-radius: var(--qd-radius-md);
+  background: var(--qd-accent-soft);
   color: var(--qd-text);
 }
 
+.notice::before {
+  content: "i";
+  content: "i" / "";
+  position: absolute;
+  top: calc(var(--qd-space-3) + 0.125rem);
+  left: var(--qd-space-4);
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid currentColor;
+  border-radius: var(--qd-radius-pill);
+  color: var(--qd-link);
+  font: 800 0.75rem/1 var(--qd-font-sans);
+}
+
 .notice > p {
-  margin: 0 0 0.5rem;
+  margin: 0 0 var(--qd-space-2);
 }
 
 .notice > :last-child {
   margin-bottom: 0;
 }
 
+.notice__title {
+  font-weight: 700;
+}
+
 .notice--error {
-  border-color: var(--qd-text);
+  border-color: var(--qd-danger);
+  background: var(--qd-danger-soft);
   font-weight: 600;
 }
 
-.notice--done {
-  border-color: var(--qd-accent);
+.notice--error::before {
+  content: "!";
+  content: "!" / "";
+  border-color: var(--qd-danger);
+  background: var(--qd-danger);
+  color: var(--qd-on-danger);
 }
+
+.notice--done {
+  border-color: var(--qd-success);
+  background: var(--qd-success-soft);
+}
+
+/* A tick: the two lit edges of a turned box. */
+.notice--done::before {
+  content: "";
+  top: calc(var(--qd-space-3) + 0.0625rem);
+  left: calc(var(--qd-space-4) + 0.375rem);
+  width: 0.5rem;
+  height: 0.875rem;
+  border-width: 0 2px 2px 0;
+  border-radius: 0;
+  color: var(--qd-success);
+  transform: rotate(45deg);
+}
+
+.notice--warning {
+  border-color: var(--qd-warning);
+  background: var(--qd-warning-soft);
+}
+
+.notice--warning::before {
+  content: "!";
+  content: "!" / "";
+  color: var(--qd-warning);
+}
+
+/* ---------- Toast ---------- */
+
+.toasts {
+  position: fixed;
+  right: var(--qd-space-4);
+  bottom: calc(var(--qd-nav-height) + var(--qd-space-4));
+  left: var(--qd-space-4);
+  z-index: 4;
+  display: grid;
+  gap: var(--qd-space-2);
+  justify-items: center;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--qd-space-3);
+  width: min(26rem, 100%);
+  padding: var(--qd-space-3) var(--qd-space-4);
+  border-radius: var(--qd-radius-md);
+  background: var(--qd-text);
+  color: var(--qd-bg);
+  font: var(--qd-type-control);
+  box-shadow: var(--qd-shadow-lg);
+  pointer-events: auto;
+}
+
+.toast__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.toast__action {
+  flex: none;
+  min-height: var(--qd-control-height);
+  padding: 0 var(--qd-space-2);
+  border: 0;
+  border-radius: var(--qd-radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.toast--error {
+  background: var(--qd-danger);
+  color: var(--qd-on-danger);
+}
+
+/* ---------- Modal ---------- */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  align-items: end;
+  background: var(--qd-overlay);
+}
+
+.modal__panel {
+  display: grid;
+  gap: var(--qd-space-4);
+  width: 100%;
+  max-height: 90dvh;
+  padding: var(--qd-space-5);
+  overflow-y: auto;
+  border-radius: var(--qd-radius-xl) var(--qd-radius-xl) 0 0;
+  background: var(--qd-bg);
+  box-shadow: var(--qd-shadow-lg);
+}
+
+.modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--qd-space-3);
+}
+
+.modal__title {
+  margin: 0;
+  font: var(--qd-type-heading);
+}
+
+.modal__close {
+  display: inline-grid;
+  place-items: center;
+  width: var(--qd-control-height);
+  height: var(--qd-control-height);
+  border: 0;
+  border-radius: var(--qd-radius-md);
+  background: transparent;
+  color: var(--qd-muted);
+  cursor: pointer;
+}
+
+.modal__close:hover {
+  background: var(--qd-surface);
+}
+
+.modal__body > :first-child {
+  margin-top: 0;
+}
+
+.modal__body > :last-child {
+  margin-bottom: 0;
+}
+
+.modal__foot {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--qd-space-2);
+}
+
+/* ---------- Buttons ---------- */
 
 .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 2.75rem;
-  padding: 0.5rem 1rem;
+  gap: var(--qd-space-2);
+  min-height: var(--qd-control-height);
+  padding: var(--qd-space-2) var(--qd-space-4);
   border: 1px solid var(--qd-border);
-  border-radius: 0.5rem;
+  border-radius: var(--qd-radius-md);
   background: var(--qd-bg);
   color: var(--qd-text);
-  font: inherit;
+  font: var(--qd-type-control);
   text-align: center;
   text-decoration: none;
   cursor: pointer;
+}
+
+.button:hover {
+  background: var(--qd-surface);
 }
 
 .button--primary {
   border-color: var(--qd-accent);
   background: var(--qd-accent);
   color: var(--qd-on-accent);
-  font-weight: 600;
+  box-shadow: var(--qd-shadow-sm);
 }
 
+.button--primary:hover {
+  border-color: var(--qd-accent-hover);
+  background: var(--qd-accent-hover);
+}
+
+.button--danger,
+.button--danger:hover {
+  border-color: var(--qd-danger);
+  background: var(--qd-danger);
+  color: var(--qd-on-danger);
+}
+
+.button--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--qd-link);
+}
+
+.button--ghost:hover {
+  background: var(--qd-accent-soft);
+}
+
+/* Smaller text, never a smaller target. */
 .button--small {
-  min-height: 2.75rem;
-  padding: 0.25rem 0.75rem;
-  font-size: 0.875rem;
+  min-height: var(--qd-control-height);
+  padding: var(--qd-space-1) var(--qd-space-3);
+  font-size: 0.8125rem;
 }
 
-.button:disabled {
+.button--icon {
+  width: var(--qd-control-height);
+  padding: 0;
+}
+
+.button--block {
+  width: 100%;
+}
+
+.button--stacked {
+  flex-direction: column;
+  flex: 1 1 8rem;
+  gap: 0;
+  padding: var(--qd-space-2);
+}
+
+.button--stacked .choice__date {
+  font: var(--qd-type-small);
+  white-space: nowrap;
+}
+
+/* Disabled keeps its label and its place; only the pointer and the strength change. */
+.button:disabled,
+.button:disabled:hover {
   cursor: default;
-  opacity: 0.6;
+  opacity: 0.55;
+}
+
+.button:disabled:hover {
+  background: var(--qd-bg);
+}
+
+.button--primary:disabled:hover {
+  border-color: var(--qd-accent);
+  background: var(--qd-accent);
 }
 
 .actions,
@@ -88,8 +337,8 @@
 .search {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 0.75rem 0;
+  gap: var(--qd-space-2);
+  margin: var(--qd-space-3) 0;
 }
 
 .bar {
@@ -97,39 +346,15 @@
   justify-content: space-between;
 }
 
-.search .input {
-  flex: 1 1 10rem;
-}
-
-.input {
-  width: 100%;
-  min-width: 0;
-  min-height: 2.75rem;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--qd-border);
-  border-radius: 0.5rem;
-  background: var(--qd-bg);
-  color: var(--qd-text);
-  /* 16px or more keeps iOS from zooming the page when the field takes focus. */
-  font: inherit;
-}
-
-.input--amount {
-  font-size: 1.5rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.input[aria-invalid="true"] {
-  border-width: 2px;
-  border-color: var(--qd-text);
-}
+/* ---------- Forms ---------- */
 
 .form {
   max-width: 32rem;
 }
 
 .field {
-  margin: 0 0 1rem;
+  min-width: 0;
+  margin: 0 0 var(--qd-space-4);
   padding: 0;
   border: 0;
 }
@@ -137,35 +362,115 @@
 .field > label:not(.choice),
 .field > legend {
   display: block;
-  margin-bottom: 0.25rem;
+  margin-bottom: var(--qd-space-1);
   padding: 0;
+  color: var(--qd-muted);
+  font: var(--qd-type-small);
   font-weight: 600;
 }
 
-.field__hint {
-  margin: 0.25rem 0 0;
+.input {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--qd-control-height);
+  padding: var(--qd-space-2) 0.875rem;
+  border: 1px solid var(--qd-border);
+  border-radius: var(--qd-radius-md);
+  background: var(--qd-bg);
+  color: var(--qd-text);
+  /* 16px or more keeps iOS from zooming the page when the field takes focus. */
+  font: inherit;
+}
+
+.input::placeholder {
   color: var(--qd-muted);
+  opacity: 1;
+}
+
+.input--amount {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* An invalid field has a heavier border and the message under it, not only another color. */
+.input[aria-invalid="true"] {
+  border-width: 2px;
+  border-color: var(--qd-danger);
+}
+
+select.input {
+  appearance: auto;
+}
+
+/* A reason typed by a customer or by staff. */
+textarea.input--text {
+  display: block;
+  resize: vertical;
+}
+
+.search {
+  position: relative;
+}
+
+.search .input {
+  flex: 1 1 10rem;
+}
+
+.search--icon .input {
+  padding-left: 2.5rem;
+}
+
+.search--icon > .icon {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  color: var(--qd-muted);
+  pointer-events: none;
+}
+
+.field__hint {
+  margin: var(--qd-space-1) 0 0;
+  color: var(--qd-muted);
+  font: var(--qd-type-small);
 }
 
 .field__error {
-  margin: 0.25rem 0 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--qd-space-1);
+  margin: var(--qd-space-1) 0 0;
+  color: var(--qd-danger);
+  font: var(--qd-type-small);
   font-weight: 600;
 }
 
 .field__error::before {
-  content: "! ";
+  content: "!";
+  content: "!" / "";
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: var(--qd-radius-pill);
+  background: var(--qd-danger);
+  color: var(--qd-on-danger);
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .field > .button {
-  margin-top: 0.5rem;
+  margin-top: var(--qd-space-2);
 }
 
 .choice {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.25rem 0.5rem;
-  min-height: 2.75rem;
+  gap: var(--qd-space-1) var(--qd-space-2);
+  min-height: var(--qd-control-height);
   font-weight: 400;
 }
 
@@ -180,78 +485,101 @@
   color: var(--qd-muted);
 }
 
-.toggle {
-  display: flex;
-  gap: 0.25rem;
+/* ---------- Figures (the key numbers of a screen) ---------- */
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--qd-space-3);
+  margin: 0;
 }
 
-.toggle__option {
-  min-height: 2.75rem;
-  padding: 0.25rem 0.75rem;
-  border: 1px solid var(--qd-border);
-  border-radius: 0.5rem;
+.figure {
+  padding: var(--qd-space-4);
+  border: 1px solid var(--qd-line);
+  border-radius: var(--qd-radius-lg);
   background: var(--qd-bg);
-  color: var(--qd-text);
-  font: inherit;
-  cursor: pointer;
+  box-shadow: var(--qd-shadow-sm);
 }
 
-.toggle__option[aria-pressed="true"] {
+.figure dt {
+  display: flex;
+  align-items: center;
+  gap: var(--qd-space-2);
+  color: var(--qd-muted);
+  font: var(--qd-type-small);
+  font-weight: 600;
+}
+
+.figure dt .icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.figure dd {
+  margin: var(--qd-space-1) 0 0;
+  font: var(--qd-type-amount);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* The one number the screen is about. */
+.figure--main {
+  grid-column: 1 / -1;
   border-color: var(--qd-accent);
   background: var(--qd-accent);
   color: var(--qd-on-accent);
 }
 
-.figures {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: 0.5rem;
-  margin: 0;
-}
-
-.figure {
-  padding: 0.75rem;
-  border: 1px solid var(--qd-border);
-  border-radius: 0.5rem;
-  background: var(--qd-surface);
-}
-
-.figure--main {
-  grid-column: 1 / -1;
-}
-
-.figure dt {
-  color: var(--qd-muted);
-  font-size: 0.875rem;
-}
-
-.figure dd {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+.figure--main dt {
+  color: inherit;
 }
 
 .figure--main dd {
-  font-size: 1.75rem;
+  font: var(--qd-type-amount-lg);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--qd-tracking-tight);
 }
 
 .figure dd.figure__note {
+  margin-top: 0;
   color: var(--qd-muted);
-  font-size: 0.875rem;
-  font-weight: 400;
+  font: var(--qd-type-small);
+  letter-spacing: 0;
 }
 
+.figure--main dd.figure__note {
+  color: inherit;
+}
+
+/* ---------- Rows (the phone rendering of every list) ---------- */
+
+/* A list is a card: white rows on the page's ground, a hairline between them. */
 .rows {
-  margin: 0.5rem 0;
+  margin: var(--qd-space-3) 0;
   padding: 0;
+  border: 1px solid var(--qd-line);
+  border-radius: var(--qd-radius-lg);
+  background: var(--qd-bg);
+  box-shadow: var(--qd-shadow-sm);
   list-style: none;
 }
 
+.card > .rows {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
 .row {
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--qd-border);
+  padding: var(--qd-space-2) var(--qd-space-4);
+  border-bottom: 1px solid var(--qd-line);
+}
+
+.rows > .row:last-child {
+  border-bottom: 0;
 }
 
 .row p {
@@ -260,11 +588,11 @@
 
 .row__link {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  min-height: 2.75rem;
-  padding: 0.5rem 0;
+  gap: var(--qd-space-3);
+  min-height: var(--qd-control-height);
+  padding: var(--qd-space-1) 0;
   color: var(--qd-text);
   text-decoration: none;
 }
@@ -278,14 +606,29 @@
   cursor: pointer;
 }
 
+.row__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .row__name {
+  flex: 1 1 auto;
   min-width: 0;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
-a.row__link .row__name {
-  color: var(--qd-link);
+/* A row that opens something says so under the pointer; its name is the link's text. */
+a.row__link:hover .row__name,
+.row__button:hover .row__name {
+  text-decoration: underline;
+}
+
+.row__side {
+  display: grid;
+  flex: none;
+  gap: 2px;
+  justify-items: end;
 }
 
 .row__amount {
@@ -295,10 +638,14 @@ a.row__link .row__name {
   white-space: nowrap;
 }
 
+.row__amount--in {
+  color: var(--qd-success);
+}
+
 .row__meta,
 .row__note {
   color: var(--qd-muted);
-  font-size: 0.875rem;
+  font: var(--qd-type-small);
   overflow-wrap: anywhere;
 }
 
@@ -306,60 +653,288 @@ a.row__link .row__name {
   color: var(--qd-text);
 }
 
+/* Something is wrong with this row. The words say what; bold and the color repeat it. */
 .row__warning {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 0.75rem;
-  font-size: 0.875rem;
+  align-items: center;
+  gap: var(--qd-space-1) var(--qd-space-3);
+  color: var(--qd-danger);
+  font: var(--qd-type-small);
   font-weight: 700;
+}
+
+.notice .row__warning {
+  color: inherit;
 }
 
 .row--struck .row__amount {
   text-decoration: line-through;
 }
 
+.row--total .row__name,
+.row--total .row__amount {
+  font-weight: 800;
+}
+
 .row .actions,
-.row .notice,
+.row .notice {
+  margin: var(--qd-space-2) 0 var(--qd-space-1);
+}
+
+/* Buttons that follow each other in a row keep the gap buttons have everywhere else. */
 .row > .button {
-  margin: 0.5rem 0 0.25rem;
+  margin: var(--qd-space-2) var(--qd-space-2) var(--qd-space-1) 0;
+}
+
+/* A person's row starts with their initials; the lines under the name start where the name does. */
+.row--person > .row__meta,
+.row--person > .row__warning {
+  padding-left: calc(2.5rem + var(--qd-space-3));
+}
+
+.row--person > :last-child:not(.row__link) {
+  margin-bottom: var(--qd-space-1);
+}
+
+/* The row that is open beside the list (the web panel's two panes). */
+.row__link[aria-current="page"] {
+  margin: 0 calc(var(--qd-space-2) * -1);
+  padding-right: var(--qd-space-2);
+  padding-left: var(--qd-space-2);
+  border-radius: var(--qd-radius-md);
+  background: var(--qd-accent-soft);
+  font-weight: 700;
+}
+
+.row__link[aria-current="page"] .row__name {
+  font-weight: 800;
+  text-decoration: underline;
+}
+
+.avatar {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--qd-radius-pill);
+  background: var(--qd-accent-soft);
+  color: var(--qd-link);
+  font-size: 0.875rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.avatar::before {
+  content: attr(data-initials);
 }
 
 .balance {
-  margin: 0.5rem 0;
+  margin: var(--qd-space-2) 0;
+  color: var(--qd-muted);
+  font-size: 0.875rem;
 }
 
 .balance strong {
+  color: var(--qd-text);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .balance--large strong {
   display: block;
-  font-size: 1.75rem;
-  line-height: 1.2;
+  font: var(--qd-type-amount-lg);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--qd-tracking-tight);
 }
 
 .more {
-  margin: 0.75rem 0;
+  margin: var(--qd-space-3) 0;
 }
 
-/* Goods: the lines of a sale being typed, the catalog picker, and saved goods under an entry. */
+.facts {
+  margin: var(--qd-space-3) 0;
+}
+
+.facts dt {
+  color: var(--qd-muted);
+  font: var(--qd-type-small);
+}
+
+.facts dd {
+  margin: 0 0 var(--qd-space-3);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.facts__note {
+  display: block;
+  color: var(--qd-muted);
+  font-weight: 400;
+}
+
+/* ---------- Loading and empty states ---------- */
+
+.skeleton {
+  display: block;
+  height: 0.875rem;
+  border-radius: var(--qd-radius-sm);
+  background: var(--qd-surface-2);
+}
+
+.skeleton--title {
+  width: 40%;
+  height: 1.5rem;
+}
+
+.skeleton--line {
+  width: 70%;
+}
+
+.skeleton--short {
+  width: 35%;
+}
+
+.skeleton--avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--qd-radius-pill);
+}
+
+.skeleton--block {
+  height: 9rem;
+  border-radius: var(--qd-radius-md);
+}
+
+/* The shared loading state: three rows of a list that has not arrived yet. */
+.loading {
+  margin: var(--qd-space-3) 0;
+  border: 1px solid var(--qd-line);
+  border-radius: var(--qd-radius-lg);
+  background: var(--qd-bg);
+  box-shadow: var(--qd-shadow-sm);
+}
+
+.loading__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--qd-space-3);
+  min-height: 3.75rem;
+  padding: var(--qd-space-2) var(--qd-space-4);
+  border-bottom: 1px solid var(--qd-line);
+}
+
+.loading__row:last-child {
+  border-bottom: 0;
+}
+
+.loading__text {
+  display: grid;
+  flex: 1 1 auto;
+  gap: var(--qd-space-2);
+}
+
+.loading__amount {
+  flex: none;
+  width: 5rem;
+}
+
+.spinner {
+  display: inline-block;
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: var(--qd-radius-pill);
+}
+
+/* The only motion there is, and none of it for a person who asked for less. */
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton {
+    animation: qd-pulse 1.4s ease-in-out infinite;
+  }
+
+  .spinner {
+    animation: qd-spin 0.7s linear infinite;
+  }
+
+  @keyframes qd-pulse {
+    50% {
+      opacity: 0.45;
+    }
+  }
+
+  @keyframes qd-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+}
+
+.empty {
+  display: grid;
+  gap: var(--qd-space-2);
+  justify-items: center;
+  max-width: 24rem;
+  margin: 0 auto;
+  padding: var(--qd-space-10) var(--qd-space-4);
+  text-align: center;
+}
+
+.empty__icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  margin-bottom: var(--qd-space-2);
+  border-radius: var(--qd-radius-lg);
+  background: var(--qd-surface-2);
+  color: var(--qd-muted);
+}
+
+.empty__icon .icon {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.empty__title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.empty__text {
+  margin: 0;
+  color: var(--qd-muted);
+  font: var(--qd-type-control);
+  font-weight: 400;
+}
+
+.empty .actions {
+  justify-content: center;
+}
+
+/* ---------- Goods: the lines of a sale being typed, the catalog picker, saved goods ---------- */
 
 .goods-editor {
-  margin: 0 0 1rem;
+  margin: 0 0 var(--qd-space-4);
 }
 
 .lines,
 .picks,
 .goods {
-  margin: 0.5rem 0;
+  margin: var(--qd-space-2) 0;
   padding: 0;
   list-style: none;
 }
 
 .line {
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--qd-border);
+  padding: var(--qd-space-2) 0;
+  border-bottom: 1px solid var(--qd-line);
 }
 
 .line p {
@@ -370,15 +945,15 @@ a.row__link .row__name {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: var(--qd-space-2);
 }
 
 .line__fields {
   display: grid;
   grid-template-columns: minmax(4.5rem, 1fr) auto minmax(6rem, 1.5fr);
   align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.25rem;
+  gap: var(--qd-space-2);
+  margin-top: var(--qd-space-1);
 }
 
 .line__unit {
@@ -387,7 +962,7 @@ a.row__link .row__name {
 }
 
 .line__total {
-  padding-top: 0.25rem;
+  padding-top: var(--qd-space-1);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -397,32 +972,34 @@ a.row__link .row__name {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  font-size: 1.25rem;
+  font: var(--qd-type-amount);
+  font-weight: 400;
 }
 
 .picker {
-  margin: 0.75rem 0;
+  margin: var(--qd-space-3) 0;
 }
 
 .picks {
   max-height: 16rem;
   overflow-y: auto;
   border: 1px solid var(--qd-border);
-  border-radius: 0.5rem;
+  border-radius: var(--qd-radius-md);
+  background: var(--qd-bg);
 }
 
 .picks li + li {
-  border-top: 1px solid var(--qd-border);
+  border-top: 1px solid var(--qd-line);
 }
 
 .pick {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: var(--qd-space-3);
   width: 100%;
-  min-height: 2.75rem;
-  padding: 0.5rem 0.75rem;
+  min-height: var(--qd-control-height);
+  padding: var(--qd-space-2) var(--qd-space-3);
   border: 0;
   background: none;
   color: var(--qd-text);
@@ -431,9 +1008,13 @@ a.row__link .row__name {
   cursor: pointer;
 }
 
+.pick:hover {
+  background: var(--qd-surface);
+}
+
 .pick:disabled {
   cursor: default;
-  opacity: 0.6;
+  opacity: 0.55;
 }
 
 .pick .row__meta {
@@ -442,21 +1023,21 @@ a.row__link .row__name {
 }
 
 .typed .input {
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--qd-space-2);
 }
 
 .typed__row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
+  gap: var(--qd-space-2);
 }
 
 .goods__line {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 0 0.75rem;
-  padding: 0.25rem 0;
-  font-size: 0.875rem;
+  gap: 0 var(--qd-space-3);
+  padding: var(--qd-space-1) 0;
+  font: var(--qd-type-small);
 }
 
 .goods__name {
@@ -475,79 +1056,36 @@ a.row__link .row__name {
 }
 
 .difference {
-  margin: 0.75rem 0;
+  margin: var(--qd-space-3) 0;
   font-weight: 700;
 }
 
-.button--stacked {
-  flex-direction: column;
-  flex: 1 1 8rem;
-}
-
 .offer > p {
-  margin: 0 0 0.5rem;
-}
-
-.facts {
-  margin: 0.75rem 0;
-}
-
-.facts dt {
-  color: var(--qd-muted);
-  font-size: 0.875rem;
-}
-
-.facts dd {
-  margin: 0 0 0.75rem;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-select.input {
-  appearance: auto;
-}
-
-.button--stacked {
-  padding: 0.5rem;
-}
-
-.button--stacked .choice__date {
-  font-size: 0.875rem;
-  white-space: nowrap;
-}
-
-.toggle {
-  flex-wrap: wrap;
-}
-
-/* A reason typed by a customer or by staff. */
-textarea.input--text {
-  display: block;
-  resize: vertical;
+  margin: 0 0 var(--qd-space-2);
 }
 
 .consequences {
-  margin: 0 0 0.5rem;
-  padding-left: 1.25rem;
+  margin: 0 0 var(--qd-space-2);
+  padding-left: var(--qd-space-5);
 }
 
 /* A start code shown once: the deep link as text and as a QR code. */
 .startcode {
-  margin: 0.75rem 0;
+  margin: var(--qd-space-3) 0;
 }
 
 .startcode__caption {
-  margin: 0 0 0.5rem;
+  margin: 0 0 var(--qd-space-2);
   font-weight: 600;
 }
 
 .startcode__text {
-  margin: 0.5rem 0;
-  padding: 0.5rem 0.75rem;
+  margin: var(--qd-space-2) 0;
+  padding: var(--qd-space-2) var(--qd-space-3);
   border: 1px dashed var(--qd-border);
-  border-radius: 0.5rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.875rem;
+  border-radius: var(--qd-radius-md);
+  background: var(--qd-bg);
+  font: var(--qd-type-code);
   overflow-wrap: anywhere;
   user-select: all;
 }
@@ -557,43 +1095,75 @@ textarea.input--text {
   display: block;
   width: min(16rem, 100%);
   height: auto;
-  margin: 0.75rem 0;
+  margin: var(--qd-space-3) 0;
   border: 1px solid var(--qd-border);
-  border-radius: 0.25rem;
+  border-radius: var(--qd-radius-sm);
 }
 
 /* A reminder wording to choose: the choice, then what a customer will read, in each language. */
 .template {
-  margin: 0.5rem 0;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--qd-border);
-  border-radius: 0.5rem;
+  margin: var(--qd-space-2) 0;
+  padding: var(--qd-space-2) var(--qd-space-3);
+  border: 1px solid var(--qd-line);
+  border-radius: var(--qd-radius-md);
+  background: var(--qd-bg);
 }
 
 .wording__when {
-  margin: 0.5rem 0 0.25rem;
+  margin: var(--qd-space-2) 0 var(--qd-space-1);
   color: var(--qd-muted);
-  font-size: 0.875rem;
+  font: var(--qd-type-small);
 }
 
 .wording {
-  margin: 0 0 0.5rem;
-  padding-left: 0.75rem;
+  margin: 0 0 var(--qd-space-2);
+  padding-left: var(--qd-space-3);
   border-left: 0.25rem solid var(--qd-border);
   overflow-wrap: anywhere;
 }
 
-.facts__note {
-  display: block;
-  color: var(--qd-muted);
-  font-weight: 400;
-}
-
 /* What is one tap away: the line that opens it is as tall as a button. */
 .more > summary {
-  padding: 0.75rem 0;
+  padding: var(--qd-space-3) 0;
   font-weight: 600;
   cursor: pointer;
+}
+
+/* Every promised date an entry has carried, oldest first. */
+.history {
+  margin: var(--qd-space-1) 0;
+}
+
+.history__list {
+  margin: 0;
+  padding-left: var(--qd-space-5);
+  font: var(--qd-type-small);
+}
+
+.history__list li > span {
+  display: block;
+}
+
+@media (min-width: 720px) {
+  .toasts {
+    bottom: var(--qd-space-6);
+    left: auto;
+    justify-items: end;
+  }
+
+  .modal {
+    place-items: center;
+    padding: var(--qd-space-4);
+  }
+
+  .modal__panel {
+    max-width: 32rem;
+    border-radius: var(--qd-radius-xl);
+  }
+
+  .figure--main {
+    grid-column: span 2;
+  }
 }
 
 /* A printed counter code is the code and its caption, without the application around them. */
@@ -619,19 +1189,4 @@ textarea.input--text {
   .startcode__caption {
     font-size: 1.5rem;
   }
-}
-
-/* Every promised date an entry has carried, oldest first. */
-.history {
-  margin: 0.25rem 0;
-}
-
-.history__list {
-  margin: 0;
-  padding-left: 1.25rem;
-  font-size: 0.875rem;
-}
-
-.history__list li > span {
-  display: block;
 }

@@ -1,42 +1,32 @@
 /*
  * The reports screen. Phone first: the period's two dates under each other, lists as rows. Only the
- * color variables of shell.css are used. The tables of a wide screen are the web panel's own.
+ * tokens of tokens.css are used. The tables of a wide screen are the web panel's own.
  */
 
 .period {
-  margin: 0 0 1rem;
+  margin: 0 0 var(--qd-space-4);
 }
 
 .period__fields {
   display: grid;
-  gap: 0.5rem;
+  gap: var(--qd-space-2) var(--qd-space-4);
   align-items: end;
-  margin-top: 0.75rem;
+  margin-top: var(--qd-space-3);
 }
 
 .period__fields .field {
   margin: 0;
 }
 
-.shell__main h3 {
-  margin: 1.25rem 0 0.5rem;
-  font-size: 1rem;
-  line-height: 1.3;
-}
-
 .equation {
-  margin: 0.5rem 0;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--qd-border);
-  border-radius: 0.5rem;
+  margin: var(--qd-space-2) 0;
+  padding: var(--qd-space-3) var(--qd-space-4);
+  border: 1px solid var(--qd-line);
+  border-radius: var(--qd-radius-md);
+  background: var(--qd-bg);
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.row--total .row__name,
-.row--total .row__amount {
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 @media (min-width: 720px) {

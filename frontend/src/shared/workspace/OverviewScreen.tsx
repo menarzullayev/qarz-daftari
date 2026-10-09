@@ -3,10 +3,11 @@ import { useState, type ReactNode } from "react";
 import { useI18n } from "../../i18n/I18nProvider";
 import { formatCustomerCount, formatMoney } from "../format";
 import { useLoad, usePagedList } from "../hooks";
+import { AlertIcon, CardIcon, CheckIcon, ClockIcon } from "../icons";
 import { useDesktop } from "../layout";
 import { Link } from "../router";
 import { useWorkspace } from "./context";
-import { Empty, Failure, Loading, LoadMore, OverdueLines } from "./parts";
+import { Avatar, Empty, Failure, Loading, LoadMore, OverdueLines } from "./parts";
 import { SubscriptionBanner } from "./SubscriptionScreen";
 
 function Totals() {
@@ -24,17 +25,26 @@ function Totals() {
   return (
     <dl className="figures">
       <div className="figure figure--main">
-        <dt>{t("overview.outstanding")}</dt>
+        <dt>
+          <CardIcon />
+          {t("overview.outstanding")}
+        </dt>
         <dd>{formatMoney(totals.outstanding, language)}</dd>
         <dd className="figure__note">{formatCustomerCount(totals.debtors, language)}</dd>
       </div>
       <div className="figure">
-        <dt>{t("overview.overdue")}</dt>
+        <dt>
+          <AlertIcon />
+          {t("overview.overdue")}
+        </dt>
         <dd>{formatMoney(totals.overdueAmount, language)}</dd>
         <dd className="figure__note">{formatCustomerCount(totals.overdueCustomers, language)}</dd>
       </div>
       <div className="figure">
-        <dt>{t("overview.dueToday")}</dt>
+        <dt>
+          <ClockIcon />
+          {t("overview.dueToday")}
+        </dt>
         <dd>{formatMoney(totals.dueToday, language)}</dd>
       </div>
     </dl>
@@ -57,7 +67,7 @@ function Debtors() {
   } else if (state.status === "error") {
     body = <Failure error={state.error} onRetry={reload} />;
   } else if (state.items.length === 0) {
-    body = <Empty>{onlyOverdue ? t("overview.noOverdue") : t("overview.noDebtors")}</Empty>;
+    body = <Empty icon={<CheckIcon />}>{onlyOverdue ? t("overview.noOverdue") : t("overview.noDebtors")}</Empty>;
   } else {
     body = (
       <>
@@ -66,8 +76,9 @@ function Debtors() {
         ) : (
           <ul className="rows">
             {state.items.map((debtor) => (
-              <li key={debtor.id} className="row">
+              <li key={debtor.id} className="row row--person">
                 <Link to={`/customers/${debtor.id}`} className="row__link">
+                  <Avatar name={debtor.displayName} />
                   <span className="row__name">{debtor.displayName}</span>
                   <span className="row__amount">{formatMoney(debtor.balance, language)}</span>
                 </Link>

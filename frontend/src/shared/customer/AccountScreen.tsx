@@ -20,7 +20,16 @@ import { MyPaymentHistory } from "./MyPaymentHistory";
 import { PaymentNoticeSection } from "./PaymentNoticeSection";
 import { DateReasonForm, dayText, PromiseHistory } from "../promiseParts";
 import { GoodsList } from "../workspace/GoodsEditor";
-import { Confirm, ENTRY_KIND_LABELS, errorText, Failure, formatInstant, Loading, ReasonForm } from "../workspace/parts";
+import {
+  Badge,
+  Confirm,
+  ENTRY_KIND_LABELS,
+  errorText,
+  Failure,
+  formatInstant,
+  Loading,
+  ReasonForm,
+} from "../workspace/parts";
 
 /**
  * Whether "dispute" is offered for an entry: only one that adds to the debt, is not reversed and has
@@ -315,7 +324,9 @@ function Detail({
         <p className="row__warning">{t("overdue.amount", { amount: formatMoney(account.overdueAmount, language) })}</p>
       ) : null}
       {account.dueToday > 0 ? (
-        <p className="row__meta">{t("due.todayAmount", { amount: formatMoney(account.dueToday, language) })}</p>
+        <p className="row__meta">
+          <Badge tone="warning">{t("due.todayAmount", { amount: formatMoney(account.dueToday, language) })}</Badge>
+        </p>
       ) : null}
 
       <PaymentNoticeSection api={api} balance={account.balance} notices={account.paymentNotices} onSent={reload} />

@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { detectLanguage, readStoredLanguage } from "../i18n/detect";
 import { takeLoginReturn } from "../panel/loginReturn";
 import { previewAdminSession } from "../shared/session";
+import { initTheme } from "../shared/theme";
 import { AdminApp } from "./AdminApp";
 import { AdminRoot } from "./AdminRoot";
 
@@ -17,6 +18,7 @@ if (!root) {
 // First of all, before anything is drawn or requested: if Telegram has just sent the browser back here,
 // the signed fields are taken out of the address.
 const loginReturn = takeLoginReturn();
+initTheme();
 
 const initialLanguage = detectLanguage({ stored: readStoredLanguage() });
 const preview = import.meta.env.DEV ? previewAdminSession(window.location.search) : false;

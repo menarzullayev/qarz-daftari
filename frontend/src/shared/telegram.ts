@@ -19,6 +19,8 @@ export type TelegramWebApp = {
   initData: string;
   initDataUnsafe: { user?: { language_code?: string } };
   themeParams: TelegramThemeParams;
+  /** "light" or "dark", as the Telegram client reports it; older clients do not. */
+  colorScheme?: string;
   ready: () => void;
   expand: () => void;
   onEvent?: (eventType: "themeChanged", handler: () => void) => void;
@@ -104,11 +106,52 @@ export function themeToCssVariables(theme: unknown): Record<string, string> {
   return variables;
 }
 
-type StyleTarget = { style: Pick<CSSStyleDeclaration, "setProperty"> };
+/** Relative luminance (WCAG) of a six-digit hex color. */
+function luminance(hex: string): number {
+  const channels = [1, 3, 5].map((start) => {
+    const value = Number.parseInt(hex.slice(start, start + 2), 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * (channels[0] ?? 0) + 0.7152 * (channels[1] ?? 0) + 0.0722 * (channels[2] ?? 0);
+}
 
+/** Below this luminance a background reads as dark: light text on it has the better contrast. */
+const DARK_BACKGROUND = 0.18;
+
+/**
+ * Whether Telegram's theme is light or dark: what the client says, or else what its background color
+ * shows. Null when neither is known; the device's own scheme then stays in charge.
+ */
+export function telegramColorScheme(webApp: TelegramWebApp | null): "light" | "dark" | null {
+  const said: unknown = webApp?.colorScheme;
+  if (said === "light" || said === "dark") {
+    return said;
+  }
+  const theme: unknown = webApp?.themeParams;
+  const background = isRecord(theme) ? color(theme["bg_color"]) : null;
+  if (!background) {
+    return null;
+  }
+  return luminance(background) < DARK_BACKGROUND ? "dark" : "light";
+}
+
+type StyleTarget = {
+  style: Pick<CSSStyleDeclaration, "setProperty">;
+  setAttribute?: (name: string, value: string) => void;
+};
+
+/**
+ * Telegram's colors replace the nine base tokens. The tokens Telegram has no color for (soft grounds,
+ * hairlines, status colors, shadows) come from the application's light or dark set, whichever matches
+ * Telegram's scheme: `data-theme` chooses it, and `data-telegram` marks the page as themed by Telegram.
+ */
 export function applyTelegramTheme(webApp: TelegramWebApp | null, target: StyleTarget): void {
   for (const [name, value] of Object.entries(themeToCssVariables(webApp?.themeParams))) {
     target.style.setProperty(name, value);
+  }
+  const scheme = telegramColorScheme(webApp);
+  if (scheme) {
+    target.setAttribute?.("data-theme", scheme);
   }
 }
 
@@ -138,6 +181,7 @@ export function initTelegram(
     webApp.ready();
     webApp.expand();
     if (target) {
+      target.setAttribute?.("data-telegram", "");
       applyTelegramTheme(webApp, target);
       webApp.onEvent?.("themeChanged", () => applyTelegramTheme(webApp, target));
     }

@@ -1,4 +1,5 @@
 import { useI18n } from "../i18n/I18nProvider";
+import { NavIcon } from "./icons";
 import { Link } from "./router";
 import type { ShellNavItem } from "./Shell";
 
@@ -29,15 +30,18 @@ export function NotFoundScreen() {
   );
 }
 
-/** The sections that do not fit in the phone's tab bar, as a plain list of links. */
+/** The sections that do not fit in the phone's tab bar, as tiles: an icon and the section's name. */
 export function MoreScreen({ items }: { items: readonly ShellNavItem[] }) {
   const { t } = useI18n();
   return (
-    <ul className="section-list">
+    <ul className="tiles">
       {items.map((item) => (
         <li key={item.id}>
-          <Link to={item.path} className="section-list__link">
-            {t(item.labelKey)}
+          <Link to={item.path} className="tile">
+            <span className="tile__icon">
+              <NavIcon id={item.id} />
+            </span>
+            <span className="tile__title">{t(item.labelKey)}</span>
           </Link>
         </li>
       ))}

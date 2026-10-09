@@ -1,0 +1,152 @@
+/*
+ * Design tokens of Qarz Daftari. This is the only style sheet that may hold a color value; every other
+ * one uses the variables (the style sheet tests refuse a hex or rgb() anywhere else).
+ *
+ * Themes: light is the default. Dark applies when <html data-theme="dark">, or when the device asks for
+ * dark and no theme was chosen ("System": no data-theme attribute). The two dark blocks below must stay
+ * identical, and every text/ground pair the tokens are meant for is checked for WCAG AA in both
+ * themes by shell.contrast.test.ts: change a color here and the test says which pair stopped passing.
+ *
+ * Inside Telegram the nine base tokens (bg, surface, text, muted, link, accent, on-accent, border, focus)
+ * are replaced by the Telegram theme (shared/telegram.ts); the others come from the light or dark set
+ * that matches Telegram's color scheme.
+ */
+:root {
+  color-scheme: light;
+
+  --qd-bg: #ffffff;
+  --qd-surface: #f1f3f6;
+  --qd-surface-2: #e6e9ee;
+  --qd-text: #0f172a;
+  --qd-muted: #55627a;
+  --qd-link: #0b5cc4;
+  --qd-accent: #0b63ce;
+  --qd-accent-hover: #094fa6;
+  --qd-on-accent: #ffffff;
+  --qd-accent-soft: #e8f1fe;
+  --qd-accent-soft-border: #bcd6fb;
+  --qd-border: #76829a;
+  --qd-line: #e2e5ea;
+  --qd-focus: #0b63ce;
+  --qd-success: #0b6b4a;
+  --qd-success-soft: #e3f6ee;
+  --qd-warning: #8a4b00;
+  --qd-warning-soft: #fff3d6;
+  --qd-danger: #c0271f;
+  --qd-on-danger: #ffffff;
+  --qd-danger-soft: #fdecec;
+  --qd-overlay: rgba(15, 23, 42, 0.5);
+
+  --qd-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --qd-shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
+  --qd-shadow-lg: 0 18px 48px rgba(15, 23, 42, 0.18);
+
+  /* Spacing: the 4px scale, written in rem so it follows the reader's text size. */
+  --qd-space-1: 0.25rem;
+  --qd-space-2: 0.5rem;
+  --qd-space-3: 0.75rem;
+  --qd-space-4: 1rem;
+  --qd-space-5: 1.25rem;
+  --qd-space-6: 1.5rem;
+  --qd-space-8: 2rem;
+  --qd-space-10: 2.5rem;
+
+  --qd-radius-sm: 8px;
+  --qd-radius-md: 12px;
+  --qd-radius-lg: 16px;
+  --qd-radius-xl: 20px;
+  --qd-radius-pill: 999px;
+
+  --qd-control-height: 2.75rem;
+  --qd-header-height: 3.75rem;
+  --qd-nav-height: 3.75rem;
+  --qd-side-width: 15rem;
+
+  /* Type. Each style is a `font` shorthand (weight size/line-height family); tracking is separate. */
+  --qd-font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --qd-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --qd-type-title: 800 1.375rem/1.25 var(--qd-font-sans);
+  --qd-type-subject: 700 1.25rem/1.3 var(--qd-font-sans);
+  --qd-type-heading: 700 1.125rem/1.3 var(--qd-font-sans);
+  --qd-type-label: 700 0.8125rem/1.3 var(--qd-font-sans);
+  --qd-type-body: 400 1rem/1.5 var(--qd-font-sans);
+  --qd-type-control: 600 0.9375rem/1.5 var(--qd-font-sans);
+  --qd-type-small: 400 0.8125rem/1.4 var(--qd-font-sans);
+  --qd-type-caption: 600 0.6875rem/1.2 var(--qd-font-sans);
+  --qd-type-amount-lg: 800 1.75rem/1.2 var(--qd-font-sans);
+  --qd-type-amount: 800 1.25rem/1.3 var(--qd-font-sans);
+  --qd-type-code: 400 0.875rem/1.5 var(--qd-font-mono);
+
+  --qd-tracking-tight: -0.02em;
+  --qd-tracking-label: 0.04em;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --qd-bg: #171c26;
+  --qd-surface: #0e121a;
+  --qd-surface-2: #232a37;
+  --qd-text: #e8ecf3;
+  --qd-muted: #a3adbf;
+  --qd-link: #7db5ff;
+  --qd-accent: #5aa2ff;
+  --qd-accent-hover: #7db5ff;
+  --qd-on-accent: #061a33;
+  --qd-accent-soft: #152a47;
+  --qd-accent-soft-border: #2a4a78;
+  --qd-border: #7e8aa0;
+  --qd-line: #2a3140;
+  --qd-focus: #7db5ff;
+  --qd-success: #5fd3a3;
+  --qd-success-soft: #123528;
+  --qd-warning: #f5c264;
+  --qd-warning-soft: #3d2e10;
+  --qd-danger: #ff9b93;
+  --qd-on-danger: #3d0906;
+  --qd-danger-soft: #45201f;
+  --qd-overlay: rgba(0, 0, 0, 0.6);
+
+  --qd-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --qd-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --qd-shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.6);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+
+    --qd-bg: #171c26;
+    --qd-surface: #0e121a;
+    --qd-surface-2: #232a37;
+    --qd-text: #e8ecf3;
+    --qd-muted: #a3adbf;
+    --qd-link: #7db5ff;
+    --qd-accent: #5aa2ff;
+    --qd-accent-hover: #7db5ff;
+    --qd-on-accent: #061a33;
+    --qd-accent-soft: #152a47;
+    --qd-accent-soft-border: #2a4a78;
+    --qd-border: #7e8aa0;
+    --qd-line: #2a3140;
+    --qd-focus: #7db5ff;
+    --qd-success: #5fd3a3;
+    --qd-success-soft: #123528;
+    --qd-warning: #f5c264;
+    --qd-warning-soft: #3d2e10;
+    --qd-danger: #ff9b93;
+    --qd-on-danger: #3d0906;
+    --qd-danger-soft: #45201f;
+    --qd-overlay: rgba(0, 0, 0, 0.6);
+
+    --qd-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --qd-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+    --qd-shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.6);
+  }
+}
+
+/* Telegram decides the primary color; a hover shade of our own blue would not belong to its theme. */
+:root[data-telegram] {
+  --qd-accent-hover: var(--qd-accent);
+}
