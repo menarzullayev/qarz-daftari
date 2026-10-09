@@ -19,7 +19,7 @@ itself supplies (a channel, a job, a backup type, a path inside the container); 
 
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 
 MINUTE, HOUR, DAY = 60, 3600, 86400
@@ -75,6 +75,7 @@ JOB_LIMITS: dict[str, int] = {
     "receipts": HOURLY_JOB_LATE_SECONDS,
     "subscriptions": DAILY_JOB_LATE_SECONDS,
     "ledger_check": DAILY_JOB_LATE_SECONDS,
+    "stock_check": DAILY_JOB_LATE_SECONDS,
     "measure_week": WEEKLY_JOB_LATE_SECONDS,
 }
 REMINDERS_JOB = "reminders"
@@ -82,6 +83,12 @@ REMINDERS_JOB = "reminders"
 # Series kept in `ops_sample`.
 REQUESTS_ALL, REQUESTS_FAILED = "requests:all", "requests:5xx"
 LEDGER_SERIES = "ledger_mismatches"
+# The stock's two kept figures against their ledgers (the daily `stock_check`): label -> series. The
+# label is what an alert says is wrong: what is on hand, or what a supplier is owed.
+STOCK_SERIES: dict[str, str] = {
+    "stock_level": "stock_level_mismatches",
+    "supplier_balance": "supplier_balance_mismatches",
+}
 # Samples are kept this long: the longest window, and room for a late round.
 SAMPLES_KEPT = timedelta(minutes=20)
 # A sample a little older than the window still opens it: rounds are a minute apart, never exactly.
@@ -137,6 +144,7 @@ RULES: dict[str, Rule] = {
         Rule("DiskAlmostFull", DISK, 10 * MINUTE, "share"),
         Rule("JobNotRunning", DATABASE, 5 * MINUTE, "age"),
         Rule("LedgerMismatch", DATABASE, 0, "count"),
+        Rule("StockMismatch", DATABASE, 0, "count"),
         Rule("ApiDown", API, 2 * MINUTE),
         Rule("TelegramRefusesBot", TELEGRAM, 0),
         Rule("TelegramUnreachable", TELEGRAM, 5 * MINUTE),
@@ -177,6 +185,8 @@ class DatabaseFigures:
     sms_failed_last_hour: int
     receipt_waiting: float | None  # seconds the oldest undecided receipt has waited; None when none waits
     ledger_mismatches: float | None  # the last daily count; None when the check has never run
+    # label of STOCK_SERIES -> the last daily count; a label is absent while its check has never run
+    stock_mismatches: Mapping[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -357,6 +367,9 @@ def _database(now: datetime, figures: DatabaseFigures) -> dict[str, Finding]:
     found["ReceiptsWaiting"] = Finding(waiting is not None and waiting > RECEIPT_WAITING_SECONDS, waiting)
     wrong = figures.ledger_mismatches
     found["LedgerMismatch"] = Finding(wrong is not None and wrong > 0, wrong)
+    for label in STOCK_SERIES:
+        differ = figures.stock_mismatches.get(label)
+        found[key_of("StockMismatch", label)] = Finding(differ is not None and differ > 0, differ)
     return found
 
 

@@ -16,7 +16,8 @@ from qarz.application.ports import Storage
 from qarz.application.reminders import ReminderService
 from qarz.application.shop_deletion import ShopDeletionService
 from qarz.application.subscription import SubscriptionService
-from qarz.domain.ops_alerts import LEDGER_SERIES
+from qarz.domain import platform_settings
+from qarz.domain.ops_alerts import LEDGER_SERIES, STOCK_SERIES
 from qarz.domain.promise import TASHKENT
 from qarz.domain.reminders import hours_to_run
 
@@ -29,6 +30,9 @@ RECEIPTS = "receipts"
 SIGN_IN_CLEANUP = "sign_in_cleanup"
 # The daily comparison of the stored open debts with the ledger (DEC-078).
 LEDGER_CHECK = "ledger_check"
+# The daily comparison of the stock's kept figures (on hand, owed to suppliers) with their ledgers.
+STOCK_CHECK = "stock_check"
+STOCK_SWITCH = "stock_on"
 
 
 class Scheduler:
@@ -45,6 +49,7 @@ class Scheduler:
         imports: ImportService | None = None,
         sign_in_cleanup: bool = False,
         ledger_check: bool = False,
+        stock_check: bool = False,
     ) -> None:
         self._storage = storage
         self._reminders = reminders
@@ -59,6 +64,8 @@ class Scheduler:
         # The day and hour of the last attempt: a check that fails is tried again an hour later, not at
         # every tick, because what makes it fail is most likely its own cost.
         self._ledger_tried: tuple[str, int] | None = None
+        self._stock_check = stock_check
+        self._stock_tried: tuple[str, int] | None = None
         self._now = now or (lambda: datetime.now(UTC))
 
     async def tick(self) -> int:
@@ -139,4 +146,24 @@ class Scheduler:
                     count = await session.ledger_mismatch_count()
                     await session.add_ops_samples(self._now(), {LEDGER_SERIES: float(count)})
                     await session.finish_job(LEDGER_CHECK, period)
+        if self._stock_check:
+            # The same once a day for the stock's two kept figures, as a job of its own after the
+            # ledger's: each is one statement over every shop whose cost grows with the history it
+            # adds up (measured: 0.4 s and 0.15 s over two million movements and 400 000 supplier
+            # entries), which is too much for the watch's every minute and nothing for once a day; and
+            # one that is cancelled by the statement timeout must not take the other's day with it.
+            # While the stock is switched off its tables are read by nothing, this included: the day
+            # is finished without a sample, and the last sample taken while it was on stays.
+            period = local.date().isoformat()
+            async with self._storage.platform() as session:
+                done = await session.job_done(STOCK_CHECK, period)
+            if not done and self._stock_tried != (period, local.hour):
+                self._stock_tried = (period, local.hour)
+                async with self._storage.platform() as session:
+                    stored = await session.platform_setting(STOCK_SWITCH)
+                    if platform_settings.effective(STOCK_SWITCH, stored) is True:
+                        counts = await session.stock_mismatch_counts()
+                        samples = {STOCK_SERIES[label]: float(count) for label, count in counts.items()}
+                        await session.add_ops_samples(self._now(), samples)
+                    await session.finish_job(STOCK_CHECK, period)
         return sent

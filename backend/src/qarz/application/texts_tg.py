@@ -464,6 +464,7 @@ CHAT: dict[str, str] = {
     "ops_rule_DiskAlmostFull": "диск зиёда аз 80% пур шудааст",
     "ops_rule_JobNotRunning": "кори нақшавӣ давраи худро анҷом надодааст",
     "ops_rule_LedgerMismatch": "қарзҳои кушодаи нигоҳдошташуда аз сабтҳои дафтар фарқ мекунанд",
+    "ops_rule_StockMismatch": "бақияи нигоҳдошташудаи анбор ё қарз ба таъминкунанда аз сабтҳои худ фарқ мекунад",
     "ops_rule_ApiDown": "API ба дархости /healthz ҷавоб намедиҳад",
     "ops_rule_TelegramRefusesBot": "Telegram токени ботро рад мекунад",
     "ops_rule_TelegramUnreachable": "бо Telegram алоқа нест",

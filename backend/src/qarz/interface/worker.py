@@ -96,6 +96,8 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
         sign_in_cleanup=True,
         # The stored open debts are compared with the ledger once a day.
         ledger_check=True,
+        # The stock's kept figures are compared with their ledgers once a day, while the stock is on.
+        stock_check=True,
     )
     health = WorkerHealth(started_at=datetime.now(UTC))
     watching = asyncio.create_task(watch_loop(build_watch(settings, database, bot, health), stop))

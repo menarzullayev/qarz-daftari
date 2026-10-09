@@ -375,8 +375,9 @@ never a shop, a person, a phone number or an amount.
 | The dispatcher has not finished a round for 5 minutes | `DispatcherFailing` | at once |
 | Telegram refuses the bot's token; Telegram cannot be reached | `TelegramRefusesBot`, `TelegramUnreachable` | at once; 5 minutes (see below) |
 | No reminder run for 65 minutes between 08:00 and 20:00 | `RemindersNotRunning` | 5 minutes |
-| A scheduled job has not finished its period: the hourly ones (`erasure`, `receipts`, `sign_in_cleanup`) for 65 minutes, the daily ones (`subscriptions`, `ledger_check`) for 26 hours, `measure_week` for 8 days | `JobNotRunning:<job>` | 5 minutes |
+| A scheduled job has not finished its period: the hourly ones (`erasure`, `receipts`, `sign_in_cleanup`) for 65 minutes, the daily ones (`subscriptions`, `ledger_check`, `stock_check`) for 26 hours, `measure_week` for 8 days | `JobNotRunning:<job>` | 5 minutes |
 | The stored open debts differ from the ledger (checked once a day, just after midnight) | `LedgerMismatch` | at once |
+| What the stock keeps on hand, or what a supplier is owed, differs from its movements or entries (checked once a day, just after midnight, while `stock_on` is on) | `StockMismatch:stock_level`, `StockMismatch:supplier_balance` | at once |
 | A subscription receipt has waited more than 24 hours | `ReceiptsWaiting` | 10 minutes |
 | An SMS was refused or given up within the hour; SMS are queued and not accepted | `SmsRefused`, `SmsNotGoingOut` | at once; 30 minutes |
 | The API does not answer `/healthz` inside the Compose network | `ApiDown` | 2 minutes |

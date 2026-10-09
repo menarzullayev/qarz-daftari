@@ -166,6 +166,7 @@ CONDITIONS: list[tuple[str, Figures, Figures]] = [
     ("JobNotRunning:receipts", jobs(receipts=3901.0), jobs(receipts=3900.0)),
     ("JobNotRunning:subscriptions", jobs(subscriptions=93601.0), jobs(subscriptions=93600.0)),
     ("JobNotRunning:ledger_check", jobs(ledger_check=93601.0), jobs(ledger_check=93600.0)),
+    ("JobNotRunning:stock_check", jobs(stock_check=93601.0), jobs(stock_check=93600.0)),
     ("JobNotRunning:measure_week", jobs(measure_week=691201.0), jobs(measure_week=691200.0)),
     # A job that never finished a period: late once the service is older than the job's limit.
     (
@@ -177,6 +178,17 @@ CONDITIONS: list[tuple[str, Figures, Figures]] = [
     ("SmsNotGoingOut", database(sms_retrying=1), database(sms_retrying=0)),
     ("ReceiptsWaiting", database(receipt_waiting=86401.0), database(receipt_waiting=86400.0)),
     ("LedgerMismatch", database(ledger_mismatches=1.0), database(ledger_mismatches=None)),  # never checked yet
+    # Each of the stock's two kept figures by itself; one that was never checked (the stock is off) is quiet.
+    (
+        "StockMismatch:stock_level",
+        database(stock_mismatches={"stock_level": 1.0, "supplier_balance": 0.0}),
+        database(stock_mismatches={"stock_level": 0.0, "supplier_balance": 0.0}),
+    ),
+    (
+        "StockMismatch:supplier_balance",
+        database(stock_mismatches={"stock_level": 0.0, "supplier_balance": 2.0}),
+        database(stock_mismatches={}),
+    ),
     ("ApiDown", replace(HEALTHY, api_healthy=False), HEALTHY),
     ("MetricsMissing", replace(HEALTHY, metrics_readable=False, increases=None), HEALTHY),
     ("ErrorRateHigh", counters(failed=11.0, every=500.0), counters(failed=10.0, every=500.0)),  # 2.2% / 2.0%
@@ -214,6 +226,18 @@ def test_each_condition_holds_when_it_should(key: str, firing: Figures, quiet: F
 @pytest.mark.parametrize(("key", "firing", "quiet"), CONDITIONS, ids=[f"{i}-{c[0]}" for i, c in enumerate(CONDITIONS)])
 def test_each_condition_does_not_hold_just_short_of_it(key: str, firing: Figures, quiet: Figures) -> None:
     assert rules.evaluate(quiet)[key].holds is False
+
+
+def test_a_stock_figure_never_checked_is_judged_and_quiet_and_no_other_label_is_invented() -> None:
+    found = rules.evaluate(HEALTHY)
+    assert {key for key in found if key.startswith("StockMismatch")} == {
+        "StockMismatch:stock_level",
+        "StockMismatch:supplier_balance",
+    }
+    assert not found["StockMismatch:stock_level"].holds
+    assert found["StockMismatch:stock_level"].value is None
+    # A sample of a series the rules do not know changes nothing: only the two labels are read.
+    assert holding(database(stock_mismatches={"something_else": 9.0})) == set()
 
 
 def test_every_rule_has_a_firing_and_a_quiet_case() -> None:

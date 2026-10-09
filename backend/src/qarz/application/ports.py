@@ -1521,7 +1521,8 @@ class PlatformSession(Protocol):
     async def delete_ops_alert(self, key: str) -> None: ...
 
     async def ops_database_figures(self, now: datetime) -> DatabaseFigures:
-        """Ages and counts of the outbox, the scheduled jobs, SMS, receipts and the ledger check."""
+        """Ages and counts of the outbox, the scheduled jobs, SMS, receipts, the ledger check and the
+        stock check."""
         ...
 
     async def add_ops_samples(self, taken_at: datetime, values: Mapping[str, float]) -> None: ...
@@ -1534,6 +1535,12 @@ class PlatformSession(Protocol):
 
     async def ledger_mismatch_count(self) -> int:
         """In how many places the stored open debts differ from the ledger, over every shop."""
+        ...
+
+    async def stock_mismatch_counts(self) -> dict[str, int]:
+        """In how many places what is kept on hand (`stock_level`) and what suppliers are owed
+        (`supplier_balance`) differ from their ledgers, over every shop: a count for each label of
+        `qarz.domain.ops_alerts.STOCK_SERIES`."""
         ...
 
     async def use_signed_data(self, payload_hash: bytes, expires_at: datetime) -> bool:

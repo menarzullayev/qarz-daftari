@@ -441,6 +441,7 @@ CHAT: dict[str, str] = {
     "ops_rule_DiskAlmostFull": "disk 80% ten kóp tolǵan",
     "ops_rule_JobNotRunning": "rejeli jumıs óz dáwirin tamamlamaǵan",
     "ops_rule_LedgerMismatch": "saqlanǵan ashıq qarızlar dápter jazbalarınan parıq qılmaqta",
+    "ops_rule_StockMismatch": "skladtaǵı saqlanǵan qaldıq yamasa támiyinlewshige qarız óz jazbalarınan parıq qılmaqta",
     "ops_rule_ApiDown": "API /healthz sorawına juwap bermey atır",
     "ops_rule_TelegramRefusesBot": "Telegram bot tokenin ret etpekte",
     "ops_rule_TelegramUnreachable": "Telegram menen baylanıs joq",

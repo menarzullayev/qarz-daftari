@@ -18,12 +18,13 @@ import pytest
 
 from qarz.application.ops_watch import AlertNotDelivered, OpsWatch
 from qarz.application.reminders import ReminderService
-from qarz.application.scheduler import LEDGER_CHECK, Scheduler
+from qarz.application.scheduler import LEDGER_CHECK, STOCK_CHECK, Scheduler
 from qarz.domain import ops_alerts as rules
 from qarz.domain.ops_alerts import Alert
 from qarz.infrastructure.db import Database
 
 from ..conftest import AppSession, Shop, add_entry
+from ..db.test_stock_schema import item, move, supplier, supplier_entry
 
 pytestmark = pytest.mark.db
 
@@ -300,6 +301,157 @@ def test_a_scheduler_that_is_not_asked_to_does_not_check_the_ledger(
         "SELECT count(*) FROM job_run WHERE job = %s AND period = %s", (LEDGER_CHECK, period)
     ).fetchone()
     assert row == (0,)
+
+
+# --- the nightly check of the stock (migration 0046) ---------------------------------------------------------
+
+
+def stock_counts(conn: psycopg.Connection) -> tuple[int, int]:
+    row = conn.execute("SELECT stock_level_mismatch_count(), supplier_balance_mismatch_count()").fetchone()
+    assert row is not None
+    return int(row[0]), int(row[1])
+
+
+def test_each_stock_count_grows_by_one_when_its_kept_figure_is_damaged(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+) -> None:
+    sugar = item(owner, shop_a, f"Shakar {uuid.uuid4().hex[:8]}")
+    who = supplier(owner, shop_a, f"Ulgurji {uuid.uuid4().hex[:8]}")
+    with as_app(shop_a.shop_id) as app:
+        move(app, shop_a, sugar, 1, "10", 100_000, "10", 100_000)
+        supplier_entry(app, shop_a, who, 1, "purchase", 100_000)
+    levels, owed = stock_counts(owner)
+    with owner.transaction(force_rollback=True):
+        owner.execute("UPDATE stock_level SET on_hand = 9 WHERE item_id = %s", (sugar,))
+        assert stock_counts(owner) == (levels + 1, owed), "only the level's count moves"
+    with owner.transaction(force_rollback=True):
+        owner.execute("UPDATE supplier_balance SET balance = 99999 WHERE supplier_id = %s", (who,))
+        assert stock_counts(owner) == (levels, owed + 1), "only the suppliers' count moves"
+    assert stock_counts(owner) == (levels, owed)
+
+
+def test_the_worker_gets_the_stock_counts_and_nobody_gets_the_comparisons(
+    as_worker: AppSession, as_app: AppSession
+) -> None:
+    with as_worker(None) as conn:
+        assert min(stock_counts(conn)) >= 0
+    for comparison in ("stock_level_mismatches", "supplier_balance_mismatches"):
+        with pytest.raises(psycopg.errors.InsufficientPrivilege), as_worker(None) as conn:
+            conn.execute(f"SELECT * FROM {comparison}(NULL)")
+    for count in ("stock_level_mismatch_count", "supplier_balance_mismatch_count"):
+        with pytest.raises(psycopg.errors.InsufficientPrivilege), as_app(None) as conn:
+            conn.execute(f"SELECT {count}()")
+
+
+def stock_switch(owner: psycopg.Connection, on: bool | None) -> None:
+    owner.execute("DELETE FROM platform_setting WHERE key = 'stock_on'")
+    if on is not None:
+        owner.execute(
+            "INSERT INTO platform_setting (key, value, updated_by) VALUES ('stock_on', %s::jsonb, 'test')",
+            (json.dumps(on),),
+        )
+
+
+def stock_samples(owner: psycopg.Connection, since: datetime, until: datetime) -> list[tuple[str, datetime, float]]:
+    return owner.execute(
+        "SELECT series, taken_at, value FROM ops_sample WHERE series = ANY(%s) AND taken_at >= %s AND taken_at <= %s "
+        "ORDER BY taken_at, series",
+        (list(rules.STOCK_SERIES.values()), since, until),
+    ).fetchall()
+
+
+def stock_days(owner: psycopg.Connection, periods: list[str]) -> list[int]:
+    rows = owner.execute(
+        "SELECT period, count(*) FROM job_run WHERE job = %s AND period = ANY(%s) GROUP BY period",
+        (STOCK_CHECK, periods),
+    ).fetchall()
+    found = dict(rows)
+    return [int(found.get(period, 0)) for period in periods]
+
+
+def test_the_scheduler_checks_the_stock_once_a_day_while_it_is_on_and_keeps_both_counts(
+    worker_database_url: str, owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+) -> None:
+    day = datetime(2093, 3, 4, 0, 30, tzinfo=UTC) + timedelta(days=uuid.uuid4().int % 300)
+    periods = [(day + timedelta(hours=5, days=more)).date().isoformat() for more in (0, 1, 2)]
+    current = {"now": day}
+    sugar = item(owner, shop_a, f"Shakar {uuid.uuid4().hex[:8]}")
+    with as_app(shop_a.shop_id) as app:
+        move(app, shop_a, sugar, 1, "10", 100_000, "10", 100_000)
+    before = stock_counts(owner)
+
+    async def scenario(database: Database) -> tuple[list[list[int]], rules.DatabaseFigures]:
+        scheduler = Scheduler(
+            database, ReminderService(database, lambda: current["now"]), lambda: current["now"], stock_check=True
+        )
+        runs = []
+        for moment in (day, day + timedelta(minutes=1), day + timedelta(days=1), day + timedelta(days=2)):
+            current["now"] = moment
+            if moment == day + timedelta(days=1):
+                # Behind the ledger's back, as only the owner of the tables can: the next check finds it.
+                owner.execute("UPDATE stock_level SET on_hand = 9 WHERE item_id = %s", (sugar,))
+            if moment == day + timedelta(days=2):
+                stock_switch(owner, False)
+            await scheduler.tick()
+            runs.append(stock_days(owner, periods))
+        async with database.platform() as session:
+            return runs, await session.ops_database_figures(current["now"])
+
+    stock_switch(owner, True)
+    try:
+        runs, figures = run(worker_database_url, scenario)
+        # Once on the day however many ticks follow, again the day after, and the day the stock is off is
+        # finished too (or JobNotRunning would fire for a job that has nothing to do).
+        assert runs == [[1, 0, 0], [1, 0, 0], [1, 1, 0], [1, 1, 1]]
+        level_series, owed_series = rules.STOCK_SERIES["stock_level"], rules.STOCK_SERIES["supplier_balance"]
+        # Two samples a day while it is on; none on the day it is off: its tables are not read then.
+        assert sorted(stock_samples(owner, day, day + timedelta(days=2))) == sorted(
+            [
+                (level_series, day, float(before[0])),
+                (owed_series, day, float(before[1])),
+                (level_series, day + timedelta(days=1), float(before[0] + 1)),
+                (owed_series, day + timedelta(days=1), float(before[1])),
+            ]
+        )
+        # The watch reads the newest of each, which is the damaged day's: the alert holds, and says which.
+        assert figures.stock_mismatches == {"stock_level": before[0] + 1, "supplier_balance": before[1]}
+        judged = rules.evaluate(
+            rules.Figures(now=current["now"], configured=frozenset({rules.DATABASE}), database=figures)
+        )
+        assert judged["StockMismatch:stock_level"].holds is True
+        assert judged["StockMismatch:supplier_balance"].holds is (before[1] > 0)
+    finally:
+        stock_switch(owner, None)
+        owner.execute("UPDATE stock_level SET on_hand = 10 WHERE item_id = %s", (sugar,))
+        owner.execute("DELETE FROM job_run WHERE job = %s AND period = ANY(%s)", (STOCK_CHECK, periods))
+        owner.execute(
+            "DELETE FROM ops_sample WHERE series = ANY(%s) AND taken_at >= %s AND taken_at <= %s",
+            (list(rules.STOCK_SERIES.values()), day, day + timedelta(days=2)),
+        )
+
+
+def test_a_scheduler_does_not_read_the_stock_while_it_is_off_or_when_it_is_not_asked_to(
+    worker_database_url: str, owner: psycopg.Connection
+) -> None:
+    day = datetime(2094, 3, 4, 0, 30, tzinfo=UTC) + timedelta(days=uuid.uuid4().int % 300)
+    period = (day + timedelta(hours=5)).date().isoformat()
+
+    async def scenario(database: Database) -> list[list[int]]:
+        seen = []
+        # Not asked to: nothing of the job at all.
+        await Scheduler(database, ReminderService(database, lambda: day), lambda: day).tick()
+        seen.append(stock_days(owner, [period]))
+        # Asked to, with the switch off (no row: off by default): the day is finished, nothing is sampled.
+        await Scheduler(database, ReminderService(database, lambda: day), lambda: day, stock_check=True).tick()
+        seen.append(stock_days(owner, [period]))
+        return seen
+
+    stock_switch(owner, None)
+    try:
+        assert run(worker_database_url, scenario) == [[0], [1]]
+        assert stock_samples(owner, day, day) == []
+    finally:
+        owner.execute("DELETE FROM job_run WHERE job = %s AND period = %s", (STOCK_CHECK, period))
 
 
 # --- a whole round against the database ----------------------------------------------------------------------

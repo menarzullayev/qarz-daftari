@@ -445,6 +445,7 @@ CHAT: dict[str, str] = {
     "ops_rule_DiskAlmostFull": "the disk is more than 80% full",
     "ops_rule_JobNotRunning": "a scheduled job has not finished its cycle",
     "ops_rule_LedgerMismatch": "the stored open debts differ from the ledger entries",
+    "ops_rule_StockMismatch": "the stored stock on hand or the debt to a supplier differs from its own entries",
     "ops_rule_ApiDown": "the API does not answer the /healthz request",
     "ops_rule_TelegramRefusesBot": "Telegram refuses the bot token",
     "ops_rule_TelegramUnreachable": "no connection to Telegram",
