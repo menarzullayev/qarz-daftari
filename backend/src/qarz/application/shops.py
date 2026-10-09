@@ -8,12 +8,13 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from zoneinfo import ZoneInfo
 
 from qarz.application import idempotency
+from qarz.application.authorization import require_operation
 from qarz.application.currencies import DollarBalanceOpen, platform_dollars
-from qarz.application.errors import AppError, ForbiddenRole, NotFound, ValidationFailed
+from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import Operation, operation, self_operation
 from qarz.application.ports import Membership, ShopSettings, Storage, TenantSession
 from qarz.domain import platform_settings
-from qarz.domain.access import Capability, Role, allows, lowest_role_with
+from qarz.domain.access import Capability, Role
 
 READ_SHOP = operation("shop.read", Capability.READ_SHOP)
 UPDATE_SHOP = operation("shop.update", Capability.ADMINISTER_SHOP)
@@ -27,16 +28,16 @@ TASHKENT = ZoneInfo("Asia/Tashkent")
 async def require_member(session: TenantSession, user_id: UUID, op: Operation) -> Membership:
     """Authorize a staff operation inside an open tenant transaction.
 
-    A caller who is not an active member of the shop gets NotFound, exactly as if the shop did not exist.
-    A member whose role lacks the capability is told which role is needed.
+    A caller who is not an active member of the shop gets NotFound, exactly as if the shop did not exist:
+    a suspended or removed member holds nothing. A member who does not hold a permission that opens the
+    operation is refused (`qarz.application.authorization`, the one place that decides).
     """
     membership = await session.active_membership(user_id)
     if membership is None:
         raise NotFound()
     if op.capability is None:
         raise ValueError(f"{op.name} is not a shop operation")
-    if not allows(membership.role, op.capability):
-        raise ForbiddenRole(lowest_role_with(op.capability))
+    require_operation(membership, op)
     return membership
 
 

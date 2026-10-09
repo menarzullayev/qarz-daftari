@@ -13,12 +13,14 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+from qarz.application.authorization import require_permission
 from qarz.application.catalog import register_learned
 from qarz.application.currencies import NOT_IN_DOLLARS, UZS
-from qarz.application.errors import AppError, ForbiddenRole, NotFound, ValidationFailed
+from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import operation
 from qarz.application.ports import CatalogItemRecord, GoodsLineRecord, Membership, TenantSession
-from qarz.domain.access import Capability, Role, allows
+from qarz.domain import permissions
+from qarz.domain.access import Capability
 from qarz.domain.catalog import check_price, item_name, normalize_unit
 from qarz.domain.goods import MAX_LINES, MIN_LINES, format_qty, line_count_allowed, lines_window_open, parse_qty
 from qarz.domain.ledger import EntryKind
@@ -246,8 +248,8 @@ async def add_lines_in(
     row = next((candidate for candidate in account if candidate.entry.id == entry_id), None)
     if row is None:
         raise NotFound()
-    if row.author_id != actor.membership_id and not allows(actor.role, Capability.MANAGE):
-        raise ForbiddenRole(Role.MANAGER)
+    if row.author_id != actor.membership_id:
+        require_permission(actor, permissions.ENTRIES_OTHERS)
 
     entry = row.entry
     if entry.kind is not EntryKind.CREDIT:

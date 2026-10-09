@@ -76,6 +76,63 @@ to Eskiz (`notify.eskiz.uz`) from the worker, behind the platform switch `sms_on
 - **Database:** no new right. Migration 0032 adds one index for the health figures.
 - **Not reviewed by anyone but its author, and never run against Eskiz.**
 
+## Added after the review: separate permissions per member of staff (expansion module G)
+
+Not part of the review above and not seen by its reviewer; recorded here by the build so that the next
+review knows it exists. Behind the platform switch `permissions_on`, which is off. The model, the
+catalogue and the checks that stay by role are in the technical specification ("Access model").
+
+**What changed**
+
+- Authorization of every shop operation no longer reads the role table directly. `require_member` asks
+  `qarz.application.authorization`, which asks `qarz.domain.permissions.effective`. With the switch off
+  it is given no per-member changes and returns the role's defaults.
+- `membership` has two new columns, `permissions_granted` and `permissions_denied` (migration 0039), and
+  `activity` has `detail`. No new table, no new SECURITY DEFINER function, no new right for any database
+  role; `membership` was already under forced row-level security.
+- Four new routes, three of them the owner's alone. Two new refusals: `FORBIDDEN_PERMISSION` and
+  `BEYOND_OWN_PERMISSIONS`. `GET /me/shops` gains a response header while the switch is on.
+- `staff.*` can now be reached by a member who is not the owner, if the owner grants `staff.manage`.
+  This is the one place where a non-owner acts on other members, and so the place to look at first.
+- The bot tells about a payment notice, a dispute or a date request those who hold the permission to
+  decide it, not those of a role.
+
+**What was checked, and by which test**
+
+- Switch off is the behaviour of before: for every shop operation the defaults of its permissions are
+  the role table (`tests/test_permissions.py`); the whole authorization suite runs with the switch off
+  and is unchanged for the existing operations; with changes stored and the switch off, every operation
+  as a manager and as a seller answers by role (`test_with_the_switch_off_stored_changes_are_ignored`);
+  the new routes answer exactly as a missing shop; `/me/shops`, the staff list and the activity log keep
+  their fields; only the JSON `true` turns the switch on.
+- Switch on: every shop operation, as a manager and as a seller, with its permissions unchanged, granted
+  and denied, answers as the rules say, and a refused call changes nothing
+  (`test_with_the_switch_on_the_api_answers_as_the_catalogue_says`, 492 cases). The expectation is
+  written from the rules and the suite's hand-written role table, not computed by the code under test.
+- Each way to get more than was given has a test that fails without its guard: a non-owner reading or
+  setting permissions, with or without `staff.manage`; a fixed key written straight into the database;
+  inviting a manager; changing a role; acting on a manager, on the owner, on oneself; reactivating a
+  suspended seller who holds more than the actor; inviting a seller who would hold what the actor was
+  denied; cancelling the owner's invitation of a manager; a suspended member with grants stored;
+  a removed member invited back; a change of role; an ownership transfer; another shop's owner.
+- The database refuses, whatever the application does: changes for an owner, a key granted and denied at
+  once, a key that is not a key (including one element carrying two keys), more than 64 keys.
+- No stale decision: a grant and a denial each apply to the member's next request, both ways, and so
+  does a suspension. The membership, its changes and the switch are read in one statement per request.
+- Five guards were each removed in turn (denials, the switch, the staff guard, the kind of entry, the switch of
+  the new routes) and the 1420 tests of this module run: 111, 175, 11, 3 and 16 of them failed.
+
+**Known limits**
+
+- A permission the owner denies takes the action away; it does not hide data the member can still read
+  through another permission. `ledger.view` is one permission for the whole book.
+- A client that has not yet read the member's permissions offers by role for a moment; the server
+  refuses the call either way.
+- A member who holds `staff.manage` can see every member's role and status and every open invitation.
+- Per-member changes are per role: they are cleared when the role changes. An owner who moves a member
+  between roles sets them again.
+- **Not reviewed by anyone but its author, and never switched on outside tests.**
+
 ## Added after the review: the operations watch (Telegram alerts)
 
 Not part of the review above and not seen by its reviewer; recorded here by the build (the founder's

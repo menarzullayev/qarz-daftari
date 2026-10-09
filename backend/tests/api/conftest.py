@@ -7,7 +7,7 @@ the caller's user identifier from a header. It exists only in the test suite.
 import hashlib
 import os
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -489,6 +489,33 @@ def world(owner: psycopg.Connection) -> World:
         catalog_item_a=catalog_item,
         learned_item_a=learned_item,
         **users,
+    )
+
+
+def switch_permissions_on(owner: psycopg.Connection) -> None:
+    """Turn the per-member permissions on for the rest of the test (expansion module G).
+
+    The setting is signed like an administrator's change, so the `admin_env` fixture, which every `client`
+    has, takes it away after the test: the next one starts with the switch off.
+    """
+    owner.execute(
+        "INSERT INTO platform_setting (key, value, updated_by) VALUES ('permissions_on', 'true', %s) "
+        "ON CONFLICT (key) DO UPDATE SET value = 'true', updated_by = EXCLUDED.updated_by",
+        (str(uuid.uuid4()),),
+    )
+
+
+def set_overrides(
+    owner: psycopg.Connection,
+    membership: uuid.UUID,
+    *,
+    granted: Sequence[Any] = (),
+    denied: Sequence[Any] = (),
+) -> None:
+    """Store a member's permission changes directly, as the owner's request would."""
+    owner.execute(
+        "UPDATE membership SET permissions_granted = %s, permissions_denied = %s WHERE id = %s",
+        (list(granted), list(denied), membership),
     )
 
 

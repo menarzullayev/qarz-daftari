@@ -12,6 +12,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from qarz.application import idempotency, notify
+from qarz.application.authorization import holders
 from qarz.application.chat_texts import day, money, say
 from qarz.application.currencies import USD, UZS, dollars_on, tag
 from qarz.application.customer_account import resolve_link
@@ -21,7 +22,7 @@ from qarz.application.ledger_service import CUSTOMER_REQUEST_ACTOR, date_request
 from qarz.application.operations import operation, self_operation
 from qarz.application.ports import DateRequestRecord, Membership, Storage, TenantSession
 from qarz.application.shops import require_member
-from qarz.domain import ledger
+from qarz.domain import ledger, permissions
 from qarz.domain.access import Capability
 from qarz.domain.date_requests import DateRequestRefusal, may_request, reason_fits, tidy_reason
 from qarz.domain.promise import PromiseDateError, tashkent_date
@@ -31,7 +32,6 @@ LIST_DATE_REQUESTS = operation("date_requests.list", Capability.MANAGE)
 ACCEPT_DATE_REQUEST = operation("date_requests.accept", Capability.MANAGE)
 DECLINE_DATE_REQUEST = operation("date_requests.decline", Capability.MANAGE)
 
-MANAGERS = ("manager", "owner")
 ACCEPT_ACTION, DECLINE_ACTION = "dok", "dno"
 
 
@@ -70,7 +70,7 @@ async def _tell_managers(session: TenantSession, record: DateRequestRecord, prev
     """The owner and the managers decide (REQ-067): each is told in their own language, with both buttons."""
     settings = await session.shop_settings()
     shop = "" if settings is None else settings.name
-    for tg_id, lang in await session.staff_recipients(list(MANAGERS)):
+    for tg_id, lang in holders(await session.staff_contacts(), permissions.PROMISES_CHANGE):
         text = say(
             lang,
             "s_date_request",

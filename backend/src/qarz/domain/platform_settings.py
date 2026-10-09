@@ -52,6 +52,8 @@ SETTINGS: dict[str, Setting] = {
     # paid period, and SMS is for paying shops alone. Off, everything is as it was before the plan.
     "free_plan_on": Setting("switch", False, needs_code=True),
     "free_plan_customers": Setting("number", 30, 1, 10_000),
+    # Separate permissions per member of staff (expansion module G). Off: roles alone decide, as before.
+    "permissions_on": Setting("switch", False, needs_code=True),
     # US dollars beside so'm (expansion module F): a shop may then keep dollar debts, each owner choosing
     # for their own shop. Off: every shop is so'm only, exactly as before.
     "usd_on": Setting("switch", False, needs_code=True),

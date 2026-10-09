@@ -1430,6 +1430,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shops/{shop_id}/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Permissions.Catalogue */
+        get: operations["permissions_catalogue_api_v1_shops__shop_id__permissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/permissions/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Permissions.Mine */
+        get: operations["permissions_mine_api_v1_shops__shop_id__permissions_mine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/shops/{shop_id}/reminders": {
         parameters: {
             query?: never;
@@ -1584,6 +1618,24 @@ export interface paths {
         head?: never;
         /** Staff.Update */
         patch: operations["staff_update_api_v1_shops__shop_id__staff__membership_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/staff/{membership_id}/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Permissions.Member.Read */
+        get: operations["permissions_member_read_api_v1_shops__shop_id__staff__membership_id__permissions_get"];
+        /** Permissions.Member.Set */
+        put: operations["permissions_member_set_api_v1_shops__shop_id__staff__membership_id__permissions_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/shops/{shop_id}/subscription": {
@@ -2132,6 +2184,16 @@ export interface components {
             due_today: number;
             /** Since */
             since: string | null;
+        };
+        /**
+         * Overrides
+         * @description The member's whole set of changes: what is granted beyond the role and what is denied despite it.
+         */
+        Overrides: {
+            /** Denied */
+            denied: string[];
+            /** Granted */
+            granted: string[];
         };
         /** Overview */
         Overview: {
@@ -5706,6 +5768,72 @@ export interface operations {
             };
         };
     };
+    permissions_catalogue_api_v1_shops__shop_id__permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permissions_mine_api_v1_shops__shop_id__permissions_mine_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reminders_settings_read_api_v1_shops__shop_id__reminders_get: {
         parameters: {
             query?: never;
@@ -6111,6 +6239,80 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["MemberPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permissions_member_read_api_v1_shops__shop_id__staff__membership_id__permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shop_id: string;
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permissions_member_set_api_v1_shops__shop_id__staff__membership_id__permissions_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Overrides"];
             };
         };
         responses: {

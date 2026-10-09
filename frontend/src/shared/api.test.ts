@@ -265,6 +265,7 @@ describe("responses", () => {
     expect(await createApi({ fetch: shops.fetch, auth }).myShops()).toEqual({
       items: [{ shopId: SHOP_ID, name: "Baraka", role: "manager", membershipId: null }],
       activeShop: SHOP_ID,
+      permissionsOn: false,
     });
     const named = fakeServer(() =>
       ok({ items: [{ shop_id: SHOP_ID, name: "Baraka", role: "seller", membership_id: "m-1" }], active_shop: null }),
@@ -272,6 +273,31 @@ describe("responses", () => {
     expect((await createApi({ fetch: named.fetch, auth }).myShops()).items[0]?.membershipId).toBe("m-1");
     const odd = fakeServer(() => ok({ items: [{ shop_id: SHOP_ID, name: "Baraka", role: "admin" }], active_shop: null }));
     expect((await failure(createApi({ fetch: odd.fetch, auth }).myShops())).code).toBe(BAD_RESPONSE);
+  });
+
+  it("learns from a header, and only from it, that the server keeps permissions per member", async () => {
+    const auth = { kind: "bearer", token: "t" } as const;
+    const body = { items: [], active_shop: null };
+    const on = fakeServer(() => ({ status: 200, body, headers: { "X-Qarz-Permissions": "on" } }));
+    expect((await createApi({ fetch: on.fetch, auth }).myShops()).permissionsOn).toBe(true);
+    for (const value of ["off", "true", ""]) {
+      const other = fakeServer(() => ({ status: 200, body, headers: { "X-Qarz-Permissions": value } }));
+      expect((await createApi({ fetch: other.fetch, auth }).myShops()).permissionsOn).toBe(false);
+    }
+  });
+
+  it("reads what the member may do in a shop, and takes a missing route as 'by role'", async () => {
+    const auth = { kind: "bearer", token: "t" } as const;
+    const held = fakeServer(() => ok({ membership_id: "m-1", role: "seller", permissions: ["ledger.view", "reports.view"] }));
+    const mine = await createApi({ fetch: held.fetch, auth }).shop(SHOP_ID).myPermissions();
+    expect([...(mine ?? [])]).toEqual(["ledger.view", "reports.view"]);
+    expect(held.sent[0]?.path).toBe(`${SHOP_BASE}/permissions/mine`);
+    const none = fakeServer(() => ({ status: 404, body: { error: { code: "NOT_FOUND", message: "Topilmadi.", fields: {} } } }));
+    expect(await createApi({ fetch: none.fetch, auth }).shop(SHOP_ID).myPermissions()).toBeNull();
+    const broken = fakeServer(() => ({ status: 503, body: { error: { code: "TIMEOUT", message: "", fields: {} } } }));
+    expect((await failure(createApi({ fetch: broken.fetch, auth }).shop(SHOP_ID).myPermissions())).status).toBe(503);
+    const odd = fakeServer(() => ok({ permissions: "all" }));
+    expect((await failure(createApi({ fetch: odd.fetch, auth }).shop(SHOP_ID).myPermissions())).code).toBe(BAD_RESPONSE);
   });
 });
 

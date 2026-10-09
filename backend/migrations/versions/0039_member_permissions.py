@@ -1,19 +1,19 @@
-"""US dollars beside Uzbek so'm: a currency on every amount of a customer's debt.
+"""Separate permissions per member of staff: the owner's per-member changes, kept on the membership.
 
-Revision ID: 0041
-Revises: 0039
+Revision ID: 0039
+Revises: 0038
 """
 
 from pathlib import Path
 
 from alembic import op
 
-revision = "0041"
-down_revision = "0039"
+revision = "0039"
+down_revision = "0038"
 branch_labels = None
 depends_on = None
 
-_SQL = Path(__file__).resolve().parent.parent / "sql" / "0041_usd.sql"
+_SQL = Path(__file__).resolve().parent.parent / "sql" / "0039_member_permissions.sql"
 
 
 def upgrade() -> None:

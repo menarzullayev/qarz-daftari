@@ -16,8 +16,17 @@ from qarz.domain.ops_alerts import Alert, DatabaseFigures
 
 @dataclass(frozen=True)
 class Membership:
+    """An active member of the shop, as read inside the request's own transaction: never cached.
+
+    `granted` and `denied` are the owner's per-member changes as stored. They apply only while the
+    platform switch is on (`permissions_on`); `qarz.application.authorization` is what reads them.
+    """
+
     membership_id: UUID
     role: Role
+    permissions_on: bool = False
+    granted: frozenset[str] = frozenset()
+    denied: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -37,6 +46,17 @@ class MemberRecord:
     user_id: UUID
     role: Role
     status: str
+    granted: frozenset[str] = frozenset()
+    denied: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True)
+class StaffContact:
+    """An active member who can be written to in Telegram, with what decides whether to tell them."""
+
+    tg_id: int
+    lang: str
+    member: Membership
 
 
 @dataclass(frozen=True)
@@ -469,6 +489,8 @@ class ActivityRow:
     action: str
     subject_type: str
     subject_id: UUID | None
+    # What changed, for the actions that keep it (a change of permissions: before and after).
+    detail: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -709,7 +731,13 @@ class TenantSession(Protocol):
     ) -> ShopSettings: ...
 
     async def record_activity(
-        self, *, membership_id: UUID, action: str, subject_type: str, subject_id: UUID
+        self,
+        *,
+        membership_id: UUID,
+        action: str,
+        subject_type: str,
+        subject_id: UUID,
+        detail: dict[str, Any] | None = None,
     ) -> None: ...
 
     async def claim_owned_shop(self, user_id: UUID, *, wants_trial: bool) -> str:
@@ -728,6 +756,12 @@ class TenantSession(Protocol):
     async def get_member(self, membership_id: UUID) -> MemberRecord | None: ...
 
     async def update_member(self, membership_id: UUID, *, role: Role | None, status: str | None) -> MemberRecord: ...
+
+    async def set_member_permissions(
+        self, membership_id: UUID, *, granted: frozenset[str], denied: frozenset[str]
+    ) -> MemberRecord:
+        """Replace the member's per-member permission changes with exactly these."""
+        ...
 
     async def create_staff_invitation(self, token_hash: bytes, role: Role, expires_at: datetime) -> None: ...
 
@@ -1267,6 +1301,10 @@ class TenantSession(Protocol):
 
     async def staff_recipients(self, roles: list[str]) -> list[tuple[int, str]]:
         """Telegram chat and language of each active member holding one of the roles."""
+        ...
+
+    async def staff_contacts(self) -> list[StaffContact]:
+        """Every active member with a Telegram chat, with their role and permission changes."""
         ...
 
     async def reminder_settings(self) -> ReminderSettings | None: ...

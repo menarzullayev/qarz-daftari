@@ -11,6 +11,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from qarz.application import idempotency
+from qarz.application.authorization import holders
 from qarz.application.chat_texts import money, say
 from qarz.application.currencies import USD, UZS, dollars_on, tag
 from qarz.application.customer_account import resolve_link
@@ -19,6 +20,7 @@ from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import operation, self_operation
 from qarz.application.ports import DisputeRecord, Membership, Storage, TenantSession
 from qarz.application.shops import require_member
+from qarz.domain import permissions
 from qarz.domain.access import Capability
 from qarz.domain.disputes import clean_reason, may_dispute
 from qarz.domain.promise import tashkent_date
@@ -27,8 +29,6 @@ OPEN_DISPUTE = self_operation("me.accounts.disputes.open")
 WITHDRAW_DISPUTE = self_operation("me.accounts.disputes.withdraw")
 LIST_DISPUTES = operation("disputes.list", Capability.MANAGE)
 DECLINE_DISPUTE = operation("disputes.decline", Capability.MANAGE)
-
-MANAGERS = ("manager", "owner")
 
 
 class DisputeNotAllowed(AppError):
@@ -59,7 +59,7 @@ async def _tell_managers(
     shop = "" if settings is None else settings.name
     amount = int(values.pop("amount"))
     currency = values.pop("currency", UZS)
-    for tg_id, lang in await session.staff_recipients(list(MANAGERS)):
+    for tg_id, lang in holders(await session.staff_contacts(), permissions.DISPUTES_DECIDE):
         payload: dict[str, Any] = {"text": say(lang, key, shop=shop, amount=money(lang, amount, currency), **values)}
         if buttons:
             payload["reply_markup"] = {

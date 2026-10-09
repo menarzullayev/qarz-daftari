@@ -5,6 +5,7 @@ import type { Language, MessageKey } from "../i18n/types";
 import { type Api, type ApiAuth, type ApiError, createApi, type Fetch, type ShopMembership, toApiError } from "./api";
 import { isCustomerPath, MY_PATH } from "./customer/paths";
 import { type ShopSwitch, useDesktop, type WorkspaceExtension } from "./layout";
+import type { Held } from "./permissions";
 import { Link, navigate, useHashPath } from "./router";
 import { SignInRequiredScreen } from "./screens";
 import { SignOutEverywhere } from "./SignOutEverywhere";
@@ -51,7 +52,7 @@ type Phase =
   | { kind: "connecting" }
   | { kind: "signedOut"; everywhere: boolean }
   | { kind: "failed"; error: ApiError }
-  | { kind: "ready"; api: Api; shops: ShopMembership[]; activeShop: string | null; isCustomer: boolean };
+  | { kind: "ready"; api: Api; shops: ShopMembership[]; activeShop: string | null; permissionsOn: boolean; isCustomer: boolean };
 
 const browserFetch: Fetch = (input, init) => window.fetch(input, init);
 
@@ -168,6 +169,7 @@ export function StaffWorkspace({
           api,
           shops: mine.items,
           activeShop: mine.activeShop,
+          permissionsOn: mine.permissionsOn,
           isCustomer: Array.isArray(accounts) && accounts.length > 0,
         });
       }
@@ -198,6 +200,33 @@ export function StaffWorkspace({
     return ready.shops.find((candidate) => candidate.shopId === ready.activeShop) ?? only ?? null;
   }, [ready]);
   const shopApi = useMemo(() => (ready && shop ? ready.api.shop(shop.shopId) : undefined), [ready, shop]);
+  // What the member may do in the active shop, when the server says (the permission matrix is on). Until
+  // it answers, and whenever it does not, the role decides what is offered; the server decides each call.
+  const [held, setHeld] = useState<{ shopId: string; permissions: Held } | null>(null);
+  const permissionsOn = ready?.permissionsOn ?? false;
+  useEffect(() => {
+    // Asked only when the server said there is something to ask: with the matrix off, nothing changes.
+    if (!shopApi || !shop || !permissionsOn) {
+      return undefined;
+    }
+    let cancelled = false;
+    const shopId = shop.shopId;
+    shopApi.myPermissions().then(
+      (permissions) => {
+        if (!cancelled) {
+          setHeld({ shopId, permissions });
+        }
+      },
+      () => {
+        if (!cancelled) {
+          setHeld({ shopId, permissions: null });
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [shopApi, shop, permissionsOn]);
   const reloadSession = useCallback(() => setAttempt((count) => count + 1), []);
 
   if (phase.kind === "connecting") {
@@ -297,7 +326,12 @@ export function StaffWorkspace({
   return (
     <StaffRoutes
       entryKey={entryKey}
-      session={{ shopName: shop.name, role: shop.role, membershipId: shop.membershipId }}
+      session={{
+        shopName: shop.name,
+        role: shop.role,
+        membershipId: shop.membershipId,
+        permissions: held?.shopId === shop.shopId ? held.permissions : null,
+      }}
       api={shopApi}
       now={now}
       botUsername={botUsername}

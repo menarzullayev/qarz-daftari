@@ -6,12 +6,12 @@ import { formatCustomerCount, formatMoney, tashkentDay } from "../format";
 import { useLoad } from "../hooks";
 import { type Column, useDesktop } from "../layout";
 import type { Currency } from "../money";
-import { canManage, isRole } from "../navigation";
+import { isRole } from "../navigation";
 import { toIsoDate } from "../promise";
 import { dayText } from "../promiseParts";
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
-import { useWorkspace } from "../workspace/context";
+import { useMay, useWorkspace } from "../workspace/context";
 import { CurrencyToggle, Empty, Failure, FieldError, Loading } from "../workspace/parts";
 import "./messages";
 import {
@@ -541,6 +541,6 @@ function Reports() {
  * by how late it is. A seller has no such section, and this screen calls nothing for them.
  */
 export default function ReportsScreen() {
-  const { role } = useWorkspace();
-  return canManage(role) ? <Reports /> : <NotFoundScreen />;
+  const can = useMay();
+  return can("reports.view") ? <Reports /> : <NotFoundScreen />;
 }

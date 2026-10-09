@@ -1,7 +1,6 @@
 import type { ApiError, CreditSettings, Customer, LimitFigures } from "../api";
 import { type AmountResult, type Currency, parseMoney } from "../money";
-import type { Role } from "../navigation";
-import { canManage } from "../navigation";
+import { may, type Viewer } from "../permissions";
 
 /*
  * Credit limits as the interface needs them (REQ-044). The rules are the server's, which is the
@@ -21,9 +20,9 @@ export function exceedsLimit(limit: number | null, balance: number, sale: number
   return limit !== null && balance + sale > limit;
 }
 
-/** Whether the server lets this role record a sale above the limit (it warns) or refuses it. */
-export function mayExceed(role: Role, settings: Pick<CreditSettings, "sellersMayExceed">): boolean {
-  return canManage(role) || settings.sellersMayExceed;
+/** Whether the server lets this member record a sale above the limit (it warns) or refuses it. */
+export function mayExceed(viewer: Viewer, settings: Pick<CreditSettings, "sellersMayExceed">): boolean {
+  return may(viewer, "entries.over_limit") || settings.sellersMayExceed;
 }
 
 /**

@@ -201,9 +201,9 @@ describe("shop settings by role", () => {
   });
 
   it("decides by role: the owner edits, a manager reads, a seller gets nothing", () => {
-    expect(settingsAccess("owner")).toBe("edit");
-    expect(settingsAccess("manager")).toBe("read");
-    expect(settingsAccess("seller")).toBe("none");
+    expect(settingsAccess({ role: "owner" })).toBe("edit");
+    expect(settingsAccess({ role: "manager" })).toBe("read");
+    expect(settingsAccess({ role: "seller" })).toBe("none");
   });
 
   it("reads days only as a whole number from 1 to 365", () => {

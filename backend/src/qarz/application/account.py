@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from qarz.application.authorization import SWITCH
 from qarz.application.errors import NotFound, ValidationFailed
 from qarz.application.operations import operation, self_operation
 from qarz.application.ports import Storage
@@ -22,6 +23,16 @@ MAX_PAGE = 100
 class AccountService:
     def __init__(self, storage: Storage) -> None:
         self._storage = storage
+
+    async def permissions_on(self) -> bool:
+        """Whether the per-member permissions are on.
+
+        Not part of the body of the caller's shops, which stays as it was: the route says it in a header,
+        and only when it is on, so that a client asks a shop for the member's permissions
+        (`permissions.mine`) only when there is such a route to ask.
+        """
+        async with self._storage.platform() as session:
+            return await session.platform_setting(SWITCH) is True
 
     async def my_shops(self, user_id: UUID) -> dict[str, Any]:
         async with self._storage.platform() as session:
@@ -105,6 +116,8 @@ class ActivityService:
                         "action": row.action,
                         "subject_type": row.subject_type,
                         "subject_id": None if row.subject_id is None else str(row.subject_id),
+                        # Present only for the actions that keep what changed (a change of permissions).
+                        **({} if row.detail is None else {"detail": row.detail}),
                     }
                     for row in page
                 ],

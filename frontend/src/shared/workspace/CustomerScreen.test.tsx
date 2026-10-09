@@ -486,3 +486,40 @@ describe("disputes and the Telegram link on the customer page", () => {
     expect(within(section).queryByRole("button")).toBeNull();
   });
 });
+
+describe("what the customer page offers by permission", () => {
+  const names = () => screen.queryAllByRole("button").map((button) => button.textContent);
+  const links = () => screen.queryAllByRole("link").map((link) => link.textContent);
+
+  async function openWith(role: Role, permissions: string[]) {
+    renderScreen(<CustomerScreen customerId={CUSTOMER_ID} />, { fetch: shop().fetch, role, permissions });
+    await screen.findByRole("heading", { level: 2, name: "Ali Valiyev" });
+  }
+
+  it("offers a seller who was granted it the reversal a seller's role does not give", async () => {
+    await openWith("seller", ["ledger.view", "credits.record", "payments.record", "entries.cancel"]);
+    expect(reverseButtons().length).toBeGreaterThan(0);
+    expect(names()).not.toContain("Tahrirlash");
+  });
+
+  it("offers a manager who was denied it no reversal and no editing", async () => {
+    await openWith("manager", ["ledger.view", "credits.record", "payments.record"]);
+    expect(reverseButtons()).toHaveLength(0);
+    expect(names()).not.toContain("Tahrirlash");
+    expect(names()).not.toContain("Arxivlash");
+  });
+
+  it("offers the sale and the payment separately", async () => {
+    await openWith("seller", ["ledger.view", "payments.record"]);
+    expect(links()).toContain("To'lov qabul qilish");
+    expect(links()).not.toContain("Nasiya yozish");
+    cleanup();
+    await openWith("seller", ["ledger.view", "credits.record"]);
+    expect(links()).toContain("Nasiya yozish");
+    expect(links()).not.toContain("To'lov qabul qilish");
+    cleanup();
+    await openWith("owner", ["ledger.view"]);
+    expect(links()).not.toContain("Nasiya yozish");
+    expect(links()).not.toContain("To'lov qabul qilish");
+  });
+});

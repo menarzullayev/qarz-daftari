@@ -6,10 +6,9 @@ import { type ApiError, isAbort, toApiError } from "../api";
 import { formatCalendarDay, formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
 import { type Column, useDesktop } from "../layout";
-import { canManage } from "../navigation";
 import { parseIsoDate } from "../promise";
 import { NotFoundScreen } from "../screens";
-import { useWorkspace } from "../workspace/context";
+import { useMay, useWorkspace } from "../workspace/context";
 import { Confirm, Empty, errorText, Failure, FieldError, formatInstant, Loading } from "../workspace/parts";
 import {
   canDiscard,
@@ -727,6 +726,6 @@ function Imports({ pollMs }: { pollMs: number }) {
  * imports. For managers and owners; a seller gets the not-found screen and nothing is asked.
  */
 export default function ImportScreen({ pollMs = POLL_MS }: { pollMs?: number }) {
-  const { role } = useWorkspace();
-  return canManage(role) ? <Imports pollMs={pollMs} /> : <NotFoundScreen />;
+  const can = useMay();
+  return can("imports.run") ? <Imports pollMs={pollMs} /> : <NotFoundScreen />;
 }

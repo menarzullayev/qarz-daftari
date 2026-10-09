@@ -60,6 +60,7 @@ from qarz.application.ports import (
     ShopSettings,
     ShopToErase,
     ShopTotals,
+    StaffContact,
     StaffFigures,
     StaffInvitation,
     StoredFileRecord,
@@ -439,6 +440,24 @@ def _online_payment(row: Any) -> OnlinePayment:
     )
 
 
+# Whether the per-member permissions apply (the platform switch `permissions_on`): true only when the
+# stored value is the JSON `true`, as `qarz.domain.platform_settings.effective` reads a switch.
+_PERMISSIONS_ON = (
+    "coalesce((SELECT p.value = 'true'::jsonb FROM platform_setting p WHERE p.key = 'permissions_on'), false) "
+    "AS permissions_on"
+)
+
+
+def _membership(row: Any) -> Membership:
+    return Membership(
+        row.id,
+        Role(row.role),
+        permissions_on=bool(row.permissions_on),
+        granted=frozenset(row.permissions_granted),
+        denied=frozenset(row.permissions_denied),
+    )
+
+
 class PgTenantSession:
     def __init__(self, conn: AsyncConnection, shop_id: UUID) -> None:
         self._conn = conn
@@ -449,14 +468,16 @@ class PgTenantSession:
             await self._conn.execute(
                 # The shop is named here as well as by row-level security, so that a connection made
                 # with a role that bypasses it still finds nobody a member of a shop they are not in.
+                # The permission switch and the member's own changes are read with the membership, in the
+                # request's transaction: a change of either applies to the member's next request.
                 text(
-                    "SELECT id, role FROM membership "
-                    "WHERE user_id = :user_id AND shop_id = :shop_id AND status = 'active'"
+                    "SELECT id, role, permissions_granted, permissions_denied, " + _PERMISSIONS_ON + " "
+                    "FROM membership WHERE user_id = :user_id AND shop_id = :shop_id AND status = 'active'"
                 ),
                 {"user_id": user_id, "shop_id": self._shop_id},
             )
         ).first()
-        return None if row is None else Membership(row.id, Role(row.role))
+        return None if row is None else _membership(row)
 
     async def shop_settings(self) -> ShopSettings | None:
         row = (
@@ -515,11 +536,20 @@ class PgTenantSession:
         ).one()
         return ShopSettings(row.id, row.name, row.lang, row.default_promise_days, bool(row.usd_on))
 
-    async def record_activity(self, *, membership_id: UUID, action: str, subject_type: str, subject_id: UUID) -> None:
+    async def record_activity(
+        self,
+        *,
+        membership_id: UUID,
+        action: str,
+        subject_type: str,
+        subject_id: UUID,
+        detail: dict[str, Any] | None = None,
+    ) -> None:
         await self._conn.execute(
             text(
-                "INSERT INTO activity (id, shop_id, actor_kind, actor_id, action, subject_type, subject_id) "
-                "VALUES (:id, :shop_id, 'staff', :actor_id, :action, :subject_type, :subject_id)"
+                "INSERT INTO activity (id, shop_id, actor_kind, actor_id, action, subject_type, subject_id, detail) "
+                "VALUES (:id, :shop_id, 'staff', :actor_id, :action, :subject_type, :subject_id, "
+                "CAST(:detail AS jsonb))"
             ),
             {
                 "id": uuid4(),
@@ -528,6 +558,7 @@ class PgTenantSession:
                 "action": action,
                 "subject_type": subject_type,
                 "subject_id": subject_id,
+                "detail": None if detail is None else json.dumps(detail, sort_keys=True),
             },
         )
 
@@ -571,13 +602,21 @@ class PgTenantSession:
 
     @staticmethod
     def _member(row: Any) -> MemberRecord:
-        return MemberRecord(row.id, row.user_id, Role(row.role), row.status)
+        return MemberRecord(
+            row.id,
+            row.user_id,
+            Role(row.role),
+            row.status,
+            frozenset(row.permissions_granted),
+            frozenset(row.permissions_denied),
+        )
 
     async def list_members(self) -> list[MemberRecord]:
         rows = (
             await self._conn.execute(
                 text(
-                    "SELECT id, user_id, role, status FROM membership WHERE status <> 'removed' "
+                    "SELECT id, user_id, role, status, permissions_granted, permissions_denied FROM membership "
+                    "WHERE status <> 'removed' "
                     "ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 ELSE 2 END, created_at, id"
                 )
             )
@@ -587,7 +626,10 @@ class PgTenantSession:
     async def get_member(self, membership_id: UUID) -> MemberRecord | None:
         row = (
             await self._conn.execute(
-                text("SELECT id, user_id, role, status FROM membership WHERE id = :id FOR UPDATE"),
+                text(
+                    "SELECT id, user_id, role, status, permissions_granted, permissions_denied FROM membership "
+                    "WHERE id = :id FOR UPDATE"
+                ),
                 {"id": membership_id},
             )
         ).first()
@@ -598,9 +640,24 @@ class PgTenantSession:
             await self._conn.execute(
                 text(
                     "UPDATE membership SET role = coalesce(:role, role), status = coalesce(:status, status) "
-                    "WHERE id = :id RETURNING id, user_id, role, status"
+                    "WHERE id = :id RETURNING id, user_id, role, status, permissions_granted, permissions_denied"
                 ),
                 {"id": membership_id, "role": role.value if role else None, "status": status},
+            )
+        ).one()
+        return self._member(row)
+
+    async def set_member_permissions(
+        self, membership_id: UUID, *, granted: frozenset[str], denied: frozenset[str]
+    ) -> MemberRecord:
+        row = (
+            await self._conn.execute(
+                text(
+                    "UPDATE membership SET permissions_granted = CAST(:granted AS text[]), "
+                    "permissions_denied = CAST(:denied AS text[]) "
+                    "WHERE id = :id RETURNING id, user_id, role, status, permissions_granted, permissions_denied"
+                ),
+                {"id": membership_id, "granted": sorted(granted), "denied": sorted(denied)},
             )
         ).one()
         return self._member(row)
@@ -709,7 +766,7 @@ class PgTenantSession:
         rows = (
             await self._conn.execute(
                 text(
-                    "SELECT id, at, actor_kind, actor_id, action, subject_type, subject_id FROM activity "
+                    "SELECT id, at, actor_kind, actor_id, action, subject_type, subject_id, detail FROM activity "
                     "WHERE (CAST(:actor AS uuid) IS NULL OR actor_id = CAST(:actor AS uuid)) "
                     "  AND (CAST(:subject AS uuid) IS NULL OR subject_id = CAST(:subject AS uuid)) "
                     "  AND (CAST(:prefix AS text) IS NULL OR action LIKE CAST(:prefix AS text) || '%') "
@@ -728,7 +785,9 @@ class PgTenantSession:
             )
         ).all()
         return [
-            ActivityRow(row.id, row.at, row.actor_kind, row.actor_id, row.action, row.subject_type, row.subject_id)
+            ActivityRow(
+                row.id, row.at, row.actor_kind, row.actor_id, row.action, row.subject_type, row.subject_id, row.detail
+            )
             for row in rows
         ]
 
@@ -2415,6 +2474,18 @@ class PgTenantSession:
             )
             for row in rows
         ]
+
+    async def staff_contacts(self) -> list[StaffContact]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT m.id, m.role, m.permissions_granted, m.permissions_denied, " + _PERMISSIONS_ON + ", "
+                    "u.tg_id, u.lang FROM membership m JOIN app_user u ON u.id = m.user_id "
+                    "WHERE m.status = 'active' AND u.tg_id IS NOT NULL ORDER BY m.created_at, m.id"
+                )
+            )
+        ).all()
+        return [StaffContact(int(row.tg_id), str(row.lang), _membership(row)) for row in rows]
 
     async def staff_recipients(self, roles: list[str]) -> list[tuple[int, str]]:
         rows = (

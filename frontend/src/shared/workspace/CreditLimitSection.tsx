@@ -6,8 +6,7 @@ import { amountInput, formatDollars, formatUzs } from "../money";
 import type { CreditSettings, Customer, CustomerPatch } from "../api";
 import { formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
-import { canManage } from "../navigation";
-import { useWorkspace } from "./context";
+import { useMay, useWorkspace } from "./context";
 import { limitIn, mayExceed, parseLimit } from "./creditRules";
 import { errorText, Failure, FieldError, Loading } from "./parts";
 
@@ -151,7 +150,8 @@ function Limit({
   currency: Currency;
   onSaved: () => void;
 }) {
-  const { role } = useWorkspace();
+  const { role, permissions } = useWorkspace();
+  const can = useMay();
   const { t, language } = useI18n();
   const [editing, setEditing] = useState(false);
   const figures = limitIn(currency, customer, settings);
@@ -169,8 +169,8 @@ function Limit({
               amount: formatMoney(limit, language, currency),
             })}
       </p>
-      {limit !== null && !mayExceed(role, settings) ? <p className="hint">{t("credit.limit.sellersStopped")}</p> : null}
-      {!canManage(role) ? null : editing ? (
+      {limit !== null && !mayExceed({ role, permissions }, settings) ? <p className="hint">{t("credit.limit.sellersStopped")}</p> : null}
+      {!can("customers.edit") ? null : editing ? (
         <LimitForm
           customer={customer}
           own={own}

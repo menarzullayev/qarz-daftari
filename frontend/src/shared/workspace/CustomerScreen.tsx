@@ -6,13 +6,12 @@ import { changedDate, changeRange, DATE_REASON_MAX, isDebtKind, saleDay } from "
 import { formatCalendarDay, formatDateTime, formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
 import { currencyOf } from "../money";
-import { canManage } from "../navigation";
 import { parseIsoDate } from "../promise";
 import { DateReasonForm, dayText, PromiseHistory } from "../promiseParts";
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
 import { canAddGoods, mayAddGoods } from "./AddGoodsScreen";
-import { useWorkspace } from "./context";
+import { useMay, useWorkspace } from "./context";
 import { CreditLimitSection } from "./CreditLimitSection";
 import { owesAnything } from "./CustomersScreen";
 import { GoodsList } from "./GoodsEditor";
@@ -190,7 +189,9 @@ function EditForm({ customer, onSaved, onCancel }: { customer: Customer; onSaved
 function EntryRow({
   entry,
   goodsPath,
-  mayManage,
+  mayReverse,
+  mayChangePromise,
+  mayDecideDisputes,
   confirming,
   pending,
   onAsk,
@@ -209,7 +210,10 @@ function EntryRow({
   entry: Entry;
   /** Where goods can be added to this entry, or null when that is not offered. */
   goodsPath: string | null;
-  mayManage: boolean;
+  /** What the signed-in member may do with an entry; the server checks each of them again. */
+  mayReverse: boolean;
+  mayChangePromise: boolean;
+  mayDecideDisputes: boolean;
   confirming: boolean;
   pending: boolean;
   onAsk: () => void;
@@ -240,12 +244,12 @@ function EntryRow({
           <p className="row__warning">
             <span>{t("dates.request.open", { date: dayText(entry.dateRequest.requestedDate, language) })}</span>
             {/* Only a manager or an owner has the list where a request is answered. */}
-            {mayManage ? <Link to="/date-requests">{t("dates.title")}</Link> : null}
+            {mayChangePromise ? <Link to="/date-requests">{t("dates.title")}</Link> : null}
           </p>
           {entry.dateRequest.reason ? <p>{t("dates.row.reason", { reason: entry.dateRequest.reason })}</p> : null}
         </div>
       ) : null}
-      {canChangePromise(entry, mayManage) ? (
+      {canChangePromise(entry, mayChangePromise) ? (
         changing ? (
           <PromiseChange entry={entry} onChanged={onChanged} onCancel={onCancelChange} />
         ) : (
@@ -258,7 +262,7 @@ function EntryRow({
         <p className="row__warning">
           <span>{t("entry.disputed")}</span>
           {/* Only a manager or an owner has the list where a dispute is answered. */}
-          {mayManage ? <Link to="/disputes">{t("disputes.open")}</Link> : null}
+          {mayDecideDisputes ? <Link to="/disputes">{t("disputes.open")}</Link> : null}
         </p>
       ) : null}
       {goodsPath !== null ? (
@@ -266,7 +270,7 @@ function EntryRow({
           {t("goods.later.action")}
         </Link>
       ) : null}
-      {canReverse(entry, mayManage) ? (
+      {canReverse(entry, mayReverse) ? (
         confirming ? (
           <div className="notice">
             <p>{t("reversal.confirm", { amount })}</p>
@@ -301,10 +305,10 @@ function Detail({
   outcome: PromiseOutcome | null;
   onPromiseChanged: (outcome: PromiseOutcome) => void;
 }) {
-  const { api, role, membershipId, now } = useWorkspace();
+  const { api, role, permissions, membershipId, now } = useWorkspace();
+  const can = useMay();
   const { t, language } = useI18n();
-  const mayManage = canManage(role);
-  const viewer = { role, membershipId };
+  const viewer = { role, permissions, membershipId };
   const today = now();
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -339,12 +343,15 @@ function Detail({
         <OverdueLines overdue={customer.overdue} />
         {customer.usd?.overdue ? <OverdueLines overdue={customer.usd.overdue} currency="USD" /> : null}
 
-        {archived ? null : (
+        {archived || !(can("credits.record") || can("payments.record")) ? null : (
           <p className="actions">
-            <Link to={`/customers/${customer.id}/credit`} className="button button--primary">
-              {t("entry.credit.title")}
-            </Link>
-            {owesAnything(customer) ? (
+            {can("credits.record") ? (
+              <Link to={`/customers/${customer.id}/credit`} className="button button--primary">
+                {t("entry.credit.title")}
+              </Link>
+            ) : null}
+            {/* A debt in either currency can be paid, by a member who may record payments. */}
+            {owesAnything(customer) && can("payments.record") ? (
               <Link to={`/customers/${customer.id}/payment`} className="button">
                 {t("entry.payment.title")}
               </Link>
@@ -353,14 +360,14 @@ function Detail({
         )}
       </div>
 
-      {mayManage ? (
+      {can("customers.edit") || can("reminders.send") ? (
         <section aria-label={t("customer.manage")}>
           {archiving.state.status === "error" ? (
             <p className="notice notice--error" role="alert">
               {errorText(archiving.state.error, t)}
             </p>
           ) : null}
-          {editing ? (
+          {!can("customers.edit") ? null : editing ? (
             <EditForm customer={customer} onSaved={reload} onCancel={() => setEditing(false)} />
           ) : (
             <p className="actions">
@@ -376,8 +383,8 @@ function Detail({
               </button>
             </p>
           )}
-          {/* Sending a reminder is a manager's and an owner's action; a seller is not shown it. */}
-          {archived || editing ? null : <ReminderAction customerId={customer.id} />}
+          {/* Sending a reminder is a manager's and an owner's action by role; a seller is not shown it. */}
+          {archived || editing || !can("reminders.send") ? null : <ReminderAction customerId={customer.id} />}
         </section>
       ) : null}
 
@@ -430,7 +437,9 @@ function Detail({
                     ? `/customers/${customer.id}/entries/${entry.id}/goods`
                     : null
                 }
-                mayManage={mayManage}
+                mayReverse={can("entries.cancel")}
+                mayChangePromise={can("promises.change")}
+                mayDecideDisputes={can("disputes.decide")}
                 confirming={confirming === entry.id}
                 pending={busy}
                 onAsk={() => setConfirming(entry.id)}
