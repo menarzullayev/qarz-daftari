@@ -337,6 +337,59 @@ def test_documents_are_numbered_per_kind_and_listed_newest_first(client: TestCli
 # --- a return to the supplier ---------------------------------------------------------------------------------
 
 
+def test_the_list_is_narrowed_by_kind_state_and_supplier_and_never_beyond_the_shop(
+    client: TestClient, world: World, on: None
+) -> None:
+    """The three filters of the documents' list together, and what they refuse. A filter is a narrowing of
+    the shop's own documents: another shop's supplier, or another shop's member, finds nothing of them."""
+    rice = counted_item(client, world, "Guruch", 15_000, "kg")
+    who, other = supplier(client, world), supplier(client, world, "Boshqa ulgurji")
+    cash = receive(client, world, [line(rice, "5", 10_000)])
+    credit = receive(client, world, [line(rice, "5", 10_000)], supplier_id=who)
+    draft = document(client, world, kind="receipt", supplier_id=who, lines=[line(rice, "1", 10_000)]).json()
+    back = document(client, world, kind="supplier_return", supplier_id=who, post=True, lines=[line(rice, "1", 10_000)])
+    dropped = document(client, world, kind="write_off", reason="lost", lines=[line(rice, "1")]).json()
+    assert cancel(client, world, dropped["id"], "Kerak emas").status_code == 200
+
+    def listed(user: uuid.UUID = world.manager_a, shop_id: uuid.UUID = world.shop_a, **params: Any) -> list[str]:
+        response = read(client, user, f"/api/v1/shops/{shop_id}/stock/documents", **params)
+        assert response.status_code == 200, response.text
+        return [row["id"] for row in response.json()["documents"]]
+
+    assert listed(status="draft") == [draft["id"]]
+    assert listed(status="cancelled") == [dropped["id"]]
+    assert listed(status="posted") == [back.json()["id"], credit["id"], cash["id"]]
+    assert listed(supplier_id=who) == [back.json()["id"], draft["id"], credit["id"]]
+    assert listed(supplier_id=who, kind="receipt") == [draft["id"], credit["id"]]
+    assert listed(supplier_id=who, kind="receipt", status="posted") == [credit["id"]]
+    assert listed(kind="write_off", status="draft") == [], "the only write-off was thrown away"
+    assert listed(supplier_id=other) == [], "a supplier nothing was bought from"
+    assert listed(supplier_id=str(uuid.uuid4())) == [], "a supplier that does not exist narrows to nothing"
+    # The filters page as the list does: one at a time, in the same order, with nothing skipped.
+    first = read(client, world.manager_a, f"{stock(world)}/documents", supplier_id=who, limit=2).json()
+    rest = read(
+        client, world.manager_a, f"{stock(world)}/documents", supplier_id=who, limit=2, cursor=first["next_cursor"]
+    ).json()
+    assert [row["id"] for row in first["documents"] + rest["documents"]] == listed(supplier_id=who)
+    assert rest["next_cursor"] is None
+
+    # What is not a kind or a state is refused by name, not answered with an empty or an unfiltered list.
+    for params, field in (({"kind": "gift"}, "kind"), ({"status": "open"}, "status"), ({"kind": ""}, "kind")):
+        refused = read(client, world.manager_a, f"{stock(world)}/documents", **params)
+        assert refused.status_code == 422 and refused.json()["error"]["code"] == "VALIDATION", params
+        assert list(refused.json()["error"]["fields"]) == [field], params
+    assert read(client, world.manager_a, f"{stock(world)}/documents", supplier_id="x").status_code == 422
+
+    # The other shop: its owner sees none of these, whatever they ask for, and nobody of this shop is
+    # shown the other shop's list by naming their own supplier there.
+    assert listed(world.owner_b, world.shop_b) == []
+    for params in ({"supplier_id": who}, {"kind": "receipt"}, {"status": "posted"}, {"status": "draft"}):
+        assert listed(world.owner_b, world.shop_b, **params) == [], params
+    assert read(client, world.owner_b, f"{stock(world)}/documents", supplier_id=who).status_code in (403, 404)
+    foreign = read(client, world.manager_a, f"/api/v1/shops/{world.shop_b}/stock/documents", supplier_id=who)
+    assert foreign.status_code in (403, 404)
+
+
 def test_a_return_to_a_supplier_takes_goods_out_at_the_average_and_lowers_the_debt_by_its_own_price(
     client: TestClient, world: World, on: None, owner: psycopg.Connection
 ) -> None:

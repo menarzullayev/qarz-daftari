@@ -479,6 +479,15 @@ _STATEMENTS: dict[str, tuple[str, dict[str, Any]]] = {
         "SELECT d.id FROM stock_document d WHERE d.kind = :kind ORDER BY d.created_at DESC, d.id DESC LIMIT :limit",
         {"kind": "receipt", "limit": 51},
     ),
+    "the documents of a supplier": (
+        "SELECT d.id FROM stock_document d WHERE d.supplier_id = :supplier "
+        "ORDER BY d.created_at DESC, d.id DESC LIMIT :limit",
+        {"supplier": uuid.uuid4(), "limit": 51},
+    ),
+    "the documents in a state": (
+        "SELECT d.id FROM stock_document d WHERE d.status = :status ORDER BY d.created_at DESC, d.id DESC LIMIT :limit",
+        {"status": "draft", "limit": 51},
+    ),
     "the lines of a document": (
         "SELECT n.line_no FROM stock_document_line n WHERE n.document_id = :id ORDER BY n.line_no",
         {"id": uuid.uuid4()},
@@ -531,6 +540,11 @@ _INDEX_OF: dict[str, tuple[str, ...]] = {
     "the documents, newest first": ("stock_document_recent",),
     # Likewise: the newest documents filtered by kind, or the documents of the kind, newest first.
     "the documents of a kind": ("stock_document_by_kind", "stock_document_recent"),
+    # Narrowed to one supplier: that supplier's documents, or the shop's newest read until the page is full.
+    "the documents of a supplier": ("stock_document_supplier", "stock_document_recent"),
+    # A state has no index of its own, by design: the shop's documents are walked newest first and the page
+    # stops when it is full. Drafts and cancellations are few and recent; the walk is the shop's, never more.
+    "the documents in a state": ("stock_document_recent",),
     "the lines of a document": ("stock_document_line_pkey",),
     "the suppliers by name": ("supplier_shop_id_name_norm_key",),
     # By supplier, or the shop's few balances by currency: both are read by key.
