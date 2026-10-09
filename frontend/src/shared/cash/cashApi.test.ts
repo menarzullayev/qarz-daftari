@@ -85,6 +85,11 @@ describe("reading the cash book", () => {
     await expect(cash.day(null, null)).rejects.toMatchObject({ code: "BAD_RESPONSE" });
   });
 
+  it("reads an entry the stock wrote, as the server names it", async () => {
+    const { cash } = calls(() => dayBody({ entries: [entry({ source: "stock", direction: "expense" })] }));
+    expect((await cash.day(null, null)).entries.map((row) => row.source)).toEqual(["stock"]);
+  });
+
   it("reads a period: by category and by day, each figure with its currency", async () => {
     const { server, cash } = calls(() => summaryBody());
     const summary = await cash.summary("2026-10-01", "2026-10-06");

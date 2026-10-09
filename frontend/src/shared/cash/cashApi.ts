@@ -46,8 +46,12 @@ export type CashEntry = {
   day: string;
   createdAt: string;
   authorId: string;
-  /** "ledger": a customer's payment, written by the ledger and cancelled only by reversing it there. */
-  source: "manual" | "ledger";
+  /**
+   * "ledger": a customer's payment, written by the ledger and cancelled only by reversing it there.
+   * "stock": money the stock paid out (a supplier's payment, a purchase, a refund), cancelled only by
+   * cancelling that payment or document there.
+   */
+  source: "manual" | "ledger" | "stock";
   customer: { id: string; displayName: string | null } | null;
   /** `reason` is null when the ledger cancelled the entry: the payment was reversed. */
   cancelled: { at: string; by: string | null; reason: string | null } | null;
@@ -148,7 +152,7 @@ function entry(value: unknown): CashEntry {
     day: text(body["day"]),
     createdAt: text(body["created_at"]),
     authorId: text(body["author_id"]),
-    source: oneOf(body["source"], ["manual", "ledger"] as const, "source"),
+    source: oneOf(body["source"], ["manual", "ledger", "stock"] as const, "source"),
     customer: customer === null ? null : { id: text(customer["id"]), displayName: textOrNull(customer["display_name"]) },
     cancelled:
       cancelled === null

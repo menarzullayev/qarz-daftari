@@ -114,6 +114,19 @@ describe("the day's book", () => {
     expect(row.textContent).toContain("mijoz sahifasida o'sha to'lovni bekor qiling");
   });
 
+  it("shows money the stock paid out under its category, with no way to cancel it here", async () => {
+    const paid = entry({
+      source: "stock",
+      direction: "expense",
+      category: { id: "cat-stock", name: "Ombor: tovar xaridi" },
+    });
+    open(book({ day: () => ok(dayBody({ entries: [paid, entry({ id: "e-9" })] })) }));
+    const row = (await screen.findByText("Ombor: tovar xaridi")).closest("li") as HTMLElement;
+    expect(within(row).queryByRole("button", { name: "Bekor qilish" })).toBeNull();
+    // The entry written by hand beside it still can be.
+    expect(screen.getAllByRole("button", { name: "Bekor qilish" })).toHaveLength(1);
+  });
+
   it("says only that it is a customer's payment to a reader who was not told whose", async () => {
     open(book({ day: () => ok(dayBody({ entries: [entry({ source: "ledger", customer: null })] })) }));
     expect(await screen.findByText("Mijoz to'lovi")).toBeTruthy();
