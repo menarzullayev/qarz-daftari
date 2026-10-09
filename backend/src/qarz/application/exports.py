@@ -14,11 +14,13 @@ import logging
 from collections import defaultdict
 from collections.abc import Callable
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
 from qarz.application import idempotency
 from qarz.application.chat_texts import say
+from qarz.application.currencies import USD, UZS, dollars_on
 from qarz.application.customers import require_viewable
 from qarz.application.errors import AppError, NotFound, StorageTimeout
 from qarz.application.export_texts import header, word
@@ -26,7 +28,7 @@ from qarz.application.files import CheckedFile, FileService, FileStoreUnavailabl
 from qarz.application.operations import operation
 from qarz.application.ports import ExportJobRecord, Storage
 from qarz.application.shops import require_member
-from qarz.application.xlsx import MIME, Workbook
+from qarz.application.xlsx import MIME, Cell, Workbook
 from qarz.domain.access import Capability
 from qarz.domain.exports import (
     DONE,
@@ -40,6 +42,7 @@ from qarz.domain.exports import (
     signed_effect,
     stale_before,
 )
+from qarz.domain.money import Currency, plain
 from qarz.domain.promise import TASHKENT, tashkent_date
 from qarz.domain.reports import day_start
 
@@ -197,11 +200,15 @@ class ExportService:
     async def _produce(self, shop_id: UUID, job_id: UUID, until: datetime) -> None:
         async with self._storage.tenant(shop_id) as session:
             settings = await session.shop_settings()
+            # An export is the owner's copy of everything recorded: dollar entries are in it whenever
+            # the shop has any, even while it does not show dollars. A shop that never had one gets the
+            # workbook it always got.
+            with_dollars = await dollars_on(session) or await session.dollars_recorded()
         if settings is None:
             raise NotFound()
         book = Workbook()
         try:
-            rows = await self._write(book, shop_id, settings.name, settings.lang, until)
+            rows = await self._write(book, shop_id, settings.name, settings.lang, until, with_dollars)
             # Packing compresses everything written so far; done off the event loop so that messages
             # keep being delivered meanwhile.
             content = await asyncio.to_thread(book.finish)
@@ -268,20 +275,38 @@ class ExportService:
                         dedupe_key=f"export:{job_id}:{key}",
                     )
 
-    async def _write(self, book: Workbook, shop_id: UUID, shop_name: str, lang: str, until: datetime) -> int:
-        """Fill the workbook from the shop's own rows. Returns the number of ledger rows written."""
+    async def _write(
+        self, book: Workbook, shop_id: UUID, shop_name: str, lang: str, until: datetime, with_dollars: bool = False
+    ) -> int:
+        """Fill the workbook from the shop's own rows. Returns the number of ledger rows written.
+
+        With dollars, the ledger sheet has the currency of every entry in a last column and writes a
+        dollar amount as dollars and cents; the customers sheet has the dollar limit and the dollar
+        debt in two last columns; and the summary has the dollar totals in rows of their own. No cell
+        is a sum of so'm and dollars.
+        """
+        dollar_columns = (word(lang, "limit_usd"), word(lang, "owed_usd")) if with_dollars else ()
         summary = book.sheet(word(lang, "sheet_summary"), widths=(46, 22, 14, 26, 20, 16, 30))
-        customers = book.sheet(word(lang, "sheet_customers"), header(lang, "customers"), (28, 16, 22, 14, 14, 16, 38))
+        customers = book.sheet(
+            word(lang, "sheet_customers"),
+            (*header(lang, "customers"), *dollar_columns),
+            (28, 16, 22, 14, 14, 16, 38, *((16, 14) if with_dollars else ())),
+        )
         ledger = book.sheet(
-            word(lang, "sheet_ledger"), header(lang, "ledger"), (17, 28, 18, 12, 14, 30, 14, 10, 38, 14, 38, 10, 38, 38)
+            word(lang, "sheet_ledger"),
+            (*header(lang, "ledger"), *((word(lang, "currency"),) if with_dollars else ())),
+            (17, 28, 18, 12, 14, 30, 14, 10, 38, 14, 38, 10, 38, 38, *((9,) if with_dollars else ())),
         )
         promises = book.sheet(word(lang, "sheet_promises"), header(lang, "promises"), (38, 28, 14, 17, 28, 30))
         goods = book.sheet(word(lang, "sheet_goods"), header(lang, "goods"), (38, 17, 28, 7, 28, 10, 10, 12, 14))
 
         yes, no = word(lang, "yes"), word(lang, "no")
-        balances: dict[UUID, int] = defaultdict(int)
+        # Each currency has balances and months of its own.
+        owed: dict[Currency, dict[UUID, int]] = {currency: defaultdict(int) for currency in Currency}
         # month -> credit amount, credit count, opening amount, payment amount, payment count, reversed count
-        months: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0, 0, 0, 0])
+        by_month: dict[Currency, dict[str, list[int]]] = {
+            currency: defaultdict(lambda: [0, 0, 0, 0, 0, 0]) for currency in Currency
+        }
         after: tuple[datetime, UUID] | None = None
         while True:
             async with self._storage.tenant(shop_id) as session:
@@ -294,9 +319,11 @@ class ExportService:
             after = (page[-1].created_at, page[-1].entry_id)
             names = {entry.entry_id: entry for entry in page}
             for entry in page:
+                if entry.currency is not UZS and not with_dollars:
+                    continue  # cannot happen: `with_dollars` is true whenever a dollar entry exists
                 effect = signed_effect(entry.kind, entry.amount, entry.reversed_kind)
-                balances[entry.customer_id] += effect
-                month = months[entry.created_at.astimezone(TASHKENT).strftime("%Y-%m")]
+                owed[entry.currency][entry.customer_id] += effect
+                month = by_month[entry.currency][entry.created_at.astimezone(TASHKENT).strftime("%Y-%m")]
                 if counts(entry.kind, entry.is_reversed):
                     if entry.kind == "credit":
                         month[0] += entry.amount
@@ -313,8 +340,8 @@ class ExportService:
                         _local(entry.created_at),
                         entry.customer_name,
                         word(lang, f"kind_{entry.kind}", entry.kind),
-                        entry.amount,
-                        effect,
+                        _amount(entry.currency, entry.amount),
+                        _amount(entry.currency, effect),
                         entry.note,
                         None if entry.promised_date is None else entry.promised_date.isoformat(),
                         yes if entry.is_reversed else no,
@@ -324,6 +351,7 @@ class ExportService:
                         entry.seq,
                         str(entry.entry_id),
                         str(entry.customer_id),
+                        *((entry.currency.value,) if with_dollars else ()),
                     )
                 )
                 for line in lines.get(entry.entry_id, ()):
@@ -370,27 +398,60 @@ class ExportService:
                     person.phone,
                     word(lang, f"status_{person.status}", person.status),
                     person.credit_limit,
-                    balances.get(person.customer_id, 0),
+                    owed[UZS].get(person.customer_id, 0),
                     person.created_at.astimezone(TASHKENT).date().isoformat(),
                     str(person.customer_id),
+                    *(
+                        (
+                            None if person.credit_limit_usd is None else _amount(USD, person.credit_limit_usd),
+                            _amount(USD, owed[USD].get(person.customer_id, 0)),
+                        )
+                        if with_dollars
+                        else ()
+                    ),
                 )
             )
 
-        for label, value in (
+        figures: list[tuple[str, Cell]] = [
             ("summary_shop", shop_name),
             ("summary_made", _local(until)),
             ("summary_customers", len(people)),
-            ("summary_debtors", sum(1 for owed in balances.values() if owed > 0)),
-            ("summary_outstanding", sum(balances.values())),
-            ("summary_entries", ledger.data_rows),
-        ):
+            ("summary_debtors", sum(1 for balance in owed[UZS].values() if balance > 0)),
+            ("summary_outstanding", sum(owed[UZS].values())),
+        ]
+        if with_dollars:
+            figures += [
+                ("summary_debtors_usd", sum(1 for balance in owed[USD].values() if balance > 0)),
+                ("summary_outstanding_usd", _amount(USD, sum(owed[USD].values()))),
+            ]
+        figures.append(("summary_entries", ledger.data_rows))
+        for label, value in figures:
             summary.append((word(lang, label), value))
-        summary.append(())
-        summary.append((word(lang, "summary_months"),), bold=True)
-        summary.append(header(lang, "months"), bold=True)
-        for month_name in sorted(months):
-            summary.append((month_name, *months[month_name]))
+        for currency, title in ((UZS, "summary_months"), (USD, "summary_months_usd")):
+            if currency is USD and not with_dollars:
+                continue
+            summary.append(())
+            summary.append((word(lang, title),), bold=True)
+            summary.append(header(lang, "months"), bold=True)
+            for month_name in sorted(by_month[currency]):
+                credit, credits, opening, paid, payments, reversed_count = by_month[currency][month_name]
+                summary.append(
+                    (
+                        month_name,
+                        _amount(currency, credit),
+                        credits,
+                        _amount(currency, opening),
+                        _amount(currency, paid),
+                        payments,
+                        reversed_count,
+                    )
+                )
         return ledger.data_rows
+
+
+def _amount(currency: Currency, amount: int) -> int | Decimal:
+    """An amount as a cell: whole so'm as the number it is, cents as dollars with two decimals."""
+    return amount if currency is UZS else Decimal(plain(currency, amount))
 
 
 class _Superseded(Exception):

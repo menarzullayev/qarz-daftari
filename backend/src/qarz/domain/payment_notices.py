@@ -7,11 +7,14 @@ model, lifecycle table).
 from datetime import datetime, timedelta
 from enum import StrEnum
 
+from qarz.domain import money
 from qarz.domain.files import RECEIPT_RETENTION
+from qarz.domain.money import Currency
 
-# The same bounds as a ledger entry: an accepted notice becomes a payment of this amount.
-MIN_AMOUNT = 100
-MAX_AMOUNT = 100_000_000
+# The same bounds as a ledger entry: an accepted notice becomes a payment of this amount, in the same
+# currency. These two are the so'm bounds, under the names they had before dollars existed.
+MIN_AMOUNT = money.RULES[Currency.UZS].min_entry
+MAX_AMOUNT = money.RULES[Currency.UZS].max_entry
 # How many notices of one customer may wait for the shop at once.
 MAX_OPEN_NOTICES = 3
 NOTICE_LIFETIME = timedelta(days=14)
@@ -25,17 +28,21 @@ class NoticeRefusal(StrEnum):
     TOO_MANY_OPEN = "too_many_open"
 
 
-def valid_amount(amount: object) -> bool:
-    """A whole number of UZS within the bounds. `True` counts as 1 in Python and falls below them."""
-    return isinstance(amount, int) and MIN_AMOUNT <= amount <= MAX_AMOUNT
+def valid_amount(amount: object, currency: Currency = Currency.UZS) -> bool:
+    """A whole number of the currency's minor units within the bounds of one entry. `True` is not a number."""
+    return money.valid_entry_amount(currency, amount)
 
 
-def may_send(*, amount: int, balance: int, open_notices: int) -> NoticeRefusal | None:
+def may_send(
+    *, amount: int, balance: int, open_notices: int, currency: Currency = Currency.UZS
+) -> NoticeRefusal | None:
     """Returns None when the customer may send a notice for this amount.
 
-    `open_notices` counts the customer's notices that still wait for the shop, not the stale ones.
+    `balance` is what the customer owes in the notice's currency: a notice of dollars paid is compared
+    with the dollar debt alone. `open_notices` counts the customer's notices that still wait for the
+    shop, not the stale ones, whatever their currency.
     """
-    if not valid_amount(amount):
+    if not valid_amount(amount, currency):
         return NoticeRefusal.AMOUNT_OUT_OF_RANGE
     if amount > balance:
         return NoticeRefusal.EXCEEDS_BALANCE

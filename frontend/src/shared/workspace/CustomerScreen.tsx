@@ -5,6 +5,7 @@ import type { ApiError, ChangedPromise, Customer, CustomerDetail, CustomerPatch,
 import { changedDate, changeRange, DATE_REASON_MAX, isDebtKind, saleDay } from "../dateRules";
 import { formatCalendarDay, formatDateTime, formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
+import { currencyOf } from "../money";
 import { canManage } from "../navigation";
 import { parseIsoDate } from "../promise";
 import { DateReasonForm, dayText, PromiseHistory } from "../promiseParts";
@@ -13,10 +14,11 @@ import { NotFoundScreen } from "../screens";
 import { canAddGoods, mayAddGoods } from "./AddGoodsScreen";
 import { useWorkspace } from "./context";
 import { CreditLimitSection } from "./CreditLimitSection";
+import { owesAnything } from "./CustomersScreen";
 import { GoodsList } from "./GoodsEditor";
 import { LinkSection } from "./LinkSection";
 import { cleanName, customerFieldErrors, nameProblem } from "./NewCustomerScreen";
-import { ENTRY_KIND_LABELS, errorText, Failure, FieldError, Loading, OverdueLines } from "./parts";
+import { ENTRY_KIND_LABELS, errorText, Failure, FieldError, Loading, Money, OverdueLines } from "./parts";
 import { PaymentHistoryNote } from "./PaymentHistoryNote";
 import { ReminderAction } from "./ReminderAction";
 
@@ -217,11 +219,13 @@ function EntryRow({
   const { t, language } = useI18n();
   const promised = entry.promisedDate === null ? null : parseIsoDate(entry.promisedDate);
   const made = new Date(entry.createdAt);
+  // An entry in dollars says so with its amount: "12.50 $", never a bare number beside the so'm ones.
+  const amount = formatMoney(entry.amount, language, currencyOf(entry));
   return (
     <li className={entry.reversed ? "row row--struck" : "row"}>
       <p className="row__link">
         <span className="row__name">{t(ENTRY_KIND_LABELS[entry.kind] ?? "entry.kind.other")}</span>
-        <span className="row__amount">{formatMoney(entry.amount, language)}</span>
+        <span className="row__amount">{amount}</span>
       </p>
       <p className="row__meta">{Number.isNaN(made.getTime()) ? entry.createdAt : formatDateTime(made, language)}</p>
       {entry.note ? <p className="row__note">{entry.note}</p> : null}
@@ -265,7 +269,7 @@ function EntryRow({
       {canReverse(entry, mayManage) ? (
         confirming ? (
           <div className="notice">
-            <p>{t("reversal.confirm", { amount: formatMoney(entry.amount, language) })}</p>
+            <p>{t("reversal.confirm", { amount })}</p>
             <p className="actions">
               <button type="button" className="button button--primary" onClick={onConfirm} disabled={pending}>
                 {pending ? t("state.saving") : t("reversal.confirm.yes")}
@@ -327,16 +331,20 @@ function Detail({
         {customer.remindersOff ? <p className="row__meta">{t("customer.remindersOff")}</p> : null}
 
         <p className="balance balance--large">
-          <span>{t("customer.balance")}</span> <strong>{formatMoney(customer.balance, language)}</strong>
+          <span>{t("customer.balance")}</span>{" "}
+          <strong>
+            <Money uzs={customer.balance} usd={customer.usd?.balance} />
+          </strong>
         </p>
         <OverdueLines overdue={customer.overdue} />
+        {customer.usd?.overdue ? <OverdueLines overdue={customer.usd.overdue} currency="USD" /> : null}
 
         {archived ? null : (
           <p className="actions">
             <Link to={`/customers/${customer.id}/credit`} className="button button--primary">
               {t("entry.credit.title")}
             </Link>
-            {customer.balance > 0 ? (
+            {owesAnything(customer) ? (
               <Link to={`/customers/${customer.id}/payment`} className="button">
                 {t("entry.payment.title")}
               </Link>
@@ -379,7 +387,10 @@ function Detail({
           <Link to="/payment-notices">{t("notices.title")}</Link>
         </p>
       ) : null}
-      <PaymentHistoryNote history={customer.paymentHistory} />
+      <PaymentHistoryNote
+        history={customer.paymentHistory}
+        {...(customer.usd ? { usd: customer.usd.paymentHistory ?? null } : {})}
+      />
       <CreditLimitSection customer={customer} onSaved={reload} />
       <LinkSection customerId={customer.id} archived={archived} />
 
@@ -414,7 +425,8 @@ function Detail({
                 key={entry.id}
                 entry={entry}
                 goodsPath={
-                  canAddGoods(entry, today) && mayAddGoods(entry, viewer)
+                  // Goods are priced in so'm: none can be added to a sale in dollars.
+                  currencyOf(entry) === "UZS" && canAddGoods(entry, today) && mayAddGoods(entry, viewer)
                     ? `/customers/${customer.id}/entries/${entry.id}/goods`
                     : null
                 }

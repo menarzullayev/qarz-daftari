@@ -28,6 +28,7 @@ DEFAULTS = {
     "sms_on": False,
     "sms_monthly_quota": 0,
     "online_pay_on": False,
+    "usd_on": False,
 }
 # Specification, clients table: "changes to price, card number, and switches ask for the code again".
 NEEDS_CODE = {
@@ -37,6 +38,7 @@ NEEDS_CODE = {
     "sms_on": True,
     "online_pay_on": True,
     "review_group": -1001234567890,
+    "usd_on": True,
 }
 
 

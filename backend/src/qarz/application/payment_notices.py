@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 
 from qarz.application import idempotency
 from qarz.application.chat_texts import money, say
+from qarz.application.currencies import USD, UZS, amount_hint, dollars_on, require_currency, tag
 from qarz.application.customer_account import resolve_link
 from qarz.application.customers import require_viewable, require_writable
 from qarz.application.errors import AppError, NotFound, ValidationFailed
@@ -27,11 +28,10 @@ from qarz.domain.access import Capability
 from qarz.domain.disputes import clean_reason
 from qarz.domain.files import receipt_delete_after
 from qarz.domain.ledger import EntryKind
+from qarz.domain.money import Currency
 from qarz.domain.payment_notices import (
     ACCEPTED,
     DECLINED,
-    MAX_AMOUNT,
-    MIN_AMOUNT,
     NOTICE_LIFETIME,
     SENT,
     NoticeRefusal,
@@ -53,7 +53,6 @@ STAFF = ("seller", "manager", "owner")
 FILE_PURPOSE = "payment_notice"
 # Where a signed link points; served outside the API, to whoever holds a valid link.
 FILE_LINK_PATH = "/files"
-_AMOUNT_HINT = f"a whole amount between {MIN_AMOUNT} and {MAX_AMOUNT} UZS"
 
 
 class PaymentNoticeNotAllowed(AppError):
@@ -79,7 +78,15 @@ async def _tell_staff(session: TenantSession, record: PaymentNoticeRecord, name:
     shop = "" if settings is None else settings.name
     key = "s_notice" if record.file_id is None else "s_notice_receipt"
     for tg_id, lang in await session.staff_recipients(list(STAFF)):
-        text = say(lang, key, shop=shop, name=name, amount=money(lang, record.amount), balance=money(lang, balance))
+        # Both in the notice's currency: what the customer says they paid, and what they owe in it.
+        text = say(
+            lang,
+            key,
+            shop=shop,
+            name=name,
+            amount=money(lang, record.amount, record.currency),
+            balance=money(lang, balance, record.currency),
+        )
         if record.receipt_seen_before:
             # The same file was sent to this shop before: staff are told, the customer is not.
             text += "\n" + say(lang, "s_receipt_seen_before")
@@ -115,7 +122,8 @@ async def _locked_open_notice(session: TenantSession, notice_id: UUID, now: date
         raise NotFound()
     await session.get_customer(found.customer_id, for_update=True)
     record = await session.get_payment_notice(notice_id)
-    if record is None:
+    if record is None or (record.currency is USD and not await dollars_on(session)):
+        # A notice in dollars waits, unseen, while the shop does not show dollars.
         raise NotFound()
     _require_open(record, now)
     return record
@@ -131,12 +139,23 @@ async def accept_in(
     and the transaction's rollback leaves the notice open.
     """
     record = await _locked_open_notice(session, notice_id, now)
+    if amount is not None:
+        # A corrected amount is in the notice's currency, and inside that currency's range.
+        clean_entry(EntryKind.PAYMENT.value, amount, None, None, record.currency)
     paid = record.amount if amount is None else amount
     # Looked up before the payment: the payment that settles a debt may carry out a removal request,
     # after which there is nobody left to tell.
     recipient = await session.customer_recipient(record.customer_id)
     body = await append_entry_in(
-        session, actor, record.customer_id, kind=EntryKind.PAYMENT, amount=paid, note=None, promised_date=None, now=now
+        session,
+        actor,
+        record.customer_id,
+        kind=EntryKind.PAYMENT,
+        amount=paid,
+        note=None,
+        promised_date=None,
+        now=now,
+        currency=record.currency,
     )
     closed = await session.close_payment_notice(
         notice_id,
@@ -154,20 +173,22 @@ async def accept_in(
         subject_type="customer",
         subject_id=record.customer_id,
     )
-    await session.record_measure(kind="payment_notice_accepted", entry_ref=notice_id, amount=paid, promised=None)
+    await session.record_measure(
+        kind="payment_notice_accepted", entry_ref=notice_id, amount=paid, promised=None, currency=record.currency
+    )
     if recipient is not None:
         tg_id, lang = recipient
         settings = await session.shop_settings()
         shop = "" if settings is None else settings.name
         text = (
-            say(lang, "n_notice_accepted", shop=shop, amount=money(lang, record.amount))
+            say(lang, "n_notice_accepted", shop=shop, amount=money(lang, record.amount, record.currency))
             if paid == record.amount
             else say(
                 lang,
                 "n_notice_corrected",
                 shop=shop,
-                amount=money(lang, record.amount),
-                recorded=money(lang, paid),
+                amount=money(lang, record.amount, record.currency),
+                recorded=money(lang, paid, record.currency),
             )
         )
         await session.enqueue(recipient=str(tg_id), payload={"text": text}, dedupe_key=f"notice:{notice_id}:accepted")
@@ -196,7 +217,11 @@ async def decline_in(
         subject_id=record.customer_id,
     )
     await session.record_measure(
-        kind="payment_notice_declined", entry_ref=notice_id, amount=record.amount, promised=None
+        kind="payment_notice_declined",
+        entry_ref=notice_id,
+        amount=record.amount,
+        promised=None,
+        currency=record.currency,
     )
     recipient = await session.customer_recipient(record.customer_id)
     if recipient is not None:
@@ -209,7 +234,7 @@ async def decline_in(
                     lang,
                     "n_notice_declined",
                     shop="" if settings is None else settings.name,
-                    amount=money(lang, record.amount),
+                    amount=money(lang, record.amount, record.currency),
                     reason=reason,
                 )
             },
@@ -242,8 +267,12 @@ class PaymentNoticeService:
         request_key: str | None = None,
         *,
         update_key: str | None = None,
+        currency: str | None = None,
     ) -> dict[str, Any]:
         """Send a notice for one of the caller's own accounts.
+
+        `amount` is in `currency` (so'm when none is named) and is compared with what the customer owes
+        in that currency.
 
         `request_key` is optional for a customer: with it, a repeat returns the first notice and stores
         nothing new. The chat passes `update_key` instead, the key it derives from the Telegram update,
@@ -251,8 +280,13 @@ class PaymentNoticeService:
         """
         shop_id, customer_id = await resolve_link(self._storage, user_id, link_id)
         key = update_key if request_key is None else idempotency.validate_key(request_key)
-        if not valid_amount(amount):
-            raise ValidationFailed({"amount": _AMOUNT_HINT})
+        paid_in = UZS
+        if currency not in (None, UZS.value):
+            # Whether the shop works in dollars is the shop's to say; asked again where the notice is stored.
+            async with self._storage.tenant(shop_id) as session:
+                paid_in = await require_currency(session, currency)
+        if not valid_amount(amount, paid_in):
+            raise ValidationFailed({"amount": amount_hint(paid_in)})
         checked = None if receipt is None else self._files.check(receipt)
         staged = None
         if checked is not None:
@@ -260,7 +294,7 @@ class PaymentNoticeService:
             # review, P36-3). The same is checked again under the lock, where it counts.
             async with self._storage.tenant(shop_id) as session:
                 if key is None or await session.stored_response(key) is None:
-                    await self._require_sendable(session, customer_id, int(amount), lock=False)
+                    await self._require_sendable(session, customer_id, int(amount), paid_in, lock=False)
             # Stored before the writing transaction opens: no network call is made while the customer's
             # row is locked. It is removed again unless that transaction records it.
             staged = await self._files.stage(checked)
@@ -268,7 +302,7 @@ class PaymentNoticeService:
 
         async def write(session: TenantSession) -> dict[str, Any]:
             nonlocal recorded
-            body = await self._send_in(session, customer_id, int(amount), staged)
+            body = await self._send_in(session, customer_id, int(amount), staged, paid_in)
             recorded = True
             return body
 
@@ -286,11 +320,15 @@ class PaymentNoticeService:
                         key=key,
                         operation=SEND_NOTICE.name,
                         user_id=user_id,
-                        request={
-                            "link": str(link_id),
-                            "amount": amount,
-                            "receipt": None if receipt is None else hashlib.sha256(receipt).hexdigest(),
-                        },
+                        # Only a notice in dollars carries its currency: a so'm one keeps its fingerprint.
+                        request=tag(
+                            {
+                                "link": str(link_id),
+                                "amount": amount,
+                                "receipt": None if receipt is None else hashlib.sha256(receipt).hexdigest(),
+                            },
+                            paid_in,
+                        ),
                         action=apply,
                     )
         except BaseException:
@@ -303,10 +341,12 @@ class PaymentNoticeService:
         return body
 
     async def _require_sendable(
-        self, session: TenantSession, customer_id: UUID, amount: int, *, lock: bool
+        self, session: TenantSession, customer_id: UUID, amount: int, currency: Currency = UZS, *, lock: bool
     ) -> tuple[CustomerRecord, int]:
-        """The customer and what they owe, when they may send a notice for this amount; else the refusal."""
+        """The customer and what they owe in the currency, when they may send a notice for this amount."""
         now = self._now()
+        if currency is USD and not await dollars_on(session, lock=lock):
+            raise ValidationFailed({"currency": "must be UZS"})
         customer = await session.get_customer(customer_id, for_update=lock)
         link = await session.link_state(customer_id)
         if customer is None or link is None:
@@ -316,8 +356,14 @@ class PaymentNoticeService:
         await session.expire_payment_notices(
             before=now - NOTICE_LIFETIME, now=now, customer_id=customer_id, files_delete_after=receipt_delete_after(now)
         )
-        balance = ledger.balance([row.entry for row in await session.entries_of(customer_id)])
-        refusal = may_send(amount=amount, balance=balance, open_notices=await session.count_open_notices(customer_id))
+        book = ledger.in_currency([row.entry for row in await session.entries_of(customer_id)], currency)
+        balance = ledger.balance(book)
+        refusal = may_send(
+            amount=amount,
+            balance=balance,
+            open_notices=await session.count_open_notices(customer_id),
+            currency=currency,
+        )
         if refusal is NoticeRefusal.EXCEEDS_BALANCE:
             raise LedgerRefused("EXCEEDS_BALANCE")
         if refusal is not None:
@@ -325,12 +371,17 @@ class PaymentNoticeService:
         return customer, balance
 
     async def _send_in(
-        self, session: TenantSession, customer_id: UUID, amount: int, staged: StagedFile | None
+        self,
+        session: TenantSession,
+        customer_id: UUID,
+        amount: int,
+        staged: StagedFile | None,
+        currency: Currency = UZS,
     ) -> dict[str, Any]:
         now = self._now()
         # The customer row is locked, as in every write to the account, so the balance and the number of
         # open notices cannot change between being checked and the notice being stored.
-        customer, balance = await self._require_sendable(session, customer_id, amount, lock=True)
+        customer, balance = await self._require_sendable(session, customer_id, amount, currency, lock=True)
         file_id = (
             None
             if staged is None
@@ -339,11 +390,11 @@ class PaymentNoticeService:
             )
         )
         record = await session.add_payment_notice(
-            notice_id=uuid4(), customer_id=customer_id, amount=amount, file_id=file_id, now=now
+            notice_id=uuid4(), customer_id=customer_id, amount=amount, file_id=file_id, now=now, currency=currency
         )
         await session.record_customer_activity(action="payment_notice.sent", subject_id=customer_id)
         await session.record_measure(
-            kind="payment_notice_sent", entry_ref=record.notice_id, amount=amount, promised=None
+            kind="payment_notice_sent", entry_ref=record.notice_id, amount=amount, promised=None, currency=currency
         )
         await _tell_staff(session, record, customer.display_name, balance)
         return notice_body(record, now)
@@ -355,15 +406,27 @@ class PaymentNoticeService:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, LIST_NOTICES)
             await require_viewable(session, actor, self._today())
-            rows = await session.open_payment_notices(now - NOTICE_LIFETIME)
-            balances = await session.balances(list({record.customer_id for record, _ in rows}))
+            dollars = await dollars_on(session)
+            # A notice in dollars waits, unseen, while the shop does not show dollars.
+            rows = [
+                (record, name)
+                for record, name in await session.open_payment_notices(now - NOTICE_LIFETIME)
+                if dollars or record.currency is UZS
+            ]
+            balances = {
+                currency: await session.balances(
+                    list({record.customer_id for record, _ in rows if record.currency is currency}), currency
+                )
+                for currency in {record.currency for record, _ in rows}
+            }
             return {
                 "items": [
                     {
                         **staff_notice_body(record, now),
                         "customer_id": str(record.customer_id),
                         "customer_name": name,
-                        "customer_balance": balances.get(record.customer_id, 0),
+                        # What the customer owes in the notice's own currency.
+                        "customer_balance": balances[record.currency].get(record.customer_id, 0),
                     }
                     for record, name in rows
                 ]
@@ -375,7 +438,9 @@ class PaymentNoticeService:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, ACCEPT_NOTICE)
             key = idempotency.validate_key(request_key)
-            if amount is not None:
+            if amount is not None and not (await dollars_on(session) and valid_amount(amount, USD)):
+                # Checked before the notice is read, as it always was. In a shop with dollars an amount
+                # that only a dollar notice may carry is checked once the notice's currency is known.
                 clean_entry(EntryKind.PAYMENT.value, amount, None, None)
             await require_writable(session, self._today(), new_credit=False)
 

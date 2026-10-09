@@ -50,6 +50,8 @@ class CustomerPatch(BaseModel):
     reminders_off: bool | None = None
     # Absent leaves the limit as it is; null removes it, and the shop default then applies.
     credit_limit: int | None = None
+    # The dollar limit, in whole cents, the same way. Only in a shop that works in dollars.
+    credit_limit_usd: int | None = None
 
 
 class GoodsLine(BaseModel):
@@ -77,6 +79,8 @@ class NewEntry(BaseModel):
     note: str | None = Field(default=None, max_length=400)
     promised_date: date | None = None
     lines: list[GoodsLine] | None = None
+    # "UZS" (the default) or, in a shop that works in dollars, "USD": `amount` is then whole cents.
+    currency: str | None = Field(default=None, max_length=8)
 
 
 class NewLines(BaseModel):
@@ -110,7 +114,7 @@ def add_customer_routes(
     ) -> dict[str, Any]:
         return await customers.create(user_id, shop_id, body.display_name, body.phone, idempotency_key)
 
-    @app.get(base, name=LIST_CUSTOMERS.name, response_model=CustomerPage)
+    @app.get(base, name=LIST_CUSTOMERS.name, response_model=CustomerPage, response_model_exclude_unset=True)
     async def list_customers(
         shop_id: UUID,
         user_id: user,
@@ -121,7 +125,12 @@ def add_customer_routes(
     ) -> dict[str, Any]:
         return await customers.list(user_id, shop_id, query=q, status=status, cursor=cursor, limit=limit)
 
-    @app.get(base + "/{customer_id}", name=READ_CUSTOMER.name, response_model=CustomerDetail)
+    @app.get(
+        base + "/{customer_id}",
+        name=READ_CUSTOMER.name,
+        response_model=CustomerDetail,
+        response_model_exclude_unset=True,
+    )
     async def read_customer(shop_id: UUID, customer_id: UUID, user_id: user) -> dict[str, Any]:
         return await ledger.customer_detail(user_id, shop_id, customer_id)
 
@@ -138,6 +147,7 @@ def add_customer_routes(
             reminders_off=body.reminders_off,
             request_key=idempotency_key,
             credit_limit=body.credit_limit if "credit_limit" in body.model_fields_set else UNSET,
+            credit_limit_usd=body.credit_limit_usd if "credit_limit_usd" in body.model_fields_set else UNSET,
         )
 
     @app.post(base + "/{customer_id}/archive", name=ARCHIVE_CUSTOMER.name)
@@ -166,6 +176,7 @@ def add_customer_routes(
             promised_date=body.promised_date,
             request_key=idempotency_key,
             lines=None if body.lines is None else [line.request() for line in body.lines],
+            currency=body.currency,
         )
 
     @app.post("/api/v1/shops/{shop_id}/entries/{entry_id}/lines", name=ADD_LINES.name, status_code=201)
@@ -194,16 +205,30 @@ def add_customer_routes(
     ) -> dict[str, Any]:
         return await ledger.change_promise(user_id, shop_id, entry_id, body.promised_date, body.reason, idempotency_key)
 
-    @app.get("/api/v1/shops/{shop_id}/overview", name=READ_OVERVIEW.name, response_model=Overview)
+    @app.get(
+        "/api/v1/shops/{shop_id}/overview",
+        name=READ_OVERVIEW.name,
+        response_model=Overview,
+        response_model_exclude_unset=True,
+    )
     async def overview(shop_id: UUID, user_id: user) -> dict[str, Any]:
         return await ledger.overview(user_id, shop_id)
 
-    @app.get("/api/v1/shops/{shop_id}/overview/debtors", name=LIST_DEBTORS.name, response_model=DebtorPage)
+    @app.get(
+        "/api/v1/shops/{shop_id}/overview/debtors",
+        name=LIST_DEBTORS.name,
+        response_model=DebtorPage,
+        response_model_exclude_unset=True,
+    )
     async def debtors(
         shop_id: UUID,
         user_id: user,
         overdue: Annotated[bool, Query()] = False,
         cursor: Annotated[str | None, Query(max_length=400)] = None,
         limit: Annotated[int, Query()] = 50,
+        # Whose debts are listed, largest first: so'm, or "USD" in a shop that works in dollars.
+        currency: Annotated[str | None, Query(max_length=8)] = None,
     ) -> dict[str, Any]:
-        return await ledger.debtors(user_id, shop_id, only_overdue=overdue, cursor=cursor, limit=limit)
+        return await ledger.debtors(
+            user_id, shop_id, only_overdue=overdue, cursor=cursor, limit=limit, currency=currency
+        )

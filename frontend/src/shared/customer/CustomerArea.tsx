@@ -2,12 +2,11 @@ import { useMemo, type ReactNode } from "react";
 
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Api, MyAccount } from "../api";
-import { formatMoney } from "../format";
 import { useLoad } from "../hooks";
 import { Link, useHashPath } from "../router";
 import { NotFoundScreen } from "../screens";
 import { Shell, type ShellNavItem } from "../Shell";
-import { Empty, Failure, Loading } from "../workspace/parts";
+import { Empty, Failure, Loading, Money } from "../workspace/parts";
 import "../workspace/workspace.css";
 import { AccountScreen } from "./AccountScreen";
 import { MY_PATH } from "./paths";
@@ -36,12 +35,13 @@ const STAFF_AND_MINE: readonly ShellNavItem[] = [
 ];
 
 function AccountRow({ account }: { account: MyAccount }) {
-  const { language } = useI18n();
   return (
     <li className="row">
       <Link to={`${MY_PATH}/${account.linkId}`} className="row__link">
         <span className="row__name">{account.shopName}</span>
-        <span className="row__amount">{formatMoney(account.balance, language)}</span>
+        <span className="row__amount">
+          <Money uzs={account.balance} usd={account.usd?.balance} />
+        </span>
       </Link>
     </li>
   );

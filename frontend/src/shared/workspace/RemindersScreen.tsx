@@ -10,7 +10,7 @@ import { canManage } from "../navigation";
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
 import { useWorkspace } from "./context";
-import { Empty, errorText, Failure, FieldError, Loading } from "./parts";
+import { Empty, errorText, Failure, FieldError, Loading, Money } from "./parts";
 
 /** The amount an example reminder mentions, in whole UZS. */
 export const EXAMPLE_AMOUNT = 45_000;
@@ -253,7 +253,7 @@ function Settings() {
 /** Customers with something due and no channel to be reminded through (REQ-043). */
 function Unreachable() {
   const { api } = useWorkspace();
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const { state, reload } = useLoad((signal) => api.listUnreachable(signal), [api]);
 
   let body;
@@ -273,7 +273,9 @@ function Unreachable() {
               {/* The customer's page is where a personal link is made. */}
               <Link to={`/customers/${customer.customerId}`} className="row__link">
                 <span className="row__name">{customer.displayName}</span>
-                <span className="row__amount">{formatMoney(customer.amount, language)}</span>
+                <span className="row__amount">
+                  <Money uzs={customer.amount} usd={customer.usdAmount} />
+                </span>
               </Link>
               <p className="row__meta">{customer.phone ?? t("reminders.unreachable.noPhone")}</p>
             </li>

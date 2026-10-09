@@ -11,6 +11,10 @@ Conventions shared by every function:
 - A list that could not have been produced by valid operations (duplicate `seq`, a reversal of a reversal,
   a running balance below zero, ...) raises `LedgerIntegrityError`: that is corrupt data or a programming
   error, never a business refusal. Refusals of a proposed entry are returned as a `Refusal` value.
+- The entries passed are of ONE currency. An account may hold so'm and dollars; they are two books that
+  share one sequence, and nothing here ever adds one to the other. `in_currency` picks one book out of
+  an account, `currencies_of` says which books it has, and a list that mixes currencies raises
+  `LedgerIntegrityError` like any other list no valid operation could have produced.
 - `promised_date` is the entry's CURRENT promised date (the latest `promise` row). The calculations never see
   the history of promise changes, so moving a promise changes overdue status and the payment history
   indicator from then on, including for debt that was already paid.
@@ -22,6 +26,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from uuid import UUID
 
+from qarz.domain.money import DEFAULT, Currency
 from qarz.domain.promise import tashkent_date
 
 # `ledger_entry.amount` is a PostgreSQL bigint.
@@ -44,6 +49,7 @@ class Entry:
 
     `promised_date` is the current promised date and is required for credit and opening entries (INV-9,
     BR-24); payments and reversals have none. `disputed` may be set only on credit and opening entries.
+    `amount` is in the minor unit of `currency`: whole so'm, or whole cents (qarz.domain.money).
     """
 
     id: UUID
@@ -54,6 +60,7 @@ class Entry:
     reverses_id: UUID | None = None
     promised_date: date | None = None
     disputed: bool = False
+    currency: Currency = DEFAULT
 
 
 class LedgerIntegrityError(ValueError):
@@ -120,7 +127,7 @@ class OverdueStatus:
 
 @dataclass(frozen=True, slots=True)
 class PaymentHistory:
-    """BR-9. The on-time share is exactly `on_time_amount / due_amount`, both whole UZS."""
+    """BR-9. The on-time share is exactly `on_time_amount / due_amount`, both of one currency."""
 
     on_time_amount: int
     due_amount: int
@@ -145,7 +152,7 @@ def _check_entry(entry: Entry) -> None:
     if not _is_whole(entry.seq):
         raise LedgerIntegrityError(f"entry {entry.id}: seq must be a whole number")
     if not _is_whole(entry.amount) or not 0 < entry.amount <= MAX_AMOUNT:
-        raise LedgerIntegrityError(f"entry {entry.id}: amount must be a positive whole number of UZS")
+        raise LedgerIntegrityError(f"entry {entry.id}: amount must be a positive whole number of minor units")
     if entry.created_at.tzinfo is None or entry.created_at.utcoffset() is None:
         raise LedgerIntegrityError(f"entry {entry.id}: created_at must be an aware datetime")
     if (entry.kind == EntryKind.REVERSAL) != (entry.reverses_id is not None):
@@ -157,9 +164,22 @@ def _check_entry(entry: Entry) -> None:
         raise LedgerIntegrityError(f"entry {entry.id}: a {entry.kind} entry has no promise and no dispute")
 
 
+def in_currency(entries: Iterable[Entry], currency: Currency) -> list[Entry]:
+    """The book of one currency out of an account: its entries of that currency, in the order given."""
+    return [entry for entry in entries if entry.currency is currency]
+
+
+def currencies_of(entries: Iterable[Entry]) -> list[Currency]:
+    """The currencies an account has entries in, in the order of `Currency` (so'm first)."""
+    present = {entry.currency for entry in entries}
+    return [currency for currency in Currency if currency in present]
+
+
 def _load(entries: Iterable[Entry]) -> _Account:
-    """Validate the list as one account's history and split it into the entries that still count."""
+    """Validate the list as one currency's book of one account and split it into the entries that still count."""
     ordered = sorted(entries, key=lambda e: e.seq)
+    if len({entry.currency for entry in ordered}) > 1:
+        raise LedgerIntegrityError("entries of different currencies are never calculated together")
     by_id: dict[UUID, Entry] = {}
     reversed_ids: set[UUID] = set()
     running = 0

@@ -1,6 +1,6 @@
 """What the application needs from storage and from the outside world. Implemented in the infrastructure layer."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -10,6 +10,7 @@ from uuid import UUID
 
 from qarz.domain.access import Role
 from qarz.domain.ledger import Entry
+from qarz.domain.money import Currency
 from qarz.domain.ops_alerts import Alert, DatabaseFigures
 
 
@@ -25,6 +26,9 @@ class ShopSettings:
     name: str
     lang: str
     default_promise_days: int
+    # The shop's own setting "this shop also works in dollars". Dollars are in use only when the platform
+    # switch `usd_on` is on as well (qarz.application.currencies).
+    usd_on: bool = False
 
 
 @dataclass(frozen=True)
@@ -66,7 +70,8 @@ class CustomerRecord:
     phone: str | None
     status: str
     reminders_off: bool
-    credit_limit: int | None = None
+    credit_limit: int | None = None  # whole so'm
+    credit_limit_usd: int | None = None  # whole cents; a limit of its own (BR-8)
 
 
 @dataclass(frozen=True)
@@ -118,6 +123,7 @@ class NewReversal:
     customer_id: UUID
     seq: int
     amount: int
+    currency: Currency = Currency.UZS  # of the entry it reverses
 
 
 @dataclass(frozen=True)
@@ -150,6 +156,7 @@ class NewImportEntry:
     note: str | None
     promised_date: date
     promise_actor: str
+    currency: Currency = Currency.UZS
 
 
 @dataclass(frozen=True)
@@ -246,6 +253,7 @@ class DisputeRecord:
     status: str
     decline_reason: str | None
     created_at: datetime
+    currency: Currency = Currency.UZS  # of the disputed entry
 
 
 @dataclass(frozen=True)
@@ -274,6 +282,7 @@ class ReminderCandidate:
 class CreditSettings:
     default_limit: int | None
     sellers_may_exceed: bool
+    default_limit_usd: int | None = None  # whole cents
 
 
 @dataclass(frozen=True)
@@ -302,6 +311,7 @@ class DateRequestRecord:
     decline_reason: str | None
     created_at: datetime
     closed_at: datetime | None
+    currency: Currency = Currency.UZS  # of the entry
 
 
 @dataclass(frozen=True)
@@ -367,6 +377,7 @@ class PaymentNoticeRecord:
     closed_at: datetime | None
     # An earlier file of the same shop has the same content. For staff only.
     receipt_seen_before: bool = False
+    currency: Currency = Currency.UZS  # what the customer says they paid in
 
 
 @dataclass(frozen=True)
@@ -402,6 +413,7 @@ class ExportEntry:
     author_id: UUID
     author_role: str
     created_at: datetime
+    currency: Currency = Currency.UZS
 
 
 @dataclass(frozen=True)
@@ -422,6 +434,7 @@ class ExportCustomer:
     status: str
     credit_limit: int | None
     created_at: datetime
+    credit_limit_usd: int | None = None  # whole cents
 
 
 @dataclass(frozen=True)
@@ -442,7 +455,9 @@ class CustomerAccount:
     shop_name: str
     customer_id: UUID
     display_name: str
-    balance: int
+    balance: int  # whole so'm
+    balance_usd: int = 0  # whole cents
+    usd_on: bool = False  # the shop's own setting; the platform switch is asked separately
 
 
 @dataclass(frozen=True)
@@ -669,6 +684,26 @@ class TenantSession(Protocol):
 
     async def shop_settings(self) -> ShopSettings | None: ...
 
+    async def dollars_setting(self, *, lock: bool = False) -> bool:
+        """The shop's own setting "this shop also works in dollars".
+
+        With `lock`, the shop's row stays shared until the transaction ends: whoever writes a dollar
+        amount asks this way, so that the setting cannot be turned off under them.
+        """
+        ...
+
+    async def set_dollars_setting(self, on: bool) -> None:
+        """Store the setting. Takes the shop's row, so it waits for every writer of a dollar amount."""
+        ...
+
+    async def dollars_recorded(self) -> bool:
+        """Whether the shop has any entry in dollars at all, standing or reversed."""
+        ...
+
+    async def dollars_owed(self) -> bool:
+        """Whether any customer of the shop owes anything in dollars."""
+        ...
+
     async def update_shop_settings(
         self, *, name: str | None, lang: str | None, default_promise_days: int | None
     ) -> ShopSettings: ...
@@ -743,6 +778,8 @@ class TenantSession(Protocol):
         reminders_off: bool | None,
         set_limit: bool = False,
         credit_limit: int | None = None,
+        set_limit_usd: bool = False,
+        credit_limit_usd: int | None = None,
     ) -> CustomerRecord: ...
 
     async def set_customer_status(self, customer_id: UUID, status: str) -> CustomerRecord: ...
@@ -763,9 +800,16 @@ class TenantSession(Protocol):
         """Active customers whose normalized name is exactly this, with their balances."""
         ...
 
-    async def balances(self, customer_ids: list[UUID]) -> dict[UUID, int]: ...
+    async def balances(self, customer_ids: list[UUID], currency: Currency = Currency.UZS) -> dict[UUID, int]:
+        """What each of the customers owes in one currency. So'm unless another is named."""
+        ...
 
-    async def entries_of(self, customer_id: UUID) -> list[EntryRow]: ...
+    async def entries_of(self, customer_id: UUID) -> list[EntryRow]:
+        """Every entry of the account, of every currency, in `seq` order.
+
+        The domain's calculations take one currency's book: `qarz.domain.ledger.in_currency`.
+        """
+        ...
 
     async def customer_of_entry(self, entry_id: UUID) -> UUID | None: ...
 
@@ -787,6 +831,7 @@ class TenantSession(Protocol):
         reverses_id: UUID | None,
         author_id: UUID,
         created_at: datetime,
+        currency: Currency = Currency.UZS,
     ) -> None: ...
 
     async def add_promise(
@@ -798,7 +843,14 @@ class TenantSession(Protocol):
         ...
 
     async def record_measure(
-        self, *, kind: str, entry_ref: UUID, amount: int, promised: date | None, handle_ms: int | None = None
+        self,
+        *,
+        kind: str,
+        entry_ref: UUID,
+        amount: int,
+        promised: date | None,
+        handle_ms: int | None = None,
+        currency: Currency = Currency.UZS,
     ) -> None:
         """One row for product measurement. Carries no name, phone, or Telegram identity."""
         ...
@@ -811,34 +863,50 @@ class TenantSession(Protocol):
         """The goods lines of the given entries in line order. An entry without lines is absent."""
         ...
 
-    async def shop_totals(self, today: date) -> ShopTotals: ...
+    async def shop_totals(self, today: date, currency: Currency = Currency.UZS) -> ShopTotals: ...
+
+    async def debt_figures(
+        self, customer_ids: list[UUID], today: date, currency: Currency = Currency.UZS
+    ) -> dict[UUID, DebtFigures]:
+        """What each of the customers owes in one currency, with what of it is overdue. Absent: nothing."""
+        ...
 
     async def debtors_page(
-        self, *, today: date, only_overdue: bool, before: tuple[int, UUID] | None, limit: int
+        self,
+        *,
+        today: date,
+        only_overdue: bool,
+        before: tuple[int, UUID] | None,
+        limit: int,
+        currency: Currency = Currency.UZS,
     ) -> list[tuple[CustomerRecord, DebtFigures]]:
         """Customers who owe something, largest balance first."""
         ...
 
-    async def period_totals(self, start: datetime, end: datetime) -> PeriodTotals:
+    async def period_totals(self, start: datetime, end: datetime, currency: Currency = Currency.UZS) -> PeriodTotals:
         """Figures of what was recorded from `start` up to but not including `end`, and the balances at both."""
         ...
 
-    async def period_days(self, start: datetime, end: datetime) -> list[DayFigures]:
+    async def period_days(self, start: datetime, end: datetime, currency: Currency = Currency.UZS) -> list[DayFigures]:
         """Credit given and payments received per Tashkent day; a day with neither is absent."""
         ...
 
-    async def period_staff(self, start: datetime, end: datetime) -> list[StaffFigures]: ...
+    async def period_staff(
+        self, start: datetime, end: datetime, currency: Currency = Currency.UZS
+    ) -> list[StaffFigures]: ...
 
-    async def debtors_as_of(self, end: datetime, limit: int) -> list[tuple[UUID, str, int]]:
+    async def debtors_as_of(
+        self, end: datetime, limit: int, currency: Currency = Currency.UZS
+    ) -> list[tuple[UUID, str, int]]:
         """Customer, name and balance of those who owed the most just before `end`, largest first."""
         ...
 
-    async def fell_due(self, first: date, before: date) -> tuple[int, int]:
+    async def fell_due(self, first: date, before: date, currency: Currency = Currency.UZS) -> tuple[int, int]:
         """Of the debt whose current promised date is from `first` up to but not including `before`:
         the part covered by payments made on or before the promised date, and the whole (BR-9)."""
         ...
 
-    async def uncovered_debts(self) -> list[UncoveredDebt]:
+    async def uncovered_debts(self, currency: Currency = Currency.UZS) -> list[UncoveredDebt]:
         """Per customer and promised date, what payments have not covered. Fully covered debt is absent."""
         ...
 
@@ -1071,8 +1139,9 @@ class TenantSession(Protocol):
         """The customers that have an entry of the import, in identifier order."""
         ...
 
-    async def standing_entries_of_import(self, batch_id: UUID) -> list[tuple[UUID, UUID, int]]:
-        """Entry, customer and amount of the import's entries that are not reversed, by customer and number."""
+    async def standing_entries_of_import(self, batch_id: UUID) -> list[tuple[UUID, UUID, int, Currency]]:
+        """Entry, customer, amount and currency of the import's entries that are not reversed, by customer
+        and number."""
         ...
 
     async def add_reversals(self, author_id: UUID, now: datetime, reversals: list[NewReversal]) -> None:
@@ -1100,7 +1169,14 @@ class TenantSession(Protocol):
         ...
 
     async def add_payment_notice(
-        self, *, notice_id: UUID, customer_id: UUID, amount: int, file_id: UUID | None, now: datetime
+        self,
+        *,
+        notice_id: UUID,
+        customer_id: UUID,
+        amount: int,
+        file_id: UUID | None,
+        now: datetime,
+        currency: Currency = Currency.UZS,
     ) -> PaymentNoticeRecord: ...
 
     async def get_payment_notice(self, notice_id: UUID) -> PaymentNoticeRecord | None: ...
@@ -1193,7 +1269,9 @@ class TenantSession(Protocol):
         self, *, on: bool | None, hour: int | None, template: int | None, sms_on: bool | None
     ) -> None: ...
 
-    async def reminder_candidates(self, *, after: UUID | None, limit: int) -> list[ReminderCandidate]:
+    async def reminder_candidates(
+        self, *, after: UUID | None, limit: int, currencies: Sequence[Currency] = (Currency.UZS,)
+    ) -> list[ReminderCandidate]:
         """Active customers who owe something, by identifier, a batch at a time."""
         ...
 
@@ -1203,7 +1281,9 @@ class TenantSession(Protocol):
 
     async def last_automatic_reminders(self, customer_ids: list[UUID]) -> dict[UUID, date]: ...
 
-    async def add_reminder(self, *, customer_id: UUID, kind: str, channel: str, amount: int, sent_on: date) -> bool:
+    async def add_reminder(
+        self, *, customer_id: UUID, kind: str, channel: str, amount: int, sent_on: date, amount_usd: int = 0
+    ) -> bool:
         """False when this customer already has a reminder of this kind on this day."""
         ...
 
@@ -1214,7 +1294,13 @@ class TenantSession(Protocol):
     async def credit_settings(self) -> CreditSettings: ...
 
     async def update_credit_settings(
-        self, *, set_default: bool, default_limit: int | None, sellers_may_exceed: bool | None
+        self,
+        *,
+        set_default: bool,
+        default_limit: int | None,
+        sellers_may_exceed: bool | None,
+        set_default_usd: bool = False,
+        default_limit_usd: int | None = None,
     ) -> None: ...
 
     async def limit_subscription(self, now: datetime) -> None:

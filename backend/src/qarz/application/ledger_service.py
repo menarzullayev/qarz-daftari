@@ -16,6 +16,15 @@ from uuid import UUID, uuid4
 
 from qarz.application import idempotency, notify, removal
 from qarz.application.credit import LimitReached
+from qarz.application.currencies import (
+    NOT_IN_DOLLARS,
+    USD,
+    UZS,
+    amount_hint,
+    dollars_on,
+    require_currency,
+    tag,
+)
 from qarz.application.customers import (
     MAX_PAGE,
     CustomerArchived,
@@ -42,10 +51,12 @@ from qarz.application.notice_view import open_notices_of
 from qarz.application.operations import operation
 from qarz.application.ports import (
     DateRequestRecord,
+    DebtFigures,
     EntryRow,
     GoodsLineRecord,
     Membership,
     PromiseRecord,
+    ShopTotals,
     Storage,
     TenantSession,
 )
@@ -61,6 +72,7 @@ from qarz.domain.date_requests import (
     tidy_reason,
 )
 from qarz.domain.ledger import Entry, EntryKind, Refusal
+from qarz.domain.money import RULES, Currency, valid_entry_amount
 from qarz.domain.promise import PromiseDateError, default_promise_date, tashkent_date, validate_promise_date
 
 RECORD_ENTRY = operation("ledger.entry.create", Capability.RECORD)
@@ -71,8 +83,9 @@ READ_CUSTOMER = operation("customers.read", Capability.RECORD)
 READ_OVERVIEW = operation("overview.read", Capability.RECORD)
 LIST_DEBTORS = operation("overview.debtors", Capability.RECORD)
 
-MIN_AMOUNT = 100
-MAX_AMOUNT = 100_000_000
+# The range of one so'm entry, under the names it had before dollars existed (qarz.domain.money).
+MIN_AMOUNT = RULES[UZS].min_entry
+MAX_AMOUNT = RULES[UZS].max_entry
 HISTORY_PAGE = 100
 # How long after a sale its author may still pick the promised date with one tap (REQ-008).
 PROMISE_CHOICE_WINDOW = timedelta(hours=24)
@@ -110,7 +123,12 @@ async def expire_settled_date_requests(
     waiting = [r for r in await session.date_requests_of_customer(customer_id) if r.status == "open"]
     if not waiting:
         return
-    owed = {allocation.entry_id for allocation in ledger.allocate(entries) if allocation.remaining > 0}
+    owed = {
+        allocation.entry_id
+        for currency in ledger.currencies_of(entries)
+        for allocation in ledger.allocate(ledger.in_currency(entries, currency))
+        if allocation.remaining > 0
+    }
     for request in waiting:
         if request.entry_id not in owed:
             await session.close_date_request(
@@ -200,12 +218,45 @@ def _refuse(refusal: Refusal) -> AppError:
     return LedgerRefused(code)
 
 
+def balances_of(entries: Sequence[Entry]) -> dict[Currency, int]:
+    """The account's balance in every currency: each from its own book, never one from another's."""
+    return {currency: ledger.balance(ledger.in_currency(entries, currency)) for currency in Currency}
+
+
+def account_body(customer: Any, balances: dict[Currency, int], dollars: bool) -> dict[str, Any]:
+    """`customer_body` from the balances of an account; the dollar figures only for a shop with dollars."""
+    return customer_body(customer, balances[UZS], balances[USD] if dollars else None)
+
+
+async def require_shown(session: TenantSession, currency: Currency) -> bool:
+    """Whether the shop works in dollars; an entry in dollars of a shop that does not is not found.
+
+    Such an entry was recorded while dollars were on. It is kept, and nothing is done to it until they
+    are on again.
+    """
+    dollars = await dollars_on(session, lock=currency is USD)
+    if currency is USD and not dollars:
+        raise NotFound()
+    return dollars
+
+
 def _entry_body(
     row: EntryRow,
     reversed_ids: set[UUID],
     lines: Sequence[GoodsLineRecord] = (),
     promises: Sequence[PromiseRecord] = (),
     date_request: DateRequestRecord | None = None,
+) -> dict[str, Any]:
+    entry = row.entry
+    return tag(_entry_fields(row, reversed_ids, lines, promises, date_request), entry.currency)
+
+
+def _entry_fields(
+    row: EntryRow,
+    reversed_ids: set[UUID],
+    lines: Sequence[GoodsLineRecord],
+    promises: Sequence[PromiseRecord],
+    date_request: DateRequestRecord | None,
 ) -> dict[str, Any]:
     entry = row.entry
     return {
@@ -240,13 +291,18 @@ def _overdue_body(status: ledger.OverdueStatus) -> dict[str, Any]:
     }
 
 
-def clean_entry(kind: str, amount: int, note: str | None, promised_date: date | None) -> tuple[EntryKind, str | None]:
-    """Check the shape of a new entry. Returns its kind and its tidied note."""
+def clean_entry(
+    kind: str, amount: int, note: str | None, promised_date: date | None, currency: Currency = UZS
+) -> tuple[EntryKind, str | None]:
+    """Check the shape of a new entry. Returns its kind and its tidied note.
+
+    `amount` is in the currency's minor unit and inside that currency's range for one entry.
+    """
     fields: dict[str, str] = {}
     if kind not in ("credit", "payment"):
         fields["kind"] = "must be credit or payment"
-    if isinstance(amount, bool) or not MIN_AMOUNT <= amount <= MAX_AMOUNT:
-        fields["amount"] = f"a whole amount between {MIN_AMOUNT} and {MAX_AMOUNT} UZS"
+    if not valid_entry_amount(currency, amount):
+        fields["amount"] = amount_hint(currency)
     text = " ".join(note.split()) if note else None
     if text is not None and len(text) > 200:
         fields["note"] = "at most 200 characters"
@@ -258,15 +314,27 @@ def clean_entry(kind: str, amount: int, note: str | None, promised_date: date | 
 
 
 def clean_sale(
-    kind: str, amount: int | None, note: str | None, promised_date: date | None, lines: Sequence[LineRequest] | None
+    kind: str,
+    amount: int | None,
+    note: str | None,
+    promised_date: date | None,
+    lines: Sequence[LineRequest] | None,
+    currency: Currency = UZS,
 ) -> tuple[EntryKind, str | None, int, list[CleanLine] | None]:
     """Check the shape of a new entry that may carry goods lines (REQ-037).
 
     Returns the kind, the tidied note, the entry total and the checked lines. With lines the total may be
     left out, and is then their sum; a total that is given must equal that sum.
+
+    Goods lines are so'm only: the catalog's prices are so'm, and a line total is rounded to whole so'm
+    (BR-7). A sale in dollars is recorded by its amount.
     """
     fields: dict[str, str] = {}
     cleaned: list[CleanLine] | None = None
+    if lines is not None and currency is not UZS:
+        fields["lines"] = NOT_IN_DOLLARS
+        lines = None
+        amount = RULES[currency].min_entry if amount is None else amount
     if lines is not None:
         if kind == "credit":
             try:
@@ -282,10 +350,12 @@ def clean_sale(
     try:
         # Without a total to check (it is missing, or the lines it would come from are wrong) the other
         # fields are still checked, against the smallest valid amount.
-        checked = clean_entry(kind, MIN_AMOUNT if total is None else total, note, promised_date)
+        checked = clean_entry(
+            kind, RULES[currency].min_entry if total is None else total, note, promised_date, currency
+        )
     except ValidationFailed as error:
         fields = {**error.fields, **fields}
-    if amount is None and lines is None:
+    if amount is None and lines is None and "lines" not in fields:
         fields["amount"] = "required when there are no goods lines"
     if fields or checked is None or total is None:
         raise ValidationFailed(fields)
@@ -306,11 +376,15 @@ async def append_entry_in(
     now: datetime,
     lines: Sequence[CleanLine] | None = None,
     started: float | None = None,
+    currency: Currency = UZS,
 ) -> dict[str, Any]:
-    """Add a credit sale or a payment to one customer's account.
+    """Add a credit sale or a payment to one customer's account, in one currency.
 
     `lines` are the goods of an itemized credit sale, already checked by `clean_sale`: they sum to `amount`.
+    The entry joins the book of its currency: a payment is checked against, and reduces, what is owed in
+    that currency only, and a sale is compared with that currency's limit only.
     """
+    dollars = await require_shown(session, currency)
     customer = await session.get_customer(customer_id, for_update=True)
     if customer is None or customer.status == "anonymized":
         raise NotFound()
@@ -318,16 +392,25 @@ async def append_entry_in(
         raise CustomerArchived()
 
     account = await session.entries_of(customer_id)
-    refusal = ledger.validate_new_entry([row.entry for row in account], kind, amount)
+    everything = [row.entry for row in account]
+    book = ledger.in_currency(everything, currency)
+    refusal = ledger.validate_new_entry(book, kind, amount)
     if refusal is not None:
         raise _refuse(refusal)
 
-    balance = ledger.balance([row.entry for row in account]) + (amount if kind is EntryKind.CREDIT else -amount)
+    balances = balances_of(everything)
+    balances[currency] += amount if kind is EntryKind.CREDIT else -amount
+    balance = balances[currency]
     limit_warning: dict[str, int] | None = None
     if kind is EntryKind.CREDIT:
         # BR-8: a manager or owner is warned; a seller is warned or stopped, as the shop has chosen.
+        # Each currency has a limit of its own, compared with the balance in that currency.
         credit = await session.credit_settings()
-        limit = effective_limit(customer.credit_limit, credit.default_limit)
+        limit = (
+            effective_limit(customer.credit_limit, credit.default_limit)
+            if currency is UZS
+            else effective_limit(customer.credit_limit_usd, credit.default_limit_usd)
+        )
         outcome = check_limit(
             limit,
             balance,
@@ -355,6 +438,7 @@ async def append_entry_in(
             promised = promised_date
 
     entry_id = uuid4()
+    # One sequence for the account, whatever the currency: the entries of both books keep their order.
     seq = max((row.entry.seq for row in account), default=0) + 1
     await session.append_entry(
         entry_id=entry_id,
@@ -366,6 +450,7 @@ async def append_entry_in(
         reverses_id=None,
         author_id=actor.membership_id,
         created_at=now,
+        currency=currency,
     )
     if promised is not None:
         await session.add_promise(entry_id=entry_id, promised_date=promised, actor=promise_actor, created_at=now)
@@ -378,37 +463,47 @@ async def append_entry_in(
     )
     handle_ms = None if started is None else max(0, round((time.perf_counter() - started) * 1000))
     await session.record_measure(
-        kind=kind.value, entry_ref=entry_id, amount=amount, promised=promised, handle_ms=handle_ms
+        kind=kind.value, entry_ref=entry_id, amount=amount, promised=promised, handle_ms=handle_ms, currency=currency
     )
     if kind is EntryKind.PAYMENT:
         # METRIC-001: how much of what was lent comes back within the agreed term.
-        paid = Entry(id=entry_id, seq=seq, kind=kind, amount=amount, created_at=now)
-        in_time, late = ledger.payment_timeliness([*(row.entry for row in account), paid], entry_id)
+        paid = Entry(id=entry_id, seq=seq, kind=kind, amount=amount, created_at=now, currency=currency)
+        in_time, late = ledger.payment_timeliness([*book, paid], entry_id)
         if in_time:
-            await session.record_measure(kind="repaid_in_time", entry_ref=entry_id, amount=in_time, promised=None)
+            await session.record_measure(
+                kind="repaid_in_time", entry_ref=entry_id, amount=in_time, promised=None, currency=currency
+            )
         if late:
-            await session.record_measure(kind="repaid_late", entry_ref=entry_id, amount=late, promised=None)
-    written = Entry(id=entry_id, seq=seq, kind=kind, amount=amount, created_at=now, promised_date=promised)
-    await expire_settled_date_requests(session, customer_id, [*(row.entry for row in account), written], now)
+            await session.record_measure(
+                kind="repaid_late", entry_ref=entry_id, amount=late, promised=None, currency=currency
+            )
+    written = Entry(
+        id=entry_id, seq=seq, kind=kind, amount=amount, created_at=now, promised_date=promised, currency=currency
+    )
+    await expire_settled_date_requests(session, customer_id, [*everything, written], now)
 
     body: dict[str, Any] = {
-        "entry": {
-            "id": str(entry_id),
-            "seq": seq,
-            "kind": kind.value,
-            "amount": amount,
-            "note": note,
-            "created_at": now.isoformat(),
-            "promised_date": None if promised is None else promised.isoformat(),
-            "lines": [line_body(line) for line in stored_lines],
-        },
-        "customer": customer_body(customer, balance),
+        "entry": tag(
+            {
+                "id": str(entry_id),
+                "seq": seq,
+                "kind": kind.value,
+                "amount": amount,
+                "note": note,
+                "created_at": now.isoformat(),
+                "promised_date": None if promised is None else promised.isoformat(),
+                "lines": [line_body(line) for line in stored_lines],
+            },
+            currency,
+        ),
+        "customer": account_body(customer, balances, dollars),
     }
     if limit_warning is not None:
-        # For the author only: the customer's message says nothing of limits.
+        # For the author only: the customer's message says nothing of limits. Both figures are in the
+        # entry's currency.
         body["limit_warning"] = limit_warning
     await notify.entry_recorded(session, customer_id, body)
-    await removal.complete_if_due(session, customer_id, balance, now)
+    await removal.complete_if_due(session, customer_id, any(balances.values()), now)
     return body
 
 
@@ -423,10 +518,15 @@ async def reverse_entry_in(
     if customer is None:
         raise NotFound()
     account = await session.entries_of(customer_id)
-    original = next((row.entry for row in account if row.entry.id == entry_id), None)
+    everything = [row.entry for row in account]
+    original = next((entry for entry in everything if entry.id == entry_id), None)
     if original is None:
         raise NotFound()
-    refusal = ledger.validate_new_entry([row.entry for row in account], EntryKind.REVERSAL, original.amount, entry_id)
+    currency = original.currency
+    dollars = await require_shown(session, currency)
+    refusal = ledger.validate_new_entry(
+        ledger.in_currency(everything, currency), EntryKind.REVERSAL, original.amount, entry_id
+    )
     if refusal is not None:
         raise _refuse(refusal)
 
@@ -442,6 +542,7 @@ async def reverse_entry_in(
         reverses_id=entry_id,
         author_id=actor.membership_id,
         created_at=now,
+        currency=currency,
     )
     await session.record_activity(
         membership_id=actor.membership_id,
@@ -449,30 +550,40 @@ async def reverse_entry_in(
         subject_type="customer",
         subject_id=customer_id,
     )
-    await session.record_measure(kind="reversal", entry_ref=reversal_id, amount=original.amount, promised=None)
+    await session.record_measure(
+        kind="reversal", entry_ref=reversal_id, amount=original.amount, promised=None, currency=currency
+    )
     await close_dispute_on_reversal(session, actor, entry_id, now)
     reversal = Entry(
-        id=reversal_id, seq=seq, kind=EntryKind.REVERSAL, amount=original.amount, created_at=now, reverses_id=entry_id
+        id=reversal_id,
+        seq=seq,
+        kind=EntryKind.REVERSAL,
+        amount=original.amount,
+        created_at=now,
+        reverses_id=entry_id,
+        currency=currency,
     )
-    await expire_settled_date_requests(session, customer_id, [*(row.entry for row in account), reversal], now)
+    await expire_settled_date_requests(session, customer_id, [*everything, reversal], now)
 
     debt_increasing = original.kind in (EntryKind.CREDIT, EntryKind.OPENING)
-    balance = ledger.balance([row.entry for row in account]) + (
-        -original.amount if debt_increasing else original.amount
-    )
+    balances = balances_of(everything)
+    balances[currency] += -original.amount if debt_increasing else original.amount
     body = {
-        "entry": {
-            "id": str(reversal_id),
-            "seq": seq,
-            "kind": "reversal",
-            "amount": original.amount,
-            "reverses_id": str(entry_id),
-            "created_at": now.isoformat(),
-        },
-        "customer": customer_body(customer, balance),
+        "entry": tag(
+            {
+                "id": str(reversal_id),
+                "seq": seq,
+                "kind": "reversal",
+                "amount": original.amount,
+                "reverses_id": str(entry_id),
+                "created_at": now.isoformat(),
+            },
+            currency,
+        ),
+        "customer": account_body(customer, balances, dollars),
     }
     await notify.entry_reversed(session, customer_id, body, original.kind.value)
-    await removal.complete_if_due(session, customer_id, balance, now)
+    await removal.complete_if_due(session, customer_id, any(balances.values()), now)
     return body
 
 
@@ -498,6 +609,7 @@ async def choose_promise_in(
         raise ForbiddenRole(Role.MANAGER)
 
     entry = row.entry
+    dollars = await require_shown(session, entry.currency)
     reversed_ids = {other.entry.reverses_id for other in account}
     if (
         entry.kind is not EntryKind.CREDIT
@@ -519,11 +631,14 @@ async def choose_promise_in(
         subject_type="customer",
         subject_id=customer_id,
     )
-    await session.record_measure(kind="promise_chosen", entry_ref=entry_id, amount=entry.amount, promised=chosen)
-    balance = ledger.balance([other.entry for other in account])
+    await session.record_measure(
+        kind="promise_chosen", entry_ref=entry_id, amount=entry.amount, promised=chosen, currency=entry.currency
+    )
     body = {
-        "entry": {"id": str(entry_id), "amount": entry.amount, "promised_date": chosen.isoformat()},
-        "customer": customer_body(customer, balance),
+        "entry": tag(
+            {"id": str(entry_id), "amount": entry.amount, "promised_date": chosen.isoformat()}, entry.currency
+        ),
+        "customer": account_body(customer, balances_of([other.entry for other in account]), dollars),
     }
     await notify.promise_chosen(session, customer_id, body)
     return body
@@ -545,6 +660,7 @@ async def change_promise_in(
         raise NotFound()
     account = await session.entries_of(customer_id)
     entry = {row.entry.id: row.entry for row in account}[entry_id]
+    dollars = await require_shown(session, entry.currency)
     refusal = may_change_promise(
         kind=entry.kind,
         is_reversed=entry_id in {other.entry.reverses_id for other in account},
@@ -571,7 +687,9 @@ async def change_promise_in(
         subject_type="customer",
         subject_id=customer_id,
     )
-    await session.record_measure(kind="promise_changed", entry_ref=entry_id, amount=entry.amount, promised=chosen)
+    await session.record_measure(
+        kind="promise_changed", entry_ref=entry_id, amount=entry.amount, promised=chosen, currency=entry.currency
+    )
     await notify.promise_changed(
         session,
         customer_id,
@@ -582,15 +700,19 @@ async def change_promise_in(
         promised=chosen,
         reason=reason,
         at=now,
+        currency=entry.currency,
     )
     return {
-        "entry": {
-            "id": str(entry_id),
-            "amount": entry.amount,
-            "promised_date": chosen.isoformat(),
-            "previous_date": previous.isoformat(),
-        },
-        "customer": customer_body(customer, ledger.balance([other.entry for other in account])),
+        "entry": tag(
+            {
+                "id": str(entry_id),
+                "amount": entry.amount,
+                "promised_date": chosen.isoformat(),
+                "previous_date": previous.isoformat(),
+            },
+            entry.currency,
+        ),
+        "customer": account_body(customer, balances_of([other.entry for other in account]), dollars),
         "date_request": None if closed is None else date_request_body(closed),
     }
 
@@ -612,8 +734,11 @@ async def customer_detail_in(session: TenantSession, customer_id: UUID, today: d
     customer = await session.get_customer(customer_id, for_update=False)
     if customer is None or customer.status == "anonymized":
         raise NotFound()
-    account = await session.entries_of(customer_id)
-    entries = [row.entry for row in account]
+    dollars = await dollars_on(session)
+    # Without dollars the shop sees its so'm book and nothing else, as it always did.
+    account = [row for row in await session.entries_of(customer_id) if dollars or row.entry.currency is UZS]
+    entries = ledger.in_currency([row.entry for row in account], UZS)
+    in_dollars = ledger.in_currency([row.entry for row in account], USD)
     history = ledger.payment_history(entries, today)
     reversed_ids = {row.entry.reverses_id for row in account if row.entry.reverses_id is not None}
     newest_first = sorted(account, key=lambda row: row.entry.seq, reverse=True)
@@ -621,8 +746,15 @@ async def customer_detail_in(session: TenantSession, customer_id: UUID, today: d
     lines = await session.goods_lines_of([row.entry.id for row in shown])
     promises = await session.promises_of([row.entry.id for row in shown])
     requests = latest_date_requests(await session.date_requests_of_customer(customer_id))
+    body = customer_body(customer, ledger.balance(entries), ledger.balance(in_dollars) if dollars else None)
+    if dollars:
+        # The same figures as beside it, from the dollar book alone.
+        body["usd"].update(
+            overdue=_overdue_body(ledger.overdue(in_dollars, today)),
+            payment_history=payment_history_body(ledger.payment_history(in_dollars, today)),
+        )
     return {
-        **customer_body(customer, ledger.balance(entries)),
+        **body,
         "overdue": _overdue_body(ledger.overdue(entries, today)),
         # Derived from this shop's records only; shown to its staff and, on their own page, to the
         # customer it is about (REQ-045; DEC-066).
@@ -663,12 +795,14 @@ class LedgerService:
         promised_date: date | None,
         request_key: str | None,
         lines: Sequence[LineRequest] | None = None,
+        currency: str | None = None,
     ) -> dict[str, Any]:
         started = time.perf_counter()
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, RECORD_ENTRY)
             key = idempotency.validate_key(request_key)
-            entry_kind, text, total, goods = clean_sale(kind, amount, note, promised_date, lines)
+            money = await require_currency(session, currency)
+            entry_kind, text, total, goods = clean_sale(kind, amount, note, promised_date, lines, money)
             await require_writable(session, self._today(), new_credit=entry_kind is EntryKind.CREDIT)
 
             async def apply() -> dict[str, Any]:
@@ -683,15 +817,20 @@ class LedgerService:
                     now=self._now(),
                     started=started,
                     lines=goods,
+                    currency=money,
                 )
 
-            request: dict[str, Any] = {
-                "customer": str(customer_id),
-                "kind": kind,
-                "amount": amount,
-                "note": text,
-                "promised_date": promised_date,
-            }
+            # Only an entry in dollars carries its currency, so a so'm request keeps its fingerprint.
+            request: dict[str, Any] = tag(
+                {
+                    "customer": str(customer_id),
+                    "kind": kind,
+                    "amount": amount,
+                    "note": text,
+                    "promised_date": promised_date,
+                },
+                money,
+            )
             if goods is not None:
                 # Only an itemized sale carries the key, so an amount-only request keeps its fingerprint.
                 request["lines"] = lines_request(goods)
@@ -800,22 +939,36 @@ class LedgerService:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, READ_OVERVIEW)
             await require_viewable(session, actor, self._today())
-            totals = await session.shop_totals(self._today())
-            return {
-                "outstanding": totals.outstanding,
-                "debtors": totals.debtors,
-                "overdue": {"amount": totals.overdue_amount, "customers": totals.overdue_customers},
-                "due_today": totals.due_today_amount,
-            }
+            body = _totals_body(await session.shop_totals(self._today()))
+            if await dollars_on(session):
+                # What is owed in dollars, counted on its own: a customer who owes both is in both counts.
+                body["usd"] = _totals_body(await session.shop_totals(self._today(), USD))
+            return body
 
     async def debtors(
-        self, user_id: UUID, shop_id: UUID, *, only_overdue: bool, cursor: str | None, limit: int
+        self,
+        user_id: UUID,
+        shop_id: UUID,
+        *,
+        only_overdue: bool,
+        cursor: str | None,
+        limit: int,
+        currency: str | None = None,
     ) -> dict[str, Any]:
+        """Who owes, largest debt first, in one currency: so'm unless the request asks for dollars.
+
+        In a shop that works in dollars every item also has the customer's figures in the other
+        currency, so a row shows both balances whichever list it is in.
+        """
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, LIST_DEBTORS)
             await require_viewable(session, actor, self._today())
             if not 1 <= limit <= MAX_PAGE:
                 raise ValidationFailed({"limit": f"must be between 1 and {MAX_PAGE}"})
+            dollars = await dollars_on(session)
+            if currency not in (None, UZS.value) and not (dollars and currency == USD.value):
+                raise ValidationFailed({"currency": "must be UZS or USD" if dollars else "must be UZS"})
+            listed = USD if currency == USD.value else UZS
             before: tuple[int, UUID] | None = None
             if cursor:
                 balance_text, customer_id = decode_cursor(cursor, 2)
@@ -825,20 +978,47 @@ class LedgerService:
                     raise ValidationFailed({"cursor": "not a cursor returned by this API"}) from error
 
             today = self._today()
-            rows = await session.debtors_page(today=today, only_overdue=only_overdue, before=before, limit=limit + 1)
+            rows = await session.debtors_page(
+                today=today, only_overdue=only_overdue, before=before, limit=limit + 1, currency=listed
+            )
             page, more = rows[:limit], len(rows) > limit
+            nothing = DebtFigures(0, 0, None, 0)
+            other: dict[UUID, DebtFigures] = {}
+            if dollars and page:
+                # The page's customers in the currency the list is not sorted by.
+                other = await session.debt_figures(
+                    [customer.customer_id for customer, _ in page], today, UZS if listed is USD else USD
+                )
+            items: list[dict[str, Any]] = []
+            for customer, figures in page:
+                beside = other.get(customer.customer_id, nothing)
+                in_som, in_usd = (beside, figures) if listed is USD else (figures, beside)
+                item = {
+                    **customer_body(customer, in_som.balance, in_usd.balance if dollars else None),
+                    "overdue": _figures_overdue(in_som, today),
+                }
+                if dollars:
+                    item["usd"]["overdue"] = _figures_overdue(in_usd, today)
+                items.append(item)
             return {
-                "items": [
-                    {
-                        **customer_body(customer, figures.balance),
-                        "overdue": {
-                            "amount": figures.overdue_amount,
-                            "since": None if figures.overdue_since is None else figures.overdue_since.isoformat(),
-                            "days": 0 if figures.overdue_since is None else (today - figures.overdue_since).days,
-                            "due_today": figures.due_today_amount,
-                        },
-                    }
-                    for customer, figures in page
-                ],
+                "items": items,
                 "next_cursor": encode_cursor(page[-1][1].balance, page[-1][0].customer_id) if more else None,
             }
+
+
+def _totals_body(totals: ShopTotals) -> dict[str, Any]:
+    return {
+        "outstanding": totals.outstanding,
+        "debtors": totals.debtors,
+        "overdue": {"amount": totals.overdue_amount, "customers": totals.overdue_customers},
+        "due_today": totals.due_today_amount,
+    }
+
+
+def _figures_overdue(figures: DebtFigures, today: date) -> dict[str, Any]:
+    return {
+        "amount": figures.overdue_amount,
+        "since": None if figures.overdue_since is None else figures.overdue_since.isoformat(),
+        "days": 0 if figures.overdue_since is None else (today - figures.overdue_since).days,
+        "due_today": figures.due_today_amount,
+    }

@@ -36,7 +36,7 @@ CurrentUser = Callable[..., Awaitable[UUID]]
 
 # The receipt plus room for the form's own boundaries and the amount field.
 MAX_BODY_BYTES = MAX_FILE_BYTES + 16 * 1024
-_FIELDS = {"amount", "receipt"}
+_FIELDS = {"amount", "receipt", "currency"}
 # The one route whose body may exceed the general limit: sending a notice, which may carry a receipt.
 RECEIPT_UPLOAD = Allowance(
     "POST",
@@ -112,7 +112,7 @@ def parse_notice(content_type: str, body: bytes) -> tuple[Any, bytes | None]:
             data = json.loads(body)
         except ValueError:
             raise ValidationFailed({"_": "malformed JSON"}) from None
-        if not isinstance(data, dict) or set(data) != {"amount"}:
+        if not isinstance(data, dict) or set(data) - {"currency"} != {"amount"}:
             raise ValidationFailed({"amount": "required, and the only field"})
         return data["amount"], None
     if kind == "multipart/form-data":
@@ -121,6 +121,18 @@ def parse_notice(content_type: str, body: bytes) -> tuple[Any, bytes | None]:
             raise ValidationFailed({"amount": "required"})
         return _whole_number(fields["amount"]), fields.get("receipt")
     raise ValidationFailed({"_": "send application/json or multipart/form-data"})
+
+
+def notice_currency(content_type: str, body: bytes) -> str | None:
+    """The currency a new notice names beside its amount, if any. Whether it may is the application's to say.
+
+    Called after `parse_notice` has accepted the body, so the body is known to be well formed.
+    """
+    if content_type.split(";", 1)[0].strip().lower() == "application/json":
+        named = json.loads(body).get("currency")
+        return named if named is None or isinstance(named, str) else str(named)
+    raw = parse_form(content_type, body).get("currency")
+    return None if raw is None else raw.decode("ascii", "replace").strip()
 
 
 def add_payment_notice_routes(app: FastAPI, service: PaymentNoticeService, current_user: CurrentUser) -> None:
@@ -133,8 +145,11 @@ def add_payment_notice_routes(app: FastAPI, service: PaymentNoticeService, curre
         # Whose link it is comes first: for anyone else the account does not exist, whatever they send.
         await service.require_link(user_id, link_id)
         body = await read_limited(request, MAX_BODY_BYTES)
-        amount, receipt = parse_notice(request.headers.get("content-type", ""), body)
-        return await service.send(user_id, link_id, amount, receipt, idempotency_key)
+        content_type = request.headers.get("content-type", "")
+        amount, receipt = parse_notice(content_type, body)
+        return await service.send(
+            user_id, link_id, amount, receipt, idempotency_key, currency=notice_currency(content_type, body)
+        )
 
     @app.get("/api/v1/shops/{shop_id}/payment-notices", name=LIST_NOTICES.name)
     async def list_notices(shop_id: UUID, user_id: user) -> dict[str, Any]:

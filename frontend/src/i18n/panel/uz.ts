@@ -166,6 +166,8 @@ export const uzPanel = {
   "activity.action.shop.deletion_cancelled": "Do'konni o'chirish bekor qilindi",
   "activity.action.shop.deletion_requested": "Do'konni o'chirish so'raldi",
   "activity.action.shop.settings_changed": "Do'kon sozlamalari o'zgartirildi",
+  "activity.action.shop.dollars_on": "Do'konda dollar yoqildi",
+  "activity.action.shop.dollars_off": "Do'konda dollar o'chirildi",
   "activity.action.staff.invitation_cancelled": "Taklif bekor qilindi",
   "activity.action.staff.invited": "Xodim taklif qilindi",
   "activity.action.staff.removed": "Xodim olib tashlandi",

@@ -24,11 +24,15 @@ export function ReminderAction({ customerId }: { customerId: string }) {
   const pending = state.status === "pending";
 
   if (state.status === "done") {
+    const { channel, amount, usdAmount = 0 } = state.result;
+    // What the message stated: the so'm that are due, the dollars that are due, or both, each by itself.
+    const stated = [
+      amount > 0 || usdAmount === 0 ? formatMoney(amount, language) : null,
+      usdAmount > 0 ? formatMoney(usdAmount, language, "USD") : null,
+    ].filter((part) => part !== null);
     return (
       <p className="notice notice--done" role="status">
-        {t(SENT_LABELS[state.result.channel] ?? "reminders.sent.other", {
-          amount: formatMoney(state.result.amount, language),
-        })}
+        {t(SENT_LABELS[channel] ?? "reminders.sent.other", { amount: stated.join(" · ") })}
       </p>
     );
   }

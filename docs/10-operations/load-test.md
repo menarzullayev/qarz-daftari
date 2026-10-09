@@ -395,6 +395,26 @@ they were; points 2 and 5 are answered by this run.
 | What does a caller get when a statement is cancelled? | 503 with code `TIMEOUT` | Nothing was saved and trying again is right; 500 would say the server is broken. |
 | Online payments (`online_payment`, migration 0019) | Not generated, not driven | The switch is off by default and no target names them. |
 
+## Query shapes after dollars (migration 0041) — not measured again
+
+Migration 0041 gives `ledger_entry` and `open_debt` a `currency` column and every statement that adds
+amounts one more condition, `currency = :currency`. No run of this load test was made on it; what follows
+is what changed, so that the next run knows where to look.
+
+- **Recording an entry.** The trigger's refresh is the statement of 0026 and 0033 with the allocation
+  partitioned by `(customer_id, currency)` instead of `customer_id`. For an account in one currency that is
+  the same work. The index it deletes through, `open_debt_customer`, is unchanged, and a test still holds
+  the planner to it. One more read is made per write: the platform setting `usd_on` (a primary-key
+  lookup), and, only where that is on, the shop's row.
+- **Overview, debtors, a page of customers.** The same statements with the currency condition as a filter
+  on rows already found through the same indexes. A shop that works in dollars runs the overview twice
+  (once per currency) and reads the page's customers once more for the other currency
+  (`WHERE customer_id = ANY (…) AND currency = …`, through `open_debt_customer`).
+- **The reminder run.** Whom to remind is still found by adding up every entry of the shop and keeping
+  balances above zero; the sum is now grouped by customer and currency, over the currencies the shop
+  works in. One more grouping key on the same scan.
+- **No new index.** The column was added with a constant default, which rewrites no row.
+
 ## Before this can count as launch criterion 6
 
 1. Run it on the staging server with the production PostgreSQL settings, proxy and worker in place, the

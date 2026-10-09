@@ -46,8 +46,10 @@ export type Activity = {
 
 /** Whole UZS, and a count of customers. */
 export type Totals = { outstanding: number; debtors: number; overdue: number; dueToday: number };
-export type ShopTotals = Totals & { shopId: string; name: string };
-export type OwnerTotals = { items: ShopTotals[]; total: Totals };
+/** `usd`: the same four figures of the dollar debts, in cents, for a shop that works in dollars. */
+export type ShopTotals = Totals & { shopId: string; name: string; usd?: Totals };
+/** `total.usd`: the dollars of the shops that work in them, added to each other and to nothing else. */
+export type OwnerTotals = { items: ShopTotals[]; total: Totals & { usd?: Totals } };
 
 export type MemberPatch = { role?: "manager" | "seller"; status?: "active" | "suspended" };
 export type ActivityFilter = {
@@ -122,14 +124,19 @@ function totals(value: unknown): Totals {
   };
 }
 
+function withDollars(value: unknown): Totals & { usd?: Totals } {
+  const inDollars = record(value)["usd"];
+  return { ...totals(value), ...(inDollars === undefined || inDollars === null ? {} : { usd: totals(inDollars) }) };
+}
+
 function ownerTotals(value: unknown): OwnerTotals {
   const body = record(value);
   return {
     items: list(body["items"], (element) => {
       const shop = record(element);
-      return { ...totals(shop), shopId: text(shop["shop_id"]), name: text(shop["name"]) };
+      return { ...withDollars(shop), shopId: text(shop["shop_id"]), name: text(shop["name"]) };
     }),
-    total: totals(body["total"]),
+    total: withDollars(body["total"]),
   };
 }
 

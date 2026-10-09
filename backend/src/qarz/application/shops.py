@@ -8,6 +8,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from zoneinfo import ZoneInfo
 
 from qarz.application import idempotency
+from qarz.application.currencies import DollarBalanceOpen, platform_dollars
 from qarz.application.errors import AppError, ForbiddenRole, NotFound, ValidationFailed
 from qarz.application.operations import Operation, operation, self_operation
 from qarz.application.ports import Membership, ShopSettings, Storage, TenantSession
@@ -55,6 +56,8 @@ class ShopUpdate:
     name: str | None = None
     lang: str | None = None
     default_promise_days: int | None = None
+    # "This shop also works in dollars." Only the owner changes the shop's settings, this one included.
+    usd_on: bool | None = None
 
     def validate(self) -> None:
         fields: dict[str, str] = {}
@@ -64,19 +67,39 @@ class ShopUpdate:
             fields["lang"] = "must be uz or ru"
         if self.default_promise_days is not None and not 1 <= self.default_promise_days <= 365:
             fields["default_promise_days"] = "must be between 1 and 365"
-        if self.name is None and self.lang is None and self.default_promise_days is None:
+        if self.name is None and self.lang is None and self.default_promise_days is None and self.usd_on is None:
             fields["_"] = "nothing to change"
         if fields:
             raise ValidationFailed(fields)
 
 
-def _as_body(settings: ShopSettings) -> dict[str, Any]:
-    return {
+def _as_body(settings: ShopSettings, dollars_offered: bool = False) -> dict[str, Any]:
+    """The shop as the API gives it.
+
+    `usd_on` is there only while the platform offers dollars (the switch `usd_on`): its presence tells a
+    client that the choice exists, its value whether this shop has made it.
+    """
+    body: dict[str, Any] = {
         "id": str(settings.shop_id),
         "name": settings.name,
         "lang": settings.lang,
         "default_promise_days": settings.default_promise_days,
     }
+    if dollars_offered:
+        body["usd_on"] = settings.usd_on
+    return body
+
+
+async def set_dollars_in(session: TenantSession, on: bool) -> None:
+    """Turn the shop's dollars on or off, inside a transaction the caller has opened and authorized.
+
+    Off is refused while any customer owes dollars: the debts would stay, unseen and unpayable. The
+    setting is written first, which waits for everyone who is recording a dollar amount, and what is
+    owed is read after it; a refusal undoes the write with the transaction.
+    """
+    await session.set_dollars_setting(on)
+    if not on and await session.dollars_owed():
+        raise DollarBalanceOpen()
 
 
 class ShopService:
@@ -145,7 +168,7 @@ class ShopService:
             settings = await session.shop_settings()
             if settings is None:
                 raise NotFound()
-            return _as_body(settings)
+            return _as_body(settings, await platform_dollars(session))
 
     async def update(self, user_id: UUID, shop_id: UUID, change: ShopUpdate, request_key: str | None) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
@@ -153,9 +176,21 @@ class ShopService:
             membership = await require_member(session, user_id, UPDATE_SHOP)
             await refuse_suspended(session)
             key = idempotency.validate_key(request_key)
+            offered = await platform_dollars(session)
+            if change.usd_on is not None and not offered:
+                # As any field the request model does not know: there is no such setting to change.
+                raise ValidationFailed({"usd_on": "unknown field"})
             change.validate()
 
             async def apply() -> dict[str, Any]:
+                if change.usd_on is not None:
+                    await set_dollars_in(session, change.usd_on)
+                    await session.record_activity(
+                        membership_id=membership.membership_id,
+                        action="shop.dollars_on" if change.usd_on else "shop.dollars_off",
+                        subject_type="shop",
+                        subject_id=shop_id,
+                    )
                 settings = await session.update_shop_settings(
                     name=change.name.strip() if change.name is not None else None,
                     lang=change.lang,
@@ -167,13 +202,17 @@ class ShopService:
                     subject_type="shop",
                     subject_id=shop_id,
                 )
-                return _as_body(settings)
+                return _as_body(settings, offered)
 
+            # A request that does not name the dollar setting keeps the fingerprint it always had.
+            request = asdict(change)
+            if change.usd_on is None:
+                del request["usd_on"]
             return await idempotency.run_once(
                 session,
                 key=key,
                 operation=UPDATE_SHOP.name,
                 user_id=user_id,
-                request=asdict(change),
+                request=request,
                 action=apply,
             )

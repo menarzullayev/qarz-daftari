@@ -42,6 +42,16 @@ UZ: dict[str, str | tuple[str, ...]] = {
     "summary_customers": "Mijozlar soni",
     "summary_debtors": "Qarzdor mijozlar soni",
     "summary_outstanding": "Jami qarz",
+    # Only in the workbook of a shop that has dollar entries: its so'm figures stay where they were, and
+    # the dollar ones are further columns and further rows, never part of a so'm total.
+    "currency": "Valyuta",
+    "limit_usd": "Nasiya limiti ($)",
+    "owed_usd": "Qarzi ($)",
+    "summary_debtors_usd": "Dollarda qarzdor mijozlar soni",
+    "summary_outstanding_usd": "Jami qarz ($)",
+    "summary_months_usd": (
+        "Oylar bo'yicha, dollarda (bekor qilingan yozuvlar va bekor qilish yozuvlari hisobga olinmagan)"
+    ),
     "summary_entries": "Daftardagi yozuvlar soni",
     "summary_months": "Oylar bo'yicha (bekor qilingan yozuvlar va bekor qilish yozuvlari hisobga olinmagan)",
     "kind_credit": "Nasiya",
@@ -100,6 +110,12 @@ RU: dict[str, str | tuple[str, ...]] = {
     "summary_customers": "Число клиентов",
     "summary_debtors": "Число должников",
     "summary_outstanding": "Всего долг",
+    "currency": "Валюта",
+    "limit_usd": "Лимит долга ($)",
+    "owed_usd": "Долг ($)",
+    "summary_debtors_usd": "Число должников в долларах",
+    "summary_outstanding_usd": "Всего долг ($)",
+    "summary_months_usd": "По месяцам, в долларах (отменённые записи и записи об отмене не учтены)",
     "summary_entries": "Число записей в книге",
     "summary_months": "По месяцам (отменённые записи и записи об отмене не учтены)",
     "kind_credit": "Продажа в долг",

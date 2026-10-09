@@ -30,6 +30,8 @@ const TECHNICAL_ATTRIBUTES = new Set([
   "labelKey",
   // The kind of a badge ("danger", "warning"): a class name's suffix, never shown.
   "tone",
+  // A currency code ("UZS", "USD") that says how an amount is formatted; the code itself is never shown.
+  "currency",
 ]);
 
 const LETTER = /\p{L}/u;

@@ -5,6 +5,7 @@ import type { MessageKey } from "../../i18n/types";
 import type { ApiError, OpenDateRequest } from "../api";
 import { DATE_REASON_MAX, reasonFits, tidyReason } from "../dateRules";
 import { formatMoney } from "../format";
+import { currencyOf } from "../money";
 import { useLoad, useSubmit } from "../hooks";
 import { canManage } from "../navigation";
 import { dayText } from "../promiseParts";
@@ -150,7 +151,7 @@ function OpenRequests() {
             <li key={request.id} className="row">
               <Link to={`/customers/${request.customerId}`} className="row__link">
                 <span className="row__name">{request.customerName}</span>
-                <span className="row__amount">{formatMoney(request.amount, language)}</span>
+                <span className="row__amount">{formatMoney(request.amount, language, currencyOf(request))}</span>
               </Link>
               <p className="row__note">
                 {t("dates.row.dates", {
@@ -183,7 +184,7 @@ function OpenRequests() {
                 <Confirm
                   question={t("dates.accept.confirm", {
                     name: request.customerName,
-                    amount: formatMoney(request.amount, language),
+                    amount: formatMoney(request.amount, language, currencyOf(request)),
                     date: requested,
                   })}
                   yes={t("dates.accept.yes")}

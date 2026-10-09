@@ -1786,6 +1786,8 @@ export interface components {
         CreditPatch: {
             /** Default Credit Limit */
             default_credit_limit?: number | null;
+            /** Default Credit Limit Usd */
+            default_credit_limit_usd?: number | null;
             /** Sellers May Exceed */
             sellers_may_exceed?: boolean | null;
         };
@@ -1805,6 +1807,7 @@ export interface components {
             reminders_off: boolean;
             /** Status */
             status: string;
+            usd?: components["schemas"]["CustomerDollars"] | null;
         };
         /** CustomerDetail */
         CustomerDetail: {
@@ -1830,6 +1833,19 @@ export interface components {
             reminders_off: boolean;
             /** Status */
             status: string;
+            usd?: components["schemas"]["CustomerDollars"] | null;
+        };
+        /**
+         * CustomerDollars
+         * @description What a customer owes in US dollars: whole cents, beside the so'm figures and never added to them.
+         */
+        CustomerDollars: {
+            /** Balance */
+            balance: number;
+            /** Credit Limit */
+            credit_limit: number | null;
+            overdue?: components["schemas"]["Overdue"] | null;
+            payment_history?: components["schemas"]["PaymentHistory"] | null;
         };
         /** CustomerPage */
         CustomerPage: {
@@ -1842,6 +1858,8 @@ export interface components {
         CustomerPatch: {
             /** Credit Limit */
             credit_limit?: number | null;
+            /** Credit Limit Usd */
+            credit_limit_usd?: number | null;
             /** Display Name */
             display_name?: string | null;
             /** Phone */
@@ -1890,6 +1908,7 @@ export interface components {
             reminders_off: boolean;
             /** Status */
             status: string;
+            usd?: components["schemas"]["CustomerDollars"] | null;
         };
         /** DebtorPage */
         DebtorPage: {
@@ -1916,6 +1935,8 @@ export interface components {
             author_id: string;
             /** Created At */
             created_at: string;
+            /** Currency */
+            currency?: string | null;
             date_request: components["schemas"]["DateRequest"] | null;
             /** Disputed */
             disputed: boolean;
@@ -2071,6 +2092,8 @@ export interface components {
         NewEntry: {
             /** Amount */
             amount?: number | null;
+            /** Currency */
+            currency?: string | null;
             /** Kind */
             kind: string;
             /** Lines */
@@ -2112,6 +2135,17 @@ export interface components {
         };
         /** Overview */
         Overview: {
+            /** Debtors */
+            debtors: number;
+            /** Due Today */
+            due_today: number;
+            /** Outstanding */
+            outstanding: number;
+            overdue: components["schemas"]["OverviewOverdue"];
+            usd?: components["schemas"]["OverviewFigures"] | null;
+        };
+        /** OverviewFigures */
+        OverviewFigures: {
             /** Debtors */
             debtors: number;
             /** Due Today */
@@ -2188,6 +2222,8 @@ export interface components {
             lang: string;
             /** Name */
             name: string;
+            /** Usd On */
+            usd_on?: boolean | null;
         };
         /** ShopCreate */
         ShopCreate: {
@@ -2207,6 +2243,8 @@ export interface components {
             lang?: string | null;
             /** Name */
             name?: string | null;
+            /** Usd On */
+            usd_on?: boolean | null;
         };
         /** StaffPaymentNotice */
         StaffPaymentNotice: {
@@ -2216,6 +2254,8 @@ export interface components {
             closed_at: string | null;
             /** Created At */
             created_at: string;
+            /** Currency */
+            currency?: string | null;
             /** Decline Reason */
             decline_reason: string | null;
             /** Expires At */
@@ -5312,6 +5352,7 @@ export interface operations {
                 overdue?: boolean;
                 cursor?: string | null;
                 limit?: number;
+                currency?: string | null;
             };
             header?: never;
             path: {

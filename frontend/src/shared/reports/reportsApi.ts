@@ -4,24 +4,22 @@ import { reading, type ShopApi } from "../api";
  * The reports of a shop (REQ-046), for managers and owners. Built on the shop API's `send` in the module
  * that is loaded with the reports screen, so these calls are not part of the first load. Shapes follow
  * backend/src/qarz/application/reports.py. Every amount is a whole number of UZS; a response where one
- * is not is refused, never shown.
+ * is not is refused, never shown. A shop that works in dollars gets the same money sections again under
+ * `usd`, from the dollar book and in whole cents; nothing in a report is a sum of the two.
  */
 
 const { record, text, whole, wholeOrNull, list } = reading;
 
 export type Activity = { amount: number; count: number };
 
-export type PeriodReport = {
-  from: string;
-  to: string;
+/** The money of a period in one currency: every figure comes from that currency's entries only. */
+export type PeriodMoney = {
   outstanding: { start: number; end: number };
   credit: Activity & { customers: number };
   payments: Activity & { customers: number };
   opening: Activity;
   reversals: Activity;
   netChange: number;
-  newCustomers: number;
-  disputesOpened: number;
   /** `percent` is null when nothing fell due in the period. */
   onTime: { dueAmount: number; onTimeAmount: number; percent: number | null };
   /** Every day of the period, in order. */
@@ -29,6 +27,15 @@ export type PeriodReport = {
   /** The largest balances at the end of the period, largest first. */
   topDebtors: { customerId: string; displayName: string; balance: number }[];
   staff: { membershipId: string; role: string; credit: Activity; payments: Activity }[];
+};
+
+/** The counts of customers and disputes are of the period, whatever the currency. */
+export type PeriodReport = PeriodMoney & {
+  from: string;
+  to: string;
+  newCustomers: number;
+  disputesOpened: number;
+  usd?: PeriodMoney;
 };
 
 export type OverdueBand = {
@@ -40,7 +47,8 @@ export type OverdueBand = {
   customers: number;
 };
 
-export type OverdueReport = { asOf: string; total: { amount: number; customers: number }; bands: OverdueBand[] };
+export type OverdueMoney = { total: { amount: number; customers: number }; bands: OverdueBand[] };
+export type OverdueReport = OverdueMoney & { asOf: string; usd?: OverdueMoney };
 
 function activity(value: unknown): Activity {
   const body = record(value);
@@ -51,21 +59,17 @@ function withCustomers(value: unknown): Activity & { customers: number } {
   return { ...activity(value), customers: whole(record(value)["customers"]) };
 }
 
-function periodReport(value: unknown): PeriodReport {
+function periodMoney(value: unknown): PeriodMoney {
   const body = record(value);
   const outstanding = record(body["outstanding"]);
   const onTime = record(body["on_time"]);
   return {
-    from: text(body["from"]),
-    to: text(body["to"]),
     outstanding: { start: whole(outstanding["start"]), end: whole(outstanding["end"]) },
     credit: withCustomers(body["credit"]),
     payments: withCustomers(body["payments"]),
     opening: activity(body["opening"]),
     reversals: activity(body["reversals"]),
     netChange: whole(body["net_change"]),
-    newCustomers: whole(body["new_customers"]),
-    disputesOpened: whole(body["disputes_opened"]),
     onTime: {
       dueAmount: whole(onTime["due_amount"]),
       onTimeAmount: whole(onTime["on_time_amount"]),
@@ -95,11 +99,23 @@ function periodReport(value: unknown): PeriodReport {
   };
 }
 
-function overdueReport(value: unknown): OverdueReport {
+function periodReport(value: unknown): PeriodReport {
+  const body = record(value);
+  const inDollars = body["usd"];
+  return {
+    ...periodMoney(body),
+    from: text(body["from"]),
+    to: text(body["to"]),
+    newCustomers: whole(body["new_customers"]),
+    disputesOpened: whole(body["disputes_opened"]),
+    ...(inDollars === undefined || inDollars === null ? {} : { usd: periodMoney(inDollars) }),
+  };
+}
+
+function overdueMoney(value: unknown): OverdueMoney {
   const body = record(value);
   const total = record(body["total"]);
   return {
-    asOf: text(body["as_of"]),
     total: { amount: whole(total["amount"]), customers: whole(total["customers"]) },
     bands: list(body["bands"], (element) => {
       const band = record(element);
@@ -111,6 +127,16 @@ function overdueReport(value: unknown): OverdueReport {
         customers: whole(band["customers"]),
       };
     }),
+  };
+}
+
+function overdueReport(value: unknown): OverdueReport {
+  const body = record(value);
+  const inDollars = body["usd"];
+  return {
+    ...overdueMoney(body),
+    asOf: text(body["as_of"]),
+    ...(inDollars === undefined || inDollars === null ? {} : { usd: overdueMoney(inDollars) }),
   };
 }
 

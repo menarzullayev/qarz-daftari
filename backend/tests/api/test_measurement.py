@@ -128,7 +128,7 @@ def test_a_measure_names_nobody(client: TestClient, world: World, owner: psycopg
         "SELECT column_name FROM information_schema.columns WHERE table_schema = 'measure' ORDER BY column_name"
     ).fetchall()
     assert {c[0] for c in columns} == {
-        "id", "at", "shop_ref", "entry_ref", "kind", "amount", "promised", "handle_ms",
+        "id", "at", "shop_ref", "entry_ref", "kind", "amount", "promised", "handle_ms", "currency",
         "week_start", "metric", "value", "computed_at",
     }  # fmt: skip
 

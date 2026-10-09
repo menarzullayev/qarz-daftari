@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 
 from qarz.application import idempotency
 from qarz.application.chat_texts import money, say
+from qarz.application.currencies import USD, UZS, dollars_on, tag
 from qarz.application.customer_account import resolve_link
 from qarz.application.customers import require_viewable, require_writable
 from qarz.application.errors import AppError, NotFound, ValidationFailed
@@ -57,8 +58,9 @@ async def _tell_managers(
     settings = await session.shop_settings()
     shop = "" if settings is None else settings.name
     amount = int(values.pop("amount"))
+    currency = values.pop("currency", UZS)
     for tg_id, lang in await session.staff_recipients(list(MANAGERS)):
-        payload: dict[str, Any] = {"text": say(lang, key, shop=shop, amount=money(lang, amount), **values)}
+        payload: dict[str, Any] = {"text": say(lang, key, shop=shop, amount=money(lang, amount, currency), **values)}
         if buttons:
             payload["reply_markup"] = {
                 "inline_keyboard": [[{"text": say(lang, label), "callback_data": data} for label, data in buttons]]
@@ -91,8 +93,9 @@ class DisputeService:
                 raise NotFound()
             account = await session.entries_of(customer_id)
             row = next((candidate for candidate in account if candidate.entry.id == entry_id), None)
-            if row is None:
-                # Not an entry of this customer's account: for them it does not exist.
+            if row is None or (row.entry.currency is USD and not await dollars_on(session)):
+                # Not an entry of this customer's account, or one in dollars of a shop that does not show
+                # dollars now: for them it does not exist.
                 raise NotFound()
             refusal = may_dispute(
                 kind=row.entry.kind,
@@ -107,7 +110,11 @@ class DisputeService:
             record = await session.open_dispute(dispute_id=uuid4(), entry_id=entry_id, reason=text, now=now)
             await session.record_customer_activity(action="dispute.opened", subject_id=customer_id)
             await session.record_measure(
-                kind="dispute_opened", entry_ref=entry_id, amount=row.entry.amount, promised=None
+                kind="dispute_opened",
+                entry_ref=entry_id,
+                amount=row.entry.amount,
+                promised=None,
+                currency=row.entry.currency,
             )
             await _tell_managers(
                 session,
@@ -119,6 +126,7 @@ class DisputeService:
                 ],
                 name=customer.display_name,
                 amount=row.entry.amount,
+                currency=row.entry.currency,
                 reason=text,
             )
             return dispute_body(record)
@@ -137,7 +145,11 @@ class DisputeService:
             )
             await session.record_customer_activity(action="dispute.withdrawn", subject_id=customer_id)
             await session.record_measure(
-                kind="dispute_withdrawn", entry_ref=record.entry_id, amount=record.amount, promised=None
+                kind="dispute_withdrawn",
+                entry_ref=record.entry_id,
+                amount=record.amount,
+                promised=None,
+                currency=record.currency,
             )
             await _tell_managers(
                 session,
@@ -145,6 +157,7 @@ class DisputeService:
                 "s_dispute_withdrawn",
                 name=customer.display_name,
                 amount=record.amount,
+                currency=record.currency,
             )
             return dispute_body(closed)
 
@@ -155,15 +168,21 @@ class DisputeService:
             actor = await require_member(session, user_id, LIST_DISPUTES)
             await require_viewable(session, actor, self._today())
             rows = await session.open_disputes()
+            dollars = await dollars_on(session)
             return {
                 "items": [
-                    {
-                        **dispute_body(record),
-                        "customer_id": str(record.customer_id),
-                        "customer_name": name,
-                        "amount": record.amount,
-                    }
+                    tag(
+                        {
+                            **dispute_body(record),
+                            "customer_id": str(record.customer_id),
+                            "customer_name": name,
+                            "amount": record.amount,
+                        },
+                        record.currency,
+                    )
                     for record, name in rows
+                    # A dispute over a dollar entry waits, unseen, while the shop does not show dollars.
+                    if dollars or record.currency is UZS
                 ]
             }
 
@@ -214,7 +233,11 @@ async def decline_in(
         subject_id=record.customer_id,
     )
     await session.record_measure(
-        kind="dispute_declined", entry_ref=record.entry_id, amount=record.amount, promised=None
+        kind="dispute_declined",
+        entry_ref=record.entry_id,
+        amount=record.amount,
+        promised=None,
+        currency=record.currency,
     )
     recipient = await session.customer_recipient(record.customer_id)
     if recipient is not None:
@@ -227,7 +250,7 @@ async def decline_in(
                     lang,
                     "n_dispute_declined",
                     shop="" if settings is None else settings.name,
-                    amount=money(lang, record.amount),
+                    amount=money(lang, record.amount, record.currency),
                     reason=reason,
                 )
             },

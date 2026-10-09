@@ -48,6 +48,9 @@ SETTINGS: dict[str, Setting] = {
     "sms_on": Setting("switch", False, needs_code=True),
     "sms_monthly_quota": Setting("number", 0, 0, 100_000),
     "online_pay_on": Setting("switch", False, needs_code=True),
+    # US dollars beside so'm (expansion module F): a shop may then keep dollar debts, each owner choosing
+    # for their own shop. Off: every shop is so'm only, exactly as before.
+    "usd_on": Setting("switch", False, needs_code=True),
 }
 
 

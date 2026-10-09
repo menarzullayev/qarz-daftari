@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 
 from qarz.application import idempotency, notify
 from qarz.application.chat_texts import day, money, say
+from qarz.application.currencies import USD, UZS, dollars_on, tag
 from qarz.application.customer_account import resolve_link
 from qarz.application.customers import require_viewable, require_writable
 from qarz.application.errors import AppError, NotFound, ValidationFailed
@@ -46,13 +47,16 @@ class DateRequestNotAllowed(AppError):
 
 def staff_body(record: DateRequestRecord) -> dict[str, Any]:
     """A request as the shop sees it: with whose it is, the amount, and the date it would replace."""
-    return {
-        **date_request_body(record),
-        "customer_id": str(record.customer_id),
-        "customer_name": record.customer_name,
-        "amount": record.amount,
-        "promised_date": None if record.promised_date is None else record.promised_date.isoformat(),
-    }
+    return tag(
+        {
+            **date_request_body(record),
+            "customer_id": str(record.customer_id),
+            "customer_name": record.customer_name,
+            "amount": record.amount,
+            "promised_date": None if record.promised_date is None else record.promised_date.isoformat(),
+        },
+        record.currency,
+    )
 
 
 def clean_reason(raw: str | None) -> str | None:
@@ -72,7 +76,7 @@ async def _tell_managers(session: TenantSession, record: DateRequestRecord, prev
             "s_date_request",
             shop=shop,
             name=record.customer_name,
-            amount=money(lang, record.amount),
+            amount=money(lang, record.amount, record.currency),
             old=day(previous),
             date=day(record.requested_date),
         )
@@ -116,11 +120,14 @@ class DateRequestService:
                 raise NotFound()
             account = await session.entries_of(customer_id)
             entry = next((row.entry for row in account if row.entry.id == entry_id), None)
-            if entry is None:
-                # Not an entry of this customer's account: for them it does not exist.
+            if entry is None or (entry.currency is USD and not await dollars_on(session)):
+                # Not an entry of this customer's account, or one in dollars of a shop that does not show
+                # dollars now: for them it does not exist.
                 raise NotFound()
             earlier = [r for r in await session.date_requests_of_customer(customer_id) if r.entry_id == entry_id]
-            owed = {a.entry_id: a.remaining for a in ledger.allocate(row.entry for row in account)}
+            # What is left of the entry after the payments of its own currency (BR-3).
+            book = ledger.in_currency([row.entry for row in account], entry.currency)
+            owed = {a.entry_id: a.remaining for a in ledger.allocate(book)}
             refusal = may_request(
                 kind=entry.kind,
                 is_reversed=entry_id in {other.entry.reverses_id for other in account},
@@ -148,7 +155,11 @@ class DateRequestService:
             )
             await session.record_customer_activity(action="date_request.opened", subject_id=customer_id)
             await session.record_measure(
-                kind="date_request_opened", entry_ref=entry_id, amount=entry.amount, promised=requested_date
+                kind="date_request_opened",
+                entry_ref=entry_id,
+                amount=entry.amount,
+                promised=requested_date,
+                currency=entry.currency,
             )
             await _tell_managers(session, record, previous)
             return date_request_body(record)
@@ -159,7 +170,15 @@ class DateRequestService:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, LIST_DATE_REQUESTS)
             await require_viewable(session, actor, self._today())
-            return {"items": [staff_body(record) for record in await session.open_date_requests()]}
+            dollars = await dollars_on(session)
+            return {
+                "items": [
+                    staff_body(record)
+                    for record in await session.open_date_requests()
+                    # A request about a dollar entry waits, unseen, while the shop does not show dollars.
+                    if dollars or record.currency is UZS
+                ]
+            }
 
     async def accept(self, user_id: UUID, shop_id: UUID, request_id: UUID, request_key: str | None) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
@@ -240,7 +259,11 @@ async def accept_in(session: TenantSession, actor: Membership, request_id: UUID,
         subject_id=record.customer_id,
     )
     await session.record_measure(
-        kind="date_request_accepted", entry_ref=record.entry_id, amount=record.amount, promised=record.requested_date
+        kind="date_request_accepted",
+        entry_ref=record.entry_id,
+        amount=record.amount,
+        promised=record.requested_date,
+        currency=record.currency,
     )
     await notify.date_request_decided(
         session,
@@ -250,6 +273,7 @@ async def accept_in(session: TenantSession, actor: Membership, request_id: UUID,
         amount=record.amount,
         requested=record.requested_date,
         reason=None,
+        currency=record.currency,
     )
     return staff_body(closed)
 
@@ -269,7 +293,11 @@ async def decline_in(
         subject_id=record.customer_id,
     )
     await session.record_measure(
-        kind="date_request_declined", entry_ref=record.entry_id, amount=record.amount, promised=None
+        kind="date_request_declined",
+        entry_ref=record.entry_id,
+        amount=record.amount,
+        promised=None,
+        currency=record.currency,
     )
     await notify.date_request_decided(
         session,
@@ -279,5 +307,6 @@ async def decline_in(
         amount=record.amount,
         requested=record.requested_date,
         reason=reason,
+        currency=record.currency,
     )
     return staff_body(closed)

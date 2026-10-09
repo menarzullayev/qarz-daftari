@@ -22,6 +22,7 @@ _STATUS = {
     "TIMEOUT": 503,
     "CUSTOMER_ARCHIVED": 409,
     "CUSTOMER_HAS_BALANCE": 409,
+    "USD_BALANCE_OPEN": 409,
     "EXCEEDS_BALANCE": 409,
     "ALREADY_REVERSED": 409,
     "CANNOT_REVERSE_REVERSAL": 409,
@@ -82,6 +83,9 @@ _MESSAGES = {
         "SHOP_SUSPENDED": "Do'kon to'xtatilgan. Faqat do'kon egasi ma'lumotlarni ko'ra oladi va eksport qila oladi.",
         "CUSTOMER_ARCHIVED": "Bu mijoz arxivda. Avval arxivdan chiqaring.",
         "CUSTOMER_HAS_BALANCE": "Qarzi bor mijozni arxivlab bo'lmaydi.",
+        "USD_BALANCE_OPEN": (
+            "Dollarni o'chirib bo'lmaydi: mijozlarda dollarda qarz bor. Avval dollardagi barcha qarzlar yopilsin."
+        ),
         "EXCEEDS_BALANCE": "To'lov mijozning qarzidan katta bo'lishi mumkin emas.",
         "ALREADY_REVERSED": "Bu yozuv allaqachon bekor qilingan.",
         "CANNOT_REVERSE_REVERSAL": "Bekor qilish yozuvini bekor qilib bo'lmaydi.",
@@ -143,6 +147,9 @@ _MESSAGES = {
         "SHOP_SUSPENDED": "Магазин временно приостановлен. Только владелец может просматривать и выгружать данные.",
         "CUSTOMER_ARCHIVED": "Этот клиент в архиве. Сначала верните его из архива.",
         "CUSTOMER_HAS_BALANCE": "Клиента с долгом нельзя отправить в архив.",
+        "USD_BALANCE_OPEN": (
+            "Доллары нельзя выключить: у клиентов есть долг в долларах. Сначала закройте все долги в долларах."
+        ),
         "EXCEEDS_BALANCE": "Оплата не может быть больше долга клиента.",
         "ALREADY_REVERSED": "Эта запись уже отменена.",
         "CANNOT_REVERSE_REVERSAL": "Запись об отмене отменить нельзя.",
