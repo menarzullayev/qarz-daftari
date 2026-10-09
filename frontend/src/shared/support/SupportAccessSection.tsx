@@ -149,7 +149,17 @@ function Section({ onChanged }: { onChanged?: (() => void) | undefined }) {
           {t("support.ended")}
         </p>
       ) : null}
-      {stale ? <Failure error={stale} /> : null}
+      {/* The list was read again when this was refused; "try again" reads it once more and puts the
+          refusal away. */}
+      {stale ? (
+        <Failure
+          error={stale}
+          onRetry={() => {
+            setStale(null);
+            reload();
+          }}
+        />
+      ) : null}
       {body}
     </section>
   );

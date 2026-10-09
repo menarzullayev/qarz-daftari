@@ -30,19 +30,25 @@ function isStale(error: ApiError): boolean {
   return error.code === "DELETION_ALREADY_REQUESTED" || error.code === "DELETION_NOT_REQUESTED";
 }
 
-function RequestForm({ onStale }: { onStale: (error: ApiError) => void }) {
+function RequestForm({ onStale, onDone }: { onStale: (error: ApiError) => void; onDone: () => void }) {
   const { shopName } = useWorkspace();
   const { office, reloadDeletion } = useOffice();
   const { t } = useI18n();
   const [name, setName] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const { state, submit } = useSubmit((typed: string, key) =>
-    office.requestDeletion(typed, key).then(reloadDeletion, (error: ApiError) => {
-      if (isStale(error)) {
-        onStale(error);
-      }
-      throw error;
-    }),
+    office.requestDeletion(typed, key).then(
+      () => {
+        onDone();
+        reloadDeletion();
+      },
+      (error: ApiError) => {
+        if (isStale(error)) {
+          onStale(error);
+        }
+        throw error;
+      },
+    ),
   );
 
   const onSubmit = (event: FormEvent) => {
@@ -99,17 +105,31 @@ function RequestForm({ onStale }: { onStale: (error: ApiError) => void }) {
   );
 }
 
-function Pending({ deletion, onStale }: { deletion: Deletion; onStale: (error: ApiError) => void }) {
+function Pending({
+  deletion,
+  onStale,
+  onDone,
+}: {
+  deletion: Deletion;
+  onStale: (error: ApiError) => void;
+  onDone: () => void;
+}) {
   const { office, reloadDeletion } = useOffice();
   const { t, language } = useI18n();
   const [asking, setAsking] = useState(false);
   const cancel = useSubmit((_: null, key) =>
-    office.cancelDeletion(key).then(reloadDeletion, (error: ApiError) => {
-      if (isStale(error)) {
-        onStale(error);
-      }
-      throw error;
-    }),
+    office.cancelDeletion(key).then(
+      () => {
+        onDone();
+        reloadDeletion();
+      },
+      (error: ApiError) => {
+        if (isStale(error)) {
+          onStale(error);
+        }
+        throw error;
+      },
+    ),
   );
   const day = erasureDay(deletion, language);
 
@@ -145,9 +165,16 @@ function DeleteShop() {
   const { t } = useI18n();
   // A refusal that outlives the form it came from: the state is read again, and the refusal stays shown.
   const [stale, setStale] = useState<ApiError | null>(null);
+  // What the person has just done here, said back to them; the state below shows it as well.
+  const [done, setDone] = useState<"requested" | "cancelled" | null>(null);
   const onStale = (error: ApiError) => {
     setStale(error);
+    setDone(null);
     reloadDeletion();
+  };
+  const finished = (what: "requested" | "cancelled") => {
+    setDone(what);
+    setStale(null);
   };
 
   return (
@@ -160,14 +187,29 @@ function DeleteShop() {
         <span>{t("deletion.export")}</span>{" "}
         <Link to="/import-export">{t("deletion.export.open")}</Link>
       </p>
-      {stale ? <Failure error={stale} /> : null}
+      {done ? (
+        <p className="notice notice--done" role="status">
+          {t(done === "requested" ? "deletion.done.requested" : "deletion.done.cancelled")}
+        </p>
+      ) : null}
+      {/* The state was read again when this was refused; "try again" reads it once more and puts the
+          refusal away. */}
+      {stale ? (
+        <Failure
+          error={stale}
+          onRetry={() => {
+            setStale(null);
+            reloadDeletion();
+          }}
+        />
+      ) : null}
       {deletion.status === "loading" ? <Loading /> : null}
       {deletion.status === "error" ? <Failure error={deletion.error} onRetry={reloadDeletion} /> : null}
       {deletion.status === "ready" && deletion.data !== null ? (
         deletion.data.status === "deletion_pending" ? (
-          <Pending deletion={deletion.data} onStale={onStale} />
+          <Pending deletion={deletion.data} onStale={onStale} onDone={() => finished("cancelled")} />
         ) : (
-          <RequestForm onStale={onStale} />
+          <RequestForm onStale={onStale} onDone={() => finished("requested")} />
         )
       ) : null}
     </section>

@@ -67,6 +67,25 @@ const submit = () => screen.getByRole<HTMLButtonElement>("button", { name: "Nasi
 const lineRows = () => within(screen.getByRole("list", { name: "Tanlangan tovarlar" })).getAllByRole("listitem");
 const writes = (server: ReturnType<typeof fakeServer>) => server.writes().filter((sent) => sent.path.endsWith("/entries"));
 
+describe("before any good is chosen", () => {
+  const NONE = "Hali tovar tanlanmagan. Katalogdan tanlang yoki pastda qo'lda yozing.";
+
+  it("says that nothing is chosen yet and what to do, until the first good is there", async () => {
+    const server = shop(() => recorded(45000));
+    await openForm(server);
+    // Not part of the form until goods are wanted.
+    expect(screen.queryByText(NONE)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Tovarlar bilan yozish" }));
+    expect(screen.getByText(NONE)).toBeTruthy();
+    expect(screen.queryByRole("list", { name: "Tanlangan tovarlar" })).toBeNull();
+
+    const picks = await screen.findByRole("list", { name: "Katalogdagi tovarlar" });
+    fireEvent.click(within(picks).getAllByRole("button")[0] as HTMLElement);
+    expect(screen.queryByText(NONE)).toBeNull();
+    expect(lineRows()).toHaveLength(1);
+  });
+});
+
 describe("itemized credit sale (REQ-037)", () => {
   it("asks the catalog only when goods are wanted", async () => {
     const server = shop(() => recorded(45000));

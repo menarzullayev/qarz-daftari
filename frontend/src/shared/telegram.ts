@@ -1,3 +1,5 @@
+import { type BaseColors, DARK_BACKGROUND, guardContrast, luminance } from "./telegramContrast";
+
 /**
  * Typed, defensive access to the Telegram Mini App bridge (`window.Telegram.WebApp`). Only the staff
  * workspace loads Telegram's script; the web panel and the admin panel never have the object, and a
@@ -81,7 +83,7 @@ function color(value: unknown): string | null {
  * theme is never mixed with half of a Telegram one (which could leave dark text on a dark background).
  * Anything that is not a six-digit hex color is ignored.
  */
-export function themeToCssVariables(theme: unknown): Record<string, string> {
+export function themeToCssVariables(theme: unknown): BaseColors | Record<string, never> {
   if (!isRecord(theme)) {
     return {};
   }
@@ -90,7 +92,9 @@ export function themeToCssVariables(theme: unknown): Record<string, string> {
   if (!background || !text) {
     return {};
   }
-  const variables: Record<string, string> = {
+  const button = color(theme["button_color"]);
+  const buttonText = color(theme["button_text_color"]);
+  return {
     "--qd-bg": background,
     "--qd-text": text,
     "--qd-surface": color(theme["secondary_bg_color"]) ?? background,
@@ -98,25 +102,14 @@ export function themeToCssVariables(theme: unknown): Record<string, string> {
     "--qd-link": color(theme["link_color"]) ?? text,
     "--qd-border": color(theme["hint_color"]) ?? text,
     "--qd-focus": color(theme["link_color"]) ?? text,
+    "--qd-accent": button && buttonText ? button : text,
+    "--qd-on-accent": button && buttonText ? buttonText : background,
   };
-  const button = color(theme["button_color"]);
-  const buttonText = color(theme["button_text_color"]);
-  variables["--qd-accent"] = button && buttonText ? button : text;
-  variables["--qd-on-accent"] = button && buttonText ? buttonText : background;
-  return variables;
 }
 
-/** Relative luminance (WCAG) of a six-digit hex color. */
-function luminance(hex: string): number {
-  const channels = [1, 3, 5].map((start) => {
-    const value = Number.parseInt(hex.slice(start, start + 2), 16) / 255;
-    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * (channels[0] ?? 0) + 0.7152 * (channels[1] ?? 0) + 0.0722 * (channels[2] ?? 0);
+function isMapped(variables: BaseColors | Record<string, never>): variables is BaseColors {
+  return "--qd-bg" in variables;
 }
-
-/** Below this luminance a background reads as dark: light text on it has the better contrast. */
-const DARK_BACKGROUND = 0.18;
 
 /**
  * Whether Telegram's theme is light or dark: what the client says, or else what its background color
@@ -141,15 +134,20 @@ type StyleTarget = {
 };
 
 /**
- * Telegram's colors replace the nine base tokens. The tokens Telegram has no color for (soft grounds,
- * hairlines, status colors, shadows) come from the application's light or dark set, whichever matches
- * Telegram's scheme: `data-theme` chooses it, and `data-telegram` marks the page as themed by Telegram.
+ * Telegram's colors replace the nine base tokens, each pair only when it can be read: a pair below its
+ * contrast threshold takes the design system's colors instead (`guardContrast`). The tokens Telegram
+ * has no color for (soft grounds, hairlines, status colors, shadows) come from the application's light
+ * or dark set, whichever matches Telegram's scheme: `data-theme` chooses it, and `data-telegram` marks
+ * the page as themed by Telegram.
  */
 export function applyTelegramTheme(webApp: TelegramWebApp | null, target: StyleTarget): void {
-  for (const [name, value] of Object.entries(themeToCssVariables(webApp?.themeParams))) {
-    target.style.setProperty(name, value);
-  }
   const scheme = telegramColorScheme(webApp);
+  const mapped = themeToCssVariables(webApp?.themeParams);
+  if (isMapped(mapped)) {
+    for (const [name, value] of Object.entries(guardContrast(mapped, scheme))) {
+      target.style.setProperty(name, value);
+    }
+  }
   if (scheme) {
     target.setAttribute?.("data-theme", scheme);
   }

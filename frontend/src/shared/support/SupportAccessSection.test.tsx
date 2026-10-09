@@ -191,9 +191,17 @@ describe("support access under the shop's settings", () => {
     server.held.items = [closed("admin", { id: ACCESS_ID })];
     fireEvent.click(screen.getByRole("button", { name: "Ha, tugatilsin" }));
     expect(await screen.findByText("Hozir hech bir administrator do'kon ma'lumotlarini ko'ra olmaydi.")).toBeTruthy();
-    expect(screen.getByRole("alert").textContent).toBe("Bu kirish allaqachon yopilgan.");
+    expect(screen.getByRole("alert").textContent).toContain("Bu kirish allaqachon yopilgan.");
     expect(screen.queryByText("Kirish tugatildi.")).toBeNull();
     expect(onChanged).toHaveBeenCalledTimes(1);
+
+    // "Try again" reads the list once more and puts the refusal away; it writes nothing.
+    const reads = () => server.sent.filter((sent) => sent.method === "GET").length;
+    const before = reads();
+    fireEvent.click(within(screen.getByRole("alert")).getByRole("button", { name: "Qayta urinish" }));
+    await waitFor(() => expect(reads()).toBe(before + 1));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(server.writes()).toHaveLength(1);
   });
 
   it("reads the next page with the cursor, and shows a failure with a retry", async () => {

@@ -29,6 +29,31 @@ export type ApiAuth = { kind: "bearer"; token: string } | { kind: "cookie"; csrf
 /** `code` values that do not come from the server. */
 export const NETWORK_ERROR = "NETWORK";
 export const BAD_RESPONSE = "BAD_RESPONSE";
+/**
+ * A read that this page stopped because no answer came in time. The same code as the server's own
+ * "took too long", and the same words: nothing was asked to change, so nothing was saved.
+ */
+export const TIMEOUT = "TIMEOUT";
+/**
+ * A write that this page stopped waiting for. Not the same as `TIMEOUT`: the request had been sent, and
+ * the server may have applied it, so the words must not say that nothing was saved.
+ */
+export const NO_ANSWER = "NO_ANSWER";
+
+/**
+ * How long a request may take, in milliseconds, before the page stops waiting for it. Without a limit
+ * a request that hangs (a connection that went quiet, a phone between two networks) leaves its screen
+ * waiting for good. The proxy answers 504 after 20 s of silence from the API, and the API cancels a
+ * statement after 5 s, so a healthy request ends well inside these.
+ */
+export const TIMEOUTS = {
+  /** A read (GET). */
+  read: 15_000,
+  /** A write: longer than the proxy's own limit, so the server's answer is heard when there is one. */
+  write: 30_000,
+  /** A file going up or coming down (a form, a raw body, a binary answer). */
+  transfer: 120_000,
+} as const;
 
 export class ApiError extends Error {
   readonly status: number;
@@ -1261,9 +1286,22 @@ export type Call<T> = {
   binary?: boolean;
   idempotencyKey?: string;
   signal?: AbortSignal | undefined;
+  /**
+   * How long to wait for the whole answer, in milliseconds, when not the default for this kind of
+   * request (`TIMEOUTS`). Zero or less: no limit.
+   */
+  timeoutMs?: number | undefined;
   /** Reads the answer's body; the headers are there for the one answer that says something in them. */
   read: (value: unknown, headers: Headers) => T;
 };
+
+/** The limit of a request that names none: by what it carries, then by whether it changes anything. */
+export function defaultTimeoutMs(request: Pick<Call<unknown>, "method" | "form" | "raw" | "binary">): number {
+  if (request.form !== undefined || request.raw !== undefined || request.binary) {
+    return TIMEOUTS.transfer;
+  }
+  return request.method === "GET" ? TIMEOUTS.read : TIMEOUTS.write;
+}
 
 export type Transport = {
   fetch: Fetch;
@@ -1303,9 +1341,44 @@ export async function call<T>(transport: Transport, request: Call<T>): Promise<T
     headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(request.body);
   }
-  if (request.signal) {
-    init.signal = request.signal;
+  // One signal for the request: the caller's (a screen that was left) and the limit's, whichever is first.
+  const stop = new AbortController();
+  init.signal = stop.signal;
+  const left = () => stop.abort(request.signal?.reason);
+  if (request.signal?.aborted) {
+    left();
+  } else {
+    request.signal?.addEventListener("abort", left, { once: true });
   }
+  const limit = request.timeoutMs ?? defaultTimeoutMs(request);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // Rejects when the limit passes, whether or not the transport honours the signal; never otherwise.
+  const expired = new Promise<never>((_resolve, reject) => {
+    if (limit > 0 && Number.isFinite(limit)) {
+      timer = setTimeout(() => {
+        reject(new ApiError(0, request.method === "GET" ? TIMEOUT : NO_ANSWER, null));
+        stop.abort();
+      }, limit);
+    }
+  });
+  // Nothing may be left unhandled when the answer comes first.
+  expired.catch(() => undefined);
+  const inTime = <V>(work: Promise<V>): Promise<V> => Promise.race([work, expired]);
+  try {
+    return await answered(transport, request, init, inTime);
+  } finally {
+    clearTimeout(timer);
+    request.signal?.removeEventListener("abort", left);
+  }
+}
+
+/** The request itself and the reading of its answer, each step under the limit (`inTime`). */
+async function answered<T>(
+  transport: Transport,
+  request: Call<T>,
+  init: RequestInit,
+  inTime: <V>(work: Promise<V>) => Promise<V>,
+): Promise<T> {
   const search = new URLSearchParams();
   for (const [name, value] of Object.entries(request.query ?? {})) {
     if (value !== null && value !== undefined && value !== "") {
@@ -1316,15 +1389,15 @@ export async function call<T>(transport: Transport, request: Call<T>): Promise<T
 
   let response: Response;
   try {
-    response = await transport.fetch(url, init);
+    response = await inTime(transport.fetch(url, init));
   } catch (error) {
-    if (isAbort(error)) {
+    if (isAbort(error) || error instanceof ApiError) {
       throw error;
     }
     throw new ApiError(0, NETWORK_ERROR, null);
   }
   if (!response.ok) {
-    const failure = await errorFrom(response);
+    const failure = await inTime(errorFrom(response));
     if (response.status === 401) {
       transport.onUnauthenticated?.();
     }
@@ -1333,11 +1406,11 @@ export async function call<T>(transport: Transport, request: Call<T>): Promise<T
   }
   try {
     if (request.binary) {
-      return request.read(await response.blob(), response.headers);
+      return request.read(await inTime(response.blob()), response.headers);
     }
-    return request.read(response.status === 204 ? null : await response.json(), response.headers);
+    return request.read(response.status === 204 ? null : await inTime(response.json()), response.headers);
   } catch (error) {
-    if (isAbort(error)) {
+    if (isAbort(error) || (error instanceof ApiError && (error.code === TIMEOUT || error.code === NO_ANSWER))) {
       throw error;
     }
     throw new ApiError(response.status, BAD_RESPONSE, null);

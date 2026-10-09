@@ -69,7 +69,7 @@ export function I18nProvider({ initialLanguage, children }: I18nProviderProps) {
 
   const value = useMemo<I18nValue>(
     () => ({ language, setLanguage, t: (key, params) => translate(language, key, params) }),
-    // `version` is listed so that `t` is a new function, and every reader of it draws again, when text arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `version` makes `t` a new function, so every reader of it draws again, when text arrives
     [language, setLanguage, version],
   );
 

@@ -555,3 +555,15 @@ a {
     transition: transform 0.15s ease-out;
   }
 }
+
+/* What stands in for a whole page that could not be drawn (ErrorBoundary.tsx): no shell around it. */
+.crash {
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: var(--qd-space-8) var(--qd-space-4);
+}
+
+.crash__title {
+  margin: 0 0 var(--qd-space-4);
+  font: var(--qd-type-title);
+}

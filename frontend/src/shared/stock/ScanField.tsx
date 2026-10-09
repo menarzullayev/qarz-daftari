@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { useI18n } from "../../i18n/I18nProvider";
 import type { MessageKey } from "../../i18n/types";
+import { useLatest } from "../hooks";
 import { SearchIcon } from "../icons";
 import { FieldError } from "../workspace/parts";
 import {
@@ -55,14 +56,15 @@ function CameraScanner({
   const { t } = useI18n();
   const video = useRef<HTMLVideoElement | null>(null);
   const [failure, setFailure] = useState<"denied" | "failed" | null>(null);
-  const found = useRef(onCode);
-  found.current = onCode;
+  const found = useLatest(onCode);
+  // The detector and the camera API as they were given when the panel opened.
+  const given = useLatest({ support, media });
 
   useEffect(() => {
     let stream: Stream | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let closed = false;
-    const detector = support.create();
+    const detector = given.current.support.create();
 
     const look = () => {
       const element = video.current;
@@ -90,7 +92,7 @@ function CameraScanner({
       );
     };
 
-    media.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false }).then(
+    given.current.media.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false }).then(
       (opened) => {
         if (closed) {
           stopStream(opened);
@@ -122,8 +124,7 @@ function CameraScanner({
       }
       stopStream(stream);
     };
-    // The detector and the camera API are fixed while the panel is open.
-  }, []);
+  }, [found, given]);
 
   return (
     <div className="scan" role="group" aria-label={t("stock.scan.camera.title")}>
@@ -190,12 +191,11 @@ export function ScanField({
   const [cameraOpen, setCameraOpen] = useState(false);
   const inField = useRef(new ScanBuffer());
   const scanned = useRef<string | null>(null);
-  const latest = useRef({ onCode, disabled });
-  latest.current = { onCode, disabled };
+  const latest = useLatest({ onCode, disabled, host, now });
 
   useEffect(() => {
     let wanted = true;
-    cameraSupport(host).then((found) => {
+    cameraSupport(latest.current.host).then((found) => {
       if (wanted) {
         setSupport(found);
       }
@@ -203,8 +203,8 @@ export function ScanField({
     return () => {
       wanted = false;
     };
-    // The browser does not change while the page is open.
-  }, []);
+    // The browser does not change while the page is open: asked once.
+  }, [latest]);
 
   const take = (raw: string) => {
     const read = readBarcode(raw);
@@ -216,8 +216,7 @@ export function ScanField({
     setText("");
     latest.current.onCode(read.code);
   };
-  const taking = useRef(take);
-  taking.current = take;
+  const taking = useLatest(take);
 
   // A scan while nothing has the focus: the scanner types into the page, and the code is taken here.
   useEffect(() => {
@@ -227,7 +226,7 @@ export function ScanField({
         outside.reset();
         return;
       }
-      const code = outside.feed(event.key, now());
+      const code = outside.feed(event.key, latest.current.now());
       if (code !== null) {
         event.preventDefault();
         taking.current(code);
@@ -235,8 +234,7 @@ export function ScanField({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-    // `now` is fixed for the life of the field.
-  }, []);
+  }, [latest, taking]);
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();

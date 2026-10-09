@@ -249,6 +249,9 @@ export const enPanel: PartialCatalog<typeof uzPanel, EnPlural> = {
     "Deleted data cannot be brought back. Export the ledger to an Excel file before you request deletion.",
   "deletion.export.open": "Go to export",
 
+  "deletion.done.requested": "Shop deletion is requested. You can cancel the request until the day named.",
+  "deletion.done.cancelled": "The deletion request is cancelled. The shop keeps working as usual.",
+  "totals.none": "No shops to show yet.",
   "totals.title": "All my shops",
   "totals.shop": "Shop",
   "totals.total": "Total",

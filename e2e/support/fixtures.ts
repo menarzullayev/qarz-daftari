@@ -82,6 +82,11 @@ type Fixtures = {
   api: APIRequestContext;
   /** Another browser, for another person: nothing is shared with the first (cookies, storage). */
   secondContext: BrowserContext;
+  /**
+   * A browser that has never been here, as often as asked: nothing kept from an earlier page, so what
+   * it loads is loaded in full (the measurements of 12-web-vitals). Each is closed after the test.
+   */
+  freshContext: (options?: { viewport?: { width: number; height: number } }) => Promise<BrowserContext>;
 };
 
 const confirming = new WeakMap<Page, Person>();
@@ -160,6 +165,23 @@ export const test = base.extend<Fixtures>({
     await context.close();
   },
 
+  freshContext: async ({ browser, watch }, use) => {
+    const opened: BrowserContext[] = [];
+    await use(async (options = {}) => {
+      const context = await browser.newContext({
+        baseURL: stack.baseURL,
+        ignoreHTTPSErrors: true,
+        locale: "uz-UZ",
+        timezoneId: "Asia/Tashkent",
+        ...(options.viewport ? { viewport: options.viewport } : {}),
+      });
+      await prepare(context, watch);
+      opened.push(context);
+      return context;
+    });
+    await Promise.all(opened.map((context) => context.close()));
+  },
+
   api: async ({ playwright }, use) => {
     const api = await playwright.request.newContext({ ignoreHTTPSErrors: true });
     await use(api);
@@ -174,6 +196,8 @@ export const test = base.extend<Fixtures>({
 export { expect };
 
 export const PHONE = { width: 390, height: 844 };
+/** Between the two: the side navigation is there (from 720px) and the panel's tables are not yet (from 1024px). */
+export const TABLET = { width: 768, height: 1024 };
 export const DESKTOP = { width: 1366, height: 900 };
 
 /**
@@ -209,4 +233,53 @@ export async function goTo(page: Page, path: string): Promise<void> {
   await page.evaluate((target) => {
     window.location.hash = `#${target}`;
   }, path);
+}
+
+/**
+ * Waits until the screen the address names is drawn: the route change has been rendered (two frames),
+ * and nothing is still loading (the grey rows of a list on its way, which are also what a screen whose
+ * code is being fetched shows).
+ */
+export async function settled(page: Page): Promise<void> {
+  await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+  await expect(page.locator(".loading")).toHaveCount(0);
+}
+
+type Overflow = { scrollWidth: number; clientWidth: number; widest: string[] };
+
+/** Null when the page is as wide as its window; otherwise by how much it is wider, and what sticks out. */
+async function sidewaysOverflow(page: Page): Promise<Overflow | null> {
+  return page.evaluate(() => {
+    const root = document.documentElement;
+    const clientWidth = root.clientWidth;
+    if (root.scrollWidth <= clientWidth) {
+      return null;
+    }
+    const out = [...document.body.querySelectorAll<HTMLElement>("*")].filter((element) => {
+      const box = element.getBoundingClientRect();
+      return box.width > 0 && box.height > 0 && box.right > clientWidth + 0.5;
+    });
+    // The innermost ones: what sticks out, not everything that holds it.
+    const innermost = out.filter((element) => !out.some((other) => other !== element && element.contains(other)));
+    const widest = innermost.slice(0, 6).map((element) => {
+      const box = element.getBoundingClientRect();
+      const words = (element.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
+      return `<${element.tagName.toLowerCase()} class="${element.className}"> "${words}" ends at ${Math.round(box.right)}px`;
+    });
+    return { scrollWidth: root.scrollWidth, clientWidth, widest };
+  });
+}
+
+/**
+ * The page must not scroll sideways: at no width is anything wider than the window. `where` names the
+ * screen and the width in the failure, which also lists what sticks out. With `soft` the test goes on
+ * to the next screen, so one run names every screen that fails.
+ */
+export async function expectNoSidewaysScroll(page: Page, where: string, options: { soft?: boolean } = {}): Promise<void> {
+  const overflow = await sidewaysOverflow(page);
+  const said =
+    overflow === null
+      ? ""
+      : [`${where}: the page is ${overflow.scrollWidth}px wide in a window of ${overflow.clientWidth}px`, ...overflow.widest].join("\n  ");
+  (options.soft ? expect.soft : expect)(said, said).toBe("");
 }

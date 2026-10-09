@@ -48,6 +48,15 @@ const page = (
   </>
 );
 const nameField = () => screen.findByLabelText("Tasdiqlash uchun do'kon nomini yozing");
+/** The notice above every screen while the shop waits to be deleted: the status that holds the way to cancel. */
+const bannerOf = () =>
+  screen.queryAllByRole("status").find((status) => within(status).queryByRole("link", { name: "Sozlamalarda bekor qilish" }) !== null) ?? null;
+/** What the section itself says was done: every status that is not the banner. */
+const statuses = () =>
+  screen
+    .queryAllByRole("status")
+    .filter((status) => status !== bannerOf())
+    .map((status) => status.textContent);
 const ask = () => fireEvent.click(screen.getByRole("button", { name: "Do'konni o'chirishni so'rash" }));
 
 describe("who may delete the shop", () => {
@@ -121,9 +130,23 @@ describe("asking for the shop to be deleted", () => {
     // 5 November 07:00 UTC is 5 November in Tashkent.
     const pending = screen.getAllByText("Do'konni o'chirish so'ralgan. Do'kon 2026-yil 5-noyabr da butunlay o'chiriladi.");
     expect(pending).toHaveLength(2);
-    const banner = screen.getByRole("status");
-    expect(within(banner).getByRole("link", { name: "Sozlamalarda bekor qilish" }).getAttribute("href")).toBe("#/shop-settings");
+    const banner = bannerOf();
+    expect(banner).not.toBeNull();
+    expect(within(banner as HTMLElement).getByRole("link", { name: "Sozlamalarda bekor qilish" }).getAttribute("href")).toBe("#/shop-settings");
     expect(screen.queryByLabelText("Tasdiqlash uchun do'kon nomini yozing")).toBeNull();
+    // What was done is said back, apart from the state that now shows it.
+    expect(statuses()).toContain("Do'konni o'chirish so'raldi. Belgilangan kungacha so'rovni bekor qilishingiz mumkin.");
+  });
+
+  it("does not say the request was made when the server refused it", async () => {
+    const server = backend(NO_DELETION, (sent) =>
+      sent.method === "POST" ? refusal(422, "VALIDATION", "Xato.", { confirm_name: "mismatch" }) : null,
+    );
+    renderOffice(page, { fetch: server.fetch });
+    fireEvent.change(await nameField(), { target: { value: "Boshqa nom" } });
+    ask();
+    expect(await screen.findByText("Yozilgan nom do'kon nomiga mos kelmadi.")).toBeTruthy();
+    expect(statuses()).toEqual([]);
   });
 
   it("disables the button while the request is in flight, so a double tap sends one", async () => {
@@ -155,6 +178,17 @@ describe("asking for the shop to be deleted", () => {
     ask();
     expect(await screen.findByRole("button", { name: "O'chirishni bekor qilish" })).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("Do'konni o'chirish allaqachon so'ralgan.");
+    // A refusal is not a success: nothing says the request was made by this press.
+    expect(statuses().join(" ")).not.toContain("so'raldi");
+
+    // "Try again" reads the state once more and puts the refusal away.
+    const reads = () => server.sent.filter((sent) => sent.method === "GET" && sent.path === PATH).length;
+    const before = reads();
+    fireEvent.click(within(screen.getByRole("alert")).getByRole("button", { name: "Qayta urinish" }));
+    await waitFor(() => expect(reads()).toBe(before + 1));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(await screen.findByRole("button", { name: "O'chirishni bekor qilish" })).toBeTruthy();
+    expect(server.writes()).toHaveLength(1);
   });
 
   it("can be reached and sent with the keyboard alone", async () => {
@@ -191,7 +225,9 @@ describe("while the shop waits to be deleted", () => {
     expect(server.writes()).toHaveLength(0);
     fireEvent.click(screen.getByRole("button", { name: "Yo'q" }));
     expect(server.writes()).toHaveLength(0);
-    expect(screen.getByRole("status")).toBeTruthy();
+    expect(bannerOf()).not.toBeNull();
+    // Nothing was cancelled, and nothing says it was.
+    expect(statuses().join(" ")).not.toContain("bekor qilindi");
 
     fireEvent.click(screen.getByRole("button", { name: "O'chirishni bekor qilish" }));
     fireEvent.click(screen.getByRole("button", { name: "Ha, bekor qilinsin" }));
@@ -199,8 +235,9 @@ describe("while the shop waits to be deleted", () => {
     expect(server.writes()).toHaveLength(1);
     expect(server.writes()[0]).toMatchObject({ method: "DELETE", path: PATH });
     expect(server.writes()[0]?.headers["Idempotency-Key"]).toBeTruthy();
-    // The banner goes with the request.
-    expect(screen.queryByRole("status")).toBeNull();
+    // The banner goes with the request, and the section says what was done.
+    expect(bannerOf()).toBeNull();
+    expect(statuses()).toEqual(["O'chirish so'rovi bekor qilindi. Do'kon odatdagidek ishlashda davom etadi."]);
   });
 
   it("shows the refusal when there is no request to cancel any more, and then the form", async () => {

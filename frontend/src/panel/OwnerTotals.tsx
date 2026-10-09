@@ -2,7 +2,7 @@ import { useI18n } from "../i18n/I18nProvider";
 import { formatCustomerCount } from "../shared/format";
 import { useLoad } from "../shared/hooks";
 import { useWorkspace } from "../shared/workspace/context";
-import { Failure, Loading, Money } from "../shared/workspace/parts";
+import { Empty, Failure, Loading, Money } from "../shared/workspace/parts";
 import type { ShopTotals, Totals } from "./backoffice";
 import { type Column, DataTable } from "./DataTable";
 import "./messages";
@@ -42,7 +42,9 @@ function AllShops() {
       { id: "overdue", header: t("overview.overdue"), numeric: true, cell: (shop) => money(shop, "overdue") },
       { id: "dueToday", header: t("overview.dueToday"), numeric: true, cell: (shop) => money(shop, "dueToday") },
     ];
-    body = (
+    body = items.length === 0 ? (
+      <Empty>{t("totals.none")}</Empty>
+    ) : (
       <DataTable
         caption={t("totals.title")}
         columns={columns}

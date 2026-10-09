@@ -10,9 +10,18 @@
  * by a shop's customer on a phone, and must never come to carry the staff application. 20 KB compressed
  * holds it to its own few modules and the design tokens.
  *
+ * The web panel and the administration panel have budgets too. They are opened on a desk, where the
+ * 300 KB of NFR-010 would be met with room to spare, so theirs are set from what they weigh: the size
+ * when the budget was written plus about 15 %. The point is to notice. A screen that should be fetched
+ * when it is opened and is instead part of the first load, or a library added in passing, fails the
+ * build; a deliberate addition raises the number here, in the same change, where a reviewer sees it.
+ *
+ *   panel   145.03 KB when written (2026-10)  ->  167 KB
+ *   admin   130.94 KB when written (2026-10)  ->  150 KB
+ *
  * Usage: `npm run size` (builds first). `node scripts/size.ts --budget-kb=1` after a build shows the
- * check failing; that is the negative check for this script. `--customer-page-budget-kb=1` does the
- * same for the customer's page.
+ * check failing; that is the negative check for this script. `--customer-page-budget-kb=1`,
+ * `--panel-budget-kb=1` and `--admin-budget-kb=1` do the same for the other pages.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -20,6 +29,16 @@ import { gzipSync } from "node:zlib";
 
 export const DEFAULT_BUDGET_KB = 300;
 export const CUSTOMER_PAGE_BUDGET_KB = 20;
+export const PANEL_BUDGET_KB = 167;
+export const ADMIN_BUDGET_KB = 150;
+
+/** Every page of the build with its budget: the option that overrides it and what the page is called. */
+export const BUDGETS = [
+  { entry: "app", option: "--budget-kb", budgetKb: DEFAULT_BUDGET_KB, name: "staff Mini App first load" },
+  { entry: "panel", option: "--panel-budget-kb", budgetKb: PANEL_BUDGET_KB, name: "the web panel's first load" },
+  { entry: "admin", option: "--admin-budget-kb", budgetKb: ADMIN_BUDGET_KB, name: "the administration panel's first load" },
+  { entry: "k", option: "--customer-page-budget-kb", budgetKb: CUSTOMER_PAGE_BUDGET_KB, name: "the customer's page" },
+] as const;
 const BYTES_PER_KB = 1024;
 
 export type InitialAssets = {
@@ -104,35 +123,32 @@ function measureEntry(distDir: string, entry: string): { totalBytes: number; lin
   return { totalBytes, lines };
 }
 
+export type Verdict = { ok: boolean; line: string };
+
+/** One page's size against its budget, as the line the script prints. */
+export function verdict(name: string, totalBytes: number, budgetKb: number): Verdict {
+  const result = checkBudget([totalBytes], budgetKb);
+  const said = `${name} is ${kb(result.totalBytes)} KB gzip, budget is ${budgetKb} KB`;
+  return { ok: result.withinBudget, line: `${result.withinBudget ? "OK" : "FAIL"}: ${said}` };
+}
+
 function main(): void {
-  const budgetKb = parseBudgetKb(process.argv.slice(2));
+  const args = process.argv.slice(2);
   const distDir = resolve(import.meta.dirname, "..", "dist");
-  const customerPageBudgetKb = parseBudgetKb(process.argv.slice(2), "--customer-page-budget-kb", CUSTOMER_PAGE_BUDGET_KB);
-  let appBytes = 0;
-  let customerPageBytes = 0;
-  for (const entry of ["app", "panel", "admin", "k"]) {
+  const verdicts: Verdict[] = [];
+  for (const { entry, option, budgetKb, name } of BUDGETS) {
     const { totalBytes, lines } = measureEntry(distDir, entry);
     console.log(`${entry}: ${kb(totalBytes)} KB gzip (initial JS + CSS)`);
     console.log(lines.join("\n"));
-    if (entry === "app") {
-      appBytes = totalBytes;
-    }
-    if (entry === "k") {
-      customerPageBytes = totalBytes;
-    }
+    verdicts.push(verdict(name, totalBytes, parseBudgetKb(args, option, budgetKb)));
   }
-  const result = checkBudget([appBytes], budgetKb);
-  if (!result.withinBudget) {
-    console.error(`FAIL: staff Mini App first load is ${kb(result.totalBytes)} KB gzip, budget is ${budgetKb} KB`);
+  // Every page is reported before the script ends, so one run names all that are over.
+  for (const { ok, line } of verdicts) {
+    (ok ? console.log : console.error)(line);
+  }
+  if (verdicts.some(({ ok }) => !ok)) {
     process.exit(1);
   }
-  console.log(`OK: staff Mini App first load is ${kb(result.totalBytes)} KB gzip, budget is ${budgetKb} KB`);
-  const customerPage = checkBudget([customerPageBytes], customerPageBudgetKb);
-  if (!customerPage.withinBudget) {
-    console.error(`FAIL: the customer's page is ${kb(customerPage.totalBytes)} KB gzip, budget is ${customerPageBudgetKb} KB`);
-    process.exit(1);
-  }
-  console.log(`OK: the customer's page is ${kb(customerPage.totalBytes)} KB gzip, budget is ${customerPageBudgetKb} KB`);
 }
 
 if (import.meta.main) {
