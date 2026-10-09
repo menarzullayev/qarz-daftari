@@ -685,3 +685,115 @@ describe("the import screen's catalog", () => {
     expect(keys.filter((key) => !(key in uzImports))).toEqual([]);
   });
 });
+
+describe("the import of a shop that works in dollars", () => {
+  const api = (server: ReturnType<typeof fakeServer>) => importsOf(createApi({ fetch: server.fetch, auth: { kind: "bearer", token: "t" } }).shop(SHOP_ID));
+  const row = { phone: null, promised_date: null, note: null, matched_by: null, same_as_row: null, customer: null };
+  const both = () =>
+    importPreviewBody({
+      counts: { new_customers: 1, existing_customers: 1, entries: 3, amount: 200000, usd: { amount: 2050 } },
+      rows: [
+        { ...row, row: 2, name: "Sardor Aliyev", amount: 200000, action: "create" },
+        { ...row, row: 3, name: "Sardor Aliyev", amount: 1250, currency: "USD", action: "same_as_row", matched_by: "name", same_as_row: 2 },
+        {
+          ...row,
+          row: 4,
+          name: "Ali Valiyev",
+          amount: 800,
+          currency: "USD",
+          action: "existing",
+          matched_by: "name",
+          customer: { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", display_name: "Ali Valiyev", phone: null, balance: 120000, usd: { balance: 700 } },
+        },
+      ],
+    });
+  /** The shop of `shop()`, whose list says that its files may have the currency column. */
+  const dollarShop = (items: Item[] = [importBody()]) => {
+    const server = shop(items);
+    server.held.list = null;
+    const fetch: typeof server.fetch = async (input, init) => {
+      const response = await server.fetch(input, init);
+      const listed = (init?.method ?? "GET") === "GET" && String(input).endsWith("/imports");
+      return listed ? new Response(JSON.stringify({ ...(await response.json()), currency_column: true }), { status: 200, headers: { "content-type": "application/json" } }) : response;
+    };
+    server.held.preview = both();
+    return { ...server, fetch };
+  };
+
+  it("reads a dollar row's currency, the dollar total and a matched customer's dollar debt, and nothing of them for a so'm shop", async () => {
+    const dollars = dollarShop();
+    const read = await api(dollars).read(IMPORT_ID);
+    expect(read.preview?.counts).toEqual({ newCustomers: 1, existingCustomers: 1, entries: 3, amount: 200000, usd: 2050 });
+    expect(read.preview?.rows.map((each) => [each.amount, each.currency])).toEqual([
+      [200000, undefined],
+      [1250, "USD"],
+      [800, "USD"],
+    ]);
+    expect(read.preview?.rows[2]?.customer).toMatchObject({ balance: 120000, usd: 700 });
+    expect(await api(dollars).listed()).toMatchObject({ currencyColumn: true });
+    // A shop without dollars: no key of the answer, none in what is read.
+    const plainShop = shop([importBody()]);
+    const before = await api(plainShop).read(IMPORT_ID);
+    expect(before.preview?.counts).toEqual({ newCustomers: 1, existingCustomers: 1, entries: 3, amount: 450000 });
+    expect(before.preview?.rows.every((each) => !("currency" in each) && (each.customer === null || !("usd" in each.customer)))).toBe(true);
+    expect(await api(plainShop).listed()).toMatchObject({ currencyColumn: false });
+    await expect(api(fakeServer(() => ok({ ...importBody(), preview: importPreviewBody({ counts: { ...both().counts, usd: { amount: 1.5 } } }) }))).read(IMPORT_ID)).rejects.toMatchObject({
+      code: "BAD_RESPONSE",
+    });
+  });
+
+  it("tells of the currency column, shows each row in its own currency and a total for each currency, never one sum", async () => {
+    const server = dollarShop();
+    const section = await opened(server);
+    expect(screen.getByText(/«Valyuta» ustuniga UZS yoki USD yoziladi, bo'sh katak — so'm\./)).toBeTruthy();
+    await within(section).findByRole("heading", { name: "Nima yoziladi" });
+    expect([...section.querySelectorAll("dl.facts")].at(-1)?.textContent?.replace(/\s/g, " ")).toBe(
+      "Yangi mijozlar1Mavjud mijozlar1Qarz yozuvlari3Jami summa200 000 so'mJami summa, dollarda20.50 $",
+    );
+    expect(rowText("Qatorlar")).toEqual([
+      ["2. Sardor Aliyev200 000 so'm", "", "Yangi mijoz ochiladi"],
+      ["3. Sardor Aliyev12.50 $", "", "2-qatordagi yangi mijozga qo'shiladi"],
+      ["4. Ali Valiyev8.00 $", "", "Mavjud mijozga qo'shiladi (ism mos keldi): Ali Valiyev, hozirgi qarzi 120 000 so'm · 7.00 $"],
+    ]);
+    expect(plain(section)).not.toContain("202 050");
+    fireEvent.click(within(section).getByRole("button", { name: "Importni qo'llash" }));
+    expect(plain(within(section).getByRole("group").querySelector("p"))).toBe("Daftarga yozilsinmi? Qarz yozuvlari: 3. Jami: 200 000 so'm va 20.50 $. Yangi mijozlar: 1.");
+  });
+
+  it("says each currency's total of what was written, and the dollars alone when no row was so'm", async () => {
+    const written = { new_customers: 1, existing_customers: 1, entries: 3, amount: 200000, usd: { amount: 2050 } };
+    const section = await opened(dollarShop([applied({ applied: written })]));
+    expect(plain(within(section).getByText(/^Daftarga yozildi\./))).toBe("Daftarga yozildi. Qarz yozuvlari: 3. Jami: 200 000 so'm va 20.50 $. Yangi mijozlar: 1. Mavjud mijozlar: 1.");
+    cleanup();
+    const onlyDollars = await opened(dollarShop([applied({ applied: { ...written, amount: 0 } })]));
+    expect(plain(within(onlyDollars).getByText(/^Daftarga yozildi\./))).toContain("Jami: 20.50 $. Yangi");
+    cleanup();
+    // A dollar shop whose file had no dollar row reads as a so'm shop's does.
+    const noDollars = await opened(dollarShop([applied({ applied: { ...written, usd: { amount: 0 } } })]));
+    expect(plain(within(noDollars).getByText(/^Daftarga yozildi\./))).toContain("Jami: 200 000 so'm. Yangi");
+  });
+
+  it("says nothing of a currency column or a dollar total to a shop without dollars", async () => {
+    const section = await opened(shop([importBody()]));
+    await within(section).findByRole("heading", { name: "Nima yoziladi" });
+    expect(screen.queryByText(/Valyuta/)).toBeNull();
+    expect(screen.queryByText("Jami summa, dollarda")).toBeNull();
+    expect(plain(document.body)).not.toContain("$");
+  });
+
+  it("words the problems of a currency cell and of a dollar amount, and the refusal of a shop that left dollars", async () => {
+    const errors = [
+      { row: 2, column: "currency", code: "currency_unknown" },
+      { row: 3, column: "amount", code: "amount_too_precise" },
+    ];
+    const section = await opened(dollarShop([importBody({ status: "rejected", errors })]));
+    expect(rowText("Qatorlardagi xatolar")).toEqual([
+      ["Qator 2 · Valyuta", "Valyuta UZS yoki USD bo'lishi kerak. Bo'sh katak — so'm."],
+      ["Qator 3 · Summa", "Dollardagi summada nuqtadan keyin ko'pi bilan ikki raqam yoziladi, masalan 12.50."],
+    ]);
+    expect(within(section).queryByRole("button", { name: "Importni qo'llash" })).toBeNull();
+    cleanup();
+    const refused = await opened(dollarShop([importBody({ refused: { step: "apply", reason: "usd_off" } })]));
+    expect(within(refused).getByText(/Faylda dollardagi qatorlar bor, do'kon esa endi dollarda ishlamaydi\./)).toBeTruthy();
+  });
+});

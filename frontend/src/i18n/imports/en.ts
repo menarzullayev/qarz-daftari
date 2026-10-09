@@ -7,6 +7,7 @@ export const enImports: PartialCatalog<typeof uzImports, EnPlural> = {
   "imports.explain":
     "Customers and their opening debts can be brought in from an Excel (.xlsx) or CSV file. Each row is one debt of one customer.",
   "imports.columns": "Columns: name and amount are required; phone, due date and note are optional.",
+  "imports.columns.currency": "The shop also works in dollars: the “Currency” column takes UZS or USD, and an empty cell is soum. A dollar amount is written with a point, for example 12.50. The sample file has this column.",
   "imports.limits": "The file must not be larger than {size} MB or have more than {rows} rows.",
   "imports.steps":
     "First the file is checked and you are shown what will be recorded. Nothing is written to the ledger until you confirm.",
@@ -73,6 +74,7 @@ export const enImports: PartialCatalog<typeof uzImports, EnPlural> = {
   "imports.column.name": "Name",
   "imports.column.phone": "Phone",
   "imports.column.amount": "Amount",
+  "imports.column.currency": "Currency",
   "imports.column.promised_date": "Due date",
   "imports.column.note": "Note",
   "imports.row.name_missing": "No name written.",
@@ -81,12 +83,14 @@ export const enImports: PartialCatalog<typeof uzImports, EnPlural> = {
   "imports.row.amount_missing": "No amount written.",
   "imports.row.amount_invalid": "Could not read the amount.",
   "imports.row.amount_not_whole": "The amount must be in whole soum, without tiyin.",
+  "imports.row.amount_too_precise": "A dollar amount has at most two digits after the point, for example 12.50.",
   "imports.row.amount_too_small": "The amount is too small.",
   "imports.row.amount_too_large": "The amount is too large.",
   "imports.row.date_invalid": "Could not read the date.",
   "imports.row.date_too_old": "The date is too old.",
   "imports.row.date_too_far": "The date is too far ahead.",
   "imports.row.note_too_long": "The note is too long.",
+  "imports.row.currency_unknown": "The currency must be UZS or USD. An empty cell is soum.",
   "imports.row.ambiguous_customer":
     "This row matches more than one customer of the shop. Write the phone number exactly.",
   "imports.row.customer_archived":
@@ -96,6 +100,8 @@ export const enImports: PartialCatalog<typeof uzImports, EnPlural> = {
   "imports.counts.existingCustomers": "Existing customers",
   "imports.counts.entries": "Debt entries",
   "imports.counts.amount": "Total amount",
+  "imports.counts.amount.usd": "Total amount, in dollars",
+  "imports.total.both": "{uzs} and {usd}",
   "imports.preview.rows": "Rows",
   "imports.preview.col.action": "What will be done",
   "imports.action.create": "A new customer is opened",
@@ -146,6 +152,7 @@ export const enImports: PartialCatalog<typeof uzImports, EnPlural> = {
   "imports.refused.reason.errors": "A mistake was found in the rows on the second check.",
   "imports.refused.reason.free_plan_full":
     "The free plan has no room for the new customers in this import. Pay for a subscription to have more customers: the “Subscription” page or /obuna in the bot.",
+  "imports.refused.reason.usd_off": "The file has rows in dollars, but the shop no longer works in dollars. Turn dollars on in the settings or discard the file.",
   "imports.refused.reason.other": "Reason code: {reason}",
   "imports.stale": "Could not refresh the status.",
   "imports.refresh": "Refresh",

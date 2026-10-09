@@ -7,6 +7,7 @@ export const tgImports: PartialCatalog<typeof uzImports> = {
   "imports.explain":
     "Мизоҷон ва қарзҳои аввалаи онҳоро аз файли Excel (.xlsx) ё CSV ворид кардан мумкин аст. Ҳар сатр — як қарзи як мизоҷ.",
   "imports.columns": "Сутунҳо: ном ва маблағ — ҳатмӣ; телефон, мӯҳлати пардохт ва эзоҳ — ихтиёрӣ.",
+  "imports.columns.currency": "Мағоза бо доллар низ кор мекунад: дар сутуни «Асъор» UZS ё USD навишта мешавад, катаки холӣ — сӯм. Маблағи долларӣ бо нуқта навишта мешавад, масалан 12.50. Дар файли намуна ин сутун ҳаст.",
   "imports.limits": "Файл набояд аз {size} MB ва шумораи сатрҳо аз {rows} зиёд бошад.",
   "imports.steps":
     "Аввал файл санҷида мешавад ва нишон дода мешавад, ки чӣ навишта мешавад. То Шумо тасдиқ накунед, ба дафтар ҳеҷ чиз навишта намешавад.",
@@ -73,6 +74,7 @@ export const tgImports: PartialCatalog<typeof uzImports> = {
   "imports.column.name": "Ном",
   "imports.column.phone": "Телефон",
   "imports.column.amount": "Маблағ",
+  "imports.column.currency": "Асъор",
   "imports.column.promised_date": "Мӯҳлати пардохт",
   "imports.column.note": "Эзоҳ",
   "imports.row.name_missing": "Ном навишта нашудааст.",
@@ -81,12 +83,14 @@ export const tgImports: PartialCatalog<typeof uzImports> = {
   "imports.row.amount_missing": "Маблағ навишта нашудааст.",
   "imports.row.amount_invalid": "Маблағ фаҳмида нашуд.",
   "imports.row.amount_not_whole": "Маблағ бояд бо сӯми бутун бошад, бе тийин.",
+  "imports.row.amount_too_precise": "Дар маблағи долларӣ пас аз нуқта на зиёда аз ду рақам навишта мешавад, масалан 12.50.",
   "imports.row.amount_too_small": "Маблағ хеле хурд аст.",
   "imports.row.amount_too_large": "Маблағ хеле калон аст.",
   "imports.row.date_invalid": "Сана фаҳмида нашуд.",
   "imports.row.date_too_old": "Сана хеле кӯҳна аст.",
   "imports.row.date_too_far": "Сана хеле дур аст.",
   "imports.row.note_too_long": "Эзоҳ хеле дароз аст.",
+  "imports.row.currency_unknown": "Асъор бояд UZS ё USD бошад. Катаки холӣ — сӯм.",
   "imports.row.ambiguous_customer":
     "Ин сатр ба якчанд мизоҷи мағоза мувофиқ меояд. Рақами телефонро аниқ нависед.",
   "imports.row.customer_archived":
@@ -96,6 +100,8 @@ export const tgImports: PartialCatalog<typeof uzImports> = {
   "imports.counts.existingCustomers": "Мизоҷони мавҷуда",
   "imports.counts.entries": "Сабтҳои қарз",
   "imports.counts.amount": "Маблағи умумӣ",
+  "imports.counts.amount.usd": "Маблағи умумӣ, бо доллар",
+  "imports.total.both": "{uzs} ва {usd}",
   "imports.preview.rows": "Сатрҳо",
   "imports.preview.col.action": "Чӣ карда мешавад",
   "imports.action.create": "Мизоҷи нав кушода мешавад",
@@ -147,6 +153,7 @@ export const tgImports: PartialCatalog<typeof uzImports> = {
   "imports.refused.reason.errors": "Ҳангоми санҷиши такрорӣ дар сатрҳо хато ёфт шуд.",
   "imports.refused.reason.free_plan_full":
     "Тарифи ройгон мизоҷони нави ин импортро намеғунҷонад. Барои мизоҷони бештар обунаро пардохт кунед: саҳифаи «Обуна» ё дар бот /obuna.",
+  "imports.refused.reason.usd_off": "Дар файл сатрҳои долларӣ ҳастанд, вале мағоза дигар бо доллар кор намекунад. Дар танзимот долларро фаъол кунед ё аз файл даст кашед.",
   "imports.refused.reason.other": "Коди сабаб: {reason}",
   "imports.stale": "Ҳолатро нав карда нашуд.",
   "imports.refresh": "Нав кардан",

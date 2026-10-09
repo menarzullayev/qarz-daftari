@@ -1,7 +1,9 @@
 """The pure rules of the import (REQ-062, REQ-063; BR-24): reading a file that is not trusted, turning cells
 into rows with coded problems, setting rows against a shop's customers, and the undo window."""
 
+import hashlib
 import io
+import json
 import uuid
 import zipfile
 from datetime import UTC, date, datetime, timedelta
@@ -12,7 +14,7 @@ import pytest
 from qarz.application import ledger_service
 from qarz.application.imports import template
 from qarz.application.xlsx import Workbook
-from qarz.domain import imports
+from qarz.domain import imports, money
 from qarz.domain.files import MAX_FILE_BYTES
 from qarz.domain.imports import (
     Candidate,
@@ -29,6 +31,7 @@ from qarz.domain.imports import (
     read_xlsx,
 )
 from qarz.domain.languages import LANGUAGES
+from qarz.domain.money import Currency
 from qarz.domain.names import normalize_name
 
 TODAY = date(2026, 10, 7)
@@ -611,3 +614,176 @@ def test_a_silent_worker_is_replaced_after_fifteen_minutes_and_a_step_is_started
     now = datetime(2026, 10, 7, 12, 0, tzinfo=UTC)
     assert imports.stale_before(now) == now - timedelta(minutes=15)
     assert [imports.gives_up(attempts) for attempts in (1, 2, 3, 4)] == [False, False, False, True]
+
+
+# --- the currency column, for a shop that works in dollars ---------------------------------------------
+
+USD = Currency.USD
+HEAD_USD = "Ism,Qarz summasi,Valyuta"
+
+
+def in_dollars(data: bytes) -> ParsedFile:
+    parsed = parse(data, TODAY, dollars=True)
+    assert isinstance(parsed, ParsedFile), parsed
+    return parsed
+
+
+def test_without_dollars_the_template_is_the_file_it_always_was() -> None:
+    """Byte for byte: the five titles and widths written by hand, as before the currency column existed."""
+    for lang in LANGUAGES:
+        before = Workbook()
+        before.sheet("Import", imports.TEMPLATE_HEADERS[lang], (28, 20, 18, 18, 36))
+        assert template(lang) == template(lang, dollars=False) == before.finish(), lang
+        assert imports.template_headers(lang) == imports.TEMPLATE_HEADERS[lang]
+        assert template(lang, dollars=True) != template(lang), "the counterpart: with dollars it is another file"
+
+
+def test_with_dollars_the_template_has_the_currency_after_the_amount_in_every_language() -> None:
+    assert read_xlsx(template("uz", dollars=True)) == [
+        (1, ["Ism", "Telefon", "Qarz summasi", "Valyuta", "To'lash muddati", "Izoh"])
+    ]
+    assert imports.CURRENCY_TITLES == {
+        "uz": "Valyuta",
+        "uz-Cyrl": "Валюта",
+        "ru": "Валюта",
+        "tg": "Асъор",
+        "kaa": "Valyuta",
+        "en": "Currency",
+    }
+    assert set(imports.CURRENCY_TITLES) == set(LANGUAGES)
+    assert read_xlsx(template("kk", dollars=True)) == read_xlsx(template("uz", dollars=True))
+    for lang in LANGUAGES:
+        titles = read_xlsx(template(lang, dollars=True))[0][1]
+        assert len(titles) == 6 and titles[3] == imports.CURRENCY_TITLES[lang], lang
+        assert [title for at, title in enumerate(titles) if at != 3] == list(imports.TEMPLATE_HEADERS[lang])
+        # Read back: recognised by a shop that works in dollars, an unknown column for every other shop.
+        assert parse(template(lang, dollars=True), TODAY, dollars=True) is FileProblem.NO_ROWS, lang
+        filled = write_xlsx([titles, ["Ali", "", "12.5", "USD", "", ""]])
+        assert in_dollars(filled).rows == (ImportRow(2, "Ali", "ali", None, 1250, None, None, USD),), lang
+        assert parse(filled, TODAY) is FileProblem.UNKNOWN_COLUMN, lang
+
+
+@pytest.mark.parametrize("title", ["Valyuta", "валюта", "Асъор", " CURRENCY* ", "Валюта:"])
+def test_a_currency_column_is_an_unknown_column_unless_the_shop_works_in_dollars(title: str) -> None:
+    file = text(f"Ism,Qarz,{title}", "Ali,45000,UZS")
+    assert parse(file, TODAY) is FileProblem.UNKNOWN_COLUMN
+    assert parse(file, TODAY, dollars=False) is FileProblem.UNKNOWN_COLUMN
+    assert in_dollars(file).rows == (ImportRow(2, "Ali", "ali", None, 45000, None, None),)
+    # Still only the published titles: with dollars too a title nobody published is unknown.
+    assert parse(text("Ism,Qarz,Pul birligi", "Ali,45000,UZS"), TODAY, dollars=True) is FileProblem.UNKNOWN_COLUMN
+    assert (
+        parse(text("Ism,Qarz,Valyuta,Currency", "Ali,1,USD,USD"), TODAY, dollars=True) is FileProblem.DUPLICATE_COLUMN
+    )
+
+
+def test_a_file_without_the_column_or_with_an_empty_cell_is_sum_also_for_a_dollar_shop() -> None:
+    plain_file = text("Ism,Telefon,Qarz summasi,To'lash muddati,Izoh", "Ali,901234567,45000,25.10.2026,non")
+    assert in_dollars(plain_file) == good(plain_file), "the file of a so'm shop reads the same in a dollar shop"
+    mixed = in_dollars(text(HEAD_USD, "Ali,45000,", "Vali,45000,  ", "Gani,45000,uzs", "Soli,12.50,usd", "Xon,7, USD "))
+    assert [(row.name, row.amount, row.currency.value) for row in mixed.rows] == [
+        ("Ali", 45000, "UZS"),
+        ("Vali", 45000, "UZS"),
+        ("Gani", 45000, "UZS"),
+        ("Soli", 1250, "USD"),
+        ("Xon", 700, "USD"),
+    ]
+    assert mixed.errors == ()
+    assert ImportRow(2, "Ali", "ali", None, 1, None, None).currency is Currency.UZS
+
+
+@pytest.mark.parametrize("cell", ["EUR", "$", "dollar", "so'm", "US", "USDT", "1"])
+def test_a_currency_that_is_neither_of_the_two_is_a_problem_of_its_row(cell: str) -> None:
+    parsed = in_dollars(text(HEAD_USD, f"Ali,45000,{cell}", "Vali,45000,UZS"))
+    assert [(error.row, error.column, error.code) for error in parsed.errors] == [
+        (2, "currency", RowProblem.CURRENCY_UNKNOWN)
+    ], "and nothing is said about an amount whose currency nobody knows"
+    assert [row.name for row in parsed.rows] == ["Vali"]
+    assert parsed.total == 2
+
+
+@pytest.mark.parametrize(
+    ("raw", "outcome"),
+    [
+        ("12.50", 1250),
+        ("12.5", 1250),
+        ("12,5", 1250),
+        ("12", 1200),
+        ("1 250.50", 125050),
+        ("0.01", 1),
+        ("10000", 1_000_000),
+        ("10000.00", 1_000_000),
+        ("0", RowProblem.AMOUNT_TOO_SMALL),
+        ("0.00", RowProblem.AMOUNT_TOO_SMALL),
+        ("10000.01", RowProblem.AMOUNT_TOO_LARGE),
+        ("45000", RowProblem.AMOUNT_TOO_LARGE),
+        ("12.505", RowProblem.AMOUNT_TOO_PRECISE),
+        ("0.001", RowProblem.AMOUNT_TOO_PRECISE),
+        ("12.500", RowProblem.AMOUNT_TOO_PRECISE),
+        ("", RowProblem.AMOUNT_MISSING),
+        ("  ", RowProblem.AMOUNT_MISSING),
+        ("-5", RowProblem.AMOUNT_INVALID),
+        ("+5", RowProblem.AMOUNT_INVALID),
+        ("12.", RowProblem.AMOUNT_INVALID),
+        ("12$", RowProblem.AMOUNT_INVALID),
+        ("$12", RowProblem.AMOUNT_INVALID),
+        ("1,250.50", RowProblem.AMOUNT_INVALID),
+        ("1.2E1", RowProblem.AMOUNT_INVALID),
+        ("١٢", RowProblem.AMOUNT_INVALID),
+    ],
+)
+def test_a_dollar_amount_is_whole_cents_within_the_dollar_bounds_and_never_rounded(raw: str, outcome: Any) -> None:
+    assert imports.parse_amount_in(USD, raw) == outcome
+    if isinstance(outcome, int):
+        assert money.valid_entry_amount(USD, outcome)
+
+
+def test_each_currency_has_its_own_bounds_and_its_own_reading() -> None:
+    """What is a fine amount of so'm is too large in dollars, and the other way round."""
+    limits = money.RULES[USD]
+    assert imports.parse_amount_in(USD, money.plain(USD, limits.min_entry)) == limits.min_entry
+    assert imports.parse_amount_in(USD, money.plain(USD, limits.max_entry)) == limits.max_entry
+    assert imports.parse_amount_in(USD, money.plain(USD, limits.max_entry + 1)) is RowProblem.AMOUNT_TOO_LARGE
+    for raw in ("45000", "45000.0", "99", "12.5", "+45000", ""):
+        assert imports.parse_amount_in(Currency.UZS, raw) == parse_amount(raw), "so'm is read as it always was"
+    parsed = in_dollars(text(HEAD_USD, "Ali,12.5,UZS", "Vali,12.5,USD", "Gani,45000,USD", "Soli,45000,", "Xon,50,"))
+    assert [(error.row, error.column, error.code) for error in parsed.errors] == [
+        (2, "amount", RowProblem.AMOUNT_NOT_WHOLE),
+        (4, "amount", RowProblem.AMOUNT_TOO_LARGE),
+        (6, "amount", RowProblem.AMOUNT_TOO_SMALL),
+    ]
+    assert [(row.row, row.amount, row.currency) for row in parsed.rows] == [(3, 1250, USD), (5, 45000, Currency.UZS)]
+
+
+def test_a_dollar_amount_typed_as_a_number_cell_is_read_and_one_with_three_decimals_is_not() -> None:
+    def line(number: int, name: str, value: str) -> str:
+        cells = inline(f"A{number}", name) + f'<c r="B{number}"><v>{value}</v></c>' + inline(f"C{number}", "USD")
+        return f'<row r="{number}">{cells}</row>'
+
+    head = '<row r="1">' + inline("A1", "Ism") + inline("B1", "Qarz summasi") + inline("C1", "Valyuta") + "</row>"
+    body = head + line(2, "Ali", "12.5") + line(3, "Vali", "100.0") + line(4, "Gani", "1.005")
+    parsed = in_dollars(archive(sheet(body)))
+    assert [(row.name, row.amount, row.currency) for row in parsed.rows] == [("Ali", 1250, USD), ("Vali", 10000, USD)]
+    assert [(error.row, error.code) for error in parsed.errors] == [(4, RowProblem.AMOUNT_TOO_PRECISE)]
+
+
+def test_one_customer_may_have_a_row_in_each_currency_and_gets_two_entries() -> None:
+    rows = in_dollars(text(HEAD_USD, "Ali,45000,", "Ali,12.50,USD", "Vali,7,USD")).rows
+    planned, errors = plan(rows, [])
+    assert errors == []
+    assert [(item.row.row, item.action, item.first_row, item.row.currency.value) for item in planned] == [
+        (2, imports.CREATE, None, "UZS"),
+        (3, imports.SAME_AS_ROW, 2, "USD"),
+        (4, imports.CREATE, None, "USD"),
+    ]
+
+
+def test_the_plan_token_tells_the_currencies_apart_and_keeps_the_token_of_a_sum_plan() -> None:
+    def token(currency: Currency) -> str:
+        return plan_token(plan([ImportRow(2, "Ali", "ali", None, 1000, None, None, currency)], [])[0])
+
+    assert token(USD) != token(Currency.UZS), "1 000 so'm and 10.00 $ are not one plan"
+    assert token(Currency.UZS) == plan_token(plan([ImportRow(2, "Ali", "ali", None, 1000, None, None)], [])[0])
+    # The fingerprint of a so'm plan is what it was before dollars: written out here by hand.
+    facts = [[2, "Ali", None, 1000, None, None, "create", None]]
+    canonical = json.dumps(facts, ensure_ascii=False, separators=(",", ":"))
+    assert token(Currency.UZS) == hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]
