@@ -171,6 +171,7 @@ export const tgStock: PartialCatalog<typeof uzStock> = {
   "stock.find.label": "Мол: штрих-кодро скан кунед ё ном нависед",
   "stock.find.list": "Молҳои ёфтшуда",
   "stock.find.none": "Чунин мол ёфт нашуд.",
+  "stock.pick.hint": "Барои ҷустуҷӯ номро нависед ё аз рӯйхат интихоб кунед.",
 
   "stock.new.open": "Илова кардани моли нав",
   "stock.new.withCode": "Илова кардани моли нав бо ҳамин код",

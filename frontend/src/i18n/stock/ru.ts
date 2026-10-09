@@ -166,6 +166,7 @@ export const ruStock: RuStockCatalog = {
   "stock.find.label": "Товар: отсканируйте штрихкод или введите название",
   "stock.find.list": "Найденные товары",
   "stock.find.none": "Такой товар не найден.",
+  "stock.pick.hint": "Введите название для поиска или выберите из списка.",
 
   "stock.new.open": "Добавить новый товар",
   "stock.new.withCode": "Добавить новый товар с этим кодом",

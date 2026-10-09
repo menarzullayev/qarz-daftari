@@ -11,11 +11,13 @@ import {
   documentBody,
   EAN,
   ITEM_ID,
+  manySuppliers,
   OTHER_ITEM,
   STOCK,
   stockSettingsBody,
   SUPPLIER_ID,
   supplierBody,
+  supplierListBody,
   SUPPLIERS,
   UNKNOWN_EAN,
 } from "./testing";
@@ -59,6 +61,12 @@ function backend(write: (sent: Sent) => Reply = () => NOT_FOUND, document: () =>
   });
 }
 
+/** Chooses a supplier as a person does: opens the choice, waits for the server's list, presses the name. */
+async function chooseSupplier(name: string | RegExp = "Baraka ulgurji") {
+  fireEvent.click(await screen.findByRole("combobox", { name: "Ta'minotchi" }));
+  fireEvent.click(await screen.findByRole("option", { name }));
+}
+
 function find(text: string) {
   const input = screen.getByLabelText(FIND);
   fireEvent.change(input, { target: { value: text } });
@@ -89,7 +97,7 @@ describe("a quick receipt", () => {
     expect(screen.queryByLabelText("To'lov usuli")).toBeNull();
     expect(screen.getByText("Ta'minotchi tanlanmagan: kirim to'liq to'langan deb yoziladi.")).toBeTruthy();
 
-    fireEvent.change(await screen.findByLabelText("Ta'minotchi"), { target: { value: SUPPLIER_ID } });
+    await chooseSupplier();
     fireEvent.click(screen.getByLabelText("Qarzga olindi"));
     fireEvent.click(screen.getByRole("button", { name: "O'tkazish" }));
     await waitFor(() => expect(server.writes()).toHaveLength(1));
@@ -116,7 +124,7 @@ describe("a quick receipt", () => {
     await screen.findByRole("heading", { name: "Kirim" });
     find(EAN);
     fireEvent.change(await screen.findByLabelText("Bir birlik narxi"), { target: { value: "12000" } });
-    fireEvent.change(await screen.findByLabelText("Ta'minotchi"), { target: { value: SUPPLIER_ID } });
+    await chooseSupplier();
     fireEvent.click(screen.getByLabelText("Bir qismi to'landi"));
     fireEvent.change(screen.getByLabelText("Hozir to'langan summa"), { target: { value: "13000" } });
     fireEvent.click(screen.getByRole("button", { name: "O'tkazish" }));
@@ -138,7 +146,7 @@ describe("a quick receipt", () => {
     await screen.findByRole("heading", { name: "Kirim" });
     find(EAN);
     fireEvent.change(await screen.findByLabelText("Bir birlik narxi"), { target: { value: "12000" } });
-    fireEvent.change(await screen.findByLabelText("Ta'minotchi"), { target: { value: SUPPLIER_ID } });
+    await chooseSupplier();
     const choices = within(screen.getByRole("group", { name: "To'lov" })).getAllByRole("radio");
     expect(choices).toHaveLength(1);
     expect(screen.queryByLabelText("Hozir to'liq to'landi")).toBeNull();
@@ -204,7 +212,7 @@ describe("a quick receipt", () => {
     fireEvent.change(await screen.findByLabelText("Bir birlik narxi"), { target: { value: "12000" } });
     fireEvent.change(screen.getByLabelText("To'lov usuli"), { target: { value: "card" } });
     // On credit nothing is paid, so there is no method to ask for.
-    fireEvent.change(await screen.findByLabelText("Ta'minotchi"), { target: { value: SUPPLIER_ID } });
+    await chooseSupplier();
     fireEvent.click(screen.getByLabelText("Qarzga olindi"));
     expect(screen.queryByLabelText("To'lov usuli")).toBeNull();
     fireEvent.click(screen.getByLabelText("Hozir to'liq to'landi"));
@@ -414,29 +422,74 @@ describe("the list of documents", () => {
     const archived = supplierBody({ id: ARCHIVED_SUPPLIER, name: "Eski ulgurji", status: "archived" });
     const server = fakeServer((sent) => {
       if (sent.path === SUPPLIERS) {
-        return ok({ suppliers: [sent.query["status"] === "archived" ? archived : supplierBody()], totals: [], next_cursor: null });
+        return ok(supplierListBody([supplierBody(), archived], sent.query));
       }
       return sent.path === `${STOCK}/documents` ? ok({ documents: [documentBody({ lines: undefined })], next_cursor: null }) : NOT_FOUND;
     });
     renderScreen(<DocumentsScreen />, { fetch: server.fetch, ...MANAGER });
     const asked = () => server.sent.filter((sent) => sent.path === `${STOCK}/documents`).map((sent) => sent.query);
-    const choice = (await screen.findByLabelText("Ta'minotchi")) as HTMLSelectElement;
-    expect([...choice.options].map((option) => option.textContent)).toEqual(["Barcha ta'minotchilar", "Baraka ulgurji", "Eski ulgurji"]);
-    expect(within(screen.getByRole("group", { name: "Arxivda" })).getByRole("option", { name: "Eski ulgurji" })).toBeTruthy();
-    expect(server.sent.filter((sent) => sent.path === SUPPLIERS).map((sent) => sent.query)).toEqual([
-      { status: "active", limit: "100" },
-      { status: "archived", limit: "100" },
-    ]);
+    const choice = (await screen.findByRole("combobox", { name: "Ta'minotchi" })) as HTMLInputElement;
+    await screen.findByRole("list", { name: "Ombor hujjatlari" });
+    // The suppliers are asked for when the choice is opened, not with the screen.
+    expect(server.sent.filter((sent) => sent.path === SUPPLIERS)).toEqual([]);
     expect(asked()).toEqual([{}]);
-    fireEvent.change(choice, { target: { value: SUPPLIER_ID } });
+    fireEvent.click(choice);
+    await screen.findByRole("option", { name: "Baraka ulgurji" });
+    // The working one, then the archived one, said to be so: its documents are still in the books.
+    const offered = within(screen.getByRole("listbox", { name: "Ta'minotchi" })).getAllByRole("option");
+    expect(offered.map((option) => option.textContent)).toEqual(["Barcha ta'minotchilar", "Baraka ulgurji", "Eski ulgurjiArxivda"]);
+    expect(server.sent.filter((sent) => sent.path === SUPPLIERS).map((sent) => sent.query)).toEqual([
+      { status: "active", limit: "20" },
+      { status: "archived", limit: "20" },
+    ]);
+    fireEvent.click(screen.getByRole("option", { name: "Baraka ulgurji" }));
     await waitFor(() => expect(asked().at(-1)).toEqual({ supplier_id: SUPPLIER_ID }));
+    expect(choice.value).toBe("Baraka ulgurji");
     fireEvent.change(screen.getByLabelText("Hujjat turi"), { target: { value: "receipt" } });
     fireEvent.change(screen.getByLabelText("Holati"), { target: { value: "posted" } });
     await waitFor(() => expect(asked().at(-1)).toEqual({ kind: "receipt", status: "posted", supplier_id: SUPPLIER_ID }));
-    fireEvent.change(choice, { target: { value: ARCHIVED_SUPPLIER } });
+    await chooseSupplier(/Eski ulgurji/);
     await waitFor(() => expect(asked().at(-1)).toEqual({ kind: "receipt", status: "posted", supplier_id: ARCHIVED_SUPPLIER }));
-    fireEvent.change(choice, { target: { value: "" } });
+    fireEvent.click(choice);
+    fireEvent.click(await screen.findByRole("option", { name: "Barcha ta'minotchilar" }));
     await waitFor(() => expect(asked().at(-1)).toEqual({ kind: "receipt", status: "posted" }));
+    expect(choice.value).toBe("");
+  });
+
+  it("narrows to a supplier who is not among the first hundred, found by a part of the name", async () => {
+    // The list this filter was filled from before ended at a hundred suppliers: the 130th could not be chosen.
+    const suppliers = manySuppliers(130);
+    const server = fakeServer((sent) => {
+      if (sent.path === SUPPLIERS) {
+        return ok(supplierListBody(suppliers, sent.query));
+      }
+      return sent.path === `${STOCK}/documents` ? ok({ documents: [documentBody({ lines: undefined })], next_cursor: null }) : NOT_FOUND;
+    });
+    renderScreen(<DocumentsScreen />, { fetch: server.fetch, ...MANAGER });
+    const choice = await screen.findByRole("combobox", { name: "Ta'minotchi" });
+    fireEvent.change(choice, { target: { value: "130" } });
+    fireEvent.click(await screen.findByRole("option", { name: "Ta'minotchi 130" }));
+    await waitFor(() =>
+      expect(server.sent.filter((sent) => sent.path === `${STOCK}/documents`).at(-1)?.query).toEqual({ supplier_id: suppliers[129]?.id }),
+    );
+    expect(server.sent.some((sent) => sent.path === SUPPLIERS && sent.query["q"] === "130")).toBe(true);
+    // No request asked for more than a page: nothing is read whole.
+    expect(server.sent.filter((sent) => sent.path === SUPPLIERS).every((sent) => sent.query["limit"] === "20")).toBe(true);
+  });
+
+  it("draws the supplier filter only for a member who holds suppliers.view, and asks nothing of the suppliers for anyone else", async () => {
+    const server = backend();
+    renderScreen(<DocumentsScreen />, { fetch: server.fetch, role: "seller", permissions: ["stock.view", "stock.receive", "stock.adjust", "suppliers.pay", "suppliers.manage"] });
+    await screen.findByRole("list", { name: "Ombor hujjatlari" });
+    expect(screen.queryByRole("combobox", { name: "Ta'minotchi" })).toBeNull();
+    expect(screen.queryByLabelText("Ta'minotchi")).toBeNull();
+    // The other two filters are there all the same.
+    expect(screen.getByLabelText("Hujjat turi")).toBeTruthy();
+    expect(server.sent.filter((sent) => sent.path === SUPPLIERS)).toEqual([]);
+    cleanup();
+    renderScreen(<DocumentsScreen />, { fetch: server.fetch, role: "seller", permissions: ["stock.view", "stock.receive", "suppliers.view"] });
+    await screen.findByRole("list", { name: "Ombor hujjatlari" });
+    expect(screen.getByRole("combobox", { name: "Ta'minotchi" })).toBeTruthy();
   });
 
   it("says that nothing matched, shows the server's refusal, and reads the next page with its cursor", async () => {
@@ -525,5 +578,77 @@ describe("for a member who writes documents and may not see the stock", () => {
     renderScreen(<ReceiptScreen host={{}} />, { fetch: server.fetch, ...RECEIVER });
     expect(await screen.findByText("Bosh sahifaga qaytish")).toBeTruthy();
     expect(server.sent).toEqual([]);
+  });
+});
+
+describe("the supplier of a document", () => {
+  const suppliers = manySuppliers(130);
+  const withMany = (write: (sent: Sent) => Reply, document: () => unknown = () => documentBody()) =>
+    fakeServer((sent) => {
+      if (sent.method !== "GET") {
+        return write(sent);
+      }
+      switch (sent.path) {
+        case `${STOCK}/settings`:
+          return ok(stockSettingsBody());
+        case SUPPLIERS:
+          return ok(supplierListBody(suppliers, sent.query));
+        case `${STOCK}/lookup`:
+          return ok(costedItemBody());
+        case `${STOCK}/documents/${DOCUMENT_ID}`:
+          return ok(document());
+        default:
+          return NOT_FOUND;
+      }
+    });
+
+  it("is any of the shop's suppliers: one past the first hundred is found by name and sent", async () => {
+    // The form's list ended at a hundred suppliers before; the 117th could not be received from.
+    const server = withMany(() => ok(documentBody({ supplier: { id: suppliers[116]?.id, name: "Ta'minotchi 117" }, paid: 0 }), 201));
+    renderScreen(<ReceiptScreen host={{}} />, { fetch: server.fetch, ...MANAGER });
+    await screen.findByRole("heading", { name: "Kirim" });
+    find(EAN);
+    fireEvent.change(await screen.findByLabelText("Bir birlik narxi"), { target: { value: "12000" } });
+    const choice = screen.getByRole("combobox", { name: "Ta'minotchi" }) as HTMLInputElement;
+    // A receipt may have no supplier, and the empty field says what that means.
+    expect(choice.getAttribute("placeholder")).toBe("Ta'minotchisiz (naqdga olindi)");
+    fireEvent.change(choice, { target: { value: "117" } });
+    fireEvent.click(await screen.findByRole("option", { name: "Ta'minotchi 117" }));
+    fireEvent.click(screen.getByLabelText("Qarzga olindi"));
+    fireEvent.click(screen.getByRole("button", { name: "O'tkazish" }));
+    await waitFor(() => expect(server.writes()).toHaveLength(1));
+    expect(server.writes()[0]?.body).toMatchObject({ supplier_id: suppliers[116]?.id, paid: 0 });
+    expect(server.sent.filter((sent) => sent.path === SUPPLIERS).every((sent) => sent.query["status"] === "active" && sent.query["limit"] === "20")).toBe(true);
+  });
+
+  it("must be chosen for a return to a supplier: no row for 'none', and the field is marked when it is missing", async () => {
+    const server = withMany(() => NOT_FOUND);
+    renderScreen(<NewDocumentScreen kind="supplier_return" host={{}} />, { fetch: server.fetch, ...MANAGER });
+    const choice = (await screen.findByRole("combobox", { name: "Ta'minotchi" })) as HTMLInputElement;
+    expect(choice.getAttribute("placeholder")).toBe("Ta'minotchini tanlang");
+    fireEvent.click(choice);
+    await screen.findByRole("option", { name: "Ta'minotchi 01" });
+    expect(within(screen.getByRole("listbox", { name: "Ta'minotchi" })).getAllByRole("option")[0]?.textContent).not.toMatch(/Ta'minotchisiz|tanlang/);
+    fireEvent.keyDown(choice, { key: "Escape" });
+    find(EAN);
+    fireEvent.change(await screen.findByLabelText("Bir birlik narxi"), { target: { value: "12000" } });
+    fireEvent.click(screen.getByRole("button", { name: "O'tkazish" }));
+    expect(await screen.findByText("Ta'minotchini tanlang.")).toBeTruthy();
+    expect(choice.getAttribute("aria-invalid")).toBe("true");
+    expect(choice.getAttribute("aria-describedby")).toContain("stock-doc-supplier-error");
+    expect(server.writes()).toEqual([]);
+  });
+
+  it("is kept and shown by name on a draft for a member who may not read the suppliers, and nothing of them is asked", async () => {
+    const draft = () => documentBody({ status: "draft", posted_at: null, supplier: { id: SUPPLIER_ID, name: "Baraka ulgurji" }, paid: 0 });
+    const server = withMany((sent) => (sent.method === "PUT" ? ok(draft()) : NOT_FOUND), draft);
+    renderScreen(<DocumentScreen documentId={DOCUMENT_ID} counter host={{}} />, { fetch: server.fetch, role: "seller", permissions: ["stock.view", "stock.receive"] });
+    await screen.findByLabelText("Miqdor (kg)");
+    expect(screen.queryByRole("combobox", { name: "Ta'minotchi" })).toBeNull();
+    expect(screen.getByText("Baraka ulgurji").closest("p")?.textContent).toBe("Ta'minotchi Baraka ulgurji");
+    fireEvent.click(screen.getByRole("button", { name: "Qoralama sifatida saqlash" }));
+    await waitFor(() => expect(server.writes()).toHaveLength(1));
+    expect(server.writes()[0]?.body).toMatchObject({ supplier_id: SUPPLIER_ID });
+    expect(server.sent.filter((sent) => sent.path === SUPPLIERS)).toEqual([]);
   });
 });

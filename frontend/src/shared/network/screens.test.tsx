@@ -162,10 +162,14 @@ describe("the overview of the web panel", () => {
     renderScreen(<HomeScreen />, { fetch: server.fetch, role: "owner", features: ON });
     fireEvent.click(await screen.findByRole("button", { name: "Qabul qilish" }));
     const form = within(screen.getByRole("group", { name: "Qabul qilish" }));
+    const choice = form.getByRole("combobox", { name: "Bizning daftardagi ta'minotchi" }) as HTMLInputElement;
+    // Nothing chosen yet, and the field says what that means: a new row is made.
+    expect(choice.value).toBe("");
+    expect(choice.getAttribute("placeholder")).toBe("Yangi yozuv yaratilsin");
+    fireEvent.click(choice);
     await form.findByRole("option", { name: "Baraka ulgurji" });
-    expect((form.getByLabelText("Bizning daftardagi ta'minotchi") as HTMLSelectElement).value).toBe("");
     expect(form.getByRole("option", { name: "Yangi yozuv yaratilsin" })).toBeTruthy();
-    fireEvent.change(form.getByLabelText("Bizning daftardagi ta'minotchi"), { target: { value: COUNTERPART_ID } });
+    fireEvent.click(form.getByRole("option", { name: "Baraka ulgurji" }));
     fireEvent.click(form.getByRole("button", { name: "Qabul qilish" }));
     await waitFor(() => expect(server.writes()).toHaveLength(1));
     expect(server.writes()[0]).toMatchObject({ method: "POST", path: `${NETWORK}/links/${NET_LINK_ID}/accept`, body: { counterpart_id: COUNTERPART_ID } });

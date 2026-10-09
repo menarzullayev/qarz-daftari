@@ -170,6 +170,7 @@ export const uzStock = {
   "stock.find.label": "Tovar: shtrix-kodni skanerlang yoki nom yozing",
   "stock.find.list": "Topilgan tovarlar",
   "stock.find.none": "Bunday tovar topilmadi.",
+  "stock.pick.hint": "Nomini yozib qidiring yoki ro'yxatdan tanlang.",
 
   "stock.new.open": "Yangi tovar qo'shish",
   "stock.new.withCode": "Shu kod bilan yangi tovar qo'shish",

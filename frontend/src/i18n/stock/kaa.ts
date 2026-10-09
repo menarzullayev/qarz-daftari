@@ -172,6 +172,7 @@ export const kaaStock: PartialCatalog<typeof uzStock> = {
   "stock.find.label": "Tovar: shtrix-kodtı skanerleń yamasa atın jazıń",
   "stock.find.list": "Tabılǵan tovarlar",
   "stock.find.none": "Bunday tovar tabılmadı.",
+  "stock.pick.hint": "Izlew ushın atın jazıń yamasa dizimnen tańlań.",
 
   "stock.new.open": "Jańa tovar qosıw",
   "stock.new.withCode": "Usı kod penen jańa tovar qosıw",

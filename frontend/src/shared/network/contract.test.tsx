@@ -2,9 +2,9 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fakeServer, ok, refusal, type Reply, type Sent, SHOP_BASE } from "../../testing/fakeServer";
+import { customerBody, fakeServer, ok, refusal, type Reply, type Sent, SHOP_BASE } from "../../testing/fakeServer";
 import { renderScreen } from "../../testing/renderScreen";
-import { stockSettingsBody, supplierBody } from "../stock/testing";
+import { manySuppliers, stockSettingsBody, supplierListBody } from "../stock/testing";
 import { HomeScreen, LinkScreen } from "./LinkScreens";
 import { NoteScreen } from "./NoteScreens";
 import { ComposeScreen } from "./OrderComposer";
@@ -333,28 +333,93 @@ describe("sending a new order: two writes of one action", () => {
 });
 
 describe("choosing the row of the books a partner is", () => {
-  const requested = overviewBody({ links: [linkBody({ state: "requested", invited: true, counterpart: null })], invites: [] });
-  const suppliers = (count: number) =>
-    Array.from({ length: count }, (_, index) => supplierBody({ id: `77777777-7777-4777-8777-${String(index).padStart(12, "0")}`, name: `Ta'minotchi ${index + 1}` }));
+  const requested = (role: "buyer" | "supplier") =>
+    overviewBody({ links: [linkBody({ role, state: "requested", invited: true, counterpart: null })], invites: [] });
+  const ACCEPT = `${NETWORK}/links/${NET_LINK_ID}/accept`;
 
-  it("says that only the first fifty are shown, and that the rest are found by name", async () => {
-    const server = backend({ [NETWORK]: requested, [`${SHOP_BASE}/suppliers`]: { suppliers: suppliers(50), totals: [], next_cursor: "more" } });
+  it("reaches every supplier of the shop, not the first fifty: by a part of the name, or a page at a time", async () => {
+    // The choice was a list of the first fifty with a search beside it; the sixty-third is past that page.
+    const suppliers = manySuppliers(70);
+    const server = fakeServer((sent) => {
+      if (sent.method !== "GET") {
+        return ok({ link: linkBody() });
+      }
+      if (sent.path === `${SHOP_BASE}/suppliers`) {
+        return ok(supplierListBody(suppliers, sent.query));
+      }
+      return sent.path === NETWORK ? ok(requested("buyer")) : sent.path === `${SHOP_BASE}/stock/settings` ? ok(stockSettingsBody()) : NOT_FOUND;
+    });
     renderScreen(<HomeScreen />, { fetch: server.fetch, role: "owner", features: ON });
     fireEvent.click(await screen.findByRole("button", { name: "Qabul qilish" }));
-    expect(await screen.findByText("Faqat birinchi 50 tasi ko'rsatilgan. Qolganlarini nomi bo'yicha qidiring.")).toBeTruthy();
-    // The search asks the server, which looks among all of them.
-    fireEvent.change(screen.getByRole("searchbox", { name: "Nom bo'yicha qidirish" }), { target: { value: "Baraka" } });
-    fireEvent.click(screen.getByRole("button", { name: "Qidirish" }));
-    await waitFor(() => expect(server.sent.some((sent) => sent.path === `${SHOP_BASE}/suppliers` && sent.query["q"] === "Baraka")).toBe(true));
-    expect(server.sent.filter((sent) => sent.path === `${SHOP_BASE}/suppliers`).every((sent) => sent.query["limit"] === "50")).toBe(true);
+    const form = within(screen.getByRole("group", { name: "Qabul qilish" }));
+    const choice = form.getByRole("combobox", { name: "Bizning daftardagi ta'minotchi" }) as HTMLInputElement;
+    const asked = () => server.sent.filter((sent) => sent.path === `${SHOP_BASE}/suppliers`).map((sent) => sent.query);
+    // Nothing is read before the choice is opened; then one page, never the whole list.
+    expect(asked()).toEqual([]);
+    fireEvent.click(choice);
+    await form.findByRole("option", { name: "Ta'minotchi 01" });
+    const offered = () => form.getAllByRole("option").map((option) => option.textContent);
+    expect(offered()).toHaveLength(22);
+    expect(offered()[0]).toBe("Yangi yozuv yaratilsin");
+    expect(offered()).not.toContain("Ta'minotchi 63");
+    fireEvent.click(form.getByRole("option", { name: "Yana ko'rsatish" }));
+    await form.findByRole("option", { name: "Ta'minotchi 21" });
+    expect(asked()).toEqual([
+      { status: "active", limit: "20" },
+      { status: "active", limit: "20", cursor: "c20" },
+    ]);
+    // By name the server looks among all of them.
+    fireEvent.change(choice, { target: { value: "63" } });
+    fireEvent.click(await form.findByRole("option", { name: "Ta'minotchi 63" }));
+    expect(asked().at(-1)).toEqual({ q: "63", status: "active", limit: "20" });
+    expect(choice.value).toBe("Ta'minotchi 63");
+    fireEvent.click(form.getByRole("button", { name: "Qabul qilish" }));
+    await waitFor(() => expect(server.writes()).toHaveLength(1));
+    expect(server.writes()[0]).toMatchObject({ path: ACCEPT, body: { counterpart_id: suppliers[62]?.id } });
+    // The old notice of a list cut short is gone with the cut.
+    expect(screen.queryByText(/Faqat birinchi/)).toBeNull();
   });
 
-  it("says nothing of the kind when all of them are shown", async () => {
-    const server = backend({ [NETWORK]: requested, [`${SHOP_BASE}/suppliers`]: { suppliers: suppliers(3), totals: [], next_cursor: null } });
+  it("gives the supplier's side its customers the same way, with the server's own cursor", async () => {
+    const customers = Array.from({ length: 45 }, (_, index) =>
+      customerBody({ id: `11111111-1111-4111-8111-${String(index + 1).padStart(12, "0")}`, display_name: `Mijoz ${String(index + 1).padStart(2, "0")}`, phone: null }),
+    );
+    const server = fakeServer((sent) => {
+      if (sent.method !== "GET") {
+        return ok({ link: linkBody({ role: "supplier" }) });
+      }
+      if (sent.path === `${SHOP_BASE}/customers`) {
+        const part = (sent.query["q"] ?? "").toLowerCase();
+        const matching = customers.filter((customer) => customer.display_name.toLowerCase().includes(part));
+        const start = sent.query["cursor"] === undefined ? 0 : Number(sent.query["cursor"].slice(1));
+        const limit = Number(sent.query["limit"]);
+        return ok({ items: matching.slice(start, start + limit), next_cursor: start + limit < matching.length ? `k${start + limit}` : null });
+      }
+      return sent.path === NETWORK ? ok(requested("supplier")) : sent.path === `${SHOP_BASE}/stock/settings` ? ok(stockSettingsBody()) : NOT_FOUND;
+    });
     renderScreen(<HomeScreen />, { fetch: server.fetch, role: "owner", features: ON });
     fireEvent.click(await screen.findByRole("button", { name: "Qabul qilish" }));
-    await screen.findByRole("option", { name: "Ta'minotchi 3" });
-    expect(screen.queryByText(/Faqat birinchi/)).toBeNull();
+    const form = within(screen.getByRole("group", { name: "Qabul qilish" }));
+    const choice = form.getByRole("combobox", { name: "Bizning daftardagi mijoz" });
+    // With the keyboard: open, up to the last row (the next page), Enter; then two rows down and Enter.
+    choice.focus();
+    fireEvent.keyDown(choice, { key: "ArrowDown" });
+    await form.findByRole("option", { name: "Mijoz 01" });
+    fireEvent.keyDown(choice, { key: "ArrowUp" });
+    fireEvent.keyDown(choice, { key: "Enter" });
+    await form.findByRole("option", { name: "Mijoz 21" });
+    fireEvent.keyDown(choice, { key: "ArrowDown" });
+    fireEvent.keyDown(choice, { key: "Enter" });
+    expect((choice as HTMLInputElement).value).toBe("Mijoz 22");
+    expect(server.sent.filter((sent) => sent.path === `${SHOP_BASE}/customers`).map((sent) => sent.query)).toEqual([
+      { status: "active", limit: "20" },
+      { status: "active", limit: "20", cursor: "k20" },
+    ]);
+    // No request of the suppliers was made for a link in which this shop is the supplier.
+    expect(server.sent.filter((sent) => sent.path === `${SHOP_BASE}/suppliers`)).toEqual([]);
+    fireEvent.click(form.getByRole("button", { name: "Qabul qilish" }));
+    await waitFor(() => expect(server.writes()).toHaveLength(1));
+    expect(server.writes()[0]).toMatchObject({ path: ACCEPT, body: { counterpart_id: customers[21]?.id } });
   });
 });
 

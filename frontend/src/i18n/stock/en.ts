@@ -172,6 +172,7 @@ export const enStock: PartialCatalog<typeof uzStock, EnPlural> = {
   "stock.find.label": "Item: scan a barcode or type a name",
   "stock.find.list": "Items found",
   "stock.find.none": "No such item found.",
+  "stock.pick.hint": "Type a name to search, or choose from the list.",
 
   "stock.new.open": "Add new item",
   "stock.new.withCode": "Add a new item with this code",

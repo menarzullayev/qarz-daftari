@@ -29,10 +29,12 @@ import {
   SUPPLIER_KINDS,
 } from "./documentDraft";
 import { ItemFinder } from "./ItemFinder";
+import type { PickOption } from "./OptionPicker";
 import { DOCUMENT_KIND_LABELS, labelOf, MethodChoice, useStock } from "./parts";
 import { MAX_DOCUMENT_LINES, MAX_NOTE, tidy } from "./quantity";
 import { labelIn } from "./stockApi";
 import type { NewDocument, PaymentMethod, StockDocument, StockDocumentKind, StockItem, StockSettings } from "./stockApi";
+import { SupplierPicker } from "./SupplierPicker";
 
 const OLDEST_DAYS = 365;
 const QTY = /^-?\d{1,12}(?:\.\d{1,3})?$/;
@@ -280,6 +282,9 @@ function CustomerChoice({
   );
 }
 
+/** The id of the supplier choice's error text, which the choice names as its description. */
+const SUPPLIER_ERROR = "stock-doc-supplier-error";
+
 const NO_PROBLEMS: DraftProblems = {
   lines: {},
   empty: false,
@@ -331,6 +336,8 @@ export function DocumentEditor({
     () => (initial ? draftOf(initial) : null) ?? emptyDraft(kind, toIsoDate(today)),
   );
   const [customer, setCustomer] = useState<{ id: string; name: string } | null>(initial?.customer ?? null);
+  // The supplier's name beside the draft's id of it: the choice shows a name, the document sends an id.
+  const [supplier, setSupplier] = useState<PickOption | null>(initial?.supplier ? { id: initial.supplier.id, name: initial.supplier.name } : null);
   const [problems, setProblems] = useState<DraftProblems>(NO_PROBLEMS);
   const [adding, setAdding] = useState<{ barcode: string } | null>(null);
   // Asked only in a shop that keeps a cash book; elsewhere nothing is asked and nothing is sent.
@@ -341,14 +348,8 @@ export function DocumentEditor({
   const withSupplier = SUPPLIER_KINDS.has(kind);
   const currency = currencyOfDraft(draft);
   const mayPay = can("suppliers.pay");
-  // Only those who may read the suppliers are given the list; a receipt needs none.
-  const suppliers = useLoad(
-    (signal) =>
-      withSupplier && can("suppliers.view")
-        ? stock.suppliers({ status: "active", limit: 100 }, signal).then((page) => page.suppliers)
-        : Promise.resolve([]),
-    [stock, withSupplier],
-  );
+  // Only those who may read the suppliers are given the choice; a receipt needs none.
+  const choosesSupplier = withSupplier && can("suppliers.view");
   const save = useSubmit(async (job: Job, key): Promise<StockDocument> => {
     if (initial === undefined) {
       return stock.createDocument(job.document, job.post, key);
@@ -421,11 +422,6 @@ export function DocumentEditor({
   };
 
   const total = draftTotal(draft);
-  const knownSuppliers = suppliers.state.status === "ready" ? suppliers.state.data : [];
-  const supplierOptions =
-    initial?.supplier && !knownSuppliers.some((known) => known.id === initial.supplier?.id)
-      ? [{ id: initial.supplier.id, name: initial.supplier.name }, ...knownSuppliers]
-      : knownSuppliers;
   const minDate = toIsoDate(addDays(today, -OLDEST_DAYS));
   const full = draft.lines.length >= MAX_DOCUMENT_LINES;
   const mayAddNew = kind === "receipt";
@@ -457,29 +453,33 @@ export function DocumentEditor({
         <FieldError id="stock-doc-date-error" message={problems.date ? t("stock.doc.problem.date") : null} />
       </div>
 
-      {withSupplier && supplierOptions.length > 0 ? (
-        <div className="field">
-          <label htmlFor="stock-doc-supplier">{t("stock.doc.supplier")}</label>
-          <select
+      {choosesSupplier ? (
+        <>
+          {/* Out of all the suppliers the shop works with, by a part of the name: not the first page of them. */}
+          <SupplierPicker
             id="stock-doc-supplier"
-            className="input"
-            value={draft.supplierId ?? ""}
+            value={supplier}
             disabled={pending}
-            aria-invalid={problems.supplier}
-            aria-describedby="stock-doc-supplier-error"
-            onChange={(event) => change({ supplierId: event.target.value === "" ? null : event.target.value })}
-          >
-            <option value="">{t(kind === "receipt" ? "stock.doc.supplier.none" : "stock.doc.supplier.choose")}</option>
-            {supplierOptions.map((known) => (
-              <option key={known.id} value={known.id}>
-                {known.name}
-              </option>
-            ))}
-          </select>
-          <FieldError id="stock-doc-supplier-error" message={problems.supplier ? t("stock.doc.problem.supplier") : null} />
-        </div>
+            invalid={problems.supplier}
+            describedBy={SUPPLIER_ERROR}
+            // A receipt may have none (goods bought for cash); a return is always to one of them.
+            noneLabel={kind === "receipt" ? t("stock.doc.supplier.none") : undefined}
+            placeholder={kind === "receipt" ? undefined : t("stock.doc.supplier.choose")}
+            onChange={(chosen) => {
+              setSupplier(chosen);
+              change({ supplierId: chosen?.id ?? null });
+            }}
+          />
+          <FieldError id={SUPPLIER_ERROR} message={problems.supplier ? t("stock.doc.problem.supplier") : null} />
+        </>
       ) : null}
-      {kind === "supplier_return" && supplierOptions.length === 0 && suppliers.state.status === "ready" ? (
+      {/* The supplier a draft already names is shown to a member who may not read the list, and stays. */}
+      {withSupplier && !choosesSupplier && supplier !== null ? (
+        <p className="balance">
+          <span>{t("stock.doc.supplier")}</span> <strong>{supplier.name}</strong>
+        </p>
+      ) : null}
+      {kind === "supplier_return" && !choosesSupplier && supplier === null ? (
         <p className="notice notice--warning">{t("stock.doc.supplier.missing")}</p>
       ) : null}
 

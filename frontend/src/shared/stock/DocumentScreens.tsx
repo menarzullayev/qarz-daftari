@@ -13,6 +13,7 @@ import { Badge, Empty, Failure, formatInstant, Loading, LoadMore } from "../work
 import type { ScanHost } from "./barcode";
 import { draftOf } from "./documentDraft";
 import { DocumentEditor, DocumentRefusal } from "./DocumentEditor";
+import type { PickOption } from "./OptionPicker";
 import {
   CancelForm,
   DOCUMENT_KIND_LABELS,
@@ -35,8 +36,8 @@ import {
   type StockDocument,
   type StockDocumentKind,
   type StockSettings,
-  type Supplier,
 } from "./stockApi";
+import { SupplierPicker } from "./SupplierPicker";
 
 /** The kind a quick receipt writes. */
 const RECEIPT: StockDocumentKind = "receipt";
@@ -395,36 +396,6 @@ function QuickReceipt({ host }: { host?: ScanHost | undefined }) {
   );
 }
 
-/** How many suppliers of each state the filter offers: one page of the list, as the document form asks. */
-const SUPPLIER_CHOICES = 100;
-
-/**
- * The suppliers a list of documents can be narrowed to: those the shop works with, then the archived
- * ones, whose documents are still in the books. Only for a member who may read the suppliers; for
- * anyone else nothing is asked and no filter is drawn.
- */
-function useSupplierChoices(): { active: Supplier[]; archived: Supplier[] } | null {
-  const can = useMay();
-  const stock = useStock();
-  const allowed = can("suppliers.view");
-  const { state } = useLoad(
-    (signal) =>
-      allowed
-        ? Promise.all(
-            (["active", "archived"] as const).map((status) =>
-              stock.suppliers({ status, limit: SUPPLIER_CHOICES }, signal).then((page) => page.suppliers),
-            ),
-          )
-        : Promise.resolve(null),
-    [stock, allowed],
-  );
-  if (state.status !== "ready" || state.data === null) {
-    return null;
-  }
-  const [active = [], archived = []] = state.data;
-  return active.length + archived.length > 0 ? { active, archived } : null;
-}
-
 /** Every document of the stock, newest first, by kind, by state and by supplier. */
 export function DocumentsScreen() {
   const { t, language } = useI18n();
@@ -433,8 +404,11 @@ export function DocumentsScreen() {
   const { membershipId } = useWorkspace();
   const [kind, setKind] = useState("");
   const [status, setStatus] = useState("");
-  const [supplierId, setSupplierId] = useState("");
-  const suppliers = useSupplierChoices();
+  // The supplier the list is narrowed to: any of them, found by name, the archived ones too, whose
+  // documents are still in the books. Only a member who may read the suppliers is given the choice;
+  // for anyone else no filter is drawn and nothing of the suppliers is asked.
+  const [supplier, setSupplier] = useState<PickOption | null>(null);
+  const supplierId = supplier?.id ?? "";
   const { state, reload, loadMore } = usePagedList(
     (cursor, signal) => stock.documents({ kind, status, supplierId, cursor }, signal),
     [stock, kind, status, supplierId],
@@ -518,32 +492,8 @@ export function DocumentsScreen() {
             ))}
           </select>
         </div>
-        {suppliers ? (
-          <div className="field">
-            <label htmlFor="stock-docs-supplier">{t("stock.doc.supplier")}</label>
-            <select
-              id="stock-docs-supplier"
-              className="input"
-              value={supplierId}
-              onChange={(event) => setSupplierId(event.target.value)}
-            >
-              <option value="">{t("stock.docs.supplier.all")}</option>
-              {suppliers.active.map((known) => (
-                <option key={known.id} value={known.id}>
-                  {known.name}
-                </option>
-              ))}
-              {suppliers.archived.length > 0 ? (
-                <optgroup label={t("supplier.status.archived")}>
-                  {suppliers.archived.map((known) => (
-                    <option key={known.id} value={known.id}>
-                      {known.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-            </select>
-          </div>
+        {can("suppliers.view") ? (
+          <SupplierPicker id="stock-docs-supplier" value={supplier} archived noneLabel={t("stock.docs.supplier.all")} onChange={setSupplier} />
         ) : null}
       </section>
       {body}
