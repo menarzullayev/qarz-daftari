@@ -1,7 +1,7 @@
 """The worker may count where the stock's kept figures differ from their ledgers (operations watch).
 
 Revision ID: 0046
-Revises: 0044
+Revises: 0045
 """
 
 from pathlib import Path
@@ -9,7 +9,7 @@ from pathlib import Path
 from alembic import op
 
 revision = "0046"
-down_revision = "0044"
+down_revision = "0045"
 branch_labels = None
 depends_on = None
 

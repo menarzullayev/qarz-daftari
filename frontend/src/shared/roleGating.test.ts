@@ -35,13 +35,20 @@ const ROLE_GATES: readonly RegExp[] = [
   /\bswitch\s*\(\s*(\w+\.)*role\s*\)/i,
 ];
 
+/**
+ * Not a member's role: the side a shop takes in a link of the network between shops ("buyer" or
+ * "supplier"), which the network's screens also call `role`. A comparison with one of those two words
+ * says which shop this is in a trade, and what a member may do there is still asked of `useMay()`.
+ */
+const TRADE_SIDE = /(\b\w+\.)*\brole\s*[!=]==?\s*["'`](buyer|supplier)["'`]/g;
+
 /** The lines of a source text that decide by role, trimmed; comments are not code and are skipped. */
 export function roleGates(text: string): string[] {
   return text
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line !== "" && !/^(\/\/|\/\*|\*)/.test(line))
-    .filter((line) => ROLE_GATES.some((pattern) => pattern.test(line)));
+    .filter((line) => ROLE_GATES.some((pattern) => pattern.test(line.replace(TRADE_SIDE, ""))));
 }
 
 type Allowed = { file: string; code: string; why: string };
@@ -165,6 +172,9 @@ describe("the scanner for decisions by role", () => {
     "if (MANAGERS.includes(session.role)) {",
     "switch (role) {",
     "switch (viewer.role) {",
+    // The side of a trade beside a member's role: the member's role is still caught.
+    'const pays = link.role === "buyer" && role === "owner";',
+    'const side = role === buyer;',
   ])("catches %s", (line) => {
     expect(roleGates(line)).toEqual([line]);
   });
@@ -178,6 +188,8 @@ describe("the scanner for decisions by role", () => {
     '<div className="notice" role="alert">',
     '// by role === "owner" in the old days',
     '* role === "owner" is how the server names the owner',
+    'const weOwe = (amount > 0) === (role === "buyer");',
+    '<p>{t(link.role !== "supplier" ? "net.a" : "net.b")}</p>',
   ])("lets %s pass", (line) => {
     expect(roleGates(line)).toEqual([]);
   });
