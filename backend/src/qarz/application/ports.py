@@ -519,6 +519,9 @@ class SubscriptionReceiptRecord:
     created_at: datetime
     decided_at: datetime | None
     file_id: UUID | None
+    # The card the owner chose to pay to: its label and the last four digits of its number, never the
+    # number. None for a receipt sent before cards could be chosen, and when the owner did not say.
+    paid_to_card: str | None = None
 
 
 @dataclass(frozen=True)
@@ -543,6 +546,7 @@ class AdminReceipt:
     # administrator of the platform (DEC-064). Then `decided_by` is empty.
     decided_by_tg: int | None = None
     file: StoredFileRecord | None = None  # filled only when one receipt is read
+    paid_to_card: str | None = None  # as in SubscriptionReceiptRecord
 
 
 @dataclass(frozen=True)
@@ -977,7 +981,14 @@ class TenantSession(Protocol):
         ...
 
     async def add_subscription_receipt(
-        self, *, receipt_id: UUID, stated_amount: int, stated_months: int, file_id: UUID, now: datetime
+        self,
+        *,
+        receipt_id: UUID,
+        stated_amount: int,
+        stated_months: int,
+        file_id: UUID,
+        paid_to_card: str | None,
+        now: datetime,
     ) -> SubscriptionReceiptRecord: ...
 
     async def subscription_receipts(self, limit: int) -> list[SubscriptionReceiptRecord]:

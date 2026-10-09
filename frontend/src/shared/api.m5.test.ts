@@ -11,7 +11,7 @@ import {
   SHOP_ID,
   subscriptionBody,
 } from "../testing/fakeServer";
-import { ApiError, BAD_RESPONSE, createApi } from "./api";
+import { ApiError, BAD_RESPONSE, cardTag, createApi, groupedCard } from "./api";
 
 const KEY = "0123456789abcdef";
 const CUSTOMER_ID = "11111111-1111-4111-8111-111111111111";
@@ -199,19 +199,46 @@ describe("subscription", () => {
       endsOn: "2026-10-26",
       daysLeft: 20,
       priceUzs: 100000,
-      cardNumber: "8600 1234 5678 9012",
+      cardNumber: "8600123456789012",
+      cards: [{ number: "8600123456789012", label: "Humo · Anorbank" }],
     });
     expect(server.sent[0]).toMatchObject({ method: "GET", path: `${SHOP_BASE}/subscription` });
   });
 
   it("reads a limited shop: no period, no days, and no card yet", async () => {
-    const server = fakeServer(() => ok(subscriptionBody({ state: "limited", ends_on: null, days_left: null, card_number: null })));
+    const server = fakeServer(() => ok(subscriptionBody({ state: "limited", ends_on: null, days_left: null, card_number: null, cards: [] })));
     expect(await shopOf(server.fetch).readSubscription()).toMatchObject({
       state: "limited",
       endsOn: null,
       daysLeft: null,
       cardNumber: null,
+      cards: [],
     });
+  });
+
+  it("reads the cards in the server's order: the first is the primary", async () => {
+    const cards = [
+      { number: "5614681234567890", label: "Uzcard · Kapitalbank" },
+      { number: "8600123456789012", label: "Humo · Anorbank" },
+    ];
+    const server = fakeServer(() => ok(subscriptionBody({ card_number: cards[0]?.number, cards })));
+    expect((await shopOf(server.fetch).readSubscription()).cards).toEqual(cards);
+  });
+
+  it("reads no cards from a server that names none, and refuses a card that is not a number and a label", async () => {
+    const old = fakeServer(() => ok({ ...subscriptionBody(), cards: undefined }));
+    expect((await shopOf(old.fetch).readSubscription()).cards).toEqual([]);
+    for (const cards of [[{ number: "8600123456789012" }], [{ number: 8600123456789012, label: "Humo" }], ["8600123456789012"], "8600123456789012"]) {
+      const server = fakeServer(() => ok(subscriptionBody({ cards })));
+      expect((await failure(shopOf(server.fetch).readSubscription())).code).toBe(BAD_RESPONSE);
+    }
+  });
+
+  it("writes a card number in groups of four and names a card by its label and last four digits", () => {
+    expect(groupedCard("8600123456789012")).toBe("8600 1234 5678 9012");
+    expect(groupedCard("")).toBe("");
+    expect(cardTag({ number: "8600123456789012", label: "Humo · Anorbank" })).toBe("Humo · Anorbank ··9012");
+    expect(cardTag({ number: "8600123456789012", label: "Humo" })).not.toContain("8600");
   });
 
   it("refuses a price that is not whole so'm", async () => {

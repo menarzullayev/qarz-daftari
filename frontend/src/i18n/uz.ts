@@ -479,6 +479,9 @@ export const uz = {
   "subscription.price.value": "oyiga {amount}",
   "subscription.card": "To'lov uchun karta",
   "subscription.card.none": "To'lov rekvizitlari hali kiritilmagan.",
+  "subscription.card.primary": "Asosiy karta",
+  "subscription.card.others": "Boshqa karta ({count})",
+  "subscription.card.choose": "Shu kartaga to'layman",
   "subscription.receipt": "To'lovdan keyin chekni Telegramdagi do'kon botiga /obuna buyrug'i orqali yuboring.",
   "subscription.limited.title": "Cheklangan rejim",
   "subscription.limited.body":

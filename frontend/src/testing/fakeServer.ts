@@ -114,7 +114,7 @@ export function remindersBody(overrides: Record<string, unknown> = {}) {
   return { on: false, hour: 10, template: 1, sms_on: false, hours: [8, 20], templates: REMINDER_TEMPLATES, ...overrides };
 }
 
-/** GET /shops/{id}/subscription: a trial with twenty days left, and a card to pay to. */
+/** GET /shops/{id}/subscription: a trial with twenty days left, and one card to pay to. */
 export function subscriptionBody(overrides: Record<string, unknown> = {}) {
   return {
     state: "trial",
@@ -123,7 +123,8 @@ export function subscriptionBody(overrides: Record<string, unknown> = {}) {
     ends_on: "2026-10-26",
     days_left: 20,
     price_uzs: 100000,
-    card_number: "8600 1234 5678 9012",
+    card_number: "8600123456789012",
+    cards: [{ number: "8600123456789012", label: "Humo · Anorbank" }],
     ...overrides,
   };
 }
@@ -490,6 +491,7 @@ export function ownReceiptBody(overrides: Record<string, unknown> = {}) {
     reject_reason: null,
     created_at: "2026-10-06T06:00:00+00:00",
     decided_at: null,
+    paid_to_card: null,
     ...overrides,
   };
 }

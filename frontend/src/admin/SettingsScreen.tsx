@@ -4,9 +4,24 @@ import { useI18n, type Translate } from "../i18n/I18nProvider";
 import type { ApiError } from "../shared/api";
 import { useLoad, useSubmit } from "../shared/hooks";
 import { errorText, Failure, FieldError, formatInstant, Loading } from "../shared/workspace/parts";
-import type { AdminApi, PlatformSettings, SettingValue } from "./adminApi";
+import type { AdminApi, PaymentCard, PlatformSettings, SettingValue } from "./adminApi";
 import "./messages";
-import { cleanReason, isCode, parseSetting, REASON_MAX, REASON_MIN, SETTING_RULES, type SettingRule, settingText, shortId } from "./rules";
+import {
+  CARD_LABEL_MAX,
+  cardProblems,
+  cardRows,
+  CARDS_MAX,
+  cardTag,
+  cleanReason,
+  isCode,
+  parseSetting,
+  REASON_MAX,
+  REASON_MIN,
+  SETTING_RULES,
+  type SettingRule,
+  settingText,
+  shortId,
+} from "./rules";
 import { known, NONE } from "./ShopsScreen";
 
 /** What a field must hold, in words: the setting's type and range. */
@@ -16,8 +31,8 @@ function ruleText(rule: SettingRule, t: Translate): string {
       return t("admin.settings.rule.switch");
     case "number":
       return t("admin.settings.rule.number", { low: rule.low, high: rule.high });
-    case "card":
-      return t("admin.settings.rule.card");
+    case "cards":
+      return t("admin.settings.rule.cards", { max: CARDS_MAX });
     case "chat":
       return t("admin.settings.rule.chat");
   }
@@ -28,7 +43,114 @@ function valueText(value: SettingValue, t: Translate): string {
   if (typeof value === "boolean") {
     return t(value ? "admin.settings.on" : "admin.settings.off");
   }
+  if (Array.isArray(value)) {
+    // By name and last four digits, in order: the whole numbers are in the editor above, not here.
+    return value.length === 0 ? t("admin.settings.empty") : value.map(cardTag).join(", ");
+  }
   return value === null ? t("admin.settings.empty") : String(value);
+}
+
+/**
+ * The cards owners may pay to, as a list the administrator edits: a name and a number for each, added,
+ * removed and moved up or down. The first is the primary card and is marked so. What is wrong with a row
+ * is said under it once the form was sent, as with every other field.
+ */
+function CardsEditor({
+  id,
+  rows,
+  checked,
+  onChange,
+}: {
+  id: string;
+  rows: PaymentCard[];
+  /** Whether to say what is wrong: after a save was tried, until the rows are touched. */
+  checked: boolean;
+  onChange: (rows: PaymentCard[]) => void;
+}) {
+  const { t } = useI18n();
+  const problems = cardProblems(rows);
+  const set = (place: number, change: Partial<PaymentCard>) => onChange(rows.map((row, at) => (at === place ? { ...row, ...change } : row)));
+  const move = (place: number, to: number) => {
+    const next = [...rows];
+    const [moved] = next.splice(place, 1);
+    if (moved !== undefined) {
+      next.splice(to, 0, moved);
+      onChange(next);
+    }
+  };
+  return (
+    <>
+      {rows.length === 0 ? <p className="state">{t("admin.cards.none")}</p> : null}
+      <ol className="rows">
+        {rows.map((row, place) => {
+          const problem = checked ? (problems[place] ?? null) : null;
+          const at = { place: place + 1 };
+          const rowId = `${id}-${place}`;
+          return (
+            // Rows have no identity but their place: a row is what was typed, and may be empty or twice.
+            <li key={place} className="row" aria-label={t("admin.cards.place", at)}>
+              {place === 0 ? <p className="row__meta">{t("admin.cards.primary")}</p> : null}
+              <div className="field">
+                <label htmlFor={`${rowId}-label`}>{t("admin.cards.label", at)}</label>
+                <input
+                  id={`${rowId}-label`}
+                  className="input"
+                  autoComplete="off"
+                  maxLength={CARD_LABEL_MAX * 2}
+                  placeholder={t("admin.cards.label.hint")}
+                  value={row.label}
+                  aria-invalid={problem === "label"}
+                  aria-describedby={`${rowId}-error`}
+                  onChange={(event) => set(place, { label: event.target.value })}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor={`${rowId}-number`}>{t("admin.cards.number", at)}</label>
+                <input
+                  id={`${rowId}-number`}
+                  className="input"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={row.number}
+                  aria-invalid={problem === "number" || problem === "duplicate"}
+                  aria-describedby={`${rowId}-error`}
+                  onChange={(event) => set(place, { number: event.target.value })}
+                />
+                <FieldError
+                  id={`${rowId}-error`}
+                  message={problem === null ? null : t(`admin.cards.problem.${problem}`, { max: CARD_LABEL_MAX })}
+                />
+              </div>
+              <p className="actions">
+                <button type="button" className="button button--small" aria-label={t("admin.cards.up", at)} disabled={place === 0} onClick={() => move(place, place - 1)}>
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className="button button--small"
+                  aria-label={t("admin.cards.down", at)}
+                  disabled={place === rows.length - 1}
+                  onClick={() => move(place, place + 1)}
+                >
+                  ↓
+                </button>
+                <button type="button" className="button button--small" aria-label={t("admin.cards.remove", at)} onClick={() => onChange(rows.filter((_, other) => other !== place))}>
+                  ✕
+                </button>
+              </p>
+            </li>
+          );
+        })}
+      </ol>
+      {rows.length >= CARDS_MAX ? (
+        <p className="field__hint">{t("admin.cards.full", { max: CARDS_MAX })}</p>
+      ) : (
+        <button type="button" className="button" onClick={() => onChange([...rows, { number: "", label: "" }])}>
+          {t("admin.cards.add")}
+        </button>
+      )}
+    </>
+  );
 }
 
 function without(problems: Readonly<Record<string, string>>, ...keys: string[]): Record<string, string> {
@@ -73,7 +195,8 @@ function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings
     const parsed = parseSetting(rule, texts[key] ?? "");
     if (!parsed.ok) {
       invalid.push(key);
-    } else if (parsed.value !== saved.values[key]) {
+    } else if (settingText(parsed.value) !== settingText(saved.values[key] ?? null)) {
+      // Compared as text: a list of cards is equal to another by what it holds, not by being the same list.
       changes[key] = parsed.value;
     }
   }
@@ -91,7 +214,8 @@ function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings
     const found: Record<string, string> = {};
     for (const key of invalid) {
       const rule = SETTING_RULES[key];
-      found[key] = rule ? ruleText(rule, t) : "";
+      // The cards say what is wrong row by row; the field itself only says that something is.
+      found[key] = rule?.kind === "cards" ? t("admin.cards.invalid") : rule ? ruleText(rule, t) : "";
     }
     const cleanedReason = reason.trim() === "" ? null : cleanReason(reason);
     if (reason.trim() !== "" && cleanedReason === null) {
@@ -173,6 +297,15 @@ function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings
             <FieldError id={`${id}-error`} message={message} />
           </>
         );
+        if (rule.kind === "cards") {
+          return (
+            <fieldset className="field" key={key} aria-describedby={`${id}-hint ${id}-error`}>
+              <legend>{known("admin.setting", key, t)}</legend>
+              <CardsEditor id={id} rows={cardRows(texts[key] ?? "")} checked={problems[key] !== undefined} onChange={(rows) => touch(key, JSON.stringify(rows))} />
+              {notes}
+            </fieldset>
+          );
+        }
         return rule.kind === "switch" ? (
           <div className="field" key={key}>
             <label className="choice">

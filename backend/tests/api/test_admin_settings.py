@@ -23,7 +23,7 @@ DEFAULTS = {
     "trial_on": True,
     "trial_days": 30,
     "price_uzs": 100_000,
-    "card_number": None,
+    "payment_cards": [],
     "review_group": None,
     "sms_on": False,
     "sms_monthly_quota": 0,
@@ -32,13 +32,16 @@ DEFAULTS = {
 # Specification, clients table: "changes to price, card number, and switches ask for the code again".
 NEEDS_CODE = {
     "price_uzs": 150_000,
-    "card_number": "8600 1234 5678 9012",
+    "payment_cards": [{"number": "8600 1234 5678 9012", "label": "Humo · Anorbank"}],
     "trial_on": False,
     "sms_on": True,
     "online_pay_on": True,
     "review_group": -1001234567890,
 }
 
+
+HUMO = {"number": "8600123456789012", "label": "Humo · Anorbank"}
+UZCARD = {"number": "5614681234567890", "label": "Uzcard · Kapitalbank"}
 
 REASSIGN = "admin.shops.owner.reassign"
 
@@ -200,7 +203,7 @@ def test_a_sensitive_change_needs_a_current_code(
 
     done = _patch(client, admin, {**change, "code": fresh_code(admin_env, secret)})
     assert done.status_code == 200, done.text
-    expected = "8600123456789012" if name == "card_number" else NEEDS_CODE[name]
+    expected = [HUMO] if name == "payment_cards" else NEEDS_CODE[name]
     assert done.json()["settings"][name] == expected
     assert _stored(owner) == {name: expected}
     assert _failures(owner, world.admin) == 0
@@ -217,28 +220,50 @@ def test_the_new_price_and_card_reach_the_owner_at_once_and_the_audit_hides_the_
     secret: bytes,
 ) -> None:
     body = {
-        "changes": {"price_uzs": 120_000, "card_number": "8600 1234 5678 9012"},
+        "changes": {
+            "price_uzs": 120_000,
+            "payment_cards": [{"number": "8600 1234 5678 9012", "label": " Humo · Anorbank "}, UZCARD],
+        },
         "code": fresh_code(admin_env, secret),
         "reason": "Yangi narx",
     }
     assert _patch(client, admin, body).status_code == 200
     seen = client.get(f"/api/v1/shops/{world.shop_a}/subscription", headers=as_user(world.owner_a)).json()
-    assert (seen["price_uzs"], seen["card_number"]) == (120_000, "8600123456789012")
+    assert seen["price_uzs"] == 120_000
+    # In the administrator's order; the first is the primary and is also what `card_number` says.
+    assert (seen["cards"], seen["card_number"]) == ([HUMO, UZCARD], HUMO["number"])
 
+    hidden = [
+        {"number": "************9012", "label": "Humo · Anorbank"},
+        {"number": "************7890", "label": "Uzcard · Kapitalbank"},
+    ]
     rows = _audit(owner, world.admin)
     assert rows == [
-        ("setting", "card_number", "Yangi narx", {"before": None, "after": "************9012"}),
+        ("setting", "payment_cards", "Yangi narx", {"before": [], "after": hidden}),
         ("setting", "price_uzs", "Yangi narx", {"before": 100_000, "after": 120_000}),
     ]
     listed = client.get(AUDIT, params={"action": "setting."}, headers=admin)
-    assert "8600123456789012" not in listed.text
+    assert listed.status_code == 200
+    assert HUMO["number"] not in listed.text and UZCARD["number"] not in listed.text
+    assert "************9012" in listed.text and "Humo · Anorbank" in listed.text, "the label and four digits stay"
+    whole = owner.execute("SELECT count(*) FROM admin_audit WHERE detail::text ~ '[0-9]{16}'").fetchone()
+    assert whole == (0,), "no audit row holds a whole card number"
 
-    cleared = _patch(client, admin, {"changes": {"card_number": None}, "code": fresh_code(admin_env, secret)})
-    assert cleared.status_code == 200, cleared.text
-    assert cleared.json()["settings"]["card_number"] is None
-    assert _audit(owner, world.admin)[-1][3] == {"before": "************9012", "after": None}
+    # The order is the setting: the other card first makes it the primary.
+    swapped = _patch(
+        client, admin, {"changes": {"payment_cards": [UZCARD, HUMO]}, "code": fresh_code(admin_env, secret)}
+    )
+    assert swapped.status_code == 200, swapped.text
     seen = client.get(f"/api/v1/shops/{world.shop_a}/subscription", headers=as_user(world.owner_a)).json()
-    assert seen["card_number"] is None
+    assert (seen["cards"], seen["card_number"]) == ([UZCARD, HUMO], UZCARD["number"])
+
+    for nothing in (None, []):
+        cleared = _patch(client, admin, {"changes": {"payment_cards": nothing}, "code": fresh_code(admin_env, secret)})
+        assert cleared.status_code == 200, cleared.text
+        assert cleared.json()["settings"]["payment_cards"] == []
+        seen = client.get(f"/api/v1/shops/{world.shop_a}/subscription", headers=as_user(world.owner_a)).json()
+        assert (seen["cards"], seen["card_number"]) == ([], None)
+    assert {"before": hidden[::-1], "after": []} in [row[3] for row in _audit(owner, world.admin)]
 
 
 def test_with_the_trial_switched_off_a_new_shop_starts_limited(
@@ -349,8 +374,16 @@ def test_five_wrong_codes_on_a_change_lock_the_factor_and_end_the_session(
         ({"price_uzs": None}, "changes.price_uzs"),
         ({"sms_monthly_quota": -1}, "changes.sms_monthly_quota"),
         ({"sms_monthly_quota": 100_001}, "changes.sms_monthly_quota"),
-        ({"card_number": "8600 1234 5678 901"}, "changes.card_number"),
-        ({"card_number": 8600123456789012}, "changes.card_number"),
+        ({"payment_cards": [{"number": "8600 1234 5678 901", "label": "Humo"}]}, "changes.payment_cards"),
+        ({"payment_cards": [{"number": "٨٦٠٠١٢٣٤٥٦٧٨٩٠١٢", "label": "Humo"}]}, "changes.payment_cards"),
+        ({"payment_cards": [{"number": "8600123456789012", "label": ""}]}, "changes.payment_cards"),
+        ({"payment_cards": [{"number": "8600123456789012", "label": "x" * 41}]}, "changes.payment_cards"),
+        ({"payment_cards": [HUMO, {**HUMO, "label": "Yana"}]}, "changes.payment_cards"),
+        ({"payment_cards": [{**HUMO, "number": f"86001234567890{n:02d}"} for n in range(11)]}, "changes.payment_cards"),
+        ({"payment_cards": "8600123456789012"}, "changes.payment_cards"),
+        ({"payment_cards": [{"number": "8600123456789012"}]}, "changes.payment_cards"),
+        # The setting the list replaced is not a setting any more.
+        ({"card_number": "8600123456789012"}, "changes.card_number"),
         ({"review_group": 12345}, "changes.review_group"),
         ({"review_group": "-100123"}, "changes.review_group"),
         ({"price": 100_000}, "changes.price"),

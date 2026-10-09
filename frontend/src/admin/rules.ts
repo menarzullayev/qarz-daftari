@@ -1,6 +1,6 @@
 import type { CalendarDay } from "../shared/format";
 import { addDays, compareDays, parseIsoDate } from "../shared/promise";
-import type { SettingValue, SubscriptionAction, SubscriptionState } from "./adminApi";
+import type { PaymentCard, SettingValue, SubscriptionAction, SubscriptionState } from "./adminApi";
 
 /**
  * What the administrator's forms check before anything is sent. Ports of the server's rules, which are
@@ -30,12 +30,14 @@ export function isCode(text: string): boolean {
 export type SettingRule =
   | { kind: "switch" }
   | { kind: "number"; low: number; high: number }
-  /** Sixteen digits, or nothing to clear it. */
-  | { kind: "card" }
+  /** Up to ten cards, each sixteen digits and a name; the first is the primary. An empty list clears them. */
+  | { kind: "cards" }
   /** A Telegram group's chat identifier, a negative number, or nothing to clear it. */
   | { kind: "chat" };
 
 export const CARD_DIGITS = 16;
+export const CARDS_MAX = 10;
+export const CARD_LABEL_MAX = 40;
 export const MIN_CHAT_ID = -(10 ** 15);
 
 /** Each setting's type and range. The API returns values only, so the table is repeated here. */
@@ -43,7 +45,7 @@ export const SETTING_RULES: Readonly<Record<string, SettingRule>> = {
   trial_on: { kind: "switch" },
   trial_days: { kind: "number", low: 1, high: 365 },
   price_uzs: { kind: "number", low: 1_000, high: 10_000_000 },
-  card_number: { kind: "card" },
+  payment_cards: { kind: "cards" },
   review_group: { kind: "chat" },
   sms_on: { kind: "switch" },
   sms_monthly_quota: { kind: "number", low: 0, high: 100_000 },
@@ -51,6 +53,48 @@ export const SETTING_RULES: Readonly<Record<string, SettingRule>> = {
 };
 
 export type Parsed = { ok: true; value: SettingValue } | { ok: false };
+
+/**
+ * The rows of the card editor from the text its field holds. The form keeps one text for each setting;
+ * for the cards that text is the rows as JSON, as typed. Anything else is no rows.
+ */
+export function cardRows(input: string): PaymentCard[] {
+  let rows: unknown;
+  try {
+    rows = JSON.parse(input === "" ? "[]" : input);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+  return rows.map((row: unknown) => {
+    const held = (typeof row === "object" && row !== null ? row : {}) as Record<string, unknown>;
+    return { number: typeof held["number"] === "string" ? held["number"] : "", label: typeof held["label"] === "string" ? held["label"] : "" };
+  });
+}
+
+/** A row as the server stores it: the number without spaces, the name trimmed. */
+function cleanCard(row: PaymentCard): PaymentCard {
+  return { number: row.number.replace(/ /g, ""), label: row.label.trim() };
+}
+
+export type CardProblem = "number" | "label" | "duplicate";
+
+/** What is wrong with each row, in the server's order of checks; null for a row that is fine. */
+export function cardProblems(rows: readonly PaymentCard[]): (CardProblem | null)[] {
+  const cleaned = rows.map(cleanCard);
+  return cleaned.map((card, place) => {
+    if (!/^[0-9]{16}$/.test(card.number)) {
+      return "number";
+    }
+    const length = [...card.label].length;
+    if (length < 1 || length > CARD_LABEL_MAX) {
+      return "label";
+    }
+    return cleaned.slice(0, place).some((earlier) => earlier.number === card.number) ? "duplicate" : null;
+  });
+}
 
 /** What was typed for a setting, as the value the server stores; a switch is never typed. */
 export function parseSetting(rule: SettingRule, input: string): Parsed {
@@ -66,12 +110,12 @@ export function parseSetting(rule: SettingRule, input: string): Parsed {
       const value = Number(digits);
       return value >= rule.low && value <= rule.high ? { ok: true, value } : { ok: false };
     }
-    case "card": {
-      if (text === "") {
-        return { ok: true, value: null };
+    case "cards": {
+      const rows = cardRows(text);
+      if (rows.length > CARDS_MAX || cardProblems(rows).some((problem) => problem !== null)) {
+        return { ok: false };
       }
-      const digits = text.replace(/ /g, "");
-      return /^[0-9]{16}$/.test(digits) ? { ok: true, value: digits } : { ok: false };
+      return { ok: true, value: rows.map(cleanCard) };
     }
     case "chat": {
       if (text === "") {
@@ -86,9 +130,17 @@ export function parseSetting(rule: SettingRule, input: string): Parsed {
   }
 }
 
-/** A stored value as the text of its field. */
+/** A stored value as the text of its field; the cards as the rows of their editor (`cardRows`). */
 export function settingText(value: SettingValue): string {
+  if (Array.isArray(value)) {
+    return JSON.stringify(value.map((card) => ({ number: card.number, label: card.label })));
+  }
   return value === null ? "" : String(value);
+}
+
+/** How a card is named where its number has no place: the name and the last four digits. */
+export function cardTag(card: PaymentCard): string {
+  return `${card.label} ··${card.number.slice(-4)}`;
 }
 
 // --- a shop's subscription -----------------------------------------------------------------------------

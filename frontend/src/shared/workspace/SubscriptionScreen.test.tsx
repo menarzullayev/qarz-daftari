@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -7,6 +7,7 @@ import {
   fakeServer,
   NO_OVERDUE,
   ok,
+  ownReceiptBody,
   refusal,
   type Reply,
   SHOP_BASE,
@@ -111,29 +112,96 @@ describe("the owner's subscription screen (REQ-053, REQ-054)", () => {
     }
   });
 
-  it("shows the card to pay to and copies its number", async () => {
+  it("shows the card to pay to with its name, in groups of four, and copies its digits", async () => {
     const writeText = vi.fn(async () => undefined);
     vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
     await open();
+    expect(screen.getByText("Humo · Anorbank")).toBeTruthy();
     expect(screen.getByText("8600 1234 5678 9012")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Nusxalash" }));
-    expect(await screen.findByRole("button", { name: "Nusxalandi" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Nusxalash: Humo · Anorbank" }));
+    expect(await screen.findByRole("button", { name: "Nusxalandi: Humo · Anorbank" })).toBeTruthy();
     expect(writeText).toHaveBeenCalledTimes(1);
-    expect(writeText).toHaveBeenCalledWith("8600 1234 5678 9012");
+    expect(writeText).toHaveBeenCalledWith("8600123456789012");
+    // One card: there are no others to offer, and nothing calls it the primary one.
+    expect(screen.queryByText(/Boshqa karta/)).toBeNull();
+    expect(screen.queryByText("Asosiy karta")).toBeNull();
   });
 
   it("says so when the card could not be copied, and leaves the number on the screen", async () => {
     vi.stubGlobal("navigator", { ...navigator, clipboard: undefined });
     await open();
-    fireEvent.click(screen.getByRole("button", { name: "Nusxalash" }));
-    expect(await screen.findByRole("button", { name: "Nusxalab bo'lmadi: matnni qo'lda belgilang" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Nusxalash: Humo · Anorbank" }));
+    expect(await screen.findByRole("button", { name: "Nusxalab bo'lmadi: matnni qo'lda belgilang: Humo · Anorbank" })).toBeTruthy();
     expect(screen.getByText("8600 1234 5678 9012")).toBeTruthy();
   });
 
   it("says that payment details are not set yet when the server has no card, and offers nothing to copy", async () => {
-    await open({ card_number: null });
+    await open({ card_number: null, cards: [] });
     expect(screen.getByText("To'lov rekvizitlari hali kiritilmagan.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Nusxalash" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Nusxalash/ })).toBeNull();
+    expect(screen.queryByText(/Boshqa karta/)).toBeNull();
+  });
+
+  describe("with several cards", () => {
+    const HUMO = { number: "8600123456789012", label: "Humo · Anorbank" };
+    const UZCARD = { number: "5614681234567890", label: "Uzcard · Kapitalbank" };
+    const VISA = { number: "4278310012345678", label: "Visa · Ipak Yo'li" };
+    const several = { card_number: HUMO.number, cards: [HUMO, UZCARD, VISA] };
+    const shown = () => document.querySelector("#subscription-card-title ~ .startcode__text")?.textContent;
+    const others = () =>
+      within(screen.getByRole("list", { name: "Boshqa karta (2)" }))
+        .getAllByRole("listitem")
+        .map((row) => row.querySelector(".row__link")?.textContent);
+
+    it("shows the primary card first and the others behind one line that says how many there are", async () => {
+      await open(several);
+      expect(shown()).toBe("8600 1234 5678 9012");
+      expect(screen.getByText("Asosiy karta")).toBeTruthy();
+      const disclosure = screen.getByText("Boshqa karta (2)").closest("details");
+      expect(disclosure?.open).toBe(false);
+      // In the server's order, without the one already shown above.
+      expect(others()).toEqual(["Uzcard · Kapitalbank5614 6812 3456 7890", "Visa · Ipak Yo'li4278 3100 1234 5678"]);
+    });
+
+    it("copies the number of any card, each button named by its card", async () => {
+      const writeText = vi.fn(async () => undefined);
+      vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+      await open(several);
+      fireEvent.click(screen.getByRole("button", { name: "Nusxalash: Visa · Ipak Yo'li" }));
+      expect(await screen.findByRole("button", { name: "Nusxalandi: Visa · Ipak Yo'li" })).toBeTruthy();
+      expect(writeText).toHaveBeenCalledWith("4278310012345678");
+      // Said of that card only.
+      expect(screen.getByRole("button", { name: "Nusxalash: Humo · Anorbank" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Nusxalash: Uzcard · Kapitalbank" })).toBeTruthy();
+    });
+
+    it("makes a chosen card the one being paid to, and sends it with the receipt", async () => {
+      const server = fakeServer((sent) =>
+        sent.path.endsWith("/subscription") ? ok(subscriptionBody(several)) : sent.method === "GET" ? ok({ items: [] }) : ok(ownReceiptBody(), 201),
+      );
+      renderScreen(<SubscriptionScreen />, { fetch: server.fetch, role: "owner" });
+      const form = await screen.findByRole("form", { name: "Chek yuborish" });
+      // Until another is chosen the receipt is for the primary card.
+      expect(within(form).getByText("Karta: Humo · Anorbank ··9012")).toBeTruthy();
+
+      fireEvent.click(screen.getByRole("button", { name: "Shu kartaga to'layman: Uzcard · Kapitalbank" }));
+      await waitFor(() => expect(shown()).toBe("5614 6812 3456 7890"));
+      expect(screen.queryByText("Asosiy karta")).toBeNull();
+      expect(others()).toEqual(["Humo · Anorbank8600 1234 5678 9012", "Visa · Ipak Yo'li4278 3100 1234 5678"]);
+      expect(within(form).getByText("Karta: Uzcard · Kapitalbank ··7890")).toBeTruthy();
+
+      fireEvent.change(screen.getByLabelText("Chek"), { target: { files: [new File(["jpeg"], "chek.jpg", { type: "image/jpeg" })] } });
+      fireEvent.submit(form);
+      await waitFor(() => expect(server.writes()).toHaveLength(1));
+      expect(server.writes()[0]?.form?.["card"]).toBe("5614681234567890");
+    });
+
+    it("says the same in Russian", async () => {
+      await open(several, "ru");
+      expect(screen.getByText("Основная карта")).toBeTruthy();
+      expect(screen.getByText("Другая карта (2)")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Плачу на эту карту: Uzcard · Kapitalbank" })).toBeTruthy();
+    });
   });
 
   it("says the receipt may go to the Telegram chat with /obuna, and offers to send one from here: nothing is sent by opening", async () => {

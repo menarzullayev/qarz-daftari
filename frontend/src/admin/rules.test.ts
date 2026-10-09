@@ -12,6 +12,11 @@ import { AUDIT_GROUPS, detailText } from "./AuditScreen";
 import "./messages";
 import {
   actorName,
+  CARD_LABEL_MAX,
+  cardProblems,
+  cardRows,
+  CARDS_MAX,
+  cardTag,
   CHANGE_REFUSALS,
   cleanReason,
   dateInRange,
@@ -21,6 +26,7 @@ import {
   offeredActions,
   parseSetting,
   SETTING_RULES,
+  settingText,
   shortId,
 } from "./rules";
 import { STATES } from "./ShopsScreen";
@@ -47,7 +53,7 @@ describe("reasons and codes", () => {
 describe("platform settings, by type and range", () => {
   it("knows the eight settings of the platform", () => {
     expect(Object.keys(SETTING_RULES).sort()).toEqual(
-      ["card_number", "online_pay_on", "price_uzs", "review_group", "sms_monthly_quota", "sms_on", "trial_days", "trial_on"].sort(),
+      ["online_pay_on", "payment_cards", "price_uzs", "review_group", "sms_monthly_quota", "sms_on", "trial_days", "trial_on"].sort(),
     );
   });
 
@@ -57,8 +63,6 @@ describe("platform settings, by type and range", () => {
     ["price_uzs", "100 000", 100000],
     ["price_uzs", "10000000", 10000000],
     ["sms_monthly_quota", "0", 0],
-    ["card_number", "8600 1234 5678 9012", "8600123456789012"],
-    ["card_number", "", null],
     ["review_group", "-1001234567890", -1001234567890],
     ["review_group", "  ", null],
     ["trial_on", "false", false],
@@ -76,9 +80,6 @@ describe("platform settings, by type and range", () => {
     ["price_uzs", "10000001"],
     ["price_uzs", "1e5"],
     ["sms_monthly_quota", "100001"],
-    ["card_number", "8600 1234 5678 901"],
-    ["card_number", "8600-1234-5678-9012"],
-    ["card_number", "86001234567890123"],
     ["review_group", "1001234567890"],
     ["review_group", "0"],
     ["review_group", "-10000000000000000"],
@@ -249,6 +250,83 @@ describe("the audit's detail", () => {
     expect(detailText({ expires_at: "2026-10-06T15:00:00+00:00" })).toBe("expires_at: 2026-10-06T15:00:00+00:00");
     expect(detailText({ before: 30, after: 14 })).toBe("before: 30; after: 14");
     expect(detailText(auditBody().detail)).toContain('after: {"state":"trial","trial_ends":"2026-10-20"');
+  });
+});
+
+describe("the cards to pay to, as the server checks them (domain/platform_settings.py)", () => {
+  const HUMO = { number: "8600123456789012", label: "Humo · Anorbank" };
+  const UZCARD = { number: "5614681234567890", label: "Uzcard · Kapitalbank" };
+  const rule = SETTING_RULES["payment_cards"] as never;
+  const parse = (rows: unknown) => parseSetting(rule, JSON.stringify(rows));
+  const many = (count: number) => Array.from({ length: count }, (_, place) => ({ number: `86001234567890${String(place).padStart(2, "0")}`, label: `Karta ${place}` }));
+
+  it("stores the rows in order, numbers without spaces and names trimmed", () => {
+    expect(parse([{ number: " 8600 1234 5678 9012 ".trim(), label: "  Humo · Anorbank " }, UZCARD])).toEqual({ ok: true, value: [HUMO, UZCARD] });
+    expect(parse([UZCARD, HUMO])).toEqual({ ok: true, value: [UZCARD, HUMO] });
+  });
+
+  it("reads no rows as an empty list, which clears the cards", () => {
+    expect(parse([])).toEqual({ ok: true, value: [] });
+    expect(parseSetting(rule, "")).toEqual({ ok: true, value: [] });
+  });
+
+  it.each([
+    ["fifteen digits", "860012345678901"],
+    ["seventeen digits", "86001234567890123"],
+    ["dashes", "8600-1234-5678-9012"],
+    ["letters", "86001234567890ab"],
+    ["nothing", ""],
+    ["digits a card does not carry", "٨٦٠٠١٢٣٤٥٦٧٨٩٠١٢"],
+    ["full-width digits", "８６００１２３４５６７８９０１２"],
+  ])("refuses a number of %s", (_, number) => {
+    expect(cardProblems([HUMO, { number, label: "Humo" }])).toEqual([null, "number"]);
+    expect(parse([HUMO, { number, label: "Humo" }])).toEqual({ ok: false });
+  });
+
+  it("refuses a name that is empty or longer than forty characters, and takes one of exactly forty", () => {
+    expect(CARD_LABEL_MAX).toBe(40);
+    for (const label of ["", "   ", "x".repeat(41)]) {
+      expect(cardProblems([{ number: HUMO.number, label }])).toEqual(["label"]);
+      expect(parse([{ number: HUMO.number, label }])).toEqual({ ok: false });
+    }
+    expect(parse([{ number: HUMO.number, label: ` ${"x".repeat(40)} ` }])).toEqual({ ok: true, value: [{ number: HUMO.number, label: "x".repeat(40) }] });
+    // Counted as the server counts: by character, not by UTF-16 unit.
+    expect(parse([{ number: HUMO.number, label: "😀".repeat(40) }])).toMatchObject({ ok: true });
+    expect(parse([{ number: HUMO.number, label: "😀".repeat(41) }])).toEqual({ ok: false });
+  });
+
+  it("refuses the same number twice, however it is spaced, and marks the later row", () => {
+    const twice = [HUMO, UZCARD, { number: "8600 1234 5678 9012", label: "Boshqa nom" }];
+    expect(cardProblems(twice)).toEqual([null, null, "duplicate"]);
+    expect(parse(twice)).toEqual({ ok: false });
+    // The same name on two cards is allowed.
+    expect(parse([HUMO, { ...UZCARD, label: HUMO.label }])).toMatchObject({ ok: true });
+  });
+
+  it("takes ten cards and refuses eleven", () => {
+    expect(CARDS_MAX).toBe(10);
+    expect(parse(many(10))).toMatchObject({ ok: true });
+    expect(cardProblems(many(11)).every((problem) => problem === null)).toBe(true);
+    expect(parse(many(11))).toEqual({ ok: false });
+  });
+
+  it("reads rows from the text of the field and nothing from anything else", () => {
+    expect(cardRows(settingText([HUMO, UZCARD]))).toEqual([HUMO, UZCARD]);
+    expect(cardRows("")).toEqual([]);
+    expect(cardRows("not json")).toEqual([]);
+    expect(cardRows('"8600123456789012"')).toEqual([]);
+    expect(cardRows('[{"number": 8600, "label": null}, "x", null]')).toEqual([
+      { number: "", label: "" },
+      { number: "", label: "" },
+      { number: "", label: "" },
+    ]);
+    expect(settingText([])).toBe("[]");
+    expect(settingText(null)).toBe("");
+  });
+
+  it("names a card by its name and last four digits", () => {
+    expect(cardTag(HUMO)).toBe("Humo · Anorbank ··9012");
+    expect(cardTag(HUMO)).not.toContain("8600");
   });
 });
 

@@ -49,11 +49,11 @@ Conventions: timestamps stored in UTC and shown in Tashkent time (UTC+5). Money 
 | `/shops/{id}/overview`, `/reports`, `/exports` | Totals, overdue, period reports, export jobs and downloads | Overview: all staff; reports and exports: manager, owner | REQ-026, REQ-028, REQ-046 |
 | `/shops/{id}/imports` | Template, upload, preview, apply, undo | Manager, owner | REQ-062, REQ-063 |
 | `/shops/{id}/activity` | Activity log with filters | Owner | REQ-047 |
-| `/shops/{id}/subscription` | State, price, card number to pay to, receipts and outcomes | Owner | REQ-053, REQ-054, REQ-057 |
+| `/shops/{id}/subscription` | State, price, the cards to pay to (`cards`: number and label, in the administrator's order, the first being the primary one; `card_number` stays as the primary card's number), receipts and outcomes. A receipt is sent as a form with `amount`, `months`, `receipt` and optionally `card`, the number of the card paid to, which must be one of those offered; the receipt keeps that card's label and last four digits (`paid_to_card`), never its number | Owner | REQ-053, REQ-054, REQ-057 |
 | `/me/owner-totals` | Combined totals across shops the caller owns | Owner | REQ-065 |
 | `/me/accounts` | Customer: my linked shops, balance, entries with goods, promises, and the customer's own payment history indicator (changed by the founder on 2026-10-08, DEC-066); never the seller's note or the entry's author | Customer | REQ-019, REQ-020, REQ-045 |
 | `/me/accounts/{link}/disputes`, `/payment-notices`, `/date-requests`, `/disconnect`, `/removal` | Customer requests | Customer | REQ-016, REQ-021, REQ-029, REQ-060, REQ-066 |
-| Admin: `/shops`, `/receipts`, `/settings`, `/support-access`, `/audit` | Search shops, subscription state and history, approve or reject receipts, change switches and price, suspend, open support access, read admin audit | Administrator | REQ-055, REQ-058, REQ-059, REQ-N14 |
+| Admin: `/shops`, `/receipts`, `/settings`, `/support-access`, `/audit` | Search shops, subscription state and history, approve or reject receipts (each says which card its owner paid to, by label and last four digits), change switches, the price and the list of cards to pay to (setting `payment_cards`: up to ten, each sixteen digits and a label of 1 to 40 characters, no number twice; the audit keeps the last four digits only), suspend, open support access, read admin audit | Administrator | REQ-055, REQ-058, REQ-059, REQ-N14 |
 
 ### Chat contract
 
@@ -74,14 +74,14 @@ After a credit entry the reply shows balance, any credit-limit warning, and butt
 | `/ilova` | Staff | Open the Mini App |
 | `/qarzim` | Customer | Balances per shop; opens the customer page |
 | `/toladim` | Customer | Send a payment notice: amount, optional receipt |
-| `/obuna` | Owner | Subscription state; pay: shows card and amount, accepts a receipt file |
+| `/obuna` | Owner | Subscription state; pay: shows the primary card with its label and the amount, offers the other cards behind one button when there are several, accepts a receipt file for the card chosen |
 | `/til` | Anyone | Change language |
 | `/uzish`, `/ochirish` | Customer | Disconnect; request removal |
 | `/yordam` | Anyone | Help |
 
 Customer notifications carry a "dispute" button and, for credit entries, "ask to move the date". There is no confirm button (REQ-016). Receipts sent with `/obuna` are forwarded to the administrator and the review group with approve and reject buttons (REQ-055). In the group a press counts from a platform administrator who passed the second factor and, changed by the founder on 2026-10-08 (DEC-064), from any Telegram administrator of the group: the server asks Telegram (`getChatMember`) about the presser in the configured review group at the moment of the press and again when a rejection's reason arrives, believes nothing in the button's data, and refuses when Telegram gives no answer. A press by any other member changes nothing.
 
-Callback data: `v2:<action>:<id>`, at most 64 bytes, authorized again on receipt.
+Callback data: `v2:<action>:<id>`, at most 64 bytes, authorized again on receipt. A button under `/obuna` names a card by its place in the list and the last four digits of its number (`v2:srm:<shop>:<months>:<place>:<last4>`, `v2:sro:…` to list the other cards, `v2:src:…` to choose one or go back), never by the number; when the list has changed and the place holds another card, the press shows what is offered now.
 
 ## Database schema
 

@@ -328,12 +328,16 @@ describe("platform settings", () => {
     expect(document.getElementById("setting-price_uzs-hint")?.textContent).toBe(
       "1000 dan 10000000 gacha butun son. O'zgartirish uchun autentifikator kodi qayta so'raladi.",
     );
-    expect(document.getElementById("setting-card_number-hint")?.textContent).toContain("16 ta raqam; bo'sh qoldirilsa, o'chiriladi.");
+    expect(document.getElementById("setting-payment_cards-hint")?.textContent).toBe(
+      "10 tagacha karta: har biriga nom va 16 ta raqam. Birinchisi — asosiy karta; ro'yxat bo'sh bo'lsa, to'lov uchun karta ko'rsatilmaydi. O'zgartirish uchun autentifikator kodi qayta so'raladi.",
+    );
     expect(document.getElementById("setting-review_group-hint")?.textContent).toContain("manfiy son");
     expect(document.getElementById("setting-sms_monthly_quota-hint")?.textContent).toBe("0 dan 100000 gacha butun son.");
     expect((screen.getByLabelText("Yangi do'konlarga sinov muddati beriladi") as HTMLInputElement).checked).toBe(true);
     expect((screen.getByLabelText("SMS yoqilgan") as HTMLInputElement).type).toBe("checkbox");
-    expect((screen.getByLabelText("To'lov qabul qilinadigan karta raqami") as HTMLInputElement).value).toBe("8600123456789012");
+    const cards = screen.getByRole("group", { name: "To'lov qabul qilinadigan kartalar" });
+    expect((within(cards).getByLabelText("1-karta nomi") as HTMLInputElement).value).toBe("Humo · Anorbank");
+    expect((within(cards).getByLabelText("1-karta raqami") as HTMLInputElement).value).toBe("8600123456789012");
     expect(screen.getByText("Oxirgi o'zgarish: 2026-yil 1-oktabr, 10:00, administrator a1b2c3.")).toBeTruthy();
     // Nothing differs yet, so no code is asked for.
     expect(screen.queryByLabelText(CODE)).toBeNull();
@@ -366,7 +370,6 @@ describe("platform settings", () => {
     [DAYS, "0", "1 dan 365 gacha butun son."],
     [DAYS, "366", "1 dan 365 gacha butun son."],
     [PRICE, "999", "1000 dan 10000000 gacha butun son."],
-    ["To'lov qabul qilinadigan karta raqami", "8600 1234", "16 ta raqam; bo'sh qoldirilsa, o'chiriladi."],
     ["Cheklar ko'rib chiqiladigan guruh (chat ID)", "12345", "Telegram guruhining chat ID raqami (manfiy son); bo'sh qoldirilsa, o'chiriladi."],
   ])("sends nothing while %s is %j, and says what it must be next to the field", async (label, value, message) => {
     const server = open();
@@ -410,15 +413,161 @@ describe("platform settings", () => {
     expect((screen.getByLabelText("Sabab (ixtiyoriy)") as HTMLTextAreaElement).value).toBe("");
   });
 
-  it("clears a card number with an empty field and a group with an empty field", async () => {
+  it("clears the cards by removing the last one, and a group with an empty field", async () => {
     const server = open(undefined, platformBody({}, { review_group: -1001234567890 }));
-    fireEvent.change(await screen.findByLabelText("To'lov qabul qilinadigan karta raqami"), { target: { value: "" } });
+    fireEvent.click(await screen.findByRole("button", { name: "1-kartani olib tashlash" }));
+    expect(screen.getByText("Karta kiritilmagan.")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Cheklar ko'rib chiqiladigan guruh (chat ID)"), { target: { value: " " } });
     fireEvent.change(screen.getByLabelText(CODE), { target: { value: "123456" } });
     save();
     const done = await screen.findByRole("status");
-    expect(within(done).getByText("To'lov qabul qilinadigan karta raqami: 8600123456789012 → kiritilmagan")).toBeTruthy();
-    expect(server.writes()[0]?.body).toEqual({ changes: { card_number: null, review_group: null }, code: "123456" });
+    // What changed is said by name and last four digits: the whole number is not repeated in the notice.
+    expect(within(done).getByText("To'lov qabul qilinadigan kartalar: Humo · Anorbank ··9012 → kiritilmagan")).toBeTruthy();
+    expect(done.textContent).not.toContain("8600123456789012");
+    expect(server.writes()[0]?.body).toEqual({ changes: { payment_cards: [], review_group: null }, code: "123456" });
+  });
+
+  describe("the cards to pay to", () => {
+    const HUMO = { number: "8600123456789012", label: "Humo · Anorbank" };
+    const UZCARD = { number: "5614681234567890", label: "Uzcard · Kapitalbank" };
+    const VISA = { number: "4278310012345678", label: "Visa · Ipak Yo'li" };
+    const withCards = (...cards: unknown[]) => platformBody({}, { payment_cards: cards });
+    const press = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
+    const fill = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    const rows = () =>
+      within(screen.getByRole("group", { name: "To'lov qabul qilinadigan kartalar" }))
+        .getAllByRole("listitem")
+        .map((row) => [...row.querySelectorAll("input")].map((input) => input.value));
+    const sentCards = (server: ReturnType<typeof open>) => (server.writes()[0]?.body as { changes: { payment_cards: unknown } }).changes.payment_cards;
+
+    it("adds a card: nothing is asked or sent until it differs, and it is sent with the code as the server stores it", async () => {
+      const server = open();
+      await screen.findByLabelText(DAYS);
+      expect(screen.queryByLabelText(CODE)).toBeNull();
+      press("Karta qo'shish");
+      fill("2-karta nomi", "  Uzcard · Kapitalbank ");
+      fill("2-karta raqami", "5614 6812 3456 7890");
+      fireEvent.change(screen.getByLabelText(CODE), { target: { value: "123456" } });
+      save();
+      const done = await screen.findByRole("status");
+      expect(within(done).getByText("To'lov qabul qilinadigan kartalar: Humo · Anorbank ··9012 → Humo · Anorbank ··9012, Uzcard · Kapitalbank ··7890")).toBeTruthy();
+      expect(server.writes()).toHaveLength(1);
+      expect(server.writes()[0]?.body).toEqual({ changes: { payment_cards: [HUMO, UZCARD] }, code: "123456" });
+      // The answer is what the editor now holds.
+      expect(rows()).toEqual([
+        ["Humo · Anorbank", "8600123456789012"],
+        ["Uzcard · Kapitalbank", "5614681234567890"],
+      ]);
+    });
+
+    it("marks the first card as the primary and moves cards up and down: the order is what is sent", async () => {
+      const server = open(undefined, withCards(HUMO, UZCARD, VISA));
+      await screen.findByLabelText(DAYS);
+      const first = () => screen.getByRole("listitem", { name: "1-karta" });
+      expect(within(first()).getByText("Asosiy karta")).toBeTruthy();
+      expect(screen.getAllByText("Asosiy karta")).toHaveLength(1);
+      expect((screen.getByRole("button", { name: "1-kartani yuqoriga" }) as HTMLButtonElement).disabled).toBe(true);
+      expect((screen.getByRole("button", { name: "3-kartani pastga" }) as HTMLButtonElement).disabled).toBe(true);
+      // Nothing differs yet.
+      expect(screen.queryByLabelText(CODE)).toBeNull();
+
+      press("3-kartani yuqoriga");
+      press("2-kartani yuqoriga");
+      expect(rows().map((row) => row[0])).toEqual(["Visa · Ipak Yo'li", "Humo · Anorbank", "Uzcard · Kapitalbank"]);
+      expect(within(first()).getByLabelText("1-karta nomi")).toHaveProperty("value", "Visa · Ipak Yo'li");
+      press("2-kartani pastga");
+      fireEvent.change(screen.getByLabelText(CODE), { target: { value: "123456" } });
+      save();
+      await screen.findByRole("status");
+      expect(sentCards(server)).toEqual([VISA, UZCARD, HUMO]);
+    });
+
+    it("asks for no code when the cards are moved back to where they were", async () => {
+      const server = open(undefined, withCards(HUMO, UZCARD));
+      await screen.findByLabelText(DAYS);
+      press("1-kartani pastga");
+      expect(screen.getByLabelText(CODE)).toBeTruthy();
+      press("1-kartani pastga");
+      expect(screen.queryByLabelText(CODE)).toBeNull();
+      save();
+      expect(screen.getByText("Hech narsa o'zgartirilmagan.")).toBeTruthy();
+      expect(server.writes()).toHaveLength(0);
+    });
+
+    it("removes a card from the middle and keeps the others in order", async () => {
+      const server = open(undefined, withCards(HUMO, UZCARD, VISA));
+      await screen.findByLabelText(DAYS);
+      press("2-kartani olib tashlash");
+      expect(rows().map((row) => row[0])).toEqual(["Humo · Anorbank", "Visa · Ipak Yo'li"]);
+      fireEvent.change(screen.getByLabelText(CODE), { target: { value: "123456" } });
+      save();
+      await screen.findByRole("status");
+      expect(sentCards(server)).toEqual([HUMO, VISA]);
+    });
+
+    it.each([
+      ["a number of fifteen digits", "Uzcard", "561468123456789", "Karta raqami 16 ta raqamdan iborat bo'lishi kerak."],
+      ["digits a card does not carry", "Uzcard", "٨٦٠٠١٢٣٤٥٦٧٨٩٠١٣", "Karta raqami 16 ta raqamdan iborat bo'lishi kerak."],
+      ["no name", "  ", "5614681234567890", "Karta nomi 1 dan 40 belgigacha bo'lishi kerak."],
+      ["a name of forty-one characters", "x".repeat(41), "5614681234567890", "Karta nomi 1 dan 40 belgigacha bo'lishi kerak."],
+      ["a number already in the list", "Yana Humo", "8600 1234 5678 9012", "Bu raqam ro'yxatda allaqachon bor."],
+    ])("sends nothing for a card with %s, and says what is wrong under that card", async (_, label, number, message) => {
+      const server = open();
+      await screen.findByLabelText(DAYS);
+      press("Karta qo'shish");
+      fill("2-karta nomi", label);
+      fill("2-karta raqami", number);
+      // Nothing is said while it is being typed.
+      expect(document.querySelectorAll(".field__error")).toHaveLength(0);
+      // No code is asked for either: a list that cannot be sent is not a change yet.
+      expect(screen.queryByLabelText(CODE)).toBeNull();
+      save();
+      expect(document.getElementById("setting-payment_cards-1-error")?.textContent).toBe(message);
+      expect(document.getElementById("setting-payment_cards-0-error")).toBeNull();
+      expect(document.getElementById("setting-payment_cards-error")?.textContent).toBe("Kartalardagi xatolarni tuzating.");
+      expect(server.writes()).toHaveLength(0);
+    });
+
+    it("sends nothing for a card that was added and left empty", async () => {
+      const server = open();
+      await screen.findByLabelText(DAYS);
+      press("Karta qo'shish");
+      save();
+      expect(document.getElementById("setting-payment_cards-1-error")?.textContent).toBe("Karta raqami 16 ta raqamdan iborat bo'lishi kerak.");
+      expect(server.writes()).toHaveLength(0);
+    });
+
+    it("offers no eleventh card", async () => {
+      const ten = Array.from({ length: 10 }, (_, place) => ({ number: `86001234567890${String(place).padStart(2, "0")}`, label: `Karta ${place + 1}` }));
+      open(undefined, withCards(...ten));
+      await screen.findByLabelText(DAYS);
+      expect(screen.queryByRole("button", { name: "Karta qo'shish" })).toBeNull();
+      expect(screen.getByText("Ro'yxat to'la: 10 tadan ortiq karta kiritib bo'lmaydi.")).toBeTruthy();
+      press("10-kartani olib tashlash");
+      expect(screen.getByRole("button", { name: "Karta qo'shish" })).toBeTruthy();
+    });
+
+    it("puts the server's refusal of the cards next to them", async () => {
+      const server = open(() => refusal(422, "VALIDATION", "Ma'lumotlar noto'g'ri kiritilgan.", { "changes.payment_cards": "card 2: the same number is in the list twice" }));
+      await screen.findByLabelText(DAYS);
+      press("Karta qo'shish");
+      fill("2-karta nomi", "Uzcard");
+      fill("2-karta raqami", "5614681234567890");
+      fireEvent.change(screen.getByLabelText(CODE), { target: { value: "123456" } });
+      save();
+      await waitFor(() => expect(server.writes()).toHaveLength(1));
+      await waitFor(() => expect(document.getElementById("setting-payment_cards-error")?.textContent).toContain("10 tagacha karta"));
+    });
+
+    it("is in Russian when that is the language", async () => {
+      const made = adminApi(() => ok(withCards(HUMO, UZCARD)));
+      renderAdmin(<SettingsScreen api={made.api} />, "ru");
+      const cards = await screen.findByRole("group", { name: "Карты для приёма оплаты" });
+      expect(within(cards).getByText("Основная карта")).toBeTruthy();
+      expect(within(cards).getByLabelText("Название карты 2")).toHaveProperty("value", "Uzcard · Kapitalbank");
+      expect(within(cards).getByRole("button", { name: "Убрать карту 2" })).toBeTruthy();
+      expect(within(cards).getByRole("button", { name: "Добавить карту" })).toBeTruthy();
+    });
   });
 
   it("refuses a reason that does not fit, and sends none when none is written", async () => {

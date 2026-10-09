@@ -67,6 +67,8 @@ def receipt_body(row: AdminReceipt) -> dict[str, Any]:
         "decided_by": None if row.decided_by is None else str(row.decided_by),
         # Set instead of `decided_by` when a Telegram administrator of the review group decided (DEC-064).
         "decided_by_tg_id": row.decided_by_tg,
+        # The card the owner says they paid to: its label and last four digits. Null when not said.
+        "paid_to_card": row.paid_to_card,
         "has_file": row.has_file,
     }
 

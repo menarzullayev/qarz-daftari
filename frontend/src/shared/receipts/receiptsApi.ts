@@ -26,6 +26,8 @@ export type OwnReceipt = {
   rejectReason: string | null;
   createdAt: string;
   decidedAt: string | null;
+  /** The card the receipt says was paid to, as its label and last four digits; null when not said. */
+  paidToCard: string | null;
 };
 
 function ownReceipt(value: unknown): OwnReceipt {
@@ -39,6 +41,7 @@ function ownReceipt(value: unknown): OwnReceipt {
     rejectReason: textOrNull(body["reject_reason"]),
     createdAt: text(body["created_at"]),
     decidedAt: textOrNull(body["decided_at"]),
+    paidToCard: textOrNull(body["paid_to_card"]),
   };
 }
 
@@ -55,8 +58,15 @@ export function parseMonths(input: string): number | null {
 export function receiptsOf(api: ShopApi) {
   const path = `${api.base}/subscription/receipts`;
   return {
-    /** Sends a receipt as a multipart form with the fields `amount`, `months` and `receipt`. */
-    submit(input: { amount: number; months: number; receipt: Blob }, idempotencyKey: string): Promise<OwnReceipt> {
+    /**
+     * Sends a receipt as a multipart form with the fields `amount`, `months` and `receipt`, and `card`,
+     * the number of the card that was paid to, when the owner chose one. The server refuses a number that
+     * is not one of the cards it offers now.
+     */
+    submit(
+      input: { amount: number; months: number; receipt: Blob; card?: string | null },
+      idempotencyKey: string,
+    ): Promise<OwnReceipt> {
       if (!Number.isSafeInteger(input.amount) || !Number.isSafeInteger(input.months)) {
         throw new RangeError("amount and months must be whole numbers");
       }
@@ -64,6 +74,9 @@ export function receiptsOf(api: ShopApi) {
       form.set("amount", String(input.amount));
       form.set("months", String(input.months));
       form.set("receipt", input.receipt);
+      if (input.card !== undefined && input.card !== null) {
+        form.set("card", input.card);
+      }
       return api.send({ method: "POST", path, form, idempotencyKey, read: ownReceipt });
     },
 

@@ -1,7 +1,7 @@
 import { type FormEvent, type ReactNode, useMemo, useState } from "react";
 
 import { useI18n, type Translate } from "../../i18n/I18nProvider";
-import { type ApiError, RECEIPT_MAX_BYTES, RECEIPT_TYPES } from "../api";
+import { type ApiError, cardTag, type PaymentCard, RECEIPT_MAX_BYTES, RECEIPT_TYPES } from "../api";
 import { receiptProblem, type ReceiptProblem } from "../customer/PaymentNoticeSection";
 import { formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
@@ -38,7 +38,17 @@ export function computedAmount(priceUzs: number, monthsText: string): string {
   return months === null ? "" : String(priceUzs * months);
 }
 
-function Form({ client, priceUzs, onSent }: { client: ReceiptsApi; priceUzs: number; onSent: () => void }) {
+function Form({
+  client,
+  priceUzs,
+  card,
+  onSent,
+}: {
+  client: ReceiptsApi;
+  priceUzs: number;
+  card: PaymentCard | null;
+  onSent: () => void;
+}) {
   const { t, language } = useI18n();
   const [months, setMonths] = useState("1");
   // Null: the amount follows the months and the price. Once the person types one, it is theirs.
@@ -47,11 +57,12 @@ function Form({ client, priceUzs, onSent }: { client: ReceiptsApi; priceUzs: num
   const [problems, setProblems] = useState<Fields>(NOTHING);
   const amount = typedAmount ?? computedAmount(priceUzs, months);
   // The file is not part of what `useSubmit` compares, so a changed file is told to it by name and size.
-  const { state, submit } = useSubmit((payload: { amount: number; months: number; file: string }, key) => {
+  // The card is part of what is compared: the same receipt for another card is another request.
+  const { state, submit } = useSubmit((payload: { amount: number; months: number; file: string; card: string | null }, key) => {
     if (file === null) {
       throw new RangeError("no file");
     }
-    return client.submit({ amount: payload.amount, months: payload.months, receipt: file }, key).then(onSent);
+    return client.submit({ amount: payload.amount, months: payload.months, receipt: file, card: payload.card }, key).then(onSent);
   });
   const monthsMessage = t("receipts.months.invalid", { max: MAX_MONTHS });
   const amountMessage = t("receipts.amount.invalid", { min: formatMoney(MIN_AMOUNT, language), max: formatMoney(MAX_AMOUNT, language) });
@@ -68,7 +79,12 @@ function Form({ client, priceUzs, onSent }: { client: ReceiptsApi; priceUzs: num
     };
     setProblems(found);
     if (wantedMonths !== null && wantedAmount.ok && file !== null && fileProblem === null) {
-      submit({ amount: wantedAmount.amount, months: wantedMonths, file: `${file.name}/${file.size}/${file.lastModified}` });
+      submit({
+        amount: wantedAmount.amount,
+        months: wantedMonths,
+        file: `${file.name}/${file.size}/${file.lastModified}`,
+        card: card?.number ?? null,
+      });
     }
   };
 
@@ -90,6 +106,10 @@ function Form({ client, priceUzs, onSent }: { client: ReceiptsApi; priceUzs: num
               ? fileText(word as ReceiptProblem, t)
               : errorText(failure, t),
     };
+    if ("card" in failure.fields) {
+      // The administrator changed the cards while this page was open: the one chosen is not offered now.
+      detail = t("receipts.card.changed");
+    }
   } else if (failure?.code === "BODY_TOO_LARGE") {
     refused = { ...NOTHING, file: fileText("too_large", t) };
   } else if (failure?.code === "SUBSCRIPTION_RECEIPT_NOT_ALLOWED" && failure.fields["reason"] === "too_many_waiting") {
@@ -175,6 +195,7 @@ function Form({ client, priceUzs, onSent }: { client: ReceiptsApi; priceUzs: num
         </p>
         <FieldError id="receipt-file-error" message={shown.file} />
       </div>
+      {card === null ? null : <p className="hint">{t("receipts.card", { card: cardTag(card) })}</p>}
       <p className="actions">
         <button type="submit" className="button button--primary" disabled={pending}>
           {pending ? t("state.saving") : t("receipts.send")}
@@ -203,7 +224,7 @@ export function receiptState(receipt: OwnReceipt, t: Translate): string {
  * how much was paid, attaches the receipt, and sees what became of the receipts sent before. The
  * subscription screen shows this to the owner alone; the server answers nobody else.
  */
-export default function ReceiptSection({ priceUzs }: { priceUzs: number }) {
+export default function ReceiptSection({ priceUzs, card = null }: { priceUzs: number; card?: PaymentCard | null }) {
   const { api } = useWorkspace();
   const { t, language } = useI18n();
   const desktop = useDesktop();
@@ -225,6 +246,7 @@ export default function ReceiptSection({ priceUzs }: { priceUzs: number }) {
       { id: "sent", header: t("receipts.col.sent"), rowHeader: true, cell: (receipt) => formatInstant(receipt.createdAt, language) },
       { id: "amount", header: t("receipts.col.amount"), numeric: true, cell: (receipt) => money(receipt.statedAmount) },
       { id: "months", header: t("receipts.col.months"), numeric: true, cell: (receipt) => receipt.statedMonths ?? NONE },
+      { id: "card", header: t("receipts.col.card"), cell: (receipt) => receipt.paidToCard ?? NONE },
       { id: "state", header: t("receipts.col.state"), cell: (receipt) => receiptState(receipt, t) },
     ];
     history = <desktop.Table caption={t("receipts.history")} columns={columns} items={state.data} rowKey={(receipt) => receipt.id} />;
@@ -238,6 +260,7 @@ export default function ReceiptSection({ priceUzs }: { priceUzs: number }) {
               <span className="row__amount">{money(receipt.statedAmount)}</span>
             </p>
             {receipt.statedMonths === null ? null : <p className="row__meta">{t("receipts.stated", { count: receipt.statedMonths })}</p>}
+            {receipt.paidToCard === null ? null : <p className="row__meta">{t("receipts.card", { card: receipt.paidToCard })}</p>}
             <p className="row__meta">{receiptState(receipt, t)}</p>
           </li>
         ))}
@@ -259,6 +282,7 @@ export default function ReceiptSection({ priceUzs }: { priceUzs: number }) {
           key={sent}
           client={client}
           priceUzs={priceUzs}
+          card={card}
           onSent={() => {
             setSent((count) => count + 1);
             reload();

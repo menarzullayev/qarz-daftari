@@ -53,6 +53,8 @@ pytestmark = pytest.mark.db
 TASHKENT = ZoneInfo("Asia/Tashkent")
 RECEIPTS = f"{ADMIN_API}/receipts"
 CARD = "8600123412341234"
+HUMO = {"number": CARD, "label": "Humo · Anorbank"}
+UZCARD = {"number": "5614681234567890", "label": "Uzcard · Kapitalbank"}
 
 
 def key() -> dict[str, str]:
@@ -72,9 +74,12 @@ def submit(
     content: bytes | None = JPEG,
     *,
     headers: dict[str, str] | None = None,
+    card: str | None = None,
 ) -> Any:
     files = None if content is None else {"receipt": ("chek.jpg", content, "image/jpeg")}
     data = {name: str(value) for name, value in (("amount", amount), ("months", months)) if value is not None}
+    if card is not None:
+        data["card"] = card
     sent = {**as_user(user), **(key() if headers is None else headers)}
     if files is None:
         # A form without a file part still has to be a multipart form.
@@ -211,6 +216,7 @@ def test_the_owner_sends_a_receipt_and_nothing_changes_until_it_is_decided(
         "reject_reason": None,
         "created_at": body["created_at"],
         "decided_at": None,
+        "paid_to_card": None,  # no card was named
     }
     assert abs(datetime.fromisoformat(body["created_at"]) - admin_env.clock.now()) < timedelta(minutes=1)
     assert rows(owner, world.shop_a) == [(300_000, 3, "submitted", None, None, None, True)]
@@ -256,7 +262,7 @@ def test_administrators_on_the_allow_list_and_the_review_group_are_told_without_
     owner.execute("UPDATE admin_account SET status = 'disabled' WHERE user_id = %s", (disabled,))
     group = -1_000_000_000_000 - uuid.uuid4().int % 10**9
     setting(owner, world.admin, "review_group", group)
-    setting(owner, world.admin, "card_number", CARD)
+    setting(owner, world.admin, "payment_cards", [HUMO])
 
     receipt = sent_ok(client, world.owner_a, world.shop_a, 300_000, 3, unique_image()[0])
     told = announced(owner, receipt)
@@ -281,6 +287,145 @@ def test_administrators_on_the_allow_list_and_the_review_group_are_told_without_
     }
     # The shop's own people are told nothing new by this.
     assert tg(owner, world.owner_a) not in told
+
+
+def paid_to(owner: psycopg.Connection, shop_id: uuid.UUID) -> list[Any]:
+    return [
+        row[0]
+        for row in owner.execute(
+            "SELECT paid_to_card FROM subscription_receipt WHERE shop_id = %s ORDER BY created_at, id", (shop_id,)
+        ).fetchall()
+    ]
+
+
+def test_the_receipt_and_the_reviewers_are_told_which_card_was_paid_to_but_never_its_number(
+    client: TestClient, world: World, owner: psycopg.Connection, admin_env: AdminEnv, admin: dict[str, str]
+) -> None:
+    group = -1_000_000_000_000 - uuid.uuid4().int % 10**9
+    setting(owner, world.admin, "review_group", group)
+    setting(owner, world.admin, "payment_cards", [HUMO, UZCARD])
+
+    # The other card, written the way the page shows it: in groups of four.
+    response = submit(client, world.owner_a, world.shop_a, 300_000, 3, unique_image()[0], card="5614 6812 3456 7890")
+    assert response.status_code == 201, response.text
+    body = response.json()
+    tag = "Uzcard · Kapitalbank ··7890"
+    assert body["paid_to_card"] == tag
+    assert paid_to(owner, world.shop_a) == [tag]
+
+    told = announced(owner, body["id"])
+    assert set(told) == {tg(owner, world.admin), str(group)}
+    for text in told.values():
+        assert text.splitlines() == [
+            say("uz", "a_receipt_new", shop="Shop A", amount=money("uz", 300_000), months=3),
+            "Karta: Uzcard · Kapitalbank ··7890",
+        ]
+        assert UZCARD["number"] not in text and "5614" not in text
+        assert HUMO["label"] not in text, "the card that was not chosen is not named"
+
+    # The owner's history, the administrator's queue and the administrator's view of the one receipt.
+    history = client.get(path(world.shop_a), headers=as_user(world.owner_a)).json()
+    assert [item["paid_to_card"] for item in history["items"]] == [tag]
+    queued = client.get(RECEIPTS, params={"limit": 100}, headers=admin)
+    assert [item["paid_to_card"] for item in queued.json()["items"] if item["id"] == body["id"]] == [tag]
+    seen = client.get(f"{RECEIPTS}/{body['id']}", headers=admin)
+    assert seen.json()["paid_to_card"] == tag
+    for answer in (response, queued, seen):
+        assert UZCARD["number"] not in answer.text
+
+    # Nothing kept about the receipt holds the number: not its row, not what was queued to be sent, not
+    # the stored answer of the request, not the shop's activity.
+    for table in ("subscription_receipt", "outbox_message", "request_key", "activity", "admin_audit"):
+        held = owner.execute(f"SELECT count(*) FROM {table} t WHERE t::text LIKE %s", (f"%{UZCARD['number']}%",))
+        assert held.fetchone() == (0,), table
+
+    # The primary card, and a receipt for which no card is named, beside it.
+    assert submit(client, world.owner_a, world.shop_a, card=CARD).json()["paid_to_card"] == "Humo · Anorbank ··1234"
+    assert submit(client, world.owner_a, world.shop_a).json()["paid_to_card"] is None
+    assert paid_to(owner, world.shop_a) == [tag, "Humo · Anorbank ··1234", None]
+
+
+def test_the_card_is_named_as_it_was_when_the_receipt_was_sent(
+    client: TestClient, world: World, owner: psycopg.Connection, admin: dict[str, str]
+) -> None:
+    setting(owner, world.admin, "payment_cards", [HUMO, UZCARD])
+    receipt = sent_ok(client, world.owner_a, world.shop_a, card=UZCARD["number"])
+    # The administrator renames the card and then removes it: the receipt still says what the payer chose.
+    setting(owner, world.admin, "payment_cards", [HUMO, {**UZCARD, "label": "Boshqa nom"}])
+    setting(owner, world.admin, "payment_cards", [HUMO])
+    assert client.get(f"{RECEIPTS}/{receipt}", headers=admin).json()["paid_to_card"] == "Uzcard · Kapitalbank ··7890"
+
+
+@pytest.mark.parametrize(
+    "card",
+    [
+        "8600123412341235",  # sixteen digits, but no card of the list
+        "1234",  # the last four digits alone
+        "860012341234123",
+        "Humo · Anorbank",
+        "Humo · Anorbank ··1234",  # what a receipt keeps is not what is sent
+        "٨٦٠٠١٢٣٤١٢٣٤١٢٣٤",  # the primary card's number in digits a card does not carry
+        "",
+        "0",
+    ],
+)
+def test_a_card_that_is_not_one_of_those_offered_is_refused_and_nothing_is_kept(
+    client: TestClient, world: World, owner: psycopg.Connection, file_root: Path, card: str
+) -> None:
+    setting(owner, world.admin, "payment_cards", [HUMO, UZCARD])
+    before = counts(owner, world.shop_a)
+    response = submit(client, world.owner_a, world.shop_a, card=card)
+    assert response.status_code == 422, response.text
+    error = response.json()["error"]
+    assert (error["code"], set(error["fields"])) == ("VALIDATION", {"card"})
+    assert rows(owner, world.shop_a) == [] and files_of(owner, world.shop_a) == []
+    assert stored_objects(file_root) == []
+    assert counts(owner, world.shop_a) == before
+
+
+def test_a_card_cannot_be_named_when_none_is_offered_or_once_it_was_removed(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    # Nothing stored at all.
+    assert set(submit(client, world.owner_a, world.shop_a, card=CARD).json()["error"]["fields"]) == {"card"}
+    setting(owner, world.admin, "payment_cards", [HUMO, UZCARD])
+    assert submit(client, world.owner_a, world.shop_a, card=UZCARD["number"]).status_code == 201
+    setting(owner, world.admin, "payment_cards", [HUMO])
+    removed = submit(client, world.owner_a, world.shop_a, card=UZCARD["number"])
+    assert (removed.status_code, set(removed.json()["error"]["fields"])) == (422, {"card"})
+    assert paid_to(owner, world.shop_a) == ["Uzcard · Kapitalbank ··7890"]
+
+
+def test_a_repeat_of_a_request_that_named_a_card_is_one_receipt_and_another_card_is_another_request(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    setting(owner, world.admin, "payment_cards", [HUMO, UZCARD])
+    headers = key()
+    first = submit(client, world.owner_a, world.shop_a, headers=headers, card=CARD)
+    again = submit(client, world.owner_a, world.shop_a, headers=headers, card="8600 1234 1234 1234")
+    assert (first.status_code, again.status_code) == (201, 201)
+    assert again.json() == first.json()
+    other = submit(client, world.owner_a, world.shop_a, headers=headers, card=UZCARD["number"])
+    assert (other.status_code, other.json()["error"]["code"]) == (409, "IDEMPOTENCY_KEY_REUSED")
+    assert paid_to(owner, world.shop_a) == ["Humo · Anorbank ··1234"]
+
+
+def test_the_receipts_column_takes_a_label_and_four_digits_and_nothing_longer(
+    world: World, owner: psycopg.Connection
+) -> None:
+    def insert(value: str | None) -> None:
+        owner.execute(
+            "INSERT INTO subscription_receipt (id, shop_id, stated_amount, stated_months, paid_to_card) "
+            "VALUES (gen_random_uuid(), %s, 100000, 1, %s)",
+            (world.shop_a, value),
+        )
+
+    insert(None)
+    insert("x" * 40 + " ··1234")
+    for wrong in ("", "x" * 61):
+        with pytest.raises(psycopg.errors.CheckViolation), owner.transaction():
+            insert(wrong)
+    owner.execute("DELETE FROM subscription_receipt WHERE shop_id = %s", (world.shop_a,))
 
 
 def test_without_a_review_group_and_without_reviewers_the_receipt_still_waits(
@@ -310,6 +455,7 @@ def test_the_same_file_sent_again_is_flagged_to_the_reviewers_across_shops_and_t
         "reject_reason",
         "created_at",
         "decided_at",
+        "paid_to_card",
     }, "the shop is told nothing about another shop's receipt"
     warned = announced(owner, second.json()["id"])[tg(owner, world.admin)]
     assert warned.endswith("\n" + say("uz", "a_receipt_copies", count=1))
@@ -582,6 +728,7 @@ def test_the_queue_lists_waiting_receipts_of_all_shops_oldest_first(
         "decided_at": None,
         "decided_by": None,
         "decided_by_tg_id": None,
+        "paid_to_card": None,
         "has_file": True,
         "copies": mine[1]["copies"],
     }
@@ -619,10 +766,12 @@ def test_an_administrator_opens_a_receipt_through_a_link_and_the_look_is_audited
         "decided_at",
         "decided_by",
         "decided_by_tg_id",
+        "paid_to_card",
         "has_file",
         "file",
         "copies",
     }
+    assert body["paid_to_card"] is None
     assert (body["shop_name"], body["stated_amount"], body["stated_months"], body["has_file"]) == (
         "Shop A",
         300_000,
@@ -687,6 +836,7 @@ def test_approval_extends_the_paid_period_and_tells_the_owner(
         "decided_at": body["decided_at"],
         "decided_by": str(world.admin),
         "decided_by_tg_id": None,
+        "paid_to_card": None,
         "has_file": True,
         "subscription": {"state": "active", "paid_through": until.isoformat()},
     }

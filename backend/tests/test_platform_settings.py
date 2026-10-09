@@ -4,7 +4,22 @@ from typing import Any
 
 import pytest
 
-from qarz.domain.platform_settings import SETTINGS, InvalidSetting, effective, masked, needs_code, validate
+from qarz.domain.platform_settings import (
+    MAX_CARD_LABEL,
+    MAX_CARDS,
+    SETTINGS,
+    InvalidSetting,
+    card_tag,
+    effective,
+    find_card,
+    masked,
+    needs_code,
+    payment_cards,
+    validate,
+)
+
+HUMO = {"number": "8600123456789012", "label": "Humo · Anorbank"}
+UZCARD = {"number": "5614681234567890", "label": "Uzcard · Kapitalbank"}
 
 
 def test_the_settings_are_the_ones_the_administrator_controls() -> None:
@@ -12,12 +27,13 @@ def test_the_settings_are_the_ones_the_administrator_controls() -> None:
         "trial_on",
         "trial_days",
         "price_uzs",
-        "card_number",
+        "payment_cards",
         "review_group",
         "sms_on",
         "sms_monthly_quota",
         "online_pay_on",
     }
+    assert "card_number" not in SETTINGS, "the single card became the list"
 
 
 def test_defaults_when_nothing_is_stored() -> None:
@@ -25,7 +41,7 @@ def test_defaults_when_nothing_is_stored() -> None:
         "trial_on": True,  # REQ-052
         "trial_days": 30,
         "price_uzs": 100_000,  # REQ-053
-        "card_number": None,
+        "payment_cards": [],
         "review_group": None,
         "sms_on": False,
         "sms_monthly_quota": 0,
@@ -42,7 +58,7 @@ def test_price_card_and_switches_need_a_code() -> None:
     """Specification: "changes to price, card number, and switches ask for the code again"."""
     assert {key for key in SETTINGS if needs_code(key)} == {
         "price_uzs",
-        "card_number",
+        "payment_cards",
         "trial_on",
         "sms_on",
         "online_pay_on",
@@ -73,15 +89,110 @@ def test_a_number_stays_inside_its_range(key: str, low: int, high: int) -> None:
             validate(key, wrong)
 
 
-def test_a_card_number_is_sixteen_digits_or_cleared() -> None:
-    assert validate("card_number", "8600 1234 5678 9012") == "8600123456789012"
-    assert validate("card_number", "8600123456789012") == "8600123456789012"
-    assert validate("card_number", None) is None
-    for wrong in ("860012345678901", "86001234567890123", "8600-1234-5678-9012", "86001234567890ab", "", 8600, True):
-        with pytest.raises(InvalidSetting):
-            validate("card_number", wrong)
+def _card(number: Any = "8600123456789012", label: Any = "Humo") -> dict[str, Any]:
+    return {"number": number, "label": label}
+
+
+def test_the_cards_are_stored_in_order_without_spaces_and_with_trimmed_labels() -> None:
+    given = [
+        {"number": "8600 1234 5678 9012", "label": "  Humo · Anorbank "},
+        {"label": "Uzcard · Kapitalbank", "number": "5614681234567890"},
+    ]
+    assert validate("payment_cards", given) == [HUMO, UZCARD], "the first stays the first: it is the primary"
+    assert validate("payment_cards", [UZCARD, HUMO]) == [UZCARD, HUMO]
+
+
+def test_null_and_an_empty_list_both_clear_the_cards() -> None:
+    assert validate("payment_cards", None) == []
+    assert validate("payment_cards", []) == []
+
+
+@pytest.mark.parametrize(
+    "number",
+    [
+        "860012345678901",  # fifteen digits
+        "86001234567890123",  # seventeen
+        "8600-1234-5678-9012",
+        "86001234567890ab",
+        "",
+        "٨٦٠٠١٢٣٤٥٦٧٨٩٠١٢",  # digits, but not the ones a card carries
+        8600123456789012,
+        None,
+        True,
+    ],
+)
+def test_a_card_number_is_sixteen_ascii_digits(number: Any) -> None:
+    with pytest.raises(InvalidSetting, match="card 2: the number must be 16 digits"):
+        validate("payment_cards", [HUMO, _card(number=number)])
+
+
+@pytest.mark.parametrize("label", ["", "   ", "x" * (MAX_CARD_LABEL + 1), None, 5, ["Humo"]])
+def test_a_card_label_is_one_to_forty_characters(label: Any) -> None:
+    with pytest.raises(InvalidSetting, match="card 1: the label"):
+        validate("payment_cards", [_card(label=label)])
+
+
+def test_a_label_of_exactly_forty_characters_is_kept() -> None:
+    longest = "x" * MAX_CARD_LABEL
+    assert validate("payment_cards", [_card(label=f" {longest} ")]) == [_card(label=longest)]
+
+
+def test_the_same_number_twice_is_refused_however_it_is_spaced() -> None:
+    with pytest.raises(InvalidSetting, match="card 2: the same number is in the list twice"):
+        validate("payment_cards", [HUMO, {"number": "8600 1234 5678 9012", "label": "Boshqa nom"}])
+    # The same label on two different cards is the administrator's business.
+    same_name = [HUMO, {**UZCARD, "label": HUMO["label"]}]
+    assert validate("payment_cards", same_name) == same_name
+
+
+def test_at_most_ten_cards() -> None:
+    def cards(count: int) -> list[dict[str, Any]]:
+        return [_card(number=f"86001234567890{place:02d}", label=f"Karta {place}") for place in range(count)]
+
+    assert MAX_CARDS == 10
+    assert validate("payment_cards", cards(10)) == cards(10)
+    with pytest.raises(InvalidSetting, match="at most 10 cards"):
+        validate("payment_cards", cards(11))
+
+
+@pytest.mark.parametrize(
+    "wrong",
+    [
+        "8600123456789012",  # the single number the setting used to be
+        {"number": "8600123456789012", "label": "Humo"},  # one card, not a list
+        ["8600123456789012"],
+        [{"number": "8600123456789012"}],
+        [{"label": "Humo"}],
+        [{"number": "8600123456789012", "label": "Humo", "primary": True}],
+        [None],
+        8600,
+        True,
+    ],
+)
+def test_the_cards_are_a_list_of_number_and_label_and_nothing_else(wrong: Any) -> None:
     with pytest.raises(InvalidSetting):
-        validate("card_number", "٨٦٠٠١٢٣٤٥٦٧٨٩٠١٢")  # digits, but not the ones a card carries
+        validate("payment_cards", wrong)
+
+
+def test_a_receipt_names_a_card_by_its_label_and_last_four_digits() -> None:
+    assert card_tag(HUMO) == "Humo · Anorbank ··9012"
+    assert HUMO["number"] not in card_tag(HUMO)
+    assert len(card_tag(_card(label="x" * MAX_CARD_LABEL))) <= 60, "what the receipt's column holds"
+
+
+def test_a_card_is_found_by_its_number_with_or_without_spaces() -> None:
+    assert find_card([HUMO, UZCARD], "5614 6812 3456 7890") == UZCARD
+    assert find_card([HUMO, UZCARD], "8600123456789012") == HUMO
+    for unknown in ("8600123456789013", "9012", "", "Humo · Anorbank", None, 8600123456789012):
+        assert find_card([HUMO, UZCARD], unknown) is None
+    assert find_card([], HUMO["number"]) is None
+
+
+def test_stored_cards_apply_only_if_the_whole_list_is_valid() -> None:
+    assert payment_cards([HUMO, UZCARD]) == [HUMO, UZCARD]
+    assert payment_cards(None) == []
+    assert payment_cards("8600123456789012") == []
+    assert payment_cards([HUMO, {"number": "86", "label": "x"}]) == [], "a damaged list offers no card at all"
 
 
 def test_the_review_group_is_a_group_chat_or_cleared() -> None:
@@ -108,8 +219,9 @@ def test_an_unknown_setting_is_refused() -> None:
         ("sms_on", "yes", False),
         ("sms_on", True, True),
         ("trial_on", False, False),
-        ("card_number", "8600123456789012", "8600123456789012"),
-        ("card_number", "not a card", None),
+        ("payment_cards", [HUMO], [HUMO]),
+        ("payment_cards", "8600123456789012", []),
+        ("payment_cards", [HUMO, HUMO], []),
     ],
 )
 def test_a_stored_value_applies_only_if_it_is_valid(key: str, stored: Any, expected: Any) -> None:
@@ -117,6 +229,11 @@ def test_a_stored_value_applies_only_if_it_is_valid(key: str, stored: Any, expec
 
 
 def test_the_audit_never_holds_a_whole_card_number() -> None:
-    assert masked("card_number", "8600123456789012") == "************9012"
-    assert masked("card_number", None) is None
+    shown = masked("payment_cards", [HUMO, UZCARD])
+    assert shown == [
+        {"number": "************9012", "label": "Humo · Anorbank"},
+        {"number": "************7890", "label": "Uzcard · Kapitalbank"},
+    ]
+    assert HUMO["number"] not in str(shown) and UZCARD["number"] not in str(shown)
+    assert masked("payment_cards", []) == []
     assert masked("price_uzs", 120_000) == 120_000

@@ -589,6 +589,13 @@ textarea.input--text {
   font-weight: 400;
 }
 
+/* What is one tap away: the line that opens it is as tall as a button. */
+.more > summary {
+  padding: 0.75rem 0;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 /* A printed counter code is the code and its caption, without the application around them. */
 @media print {
   .shell__header,
