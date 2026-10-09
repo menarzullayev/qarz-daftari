@@ -179,6 +179,12 @@ def _sent_notice(owner: psycopg.Connection, world: World) -> None:
     )
 
 
+def _cash_today(shop: uuid.UUID) -> str:
+    """A valid period for the cash book's summary: today, in Tashkent."""
+    day = tashkent_date(datetime.now(UTC))
+    return f"/api/v1/shops/{shop}/cash/summary?from={day}&to={day}"
+
+
 def _last_week(shop: uuid.UUID) -> str:
     """A valid period for the report: the seven Tashkent days that end today."""
     last = tashkent_date(datetime.now(UTC))
@@ -262,6 +268,46 @@ def _live_share(owner: psycopg.Connection, world: World) -> None:
             hashlib.sha256(_share_token(world).encode()).digest(),
             world.manager_a_membership,
         ),
+    )
+
+
+def _cash_category_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-cash-category:{world.shop_a}")
+
+
+def _cash_spare_category_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-cash-spare-category:{world.shop_a}")
+
+
+def _cash_entry_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-cash-entry:{world.shop_a}")
+
+
+def _cash_on(owner: psycopg.Connection, world: World) -> None:
+    """The platform switch `cash_book_on`, as an administrator would have turned it on. The row is signed
+    with a user identifier, so the `admin_env` fixture removes it after the test."""
+    owner.execute(
+        "INSERT INTO platform_setting (key, value, updated_by) VALUES ('cash_book_on', 'true', %s) "
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by",
+        (str(world.admin),),
+    )
+
+
+def _cash_book(owner: psycopg.Connection, world: World) -> None:
+    """The switch on, and shop A's cash book in use: its categories, one of them never written under, and
+    one expense the manager recorded."""
+    _cash_on(owner, world)
+    owner.execute(
+        "INSERT INTO cash_category (id, shop_id, direction, name, name_norm, system_key) VALUES "
+        "(gen_random_uuid(), %(shop)s, 'income', 'Qarz qaytdi', 'qarz qaytdi', 'debt_repaid'), "
+        "(%(used)s, %(shop)s, 'expense', 'Ijara', 'ijara', NULL), "
+        "(%(spare)s, %(shop)s, 'expense', 'Transport', 'transport', NULL)",
+        {"shop": world.shop_a, "used": _cash_category_id(world), "spare": _cash_spare_category_id(world)},
+    )
+    owner.execute(
+        "INSERT INTO cash_entry (id, shop_id, direction, method, amount, category_id, day, author_id) "
+        "VALUES (%s, %s, 'expense', 'cash', 300000, %s, current_date, %s)",
+        (_cash_entry_id(world), world.shop_a, _cash_category_id(world), world.manager_a_membership),
     )
 
 
@@ -574,6 +620,50 @@ CALLS: dict[str, Call] = {
         True,
         prepare=_links_on,
     ),
+    # The cash book is behind the platform switch `cash_book_on`; the suite turns it on, so that the roles
+    # are told apart. With the switch off: tests/api/test_cash_book.py.
+    "cash.day": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/cash/day", prepare=_cash_book),
+    "cash.summary": Call("GET", lambda w, shop: _cash_today(shop), prepare=_cash_book),
+    "cash.entry.create": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/cash/entries",
+        None,  # the body names a category of shop A; filled in by _body
+        True,
+        201,
+        prepare=_cash_book,
+    ),
+    "cash.entry.cancel": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/cash/entries/{_cash_entry_id(w)}/cancellation",
+        {"reason": "Ikki marta yozilgan"},
+        True,
+        201,
+        prepare=_cash_book,
+    ),
+    "cash.categories.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/cash/categories", prepare=_cash_book),
+    "cash.categories.create": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/cash/categories",
+        {"direction": "expense", "name": "Soliq"},
+        True,
+        201,
+        prepare=_cash_book,
+    ),
+    "cash.categories.update": Call(
+        "PATCH",
+        lambda w, shop: f"/api/v1/shops/{shop}/cash/categories/{_cash_category_id(w)}",
+        {"name": "Do'kon ijarasi", "archived": True},
+        True,
+        prepare=_cash_book,
+    ),
+    "cash.categories.delete": Call(
+        "DELETE",
+        lambda w, shop: f"/api/v1/shops/{shop}/cash/categories/{_cash_spare_category_id(w)}",
+        None,
+        True,
+        prepare=_cash_book,
+    ),
+    "cash.backfill": Call("POST", lambda w, shop: f"/api/v1/shops/{shop}/cash/backfill", {}, True, prepare=_cash_book),
     "counter_code.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/counter-code"),
     "counter_code.rotate": Call("POST", lambda w, shop: f"/api/v1/shops/{shop}/counter-code", None, True, 201),
     "waiting.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/waiting"),
@@ -788,6 +878,17 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "customers.share.revoke": {Role.MANAGER, Role.OWNER},
     "shop.share_contact.read": {Role.MANAGER, Role.OWNER},
     "shop.share_contact.update": {Role.OWNER},
+    # The cash book is the shop's money: read, written and arranged by managers and the owner
+    # (qarz.application.cash_book). Copying the ledger's past into it is the owner's decision alone.
+    "cash.day": {Role.MANAGER, Role.OWNER},
+    "cash.summary": {Role.MANAGER, Role.OWNER},
+    "cash.entry.create": {Role.MANAGER, Role.OWNER},
+    "cash.entry.cancel": {Role.MANAGER, Role.OWNER},
+    "cash.categories.list": {Role.MANAGER, Role.OWNER},
+    "cash.categories.create": {Role.MANAGER, Role.OWNER},
+    "cash.categories.update": {Role.MANAGER, Role.OWNER},
+    "cash.categories.delete": {Role.MANAGER, Role.OWNER},
+    "cash.backfill": {Role.OWNER},
     "counter_code.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     # The code is printed and hangs at the counter; replacing it invalidates the print.
     "counter_code.rotate": {Role.MANAGER, Role.OWNER},
@@ -982,6 +1083,8 @@ def _body(world: World, op_name: str, call: Call) -> dict[str, Any] | None:
         return {"into": str(world.catalog_item_a)}
     if op_name in ("stock.documents.create", "stock.documents.update"):
         return _stocktake(world)
+    if op_name == "cash.entry.create":
+        return {"direction": "expense", "method": "cash", "amount": 50000, "category_id": str(_cash_category_id(world))}
     return call.json
 
 
@@ -1054,6 +1157,16 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID, *, shared: bool = True
             (shop,),
         ).fetchall(),
         owner.execute("SELECT share_phone FROM shop WHERE id = %s", (shop,)).fetchone(),
+        owner.execute(
+            "SELECT id, direction, name, name_norm, system_key, archived_at FROM cash_category "
+            "WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
+        owner.execute(
+            "SELECT id, direction, method, currency, amount, category_id, note, day, author_id, ledger_entry_id, "
+            "cancelled_at, cancelled_by, cancel_reason FROM cash_entry WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
         owner.execute("SELECT count(*) FROM outbox_message WHERE shop_id = %s", (shop,)).fetchone(),
         owner.execute("SELECT id, status FROM removal_request WHERE shop_id = %s ORDER BY id", (shop,)).fetchall(),
         owner.execute(
@@ -1273,6 +1386,9 @@ def test_a_member_of_one_shop_cannot_reach_another(
         _supplier_id(world),
         _stock_document_id(world),
         _supplier_entry_id(world),
+        _cash_category_id(world),
+        _cash_spare_category_id(world),
+        _cash_entry_id(world),
     )
     uses_foreign_resource = any(str(resource) in call.path(world, world.shop_b) for resource in foreign)
     if uses_foreign_resource:

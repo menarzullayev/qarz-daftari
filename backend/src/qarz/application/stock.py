@@ -22,6 +22,7 @@ from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import operation
 from qarz.application.ports import Membership, Storage, TenantSession
 from qarz.application.shops import require_member
+from qarz.application.stock_cash import cash_book_on
 from qarz.application.stock_currency import shop_currencies
 from qarz.application.stock_moves import require_on
 from qarz.application.stock_ports import MovementRecord, StockItem
@@ -126,9 +127,12 @@ def movement_body(movement: MovementRecord, *, costs: bool) -> dict[str, Any]:
     return body
 
 
-def settings_body(*, refuse_negative: bool, currencies: tuple[str, ...]) -> dict[str, Any]:
+def settings_body(*, refuse_negative: bool, currencies: tuple[str, ...], cash_book: bool) -> dict[str, Any]:
     return {
         "refuse_negative": refuse_negative,
+        # Whether money the stock pays out is also written to the cash book: a client then asks how it
+        # was paid (cash, card, transfer).
+        "cash_book": cash_book,
         "currencies": list(currencies),
         "units": [
             {"key": unit.key, "label": {"uz": unit.uz, "ru": unit.ru}, "weighed": unit.weighed} for unit in stock.UNITS
@@ -204,7 +208,9 @@ class StockService:
             actor = await require_member(session, user_id, READ_SETTINGS)
             await require_viewable(session, actor, self._today())
             return settings_body(
-                refuse_negative=await session.stock_refuse_negative(), currencies=await shop_currencies(session)
+                refuse_negative=await session.stock_refuse_negative(),
+                currencies=await shop_currencies(session),
+                cash_book=await cash_book_on(session),
             )
 
     async def update_settings(
@@ -226,7 +232,11 @@ class StockService:
                         subject_id=shop_id,
                         detail={"refuse_negative": refuse_negative},
                     )
-                return settings_body(refuse_negative=refuse_negative, currencies=await shop_currencies(session))
+                return settings_body(
+                    refuse_negative=refuse_negative,
+                    currencies=await shop_currencies(session),
+                    cash_book=await cash_book_on(session),
+                )
 
             return await idempotency.run_once(
                 session,

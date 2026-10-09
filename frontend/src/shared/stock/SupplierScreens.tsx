@@ -11,9 +11,9 @@ import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
 import { useMay } from "../workspace/context";
 import { Confirm, CurrencyToggle, Empty, errorText, Failure, FieldError, formatInstant, Loading, LoadMore } from "../workspace/parts";
-import { CancelForm, DOCUMENT_KIND_LABELS, Fact, kindText, Listing, NONE, useStock, useStockSettings } from "./parts";
+import { CancelForm, DOCUMENT_KIND_LABELS, Fact, kindText, Listing, MethodChoice, NONE, useStock, useStockSettings } from "./parts";
 import { MAX_NOTE, tidy } from "./quantity";
-import type { Supplier, SupplierBalance, SupplierEntry, SupplierInput } from "./stockApi";
+import type { PaymentMethod, Supplier, SupplierBalance, SupplierEntry, SupplierInput } from "./stockApi";
 
 const MAX_NAME = 80;
 /** One entry of a supplier's account, in the currency's minor unit (backend/src/qarz/domain/suppliers.py). */
@@ -275,19 +275,22 @@ export function SuppliersScreen() {
   );
 }
 
-type EntryJob = { kind: "payment" | "opening"; amount: number; currency: Currency; note: string | null };
+type EntryJob = { kind: "payment" | "opening"; amount: number; currency: Currency; note: string | null; method?: PaymentMethod };
 
 /** A payment to the supplier, or what the shop already owed them before it kept this account. */
 function EntryForm({
   supplierId,
   kind,
   currencies,
+  cashBook,
   onDone,
   onClose,
 }: {
   supplierId: string;
   kind: "payment" | "opening";
   currencies: readonly Currency[];
+  /** The shop keeps a cash book: a payment is then asked how it was paid. */
+  cashBook: boolean;
   onDone: () => void;
   onClose: () => void;
 }) {
@@ -297,6 +300,9 @@ function EntryForm({
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [problem, setProblem] = useState(false);
+  const [method, setMethod] = useState<PaymentMethod>("cash");
+  // An old debt stated is no money paid: only a payment has a method.
+  const asksMethod = cashBook && kind === "payment";
   const save = useSubmit((job: EntryJob, key) => stock.addEntry(supplierId, job, key).then(onDone));
   const pending = save.state.status === "pending";
   const parsed = parseMoney(amount, currency, ENTRY_RANGE);
@@ -306,7 +312,8 @@ function EntryForm({
       return;
     }
     const cleanNote = tidy(note);
-    save.submit({ kind, amount: parsed.amount, currency, note: cleanNote === null ? null : cleanNote.slice(0, MAX_NOTE) });
+    const job: EntryJob = { kind, amount: parsed.amount, currency, note: cleanNote === null ? null : cleanNote.slice(0, MAX_NOTE) };
+    save.submit(asksMethod ? { ...job, method } : job);
   };
   const id = `supplier-${kind}`;
   return (
@@ -349,6 +356,7 @@ function EntryForm({
         </p>
         <FieldError id={`${id}-amount-error`} message={problem ? t("supplier.amount.invalid") : null} />
       </div>
+      {asksMethod ? <MethodChoice id={`${id}-method`} value={method} disabled={pending} onChange={setMethod} /> : null}
       <div className="field">
         <label htmlFor={`${id}-note`}>{t("supplier.note")}</label>
         <input
@@ -414,6 +422,7 @@ export function SupplierScreen({ supplierId, office }: { supplierId: string; off
   }
   const archived = supplier.status === "archived";
   const currencies = settings.state.status === "ready" ? settings.state.data.currencies : (["UZS"] as const);
+  const cashBook = settings.state.status === "ready" && settings.state.data.cashBook;
   const entries = state.status === "ready" ? state.items : [];
 
   /** Whether "cancel" is offered for an entry: one a person recorded, still standing, by one who may. */
@@ -504,7 +513,7 @@ export function SupplierScreen({ supplierId, office }: { supplierId: string; off
         </p>
       ) : null}
       {mode === "payment" || mode === "opening" ? (
-        <EntryForm key={mode} supplierId={supplierId} kind={mode} currencies={currencies} onDone={done} onClose={() => setMode("view")} />
+        <EntryForm key={mode} supplierId={supplierId} kind={mode} currencies={currencies} cashBook={cashBook} onDone={done} onClose={() => setMode("view")} />
       ) : null}
       {mode === "edit" ? (
         <SupplierForm

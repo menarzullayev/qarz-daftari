@@ -1,7 +1,7 @@
 """Stock, purchases and suppliers: the stock ledger, documents, suppliers and their accounts.
 
 Revision ID: 0043
-Revises: 0041
+Revises: 0042
 """
 
 from pathlib import Path
@@ -9,7 +9,7 @@ from pathlib import Path
 from alembic import op
 
 revision = "0043"
-down_revision = "0041"
+down_revision = "0042"
 branch_labels = None
 depends_on = None
 

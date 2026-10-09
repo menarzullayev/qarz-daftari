@@ -1,7 +1,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 import type { ShopApi, ShopMembership } from "../api";
-import type { Role } from "../navigation";
+import type { Features, Role } from "../navigation";
 import { type Held, may, type PermissionKey } from "../permissions";
 import type { ShopMode } from "./shopMode";
 
@@ -14,6 +14,8 @@ export type Workspace = {
    * it keeps to roles. Screens ask `useMay`, never this set.
    */
   permissions?: Held | undefined;
+  /** The parts of the product the platform has switched on (the cash book); absent: none of them. */
+  features?: Features | undefined;
   /** The signed-in person's membership in the active shop; null when the server did not say. */
   membershipId: string | null;
   /** The bot whose deep links connect customers; null when the build does not name one. */

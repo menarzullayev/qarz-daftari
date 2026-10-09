@@ -61,6 +61,8 @@ SETTINGS: dict[str, Setting] = {
     # US dollars beside so'm (expansion module F): a shop may then keep dollar debts, each owner choosing
     # for their own shop. Off: every shop is so'm only, exactly as before.
     "usd_on": Setting("switch", False, needs_code=True),
+    # The cash book: income and expense, categories, cash and card (expansion module H).
+    "cash_book_on": Setting("switch", False, needs_code=True),
 }
 
 

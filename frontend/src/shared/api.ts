@@ -240,7 +240,17 @@ export type EntryKind = "credit" | "payment";
  * With `lines` the amount is not sent: the server uses the sum of the lines (REQ-037). With
  * `currency: "USD"` the amount is whole cents, and there are no lines: goods are priced in so'm.
  */
-export type NewEntry = { kind: EntryKind; note: string | null; promisedDate: string | null } & (
+/** How a payment was made; it decides which balance of the cash book the money goes to. */
+export const PAYMENT_METHODS = ["cash", "card", "transfer"] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+/** `method` is for a payment, and only while the cash book is on: otherwise the server does not know the field. */
+export type NewEntry = {
+  kind: EntryKind;
+  note: string | null;
+  promisedDate: string | null;
+  method?: PaymentMethod;
+} & (
   | { amount: number; currency?: Currency; lines?: never }
   | { lines: readonly NewLine[]; amount?: never; currency?: never }
 );
@@ -403,7 +413,15 @@ export type ShopMembership = {
  * `permissionsOn`: the server keeps a set of permissions per member, and each shop answers what the
  * signed-in member may do there (`myPermissions`). Off, the role alone says it.
  */
-export type MyShops = { items: ShopMembership[]; activeShop: string | null; permissionsOn: boolean };
+export type MyShops = {
+  items: ShopMembership[];
+  activeShop: string | null;
+  permissionsOn: boolean;
+  /** The platform has switched the cash book on: a shop then answers its cash routes, and offers it. */
+  cashBookOn: boolean;
+  /** The platform has switched the stock on: a shop then answers its stock and supplier routes. */
+  stockOn: boolean;
+};
 
 /** A customer's objection to one entry. `status`: open, declined, withdrawn, or reversed (the shop agreed). */
 export type Dispute = { id: string; status: string; reason: string; declineReason: string | null };
@@ -1023,11 +1041,17 @@ function linesBody(lines: readonly NewLine[]): Wire["GoodsLine"][] {
 
 /** The header the server sends with a person's shops while the permission matrix is switched on. */
 export const PERMISSIONS_HEADER = "X-Qarz-Permissions";
+/** The header the server sends with a person's shops while the cash book is switched on. */
+export const CASH_BOOK_HEADER = "X-Qarz-Cash-Book";
+/** The header the server sends with a person's shops while the stock is switched on. */
+export const STOCK_HEADER = "X-Qarz-Stock";
 
 function myShops(value: unknown, headers: Headers): MyShops {
   const body = fieldsOf<Wire["MyShops"]>(value);
   return {
     permissionsOn: headers.get(PERMISSIONS_HEADER) === "on",
+    cashBookOn: headers.get(CASH_BOOK_HEADER) === "on",
+    stockOn: headers.get(STOCK_HEADER) === "on",
     items: list(body.raw("items"), (element) => {
       const shop = fieldsOf<Wire["MyShop"]>(element);
       const role = shop.raw("role");
@@ -1364,26 +1388,6 @@ function shopApi(transport: Transport, shopId: string) {
       });
     },
 
-    /**
-     * Whether the stock, its documents and the suppliers exist for this member (the expansion's module
-     * I). All of it is behind a platform switch: while that is off the route answers as one that does not
-     * exist, and a member who may not see the stock is refused. Anything but the settings themselves is
-     * "no": the module is an addition to a workspace that works without it.
-     */
-    stockOn(signal?: AbortSignal): Promise<boolean> {
-      return call(transport, {
-        method: "GET",
-        path: `${base}/stock/settings`,
-        signal,
-        read: (value) => Array.isArray(record(value)["units"]),
-      }).catch((error: unknown) => {
-        if (isAbort(error)) {
-          throw error;
-        }
-        return false;
-      });
-    },
-
     listCustomers(
       params: { q?: string; status?: "active" | "archived"; cursor?: string | null; limit?: number },
       signal?: AbortSignal,
@@ -1476,6 +1480,12 @@ function shopApi(transport: Transport, shopId: string) {
       }
       if (input.promisedDate !== null) {
         body.promised_date = input.promisedDate;
+      }
+      if (input.method !== undefined) {
+        if (input.kind !== "payment") {
+          throw new RangeError("only a payment has a method");
+        }
+        body.method = input.method;
       }
       return call(transport, {
         method: "POST",

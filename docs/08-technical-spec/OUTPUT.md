@@ -162,6 +162,42 @@ The typed response models (`interface/answers.py`) declare these as their only f
 
 **Not in dollars yet** (BR-43), each refused or left out and tested as such: goods lines on a dollar sale (`VALIDATION`, `not available in dollars yet`); spreadsheet import (so'm only; a currency column is an unknown column); SMS reminders (state so'm only); the weekly product metrics (so'm events only); subscription prices and payments.
 
+## Cash book
+
+Expansion module H (decision 5 of 2026-10-09; business rules BR-44 to BR-51). Behind the platform switch `cash_book_on` (off by default, asks for the second factor). With the switch off the nine routes below answer 404 before the caller is asked who they are, no section and no command is offered, the ledger's answers are byte for byte what they were, and a request that names a payment's `method` is refused as a request with an unknown field, as it was before the field existed.
+
+**Schema (migration 0042).** Two tenant tables with forced row-level security.
+
+| Table | Holds | What the roles may do |
+|---|---|---|
+| `cash_category` | A shop's categories: direction, name and its matching form (unique per shop and direction), `system_key` (`debt_repaid` on the one the ledger writes to; unique per shop; such a row cannot be archived), `archived_at` | `qd_app`: select, insert, delete, update of the name and `archived_at` only. `qd_worker`: select |
+| `cash_entry` | An entry: direction, method (`cash`, `card`, `transfer`), `currency` (the convention of 0041), amount above zero, category, note, `day`, `created_at`, author, `ledger_entry_id` for a customer's payment, and the three columns of a cancellation | `qd_app`: select, insert, update of `cancelled_at`, `cancelled_by`, `cancel_reason` only. `qd_worker`: select. Nobody deletes |
+
+What the database itself holds, whatever the application does: an entry's category is of its own shop and direction (a composite foreign key); a cancellation is whole, is written once and is never taken back (a check and a trigger); a payment has one cash entry at most, ever (a unique index), and that entry carries the payment's amount and currency in the payment's shop (a trigger); a category with entries cannot be deleted (the foreign key). `erase_shop` deletes both tables.
+
+**Stored and linked, not derived.** A customer's payment is written into the cash book by the ledger, in the transaction that writes the payment (`qarz.application.cash_feed`), and its entry is cancelled in the transaction that reverses the payment. A book that added the ledger's payments in on every read would have nowhere to keep the method the money came by, would change its past whenever the switch was turned, and would make every balance a join over two tables. The cancellation is not asked of the switch: an entry written while the book was on does not stay standing because the payment was reversed while it was off. Payments recorded while the switch was off are copied in only by `POST .../cash/backfill`, the owner's.
+
+**Reading.** Every total is one statement over the partial index `cash_entry_standing (shop_id, day) INCLUDE (direction, method, currency, amount, category_id) WHERE cancelled_at IS NULL`: the opening balance is the sum of the standing entries dated before the first day, so its cost grows with the shop's history, read from the index alone. A day's entries are a keyset page over `cash_entry_day (shop_id, day, created_at, id)`, 50 by default and 100 at most. `tests/db/test_cash_book_schema.py` fails when one of these statements stops being answered from its index. A balance may be below zero (BR-46).
+
+| Route | Operation | Permission |
+|---|---|---|
+| `GET /shops/{id}/cash/day?date=&cursor=&limit=` | `cash.day`: one Tashkent day, per method and currency `opening + income - expense = closing`, one total per currency, a page of the day's entries newest first, cancelled ones included | `cash.view` |
+| `GET /shops/{id}/cash/summary?from=&to=` | `cash.summary`: a period of at most 366 days: the same balances over it, the standing entries by category and by day (only days with movement) | `cash.view` |
+| `POST /shops/{id}/cash/entries` | `cash.entry.create` | `cash.record_income` or `cash.record_expense`, by the entry's direction |
+| `POST /shops/{id}/cash/entries/{entry}/cancellation` | `cash.entry.cancel`: with a reason; `CASH_ENTRY_OF_LEDGER` for a customer's payment, `CASH_ENTRY_CANCELLED` for one already cancelled | `cash.cancel` |
+| `GET /shops/{id}/cash/categories` | `cash.categories.list`: the categories and the currencies an entry may be written in now; the first call writes the default set | any of the four above or `cash.categories` |
+| `POST`, `PATCH`, `DELETE /shops/{id}/cash/categories[/{category}]` | `cash.categories.create`, `.update` (name, archived), `.delete` (`CASH_CATEGORY_NAME_TAKEN`, `CASH_CATEGORY_FIXED`, `CASH_CATEGORY_IN_USE`) | `cash.categories` |
+| `POST /shops/{id}/cash/backfill` | `cash.backfill`: body `{"since": date or null}`, answers `{"written": n}` | `cash.backfill` |
+
+Every write takes an `Idempotency-Key`, is refused in a suspended shop and allowed in a limited one (BR-29), and is in the activity log (`cash.income_recorded`, `cash.expense_recorded`, `cash.entry_cancelled`, `cash.category_created`, `cash.category_changed`, `cash.category_deleted`, `cash.backfilled`). A payment's own line in the log is the ledger's; the cash book adds none for it. Every amount in an answer has its `currency` beside it, so'm included: the answers are new and have no older shape to keep. An entry of the ledger names the customer only to a reader who holds `ledger.view`.
+
+**The ledger.** `POST /shops/{id}/customers/{customer}/entries` takes an optional `method` for a payment; with the cash book on, the answer's `entry.method` says which balance the money went to. The chat reads a payment's note that is exactly a way of paying as that method (`qarz.domain.cash.method_from_note`) and leaves the note as typed. Accepting a customer's payment notice records cash.
+
+**Clients.** `GET /me/shops` carries the header `X-Qarz-Cash-Book: on` while the switch is on, and only then; the body is unchanged. The Mini App and the panel then offer the section "Kassa" to a member who holds a cash permission (by role: managers and the owner) and ask for a payment's method in the payment form. The screen, its text and its calls are loaded on demand and are not part of the first load. The bot's `/kassa` reads today's book; while the switch is off it is not a command.
+
+**Export and erasure.** The shop's export (`exports.request`) has a sheet "Kassa" with every entry, cancelled ones marked with their reason, only for a shop that has cash entries: the workbook of a shop without them is unchanged. Erasing a shop erases its cash book.
+
+**Not built**, and left out rather than half done: an export of one period of the cash book alone; writing to the book from the chat; a method chosen when a payment notice is accepted; bars or charts in the summary.
 ## Stock, purchases and suppliers
 
 Expansion module I (decision 6 of 2026-10-09; business rules BR-60 to BR-74). Behind the platform switch `stock_on` (off by default, asks for the second factor). With the switch off every route below answers 404 to everyone, before the caller is asked who they are; nothing reads or writes the tables of migration 0043; the catalog, a sale and its reversal answer exactly as before (`tests/api/test_stock.py`).
@@ -298,6 +334,12 @@ Behind the platform switch `permissions_on` (off by default, asks for the second
 | Reports | `reports.view` | - | Yes | Yes | Period and overdue reports |
 | Reports | `reports.export` | - | Yes | Yes | Request, list, download exports |
 | Reports | `imports.run` | - | Yes | Yes | Template, upload, preview, apply, undo, discard |
+| Cash book | `cash.view` | - | Yes | Yes | A day's book, a period's summary, the categories (behind `cash_book_on`) |
+| Cash book | `cash.record_income` | - | Yes | Yes | Record income (asked inside the one operation that records an entry) |
+| Cash book | `cash.record_expense` | - | Yes | Yes | Record expense (the same) |
+| Cash book | `cash.cancel` | - | Yes | Yes | Cancel an entry, with a reason |
+| Cash book | `cash.categories` | - | Yes | Yes | Add, rename, archive, delete categories |
+| Cash book | `cash.backfill` | - | - | Yes | Copy the ledger's past payments into the book |
 | Shop | `settings.view` | - | Yes | Yes | Read the shop's settings and reminder settings |
 | Shop | `settings.edit` | - | Yes | Yes | Credit rule, reminder settings, rotate the counter code |
 | Shop | `shop.edit` | - | - | Yes | Name, language, default promise days |
@@ -311,7 +353,7 @@ Behind the platform switch `permissions_on` (off by default, asks for the second
 | Fixed | `support.manage` | - | - | Yes | See and end support access to the shop |
 | Fixed | `shop.delete` | - | - | Yes | Request, cancel, read the deletion of the shop |
 
-Recording an entry (`ledger.entry.create`) is opened by two permissions: holding either passes its gate, and the service then asks for the one the entry needs. The same holds for the stock's documents (`stock.receive`, `stock.adjust`: by the kind of document) and for recording on a supplier's account (`suppliers.manage`, `suppliers.pay`: an opening balance or a payment). Accepting a customer's payment notice needs `payment_notices.decide` only.
+Recording an entry (`ledger.entry.create`) is opened by two permissions: holding either passes its gate, and the service then asks for the one the entry needs. Recording a cash book entry (`cash.entry.create`) works the same way for income and expense, and the list of cash categories is opened by every permission of the cash book that needs to choose from it. The same holds for the stock's documents (`stock.receive`, `stock.adjust`: by the kind of document) and for recording on a supplier's account (`suppliers.manage`, `suppliers.pay`: an opening balance or a payment). Accepting a customer's payment notice needs `payment_notices.decide` only.
 
 **Enforcement.** `qarz.application.authorization.may` is the one place the application decides. `require_member` (every shop operation of the API and of the bot) goes through it by the operation's permission; so do the checks inside a service (`require_permission`), the choice of which staff the bot tells about a payment notice, a dispute or a date request (`holders`), and whether the bot offers the "reverse" button. The membership, its changes and the switch are read together in one statement inside each request's own transaction, never cached: a change of permissions, of the role or of the switch applies to the member's next request. A refusal is `FORBIDDEN_PERMISSION` naming the permission while the switch is on, and `FORBIDDEN_ROLE` naming the role while it is off, as before.
 

@@ -50,6 +50,12 @@ EXPECTED: dict[str, tuple[set[Role], bool]] = {
     "reports.view": ({M, OWN}, False),
     "reports.export": ({M, OWN}, False),
     "imports.run": ({M, OWN}, False),
+    "cash.view": ({M, OWN}, False),
+    "cash.record_income": ({M, OWN}, False),
+    "cash.record_expense": ({M, OWN}, False),
+    "cash.cancel": ({M, OWN}, False),
+    "cash.categories": ({M, OWN}, False),
+    "cash.backfill": ({OWN}, False),
     "settings.view": ({M, OWN}, False),
     "settings.edit": ({M, OWN}, False),
     "shop.edit": ({OWN}, False),
@@ -139,19 +145,28 @@ def test_the_defaults_of_an_operations_permissions_are_the_role_table(op: Operat
             assert (role in permission.roles) is allows(role, op.capability), (op.name, permission.key, role)
 
 
-def test_the_operations_opened_by_two_permissions_are_these() -> None:
-    """Each is one route that does different things by what is sent: the service asks for the
-    permission the request needs (a credit sale or a payment; the kind of a stock document; a payment
-    to a supplier or an opening balance). tests/api/test_stock_permissions.py holds the stock ones."""
+def test_the_operations_opened_by_more_than_one_permission() -> None:
+    """Each is one route that does different things by what is sent, and the service asks for the
+    permission the request needs; or a list that everyone who works with it reads."""
     several = {op.name for op in shop_operations() if len(permissions.permissions_of_operation(op.name)) > 1}
     assert several == {
+        # A credit sale needs one permission and a payment the other: the service asks for it.
         "ledger.entry.create",
+        # Likewise income and expense of the cash book.
+        "cash.entry.create",
+        # The list of categories is what everyone who works with the cash book chooses from: reading,
+        # recording and arranging each open it, and there is nothing finer to ask inside.
+        "cash.categories.list",
+        # A stock document is opened by receiving and by adjusting; the service asks for the one its
+        # kind needs (tests/api/test_stock_documents.py). Reading them is open to either.
         "stock.documents.list",
         "stock.documents.read",
         "stock.documents.create",
         "stock.documents.update",
         "stock.documents.post",
         "stock.documents.cancel",
+        # A payment to a supplier needs one permission and an opening balance the other
+        # (tests/api/test_suppliers.py).
         "suppliers.entries.create",
         "suppliers.entries.cancel",
     }, "a service must ask for the one the request needs"

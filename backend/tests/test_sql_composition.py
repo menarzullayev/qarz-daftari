@@ -11,6 +11,8 @@ import re
 from pathlib import Path
 
 DB_MODULE = Path(__file__).resolve().parents[1] / "src" / "qarz" / "infrastructure" / "db.py"
+# The parts of the storage layer kept in files of their own are held to the same rule.
+DB_MODULES = (DB_MODULE, DB_MODULE.with_name("db_cash.py"))
 _CONSTANT = re.compile(r"_?[A-Z][A-Z0-9_]*")
 
 
@@ -56,8 +58,9 @@ def _allowed_lines(source: str) -> set[int]:
 
 
 def test_storage_sql_is_built_only_from_constants() -> None:
-    source = DB_MODULE.read_text(encoding="utf-8")
-    assert set(unsafe_interpolations(source)) - _allowed_lines(source) == set()
+    for module in DB_MODULES:
+        source = module.read_text(encoding="utf-8")
+        assert set(unsafe_interpolations(source)) - _allowed_lines(source) == set(), module.name
 
 
 def test_the_three_allowed_lines_are_bound_parameters_not_sql() -> None:

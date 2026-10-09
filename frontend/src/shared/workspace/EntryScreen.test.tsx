@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -378,5 +378,42 @@ describe("opening the form", () => {
     renderScreen(<EntryScreen customerId={CUSTOMER_ID} kind="credit" />, { fetch: server.fetch });
     fireEvent.click(await screen.findByRole("button", { name: "Qayta urinish" }));
     expect(await screen.findByLabelText("Summa, so'm")).toBeTruthy();
+  });
+});
+
+describe("a payment's method, while the cash book is on", () => {
+  const withCashBook = (kind: EntryKind, server: ReturnType<typeof fakeServer>) => {
+    renderScreen(<EntryScreen customerId={CUSTOMER_ID} kind={kind} />, { fetch: server.fetch, features: { cashBook: true } });
+    return screen.findByLabelText<HTMLInputElement>("Summa, so'm");
+  };
+
+  it("is not asked for while the cash book is off: the form and the request are what they were", async () => {
+    const server = shop(() => recorded("payment", 20000, 100000));
+    type(await openForm(server, "payment"), "20000");
+    expect(screen.queryByLabelText("To'lov usuli")).toBeNull();
+    fireEvent.click(submitButton("payment"));
+    await screen.findByRole("status");
+    expect(server.writes()[0]?.body).toEqual({ kind: "payment", amount: 20000 });
+  });
+
+  it("is cash unless another is chosen, and is sent with the payment", async () => {
+    const server = shop(() => recorded("payment", 20000, 100000));
+    type(await withCashBook("payment", server), "20000");
+    const method = screen.getByLabelText<HTMLSelectElement>("To'lov usuli");
+    expect(method.value).toBe("cash");
+    expect(within(method).getAllByRole("option").map((option) => option.textContent)).toEqual(["Naqd", "Karta", "O'tkazma"]);
+    fireEvent.change(method, { target: { value: "card" } });
+    fireEvent.click(submitButton("payment"));
+    await screen.findByRole("status");
+    expect(server.writes()[0]?.body).toEqual({ kind: "payment", amount: 20000, method: "card" });
+  });
+
+  it("is never asked for a credit sale, which is not money received", async () => {
+    const server = shop(() => recorded("credit", 20000, 140000, "2026-10-20"));
+    type(await withCashBook("credit", server), "20000");
+    expect(screen.queryByLabelText("To'lov usuli")).toBeNull();
+    fireEvent.click(submitButton("credit"));
+    await screen.findByRole("status");
+    expect(server.writes()[0]?.body).toEqual({ kind: "credit", amount: 20000 });
   });
 });

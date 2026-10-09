@@ -54,6 +54,7 @@ from qarz.application.suppliers import SupplierArchived
 from qarz.domain import permissions, stock
 from qarz.domain import suppliers as supplier_rules
 from qarz.domain.access import Capability
+from qarz.domain.cash import CUSTOMER_REFUND, GOODS_PURCHASE, Method, parse_method
 from qarz.domain.catalog import check_price, item_name
 from qarz.domain.goods import format_qty
 from qarz.domain.ledger import EntryKind
@@ -119,6 +120,8 @@ class DocumentRequest:
     reason: str | None
     note: str | None
     lines: Sequence[LineRequest]
+    # How what is paid at once was paid: cash, card or transfer. It matters to the cash book alone.
+    method: str | None = None
 
 
 @dataclass(frozen=True)
@@ -149,6 +152,7 @@ class CleanDocument:
     reason: str | None
     note: str | None
     lines: list[CleanLine]
+    method: Method | None = None
 
 
 def _clean_new_item(raw: NewItemRequest, prefix: str, fields: dict[str, str]) -> CleanNewItem | None:
@@ -261,17 +265,21 @@ def clean_document(request: DocumentRequest, today: date) -> CleanDocument:
     if fields:
         raise ValidationFailed(fields)
     assert isinstance(paid, int)
+    method = stock_cash.clean_method(request.method)
+    if method is not None and not paid:
+        raise ValidationFailed({"method": "only money paid at once has a method"})
     return CleanDocument(
-        kind, doc_date, request.supplier_id, request.customer_id, paid, total, request.reason, note, lines
+        kind, doc_date, request.supplier_id, request.customer_id, paid, total, request.reason, note, lines, method
     )
 
 
-def _draft(lines: Sequence[tuple[UUID, CleanLine]]) -> dict[str, Any]:
+def _draft(lines: Sequence[tuple[UUID, CleanLine]], method: Method | None) -> dict[str, Any]:
     return {
+        "method": None if method is None else method.value,
         "lines": [
             {"item_id": str(item_id), "qty": format_qty(line.qty), "unit_cost": line.unit_cost}
             for item_id, line in lines
-        ]
+        ],
     }
 
 
@@ -297,6 +305,7 @@ def _request_fingerprint(request: DocumentRequest) -> dict[str, Any]:
         "paid": request.paid,
         "reason": request.reason,
         "note": request.note,
+        "method": request.method,
         "lines": [
             {
                 "item": line.item_id,
@@ -345,6 +354,8 @@ def document_summary(document: DocumentRecord, *, money: bool) -> dict[str, Any]
         body["currency"] = document.currency
         body["total"] = document.total
         body["paid"] = document.paid
+        if document.status == stock.DRAFT:
+            body["method"] = (document.draft or {}).get("method")
     return body
 
 
@@ -490,6 +501,7 @@ async def post_in(session: TenantSession, actor: Membership, document_id: UUID, 
     if document.status != stock.DRAFT:
         raise DocumentNotDraft()
     kind, lines = document.kind, _draft_lines(document)
+    method = parse_method((document.draft or {}).get("method"))
     lang = "uz"
     settings = await session.shop_settings()
     if settings is not None:
@@ -505,7 +517,6 @@ async def post_in(session: TenantSession, actor: Membership, document_id: UUID, 
     # The customer's ledger first: its entry is what the movements of a return point at, and a refusal
     # there (more than is owed, an archived customer) stops the document before anything moves.
     ledger_entry_id: UUID | None = None
-    cash_entry_id: UUID | None = None
     if kind == stock.DOC_CUSTOMER_RETURN:
         assert document.customer_id is not None
         owed_less = document.total - document.paid
@@ -519,6 +530,7 @@ async def post_in(session: TenantSession, actor: Membership, document_id: UUID, 
                 note=_RETURN_NOTE.get(lang, _RETURN_NOTE["uz"]).format(number=document.number),
                 promised_date=None,
                 now=now,
+                money_received=False,
             )
             ledger_entry_id = UUID(written["entry"]["id"])
 
@@ -566,6 +578,7 @@ async def post_in(session: TenantSession, actor: Membership, document_id: UUID, 
                     currency=document.currency,
                     note=note,
                     now=now,
+                    method=method,
                     document_id=document_id,
                 )
         elif document.total:
@@ -581,21 +594,34 @@ async def post_in(session: TenantSession, actor: Membership, document_id: UUID, 
                 document_id=document_id,
             )
     elif kind == stock.DOC_RECEIPT and document.paid:
-        cash_entry_id = await stock_cash.purchase_expense(
+        # Bought for cash from nobody in particular: the money is in the cash book and nowhere else.
+        await stock_cash.record_expense(
             session,
             actor,
+            system_key=GOODS_PURCHASE,
             amount=document.paid,
             currency=document.currency,
+            method=method,
             note=_PURCHASE_NOTE.get(lang, _PURCHASE_NOTE["uz"]).format(number=document.number),
             now=now,
+            stock_document_id=document_id,
+        )
+    if kind == stock.DOC_CUSTOMER_RETURN and document.paid:
+        # What was handed back in money instead of lowering the debt.
+        await stock_cash.record_expense(
+            session,
+            actor,
+            system_key=CUSTOMER_REFUND,
+            amount=document.paid,
+            currency=document.currency,
+            method=method,
+            note=_RETURN_NOTE.get(lang, _RETURN_NOTE["uz"]).format(number=document.number),
+            now=now,
+            stock_document_id=document_id,
         )
 
     await session.mark_document_posted(
-        document_id,
-        posted_by=actor.membership_id,
-        posted_at=now,
-        ledger_entry_id=ledger_entry_id,
-        cash_entry_id=cash_entry_id,
+        document_id, posted_by=actor.membership_id, posted_at=now, ledger_entry_id=ledger_entry_id
     )
     await session.record_activity(
         membership_id=actor.membership_id,
@@ -687,7 +713,7 @@ async def cancel_in(
             await session.get_supplier(document.supplier_id, for_update=True)
             for entry in await session.standing_supplier_entries_of_document(document_id):
                 await supplier_account.reverse_entry_in(session, actor, entry, reason=reason, now=now)
-        await stock_cash.cancel_expense(session, actor, document.cash_entry_id, reason=reason, now=now)
+        await stock_cash.cancel_expense(session, actor, reason=reason, now=now, stock_document_id=document_id)
         if document.ledger_entry_id is not None:
             # By the customers' ledger's own rule: a reversal entry, the original untouched.
             await reverse_entry_in(session, actor, document.ledger_entry_id, now=now)
@@ -793,7 +819,7 @@ class DocumentService:
                     paid=clean.paid,
                     reason=clean.reason,
                     note=clean.note,
-                    draft=_draft(resolved),
+                    draft=_draft(resolved, clean.method),
                     created_by=actor.membership_id,
                     created_at=now,
                 )
@@ -853,7 +879,7 @@ class DocumentService:
                     paid=clean.paid,
                     reason=clean.reason,
                     note=clean.note,
-                    draft=_draft(resolved),
+                    draft=_draft(resolved, clean.method),
                 )
                 await session.record_activity(
                     membership_id=actor.membership_id,

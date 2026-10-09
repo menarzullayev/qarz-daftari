@@ -721,6 +721,127 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shops/{shop_id}/cash/backfill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cash.Backfill */
+        post: operations["cash_backfill_api_v1_shops__shop_id__cash_backfill_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/cash/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cash.Categories.List */
+        get: operations["cash_categories_list_api_v1_shops__shop_id__cash_categories_get"];
+        put?: never;
+        /** Cash.Categories.Create */
+        post: operations["cash_categories_create_api_v1_shops__shop_id__cash_categories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/cash/categories/{category_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cash.Categories.Delete */
+        delete: operations["cash_categories_delete_api_v1_shops__shop_id__cash_categories__category_id__delete"];
+        options?: never;
+        head?: never;
+        /** Cash.Categories.Update */
+        patch: operations["cash_categories_update_api_v1_shops__shop_id__cash_categories__category_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/cash/day": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cash.Day */
+        get: operations["cash_day_api_v1_shops__shop_id__cash_day_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/cash/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cash.Entry.Create */
+        post: operations["cash_entry_create_api_v1_shops__shop_id__cash_entries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/cash/entries/{entry_id}/cancellation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cash.Entry.Cancel */
+        post: operations["cash_entry_cancel_api_v1_shops__shop_id__cash_entries__entry_id__cancellation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/cash/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cash.Summary */
+        get: operations["cash_summary_api_v1_shops__shop_id__cash_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/shops/{shop_id}/catalog": {
         parameters: {
             query?: never;
@@ -2171,6 +2292,179 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** CashBackfill */
+        CashBackfill: {
+            /** Since */
+            since?: string | null;
+        };
+        /** CashCancellation */
+        CashCancellation: {
+            /** At */
+            at: string;
+            /** By */
+            by: string | null;
+            /** Reason */
+            reason: string | null;
+        };
+        /** CashCancellationRequest */
+        CashCancellationRequest: {
+            /** Reason */
+            reason: string;
+        };
+        /** CashCategories */
+        CashCategories: {
+            /** Currencies */
+            currencies: string[];
+            /** Items */
+            items: components["schemas"]["CashCategory"][];
+        };
+        /** CashCategory */
+        CashCategory: {
+            /** Archived */
+            archived: boolean;
+            /** Direction */
+            direction: string;
+            /** Fixed */
+            fixed: boolean;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** CashCategoryPatch */
+        CashCategoryPatch: {
+            /** Archived */
+            archived?: boolean | null;
+            /** Name */
+            name?: string | null;
+        };
+        /** CashCategoryTotal */
+        CashCategoryTotal: {
+            /** Amount */
+            amount: number;
+            category: components["schemas"]["CashCategory"];
+            /** Count */
+            count: number;
+            /** Currency */
+            currency: string;
+        };
+        /** CashDay */
+        CashDay: {
+            /** Balances */
+            balances: components["schemas"]["CashLine"][];
+            /** Date */
+            date: string;
+            /** Entries */
+            entries: components["schemas"]["CashEntry"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Totals */
+            totals: components["schemas"]["CashTotal"][];
+        };
+        /** CashDayTotal */
+        CashDayTotal: {
+            /** Currency */
+            currency: string;
+            /** Date */
+            date: string;
+            /** Expense */
+            expense: number;
+            /** Income */
+            income: number;
+        };
+        /** CashEntry */
+        CashEntry: {
+            /** Amount */
+            amount: number;
+            /** Author Id */
+            author_id: string;
+            cancelled: components["schemas"]["CashCancellation"] | null;
+            category: components["schemas"]["CashEntryCategory"];
+            /** Created At */
+            created_at: string;
+            /** Currency */
+            currency: string;
+            customer: components["schemas"]["CashEntryCustomer"] | null;
+            /** Day */
+            day: string;
+            /** Direction */
+            direction: string;
+            /** Id */
+            id: string;
+            /** Method */
+            method: string;
+            /** Note */
+            note: string | null;
+            /** Source */
+            source: string;
+        };
+        /** CashEntryCategory */
+        CashEntryCategory: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** CashEntryCustomer */
+        CashEntryCustomer: {
+            /** Display Name */
+            display_name: string | null;
+            /** Id */
+            id: string;
+        };
+        /**
+         * CashLine
+         * @description One method of one currency: `opening + income - expense = closing`.
+         */
+        CashLine: {
+            /** Closing */
+            closing: number;
+            /** Count */
+            count: number;
+            /** Currency */
+            currency: string;
+            /** Expense */
+            expense: number;
+            /** Income */
+            income: number;
+            /** Method */
+            method: string;
+            /** Opening */
+            opening: number;
+        };
+        /** CashSummary */
+        CashSummary: {
+            /** Balances */
+            balances: components["schemas"]["CashLine"][];
+            /** Categories */
+            categories: components["schemas"]["CashCategoryTotal"][];
+            /** Days */
+            days: components["schemas"]["CashDayTotal"][];
+            /** From */
+            from: string;
+            /** To */
+            to: string;
+            /** Totals */
+            totals: components["schemas"]["CashTotal"][];
+        };
+        /**
+         * CashTotal
+         * @description One currency over all its methods.
+         */
+        CashTotal: {
+            /** Closing */
+            closing: number;
+            /** Count */
+            count: number;
+            /** Currency */
+            currency: string;
+            /** Expense */
+            expense: number;
+            /** Income */
+            income: number;
+            /** Opening */
+            opening: number;
+        };
         /** CreditPatch */
         CreditPatch: {
             /** Default Credit Limit */
@@ -2328,6 +2622,8 @@ export interface components {
             kind: string;
             /** Lines */
             lines: components["schemas"]["DocumentLineBody"][];
+            /** Method */
+            method?: string | null;
             /** Note */
             note?: string | null;
             /** Paid */
@@ -2492,6 +2788,33 @@ export interface components {
             /** Items */
             items: components["schemas"]["MyShop"][];
         };
+        /** NewCashCategory */
+        NewCashCategory: {
+            /** Direction */
+            direction: string;
+            /** Name */
+            name: string;
+        };
+        /** NewCashEntry */
+        NewCashEntry: {
+            /** Amount */
+            amount: number;
+            /**
+             * Category Id
+             * Format: uuid
+             */
+            category_id: string;
+            /** Currency */
+            currency?: string | null;
+            /** Day */
+            day?: string | null;
+            /** Direction */
+            direction: string;
+            /** Method */
+            method: string;
+            /** Note */
+            note?: string | null;
+        };
         /** NewCustomer */
         NewCustomer: {
             /** Display Name */
@@ -2536,6 +2859,8 @@ export interface components {
             kind: string;
             /** Lines */
             lines: components["schemas"]["DocumentLineBody"][];
+            /** Method */
+            method?: string | null;
             /** Note */
             note?: string | null;
             /** Paid */
@@ -2560,6 +2885,8 @@ export interface components {
             kind: string;
             /** Lines */
             lines?: components["schemas"]["GoodsLine"][] | null;
+            /** Method */
+            method?: string | null;
             /** Note */
             note?: string | null;
             /** Promised Date */
@@ -2875,6 +3202,8 @@ export interface components {
             currency?: string | null;
             /** Kind */
             kind: string;
+            /** Method */
+            method?: string | null;
             /** Note */
             note?: string | null;
         };
@@ -4375,6 +4704,339 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cash_backfill_api_v1_shops__shop_id__cash_backfill_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CashBackfill"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cash_categories_list_api_v1_shops__shop_id__cash_categories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashCategories"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cash_categories_create_api_v1_shops__shop_id__cash_categories_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewCashCategory"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cash_categories_delete_api_v1_shops__shop_id__cash_categories__category_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+                category_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cash_categories_update_api_v1_shops__shop_id__cash_categories__category_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+                category_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CashCategoryPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cash_day_api_v1_shops__shop_id__cash_day_get: {
+        parameters: {
+            query?: {
+                date?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashDay"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cash_entry_create_api_v1_shops__shop_id__cash_entries_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewCashEntry"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cash_entry_cancel_api_v1_shops__shop_id__cash_entries__entry_id__cancellation_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CashCancellationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cash_summary_api_v1_shops__shop_id__cash_summary_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+            };
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashSummary"];
                 };
             };
             /** @description Validation Error */

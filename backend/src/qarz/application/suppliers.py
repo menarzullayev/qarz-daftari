@@ -36,6 +36,7 @@ from qarz.application.stock_ports import SupplierEntryRecord, SupplierRecord
 from qarz.domain import permissions
 from qarz.domain import suppliers as rules
 from qarz.domain.access import Capability
+from qarz.domain.cash import GOODS_PURCHASE, Method
 from qarz.domain.names import normalize_name
 from qarz.domain.promise import tashkent_date
 
@@ -98,7 +99,7 @@ def entry_body(entry: SupplierEntryRecord) -> dict[str, Any]:
         "document": None
         if entry.document_id is None
         else {"id": str(entry.document_id), "kind": entry.document_kind, "number": entry.document_number},
-        "in_cash_book": entry.cash_entry_id is not None,
+        "in_cash_book": entry.in_cash_book,
         "author_id": str(entry.author_id),
         "created_at": entry.created_at.isoformat(),
     }
@@ -136,7 +137,6 @@ async def append_entry_in(
     note: str | None,
     now: datetime,
     document_id: UUID | None = None,
-    cash_entry_id: UUID | None = None,
     reverses_id: UUID | None = None,
 ) -> UUID:
     """Add one entry to a supplier's account. The caller holds the supplier's row lock, which makes two
@@ -152,7 +152,6 @@ async def append_entry_in(
         note=note,
         reverses_id=reverses_id,
         document_id=document_id,
-        cash_entry_id=cash_entry_id,
         author_id=actor.membership_id,
         created_at=now,
     )
@@ -163,7 +162,7 @@ async def reverse_entry_in(
     session: TenantSession, actor: Membership, entry: SupplierEntryRecord, *, reason: str, now: datetime
 ) -> UUID:
     """Cancel an entry by its reversal, and with it the cash-book expense a payment wrote."""
-    await stock_cash.cancel_expense(session, actor, entry.cash_entry_id, reason=reason, now=now)
+    await stock_cash.cancel_expense(session, actor, reason=reason, now=now, supplier_entry_id=entry.entry_id)
     return await append_entry_in(
         session,
         actor,
@@ -187,13 +186,11 @@ async def pay_in(
     currency: str,
     note: str | None,
     now: datetime,
+    method: Method | None = None,
     document_id: UUID | None = None,
 ) -> UUID:
     """A payment to a supplier, with its cash-book expense while the cash book is on."""
-    cash_entry_id = await stock_cash.purchase_expense(
-        session, actor, amount=amount, currency=currency, note=note, now=now
-    )
-    return await append_entry_in(
+    entry_id = await append_entry_in(
         session,
         actor,
         supplier_id,
@@ -203,8 +200,19 @@ async def pay_in(
         note=note,
         now=now,
         document_id=document_id,
-        cash_entry_id=cash_entry_id,
     )
+    await stock_cash.record_expense(
+        session,
+        actor,
+        system_key=GOODS_PURCHASE,
+        amount=amount,
+        currency=currency,
+        method=method,
+        note=note,
+        now=now,
+        supplier_entry_id=entry_id,
+    )
+    return entry_id
 
 
 class SupplierService:
@@ -413,6 +421,7 @@ class SupplierService:
         amount: int,
         currency: str | None,
         note: str | None,
+        method: str | None = None,
         request_key: str | None,
     ) -> dict[str, Any]:
         """Record a payment to the supplier, or what the shop already owed them (an opening balance)."""
@@ -435,6 +444,9 @@ class SupplierService:
                 fields["note"] = str(error)
             if fields:
                 raise ValidationFailed(fields)
+            paid_by = stock_cash.clean_method(method)
+            if paid_by is not None and kind != rules.PAYMENT:
+                raise ValidationFailed({"method": "only a payment has a method"})
             money = await require_currency(session, currency)
             await require_writable(session, self._today(), new_credit=False)
 
@@ -447,7 +459,14 @@ class SupplierService:
                 now = self._now()
                 if kind == rules.PAYMENT:
                     entry_id = await pay_in(
-                        session, actor, supplier_id, amount=amount, currency=money, note=clean_note, now=now
+                        session,
+                        actor,
+                        supplier_id,
+                        amount=amount,
+                        currency=money,
+                        note=clean_note,
+                        now=now,
+                        method=paid_by,
                     )
                 else:
                     entry_id = await append_entry_in(
@@ -476,6 +495,7 @@ class SupplierService:
                     "amount": amount,
                     "currency": money,
                     "note": clean_note,
+                    "method": None if paid_by is None else paid_by.value,
                 },
                 action=apply,
             )

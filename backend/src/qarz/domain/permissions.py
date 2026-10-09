@@ -86,6 +86,7 @@ GROUPS: tuple[Group, ...] = (
     Group("suppliers", "Ta'minotchilar", "Поставщики"),
     Group("reminders", "Eslatmalar", "Напоминания"),
     Group("reports", "Hisobot va fayllar", "Отчёты и файлы"),
+    Group("cash", "Kassa", "Касса"),
     Group("shop", "Do'kon va xodimlar", "Магазин и сотрудники"),
     Group("owner", "Faqat egasi", "Только владелец"),
 )
@@ -349,6 +350,58 @@ CATALOGUE: tuple[Permission, ...] = (
             "imports.discard",
         ),
     ),
+    # --- the cash book (expansion module H; behind the platform switch `cash_book_on`) ------------------
+    Permission(
+        "cash.view",
+        "cash",
+        "Kassani ko'rish: kunlik daftar, qoldiqlar, davr hisoboti",
+        "Просмотр кассы: книга за день, остатки, отчёт за период",
+        _MANAGERS,
+        ("cash.day", "cash.summary", "cash.categories.list"),
+    ),
+    # Recording is one operation with two permissions, like an entry of the ledger: taking money in and
+    # paying it out are different things to allow.
+    Permission(
+        "cash.record_income",
+        "cash",
+        "Kassaga kirim yozish",
+        "Записывать приход в кассу",
+        _MANAGERS,
+        ("cash.entry.create", "cash.categories.list"),
+    ),
+    Permission(
+        "cash.record_expense",
+        "cash",
+        "Kassadan chiqim yozish",
+        "Записывать расход из кассы",
+        _MANAGERS,
+        ("cash.entry.create", "cash.categories.list"),
+    ),
+    Permission(
+        "cash.cancel",
+        "cash",
+        "Kassa yozuvini bekor qilish",
+        "Отменять запись кассы",
+        _MANAGERS,
+        ("cash.entry.cancel",),
+    ),
+    Permission(
+        "cash.categories",
+        "cash",
+        "Kassa toifalarini qo'shish, nomlash, arxivlash",
+        "Добавлять, переименовывать и архивировать статьи кассы",
+        _MANAGERS,
+        ("cash.categories.list", "cash.categories.create", "cash.categories.update", "cash.categories.delete"),
+    ),
+    # What customers paid before the book was turned on is copied in once, by the owner's decision.
+    Permission(
+        "cash.backfill",
+        "cash",
+        "Avvalgi to'lovlarni kassaga ko'chirish",
+        "Переносить прежние оплаты в кассу",
+        _OWNER,
+        ("cash.backfill",),
+    ),
     # --- the shop and its staff -----------------------------------------------------------------------
     Permission(
         "settings.view",
@@ -486,6 +539,7 @@ def _index() -> dict[str, Permission]:
 _BY_KEY = _index()
 
 # The permissions a service asks for by name (`qarz.application.authorization.require_permission`).
+LEDGER_VIEW = "ledger.view"
 CREDITS_RECORD = "credits.record"
 PAYMENTS_RECORD = "payments.record"
 PAYMENT_NOTICES_DECIDE = "payment_notices.decide"
@@ -502,6 +556,9 @@ STOCK_COSTS_VIEW = "stock.costs.view"
 SUPPLIERS_MANAGE = "suppliers.manage"
 SUPPLIERS_PAY = "suppliers.pay"
 PERMISSIONS_MANAGE = "permissions.manage"
+CASH_VIEW = "cash.view"
+CASH_RECORD_INCOME = "cash.record_income"
+CASH_RECORD_EXPENSE = "cash.record_expense"
 ALL_KEYS: frozenset[str] = frozenset(_BY_KEY)
 FIXED_KEYS: frozenset[str] = frozenset(key for key, permission in _BY_KEY.items() if permission.fixed)
 _NO_OVERRIDES: frozenset[str] = frozenset()

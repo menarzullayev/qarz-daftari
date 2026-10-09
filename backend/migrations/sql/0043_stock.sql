@@ -88,7 +88,6 @@ CREATE TABLE stock_document (
   note           text CHECK (length(note) <= 200),
   draft          jsonb,
   ledger_entry_id uuid REFERENCES ledger_entry(id),             -- a customer's return: the entry that lowered the debt
-  cash_entry_id  uuid,                                         -- the cash-book entry of what was paid at once
   -- For module J: the order or delivery note of the other shop that this document answers.
   origin_ref     uuid,
   created_by     uuid NOT NULL REFERENCES membership(id),
@@ -115,7 +114,6 @@ CREATE INDEX stock_document_recent ON stock_document (shop_id, created_at DESC, 
 CREATE INDEX stock_document_by_kind ON stock_document (shop_id, kind, created_at DESC, id DESC);
 CREATE INDEX stock_document_supplier ON stock_document (supplier_id, created_at DESC) WHERE supplier_id IS NOT NULL;
 CREATE INDEX stock_document_ledger_entry ON stock_document (ledger_entry_id) WHERE ledger_entry_id IS NOT NULL;
-CREATE INDEX stock_document_cash_entry ON stock_document (cash_entry_id) WHERE cash_entry_id IS NOT NULL;
 
 -- A document moves one way: draft, then posted, then cancelled; a draft may also be cancelled (thrown
 -- away). Once posted, nothing of what it says may change: only the cancellation is added.
@@ -139,10 +137,10 @@ BEGIN
   IF OLD.status = 'posted' AND (
        NEW.status <> 'cancelled'
        OR (NEW.doc_date, NEW.supplier_id, NEW.customer_id, NEW.currency, NEW.total, NEW.paid, NEW.reason, NEW.note,
-           NEW.ledger_entry_id, NEW.cash_entry_id, NEW.origin_ref, NEW.posted_by, NEW.posted_at)
+           NEW.ledger_entry_id, NEW.origin_ref, NEW.posted_by, NEW.posted_at)
           IS DISTINCT FROM
           (OLD.doc_date, OLD.supplier_id, OLD.customer_id, OLD.currency, OLD.total, OLD.paid, OLD.reason, OLD.note,
-           OLD.ledger_entry_id, OLD.cash_entry_id, OLD.origin_ref, OLD.posted_by, OLD.posted_at)) THEN
+           OLD.ledger_entry_id, OLD.origin_ref, OLD.posted_by, OLD.posted_at)) THEN
     RAISE EXCEPTION 'a posted document can only be cancelled'
       USING ERRCODE = 'check_violation', CONSTRAINT = 'stock_document_guard';
   END IF;
@@ -194,7 +192,6 @@ CREATE TABLE supplier_entry (
   note         text CHECK (length(note) <= 200),
   reverses_id  uuid REFERENCES supplier_entry(id),
   document_id  uuid,                                   -- the receipt or the return that wrote it
-  cash_entry_id uuid,                                  -- the cash-book expense written with a payment
   author_id    uuid NOT NULL REFERENCES membership(id),
   created_at   timestamptz NOT NULL DEFAULT now(),
   UNIQUE (supplier_id, seq),
@@ -204,7 +201,6 @@ CREATE TABLE supplier_entry (
   FOREIGN KEY (shop_id, document_id) REFERENCES stock_document (shop_id, id)
 );
 CREATE INDEX supplier_entry_document ON supplier_entry (document_id) WHERE document_id IS NOT NULL;
-CREATE INDEX supplier_entry_cash_entry ON supplier_entry (cash_entry_id) WHERE cash_entry_id IS NOT NULL;
 CREATE INDEX supplier_entry_shop_time ON supplier_entry (shop_id, created_at);
 
 -- What the shop owes each supplier in each currency: the sum of the entries that stand, kept by the
@@ -392,6 +388,47 @@ $$;
 REVOKE ALL ON FUNCTION supplier_balance_mismatches(uuid) FROM PUBLIC;
 
 -- ---------------------------------------------------------------------------
+-- The cash book (migration 0042)
+-- ---------------------------------------------------------------------------
+
+-- Money that leaves the till for goods, or back to a customer for goods returned, is an expense of the
+-- cash book written by the stock in the same transaction, while the cash book is on. Such an entry says
+-- where it came from, the way a customer's payment does with `ledger_entry_id`: the payment on a
+-- supplier's account, or the document whose money it is (a purchase for cash, a customer's refund). It
+-- is cancelled where it was written, and in no other way.
+ALTER TABLE cash_entry
+  ADD COLUMN supplier_entry_id uuid REFERENCES supplier_entry(id),
+  ADD COLUMN stock_document_id uuid REFERENCES stock_document(id),
+  ADD CONSTRAINT cash_entry_one_source CHECK (num_nonnulls(ledger_entry_id, supplier_entry_id, stock_document_id) <= 1),
+  ADD CONSTRAINT cash_entry_stock_is_expense CHECK (
+    (supplier_entry_id IS NULL AND stock_document_id IS NULL) OR direction = 'expense');
+-- A payment to a supplier, and the money of a document, are in the cash book once.
+CREATE UNIQUE INDEX cash_entry_one_per_supplier_entry ON cash_entry (supplier_entry_id)
+  WHERE supplier_entry_id IS NOT NULL;
+CREATE UNIQUE INDEX cash_entry_one_per_stock_document ON cash_entry (stock_document_id)
+  WHERE stock_document_id IS NOT NULL;
+
+-- The entry repeats what it stands for: the shop, the amount and the currency of the supplier's payment.
+CREATE FUNCTION cash_entry_matches_supplier_payment() RETURNS trigger
+LANGUAGE plpgsql SET search_path = public, pg_temp
+AS $$
+BEGIN
+  PERFORM 1 FROM supplier_entry e
+    WHERE e.id = NEW.supplier_entry_id AND e.shop_id = NEW.shop_id AND e.kind = 'payment'
+      AND e.amount = NEW.amount AND e.currency = NEW.currency;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'a cash entry of a supplier payment repeats its shop, amount and currency'
+      USING ERRCODE = 'check_violation', CONSTRAINT = 'cash_entry_matches_supplier_payment';
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION cash_entry_matches_supplier_payment() FROM PUBLIC;
+CREATE TRIGGER cash_entry_matches_supplier_payment
+  BEFORE INSERT ON cash_entry
+  FOR EACH ROW WHEN (NEW.supplier_entry_id IS NOT NULL)
+  EXECUTE FUNCTION cash_entry_matches_supplier_payment();
+
+-- ---------------------------------------------------------------------------
 -- Row-level security and rights
 -- ---------------------------------------------------------------------------
 
@@ -420,7 +457,7 @@ GRANT SELECT, INSERT ON supplier_entry TO qd_app;
 GRANT SELECT ON supplier_balance TO qd_app;
 GRANT SELECT, INSERT ON stock_document TO qd_app;
 GRANT UPDATE (status, doc_date, supplier_id, customer_id, currency, total, paid, reason, note, draft,
-              ledger_entry_id, cash_entry_id, posted_by, posted_at, cancelled_by, cancelled_at, cancel_reason)
+              ledger_entry_id, posted_by, posted_at, cancelled_by, cancelled_at, cancel_reason)
   ON stock_document TO qd_app;
 GRANT SELECT, INSERT ON stock_document_line TO qd_app;
 GRANT SELECT, INSERT ON stock_movement TO qd_app;
@@ -435,7 +472,8 @@ GRANT SELECT ON catalog_item, catalog_barcode, supplier, supplier_entry, supplie
 -- Erasing a shop
 -- ---------------------------------------------------------------------------
 
--- The function of the migration before this one with the eight tables above, children before parents,
+-- The function of the migration before this one (0042) with the eight tables above, children before
+-- parents: the cash entries that point at them go first, as they already did.
 -- and the new setting of the tombstone. A supplier of another shop that pointed at this one keeps
 -- pointing at the tombstone, which says nothing.
 CREATE OR REPLACE FUNCTION erase_shop(p_shop_id uuid) RETURNS boolean
@@ -463,6 +501,7 @@ BEGIN
 
   -- Children before parents. Every table that carries a shop identifier is listed here;
   -- tests/db/test_shop_erasure.py fails when one is added and not listed.
+  DELETE FROM cash_entry WHERE shop_id = p_shop_id;
   DELETE FROM stock_movement WHERE shop_id = p_shop_id;
   DELETE FROM stock_level WHERE shop_id = p_shop_id;
   DELETE FROM stock_document_line WHERE shop_id = p_shop_id;
@@ -471,6 +510,7 @@ BEGIN
   DELETE FROM stock_document WHERE shop_id = p_shop_id;
   DELETE FROM supplier WHERE shop_id = p_shop_id;
   DELETE FROM catalog_barcode WHERE shop_id = p_shop_id;
+  DELETE FROM cash_category WHERE shop_id = p_shop_id;
   DELETE FROM goods_line WHERE shop_id = p_shop_id;
   DELETE FROM open_debt WHERE shop_id = p_shop_id;
   DELETE FROM promise WHERE shop_id = p_shop_id;

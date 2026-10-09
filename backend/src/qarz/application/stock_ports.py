@@ -98,7 +98,6 @@ class DocumentRecord:
     note: str | None
     draft: dict[str, Any] | None
     ledger_entry_id: UUID | None
-    cash_entry_id: UUID | None
     created_by: UUID
     created_at: datetime
     posted_at: datetime | None
@@ -140,10 +139,10 @@ class SupplierEntryRecord:
     note: str | None
     reverses_id: UUID | None
     document_id: UUID | None
-    cash_entry_id: UUID | None
     author_id: UUID
     created_at: datetime
     is_reversed: bool = False
+    in_cash_book: bool = False
     document_kind: str | None = None
     document_number: int | None = None
 
@@ -278,7 +277,6 @@ class StockSession(Protocol):
         posted_by: UUID,
         posted_at: datetime,
         ledger_entry_id: UUID | None,
-        cash_entry_id: UUID | None,
     ) -> None: ...
 
     async def mark_document_cancelled(
@@ -339,7 +337,6 @@ class StockSession(Protocol):
         note: str | None,
         reverses_id: UUID | None,
         document_id: UUID | None,
-        cash_entry_id: UUID | None,
         author_id: UUID,
         created_at: datetime,
     ) -> None: ...
@@ -352,12 +349,30 @@ class StockSession(Protocol):
 
     async def standing_supplier_entries_of_document(self, document_id: UUID) -> list[SupplierEntryRecord]: ...
 
-    async def supplier_entry_of_cash_entry(self, cash_entry_id: UUID) -> SupplierEntryRecord | None:
-        """The payment to a supplier that a cash-book entry was written with, if it was."""
+    # --- the cash book (module H) ------------------------------------------------------------------
+
+    async def add_stock_cash_entry(
+        self,
+        *,
+        entry_id: UUID,
+        method: str,
+        currency: str,
+        amount: int,
+        category_id: UUID,
+        note: str | None,
+        day: date,
+        author_id: UUID,
+        supplier_entry_id: UUID | None,
+        stock_document_id: UUID | None,
+        now: datetime,
+    ) -> None:
+        """Write the expense of the cash book that a supplier's payment, or a document's money, is."""
         ...
 
-    async def document_of_cash_entry(self, cash_entry_id: UUID) -> DocumentRecord | None:
-        """The document whose money, paid at once, a cash-book entry is, if it is one's."""
+    async def cancel_stock_cash_entries(
+        self, *, supplier_entry_id: UUID | None, stock_document_id: UUID | None, by: UUID, reason: str, now: datetime
+    ) -> int:
+        """Cancel the standing cash entry written for a payment or a document. Returns how many."""
         ...
 
     # --- the owner's export -----------------------------------------------------------------------

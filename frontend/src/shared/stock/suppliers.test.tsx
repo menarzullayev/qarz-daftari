@@ -161,11 +161,30 @@ describe("one supplier's account", () => {
     expect(server.writes()[0]?.body).toEqual({ kind: "payment", amount: 1250, currency: "USD", note: "naqd" });
   });
 
+  it("asks how a payment was paid only in a shop that keeps a cash book, and never for an old debt", async () => {
+    const server = backend(
+      () => ok({ entry: supplierEntryBody(), supplier: supplierBody() }, 201),
+      stockSettingsBody({ cash_book: true }),
+    );
+    renderScreen(<SupplierScreen supplierId={SUPPLIER_ID} office />, { fetch: server.fetch, role: "manager" });
+    fireEvent.click(await screen.findByRole("button", { name: "Boshlang'ich qarzni yozish" }));
+    expect(screen.queryByLabelText("To'lov usuli")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Bekor qilish" }));
+    fireEvent.click(screen.getByRole("button", { name: "To'lov yozish" }));
+    fireEvent.change(screen.getByLabelText("To'lov usuli"), { target: { value: "transfer" } });
+    fireEvent.change(screen.getByLabelText("To'langan summa"), { target: { value: "100000" } });
+    fireEvent.click(screen.getByRole("button", { name: "To'lovni yozish" }));
+    await waitFor(() => expect(server.writes()).toHaveLength(1));
+    expect(server.writes()[0]?.body).toEqual({ kind: "payment", amount: 100000, currency: "UZS", method: "transfer" });
+  });
+
   it("does not offer dollars in a shop that keeps so'm only", async () => {
     const server = backend();
     renderScreen(<SupplierScreen supplierId={SUPPLIER_ID} office />, { fetch: server.fetch, role: "manager" });
     fireEvent.click(await screen.findByRole("button", { name: "To'lov yozish" }));
     expect(screen.queryByRole("group", { name: "Valyuta" })).toBeNull();
+    // No cash book, no question about the method, and none is sent.
+    expect(screen.queryByLabelText("To'lov usuli")).toBeNull();
     fireEvent.change(screen.getByLabelText("To'langan summa"), { target: { value: "100 000" } });
     fireEvent.click(screen.getByRole("button", { name: "To'lovni yozish" }));
     await waitFor(() => expect(server.writes()).toHaveLength(1));

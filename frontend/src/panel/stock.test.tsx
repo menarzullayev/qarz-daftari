@@ -8,7 +8,7 @@ import type { ApiAuth } from "../shared/api";
 import type { Role } from "../shared/navigation";
 import { StaffWorkspace } from "../shared/StaffRoot";
 import { costedItemBody, DOCUMENT_ID, documentBody, stockSettingsBody } from "../shared/stock/testing";
-import { fakeServer, NOON, ok, refusal, type Reply, SHOP_BASE, SHOP_ID } from "../testing/fakeServer";
+import { fakeServer, NOON, ok, refusal, SHOP_BASE, SHOP_ID } from "../testing/fakeServer";
 import { go } from "../testing/renderScreen";
 import { ACTION_GROUPS } from "./ActivityScreen";
 import { PANEL_EXTENSION } from "./PanelRoot";
@@ -28,17 +28,21 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-function backend(role: Role, stock: () => Reply) {
+function backend(role: Role, stockOn: boolean) {
   return fakeServer((sent) => {
     switch (sent.path) {
       case "/api/v1/me/shops":
-        return ok({ items: [{ shop_id: SHOP_ID, name: "Baraka savdo", role, membership_id: "33333333-3333-4333-8333-333333333333" }], active_shop: SHOP_ID });
+        return {
+          status: 200,
+          body: { items: [{ shop_id: SHOP_ID, name: "Baraka savdo", role, membership_id: "33333333-3333-4333-8333-333333333333" }], active_shop: SHOP_ID },
+          headers: stockOn ? { "X-Qarz-Stock": "on" } : {},
+        };
       case `${SHOP_BASE}/overview`:
         return ok({ outstanding: 0, debtors: 0, overdue: { amount: 0, customers: 0 }, due_today: 0 });
       case `${SHOP_BASE}/overview/debtors`:
         return ok({ items: [], next_cursor: null });
       case `${SHOP_BASE}/stock/settings`:
-        return stock();
+        return ok(stockSettingsBody());
       case `${SHOP_BASE}/stock/items`:
         return ok({ items: [costedItemBody()], next_cursor: null });
       case `${SHOP_BASE}/stock/documents`:
@@ -73,18 +77,18 @@ const hrefs = () => [...document.querySelectorAll("nav a")].map((link) => link.g
 
 describe("the stock in the web panel", () => {
   it("is absent while the switch is off: no section, and the documents' address is an unknown route", async () => {
-    const server = backend("owner", () => NOT_FOUND);
+    const server = backend("owner", false);
     await panel(server, 1280);
-    await waitFor(() => expect(server.sent.some((sent) => sent.path === `${SHOP_BASE}/stock/settings`)).toBe(true));
     for (const path of ["#/stock", "#/stock-documents", "#/suppliers"]) {
       expect(hrefs()).not.toContain(path);
     }
     go("#/stock-documents");
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Sahifa topilmadi");
+    expect(server.sent.filter((sent) => sent.path.includes("/stock") || sent.path.includes("/suppliers"))).toEqual([]);
   });
 
   it("has the stock, the documents and the suppliers for a manager once the switch is on", async () => {
-    const server = backend("manager", () => ok(stockSettingsBody()));
+    const server = backend("manager", true);
     await panel(server, 1280);
     await waitFor(() => expect(hrefs()).toContain("#/stock"));
     expect(hrefs()).toContain("#/stock-documents");
@@ -92,7 +96,7 @@ describe("the stock in the web panel", () => {
   });
 
   it("gives a seller the stock only: documents and suppliers are not theirs", async () => {
-    const server = backend("seller", () => ok(stockSettingsBody()));
+    const server = backend("seller", true);
     await panel(server, 1280);
     await waitFor(() => expect(hrefs()).toContain("#/stock"));
     expect(hrefs()).not.toContain("#/stock-documents");
@@ -102,7 +106,7 @@ describe("the stock in the web panel", () => {
   });
 
   it("draws the stock as a real table on a wide screen, with the cost columns the server sent", async () => {
-    const server = backend("manager", () => ok(stockSettingsBody()));
+    const server = backend("manager", true);
     await panel(server, 1280);
     await waitFor(() => expect(hrefs()).toContain("#/stock"));
     go("#/stock");
@@ -120,7 +124,7 @@ describe("the stock in the web panel", () => {
   });
 
   it("draws the same list as rows on a narrow screen", async () => {
-    const server = backend("manager", () => ok(stockSettingsBody()));
+    const server = backend("manager", true);
     await panel(server, 375);
     await waitFor(() => expect(hrefs()).toContain("#/stock"));
     go("#/stock");
@@ -129,7 +133,7 @@ describe("the stock in the web panel", () => {
   });
 
   it("lists the documents as a table that links each to its page", async () => {
-    const server = backend("manager", () => ok(stockSettingsBody()));
+    const server = backend("manager", true);
     await panel(server, 1280);
     await waitFor(() => expect(hrefs()).toContain("#/stock-documents"));
     go("#/stock-documents");

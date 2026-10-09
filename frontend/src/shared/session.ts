@@ -1,4 +1,4 @@
-import { isRole, type Role } from "./navigation";
+import { type Features, isRole, type Role } from "./navigation";
 import type { Held } from "./permissions";
 
 /**
@@ -13,8 +13,8 @@ export type StaffSession = {
   membershipId?: string | null;
   /** What the server said the person may do in the active shop; absent or null when it keeps to roles. */
   permissions?: Held | undefined;
-  /** Whether the server answered that the stock exists for this member; absent or false, nothing of it is offered. */
-  stock?: boolean | undefined;
+  /** The parts of the product the platform has switched on; absent: none of them. */
+  features?: Features | undefined;
 };
 
 /**

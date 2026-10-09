@@ -100,6 +100,8 @@ class DocumentBody(BaseModel):
     paid: Annotated[int, Field(strict=True)] | None = None
     reason: str | None = Field(default=None, max_length=20)
     note: str | None = Field(default=None, max_length=400)
+    # How what is paid at once was paid: cash, card or transfer (the cash book's).
+    method: str | None = Field(default=None, max_length=20)
     lines: list[DocumentLineBody] = Field(max_length=400)
 
     def request(self) -> DocumentRequest:
@@ -112,6 +114,7 @@ class DocumentBody(BaseModel):
             paid=self.paid,
             reason=self.reason,
             note=self.note,
+            method=self.method,
             lines=[
                 LineRequest(
                     item_id=line.item_id,
@@ -154,6 +157,7 @@ class SupplierEntryBody(BaseModel):
     amount: int
     currency: str | None = Field(default=None, max_length=3)
     note: str | None = Field(default=None, max_length=400)
+    method: str | None = Field(default=None, max_length=20)
 
 
 def add_stock_routes(
@@ -343,6 +347,7 @@ def add_stock_routes(
             amount=body.amount,
             currency=body.currency,
             note=body.note,
+            method=body.method,
             request_key=idempotency_key,
         )
 

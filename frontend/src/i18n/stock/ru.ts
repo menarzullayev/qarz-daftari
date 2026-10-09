@@ -177,6 +177,11 @@ export const ruStock: RuStockCatalog = {
   "stock.pay.cash": "Поставщик не выбран: приход записывается как полностью оплаченный.",
   "stock.pay.notAllowed": "У вас нет права записывать оплату поставщику: товар записывается как взятый в долг.",
 
+  "stock.method": "Способ оплаты",
+  "stock.method.cash": "Наличные",
+  "stock.method.card": "Карта",
+  "stock.method.transfer": "Перевод",
+
   "stock.return.paid": "Возвращено клиенту деньгами, сум",
   "stock.return.paid.hint": "Остальное уменьшает долг клиента. Пусто: вся сумма уменьшает долг.",
   "stock.return.offDebt": "Уменьшен долг клиента",

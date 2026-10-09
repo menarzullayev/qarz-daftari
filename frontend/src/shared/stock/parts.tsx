@@ -13,7 +13,7 @@ import { stockQtyText } from "../workspace/StockNotes";
 import "./messages";
 import { MAX_REASON, tidy } from "./quantity";
 import "./stock.css";
-import { type Labelled, type StockApi, stockOf, type StockSettings } from "./stockApi";
+import { type Labelled, PAYMENT_METHODS, type PaymentMethod, type StockApi, stockOf, type StockSettings } from "./stockApi";
 
 export const NONE = "—";
 
@@ -158,6 +158,45 @@ export function CancelForm({
           {t("action.close")}
         </button>
       </p>
+    </div>
+  );
+}
+
+const METHOD_LABELS = {
+  cash: "stock.method.cash",
+  card: "stock.method.card",
+  transfer: "stock.method.transfer",
+} as const satisfies Record<PaymentMethod, MessageKey>;
+
+/** How the money was paid: asked only in a shop that keeps a cash book, where the payment is entered too. */
+export function MethodChoice({
+  id,
+  value,
+  disabled = false,
+  onChange,
+}: {
+  id: string;
+  value: PaymentMethod;
+  disabled?: boolean;
+  onChange: (method: PaymentMethod) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="field">
+      <label htmlFor={id}>{t("stock.method")}</label>
+      <select
+        id={id}
+        className="input"
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(PAYMENT_METHODS.find((method) => method === event.target.value) ?? "cash")}
+      >
+        {PAYMENT_METHODS.map((method) => (
+          <option key={method} value={method}>
+            {t(METHOD_LABELS[method])}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

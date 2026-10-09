@@ -77,6 +77,7 @@ from qarz.domain.access import Role
 from qarz.domain.ledger import Entry, EntryKind
 from qarz.domain.money import Currency
 from qarz.domain.ops_alerts import LEDGER_SERIES, Alert, DatabaseFigures
+from qarz.infrastructure.db_cash import CashStatements
 from qarz.infrastructure.db_stock import StockQueries
 
 # Measurement rows refer to a shop or an entry by a value derived from its identifier, never by the
@@ -460,7 +461,7 @@ def _membership(row: Any) -> Membership:
     )
 
 
-class PgTenantSession(StockQueries):
+class PgTenantSession(CashStatements, StockQueries):
     def __init__(self, conn: AsyncConnection, shop_id: UUID) -> None:
         self._conn = conn
         self._shop_id = shop_id

@@ -53,7 +53,16 @@ export type StockSettings = {
   currencies: Currency[];
   units: StockUnit[];
   writeOffReasons: Labelled[];
+  /**
+   * The shop keeps a cash book: money paid to a supplier or handed back to a customer is then also an
+   * entry of it, and the form asks how it was paid. False whenever the server does not say.
+   */
+  cashBook: boolean;
 };
+
+/** How money was paid, for the cash book. */
+export const PAYMENT_METHODS = ["cash", "card", "transfer"] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 function labelled(value: unknown): Labelled {
   const body = record(value);
@@ -68,6 +77,7 @@ function stockSettings(value: unknown): StockSettings {
     currencies: list(body["currencies"], currency),
     units: list(body["units"], (element) => ({ ...labelled(element), weighed: flag(record(element)["weighed"]) })),
     writeOffReasons: list(body["write_off_reasons"], labelled),
+    cashBook: body["cash_book"] === true,
   };
 }
 
@@ -295,6 +305,8 @@ export type NewDocument = {
   customerId?: string | null;
   currency?: Currency | null;
   paid?: number | null;
+  /** How what was paid was paid; said only while the shop keeps a cash book. */
+  method?: PaymentMethod | null;
   reason?: string | null;
   note?: string | null;
   lines: readonly NewDocumentLine[];
@@ -327,6 +339,7 @@ export function documentBody(document: NewDocument): Record<string, unknown> {
     ["customer_id", document.customerId],
     ["currency", document.currency],
     ["paid", document.paid],
+    ["method", document.method],
     ["reason", document.reason],
     ["note", document.note],
   ];
@@ -712,10 +725,13 @@ export function stockOf(api: ShopApi) {
     /** A payment to the supplier, or what the shop already owed them before it kept this book. */
     addEntry(
       supplierId: string,
-      entry: { kind: "payment" | "opening"; amount: number; currency: Currency; note: string | null },
+      entry: { kind: "payment" | "opening"; amount: number; currency: Currency; note: string | null; method?: PaymentMethod | null },
       idempotencyKey: string,
     ): Promise<Supplier> {
       const body: Record<string, unknown> = { kind: entry.kind, amount: entry.amount, currency: entry.currency };
+      if (entry.method) {
+        body["method"] = entry.method;
+      }
       if (entry.note !== null) {
         body["note"] = entry.note;
       }

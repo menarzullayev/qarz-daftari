@@ -26,8 +26,15 @@ export function canManage(role: Role): boolean {
   return RANK[role] >= RANK.manager;
 }
 
-/** A section opens for whoever holds any one of `needs`. */
-type StaffSection = NavItem & { needs: readonly PermissionKey[] };
+/**
+ * A part of the product that exists only while the platform has switched it on. The server says which
+ * are on (a header of the person's shops); a section of one that is off is offered to nobody.
+ */
+export type Feature = "cashBook" | "stock";
+export type Features = Readonly<Partial<Record<Feature, boolean>>>;
+
+/** A section opens for whoever holds any one of `needs`, and only while its `feature`, if any, is on. */
+type StaffSection = NavItem & { needs: readonly PermissionKey[]; feature?: Feature };
 
 /**
  * Sections of the staff workspace and the permissions that open each (REQ-033; the server's catalogue).
@@ -43,6 +50,15 @@ const STAFF_SECTIONS: readonly StaffSection[] = [
   { id: "catalog", path: "/catalog", labelKey: "nav.catalog", needs: ["ledger.view"] },
   { id: "reminders", path: "/reminders", labelKey: "nav.reminders", needs: ["reminders.send", "settings.view"] },
   { id: "reports", path: "/reports", labelKey: "nav.reports", needs: ["reports.view"] },
+  // The cash book (expansion module H), behind the platform switch `cash_book_on`: for whoever may read
+  // it, record in it or arrange its categories.
+  {
+    id: "cash",
+    path: "/cash",
+    labelKey: "nav.cash",
+    needs: ["cash.view", "cash.record_income", "cash.record_expense", "cash.categories"],
+    feature: "cashBook",
+  },
   { id: "disputes", path: "/disputes", labelKey: "nav.disputes", needs: ["disputes.decide"] },
   { id: "importExport", path: "/import-export", labelKey: "nav.importExport", needs: ["imports.run", "reports.export"] },
   { id: "staff", path: "/staff", labelKey: "nav.staff", needs: ["staff.manage"] },
@@ -56,20 +72,21 @@ export const STAFF_SECTION_IDS: readonly string[] = STAFF_SECTIONS.map((section)
 
 /**
  * The sections of the stock (the expansion's module I). They exist only while the platform switch
- * `stock_on` is on, which the server says by answering the stock's settings; until then, and for a
+ * `stock_on` is on, which the server says with a header of the person's shops; until then, and for a
  * client that was not told, none of them is offered. `office` marks the one the web panel alone has:
  * the documents are heavy tables, the Mini App keeps to the counter's tasks.
  */
 const STOCK_SECTIONS: readonly (StaffSection & { office?: true })[] = [
-  { id: "stock", path: "/stock", labelKey: "nav.stock", needs: ["stock.view"] },
+  { id: "stock", path: "/stock", labelKey: "nav.stock", needs: ["stock.view"], feature: "stock" },
   {
     id: "stockDocuments",
     path: "/stock-documents",
     labelKey: "nav.stockDocuments",
     needs: ["stock.receive", "stock.adjust"],
+    feature: "stock",
     office: true,
   },
-  { id: "suppliers", path: "/suppliers", labelKey: "nav.suppliers", needs: ["suppliers.view"] },
+  { id: "suppliers", path: "/suppliers", labelKey: "nav.suppliers", needs: ["suppliers.view"], feature: "stock" },
 ];
 
 export const STOCK_SECTION_IDS: readonly string[] = STOCK_SECTIONS.map((section) => section.id);
@@ -77,29 +94,26 @@ export const STOCK_SECTION_IDS: readonly string[] = STOCK_SECTIONS.map((section)
 /** The section the stock's own follow: goods are in the catalog, the stock counts them. */
 const STOCK_AFTER = "catalog";
 
-/** What the server said exists beyond the base workspace, and which client is asking. */
-export type Features = {
-  /** The stock is switched on for the platform and the member may see it. */
-  stock?: boolean | undefined;
-  /** The web panel, which has the screens made of tables. */
-  office?: boolean | undefined;
-};
-
 /**
  * Exactly the sections the member may open, in display order: by what the server said they hold, or by
- * the role alone when it said nothing (`permissions` absent or null). The stock's sections join them
- * only when `features` says the stock is on.
+ * the role alone when it said nothing (`permissions` absent or null). A section of a part of the
+ * product that the platform has not switched on is offered to nobody. `office` is true for the web
+ * panel, which has the screens made of tables.
  */
-export function staffSections(role: Role, permissions?: Held, features: Features = {}): NavItem[] {
+export function staffSections(role: Role, permissions?: Held, features: Features = {}, office = false): NavItem[] {
   const all: StaffSection[] = [];
   for (const section of STAFF_SECTIONS) {
     all.push(section);
-    if (section.id === STOCK_AFTER && features.stock === true) {
-      all.push(...STOCK_SECTIONS.filter((added) => added.office !== true || features.office === true));
+    if (section.id === STOCK_AFTER) {
+      all.push(...STOCK_SECTIONS.filter((added) => added.office !== true || office));
     }
   }
   return all
-    .filter((section) => mayAny({ role, permissions }, section.needs))
+    .filter(
+      (section) =>
+        (section.feature === undefined || features[section.feature] === true) &&
+        mayAny({ role, permissions }, section.needs),
+    )
     .map(({ id, path, labelKey }) => ({ id, path, labelKey }));
 }
 

@@ -1,7 +1,7 @@
 import { type Currency, parseMoney, amountInput } from "../money";
 import { parseIsoDate } from "../promise";
 import { lineCost, MAX_DOCUMENT_LINES, MAX_DOCUMENT_TOTAL, MAX_NOTE, readCount, readQty, readUnitCost, tidy } from "./quantity";
-import type { NewDocument, NewDocumentLine, StockDocument, StockDocumentKind } from "./stockApi";
+import type { NewDocument, NewDocumentLine, PaymentMethod, StockDocument, StockDocumentKind } from "./stockApi";
 
 /**
  * A stock document while a person fills it in, and the check that turns it into a request. The rules
@@ -36,6 +36,8 @@ export type DocumentDraft = {
   currency: Currency;
   payment: Payment;
   paidText: string;
+  /** How what is paid now is paid; null where the shop keeps no cash book and nobody is asked. */
+  method: PaymentMethod | null;
   reason: string | null;
   note: string;
   lines: DraftLine[];
@@ -155,6 +157,11 @@ export function buildDocument(draft: DocumentDraft): Built {
     }
   }
 
+  // Said only when money changes hands now: goods taken on credit were paid by no method.
+  if (draft.method !== null && (document.paid ?? (kind === "receipt" ? total : 0)) > 0) {
+    document.method = draft.method;
+  }
+
   const { lines: lineProblems, ...rest } = problems;
   const refused = Object.keys(lineProblems).length > 0 || Object.values(rest).some(Boolean);
   return refused ? { ok: false, problems, total } : { ok: true, document, total };
@@ -170,6 +177,7 @@ export function emptyDraft(kind: StockDocumentKind, today: string): DocumentDraf
     currency: "UZS",
     payment: "full",
     paidText: "",
+    method: null,
     reason: null,
     note: "",
     lines: [],
@@ -196,6 +204,7 @@ export function draftOf(document: StockDocument): DocumentDraft | null {
     currency,
     payment: paid === total ? "full" : paid === 0 ? "credit" : "part",
     paidText: paid === 0 ? "" : amountInput(paid, currency),
+    method: null,
     reason: document.reason,
     note: document.note ?? "",
     lines: document.lines.map((line, index) => ({

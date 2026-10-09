@@ -18,6 +18,7 @@ from qarz.application.admin_access import AdminAccess
 from qarz.application.admin_ownership import AdminOwnershipService
 from qarz.application.admin_receipts import AdminReceiptService
 from qarz.application.auth import AuthService
+from qarz.application.cash_book import CashBookService
 from qarz.application.catalog import CatalogService
 from qarz.application.chat import ChatService
 from qarz.application.credit import CreditService
@@ -53,6 +54,7 @@ from qarz.interface.account_api import add_account_routes
 from qarz.interface.admin_api import add_admin_routes
 from qarz.interface.auth_api import SessionAuthenticator, add_auth_routes
 from qarz.interface.body_limit import BodyLimit
+from qarz.interface.cash_api import add_cash_routes
 from qarz.interface.catalog_api import add_catalog_routes
 from qarz.interface.credit_api import add_credit_routes
 from qarz.interface.customer_shares_api import add_customer_share_routes
@@ -222,6 +224,7 @@ def create_app(
         add_permission_routes(app, PermissionService(storage), current_user)
         add_link_routes(app, LinkService(storage, now), current_user)
         add_customer_share_routes(app, CustomerShareService(storage, now), current_user)
+        add_cash_routes(app, CashBookService(storage, now), current_user)
         add_me_routes(app, CustomerAccountService(storage, now), current_user)
         add_shop_deletion_routes(app, ShopDeletionService(storage, now), current_user)
         add_subscription_routes(app, SubscriptionService(storage, now), current_user)

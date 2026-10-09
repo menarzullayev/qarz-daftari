@@ -141,6 +141,7 @@ TENANT_TABLES = [
     "request_key", "ownership_transfer", "online_payment", "export_job", "open_debt", "customer_share",
     "catalog_barcode", "supplier", "supplier_entry", "supplier_balance", "stock_document", "stock_document_line",
     "stock_movement", "stock_level",
+    "cash_category", "cash_entry",
 ]  # fmt: skip
 
 

@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { I18nProvider } from "../i18n/I18nProvider";
 import type { Language } from "../i18n/types";
 import { createApi, type Fetch } from "../shared/api";
-import type { Role } from "../shared/navigation";
+import type { Features, Role } from "../shared/navigation";
 import { WorkspaceProvider } from "../shared/workspace/context";
 import type { ShopMode } from "../shared/workspace/shopMode";
 import { MEMBERSHIP_ID, NOON, SHOP_ID } from "./fakeServer";
@@ -26,6 +26,8 @@ export function renderScreen(
     shopName?: string;
     /** What the server's refusals have said about the shop so far. */
     shopMode?: ShopMode | null;
+    /** The parts of the product the platform has switched on; absent: none. */
+    features?: Features;
   },
 ) {
   const api = createApi({ fetch: options.fetch, auth: { kind: "bearer", token: "test-session" } }).shop(SHOP_ID);
@@ -42,6 +44,7 @@ export function renderScreen(
           now: () => now,
           shopName: options.shopName,
           shopMode: options.shopMode ?? null,
+          features: options.features,
         }}
       >
         {screen}

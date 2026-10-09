@@ -159,6 +159,7 @@ export const ruAdmin: RuAdminCatalog = {
   "admin.setting.permissions_on": "Отдельные разрешения для сотрудников включены",
   "admin.setting.customer_links_on": "Ссылка и QR-код для клиента (без Telegram) включены",
   "admin.setting.usd_on": "Доллары (USD) включены",
+  "admin.setting.cash_book_on": "Касса (книга прихода и расхода) включена",
   "admin.setting.stock_on": "Склад, приход и поставщики включены",
 
   "admin.audit.filters": "Фильтры аудита",

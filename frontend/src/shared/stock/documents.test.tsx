@@ -84,6 +84,8 @@ describe("a quick receipt", () => {
     expect(screen.getByText("Jami").parentElement?.textContent).toBe("Jami 24 000 so'm");
     // Without a supplier there is nothing to choose: the receipt is paid.
     expect(screen.queryByRole("group", { name: "To'lov" })).toBeNull();
+    // This shop keeps no cash book: nobody is asked how the money was paid.
+    expect(screen.queryByLabelText("To'lov usuli")).toBeNull();
     expect(screen.getByText("Ta'minotchi tanlanmagan: kirim to'liq to'langan deb yoziladi.")).toBeTruthy();
 
     fireEvent.change(await screen.findByLabelText("Ta'minotchi"), { target: { value: SUPPLIER_ID } });
@@ -191,6 +193,24 @@ describe("a quick receipt", () => {
     fireEvent.click(screen.getByRole("button", { name: "O'tkazish" }));
     await waitFor(() => expect(server.writes()).toHaveLength(1));
     expect(server.writes()[0]?.body).toMatchObject({ currency: "USD", lines: [{ item_id: ITEM_ID, qty: "1", unit_cost: 125 }] });
+  });
+
+  it("asks how it was paid only in a shop that keeps a cash book, and only when something is paid now", async () => {
+    const server = backend(() => ok(documentBody(), 201), undefined, stockSettingsBody({ cash_book: true }));
+    renderScreen(<ReceiptScreen host={{}} />, { fetch: server.fetch, ...MANAGER });
+    await screen.findByRole("heading", { name: "Kirim" });
+    find(EAN);
+    fireEvent.change(await screen.findByLabelText("Bir birlik narxi"), { target: { value: "12000" } });
+    fireEvent.change(screen.getByLabelText("To'lov usuli"), { target: { value: "card" } });
+    // On credit nothing is paid, so there is no method to ask for.
+    fireEvent.change(await screen.findByLabelText("Ta'minotchi"), { target: { value: SUPPLIER_ID } });
+    fireEvent.click(screen.getByLabelText("Qarzga olindi"));
+    expect(screen.queryByLabelText("To'lov usuli")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Hozir to'liq to'landi"));
+    expect((screen.getByLabelText("To'lov usuli") as HTMLSelectElement).value).toBe("card");
+    fireEvent.click(screen.getByRole("button", { name: "O'tkazish" }));
+    await waitFor(() => expect(server.writes()).toHaveLength(1));
+    expect(server.writes()[0]?.body).toMatchObject({ paid: 12000, method: "card" });
   });
 
   it("is not there for a member who may not receive goods, and nothing is asked for them", async () => {

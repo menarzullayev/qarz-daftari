@@ -29,9 +29,9 @@ import {
   SUPPLIER_KINDS,
 } from "./documentDraft";
 import { ItemFinder } from "./ItemFinder";
-import { DOCUMENT_KIND_LABELS, labelOf, useStock } from "./parts";
+import { DOCUMENT_KIND_LABELS, labelOf, MethodChoice, useStock } from "./parts";
 import { MAX_DOCUMENT_LINES, MAX_NOTE, tidy } from "./quantity";
-import type { NewDocument, StockDocument, StockDocumentKind, StockItem, StockSettings } from "./stockApi";
+import type { NewDocument, PaymentMethod, StockDocument, StockDocumentKind, StockItem, StockSettings } from "./stockApi";
 
 const OLDEST_DAYS = 365;
 const QTY = /^-?\d{1,12}(?:\.\d{1,3})?$/;
@@ -332,6 +332,8 @@ export function DocumentEditor({
   const [customer, setCustomer] = useState<{ id: string; name: string } | null>(initial?.customer ?? null);
   const [problems, setProblems] = useState<DraftProblems>(NO_PROBLEMS);
   const [adding, setAdding] = useState<{ barcode: string } | null>(null);
+  // Asked only in a shop that keeps a cash book; elsewhere nothing is asked and nothing is sent.
+  const [method, setMethod] = useState<PaymentMethod>("cash");
   const nextKey = useRef(draft.lines.length + 1);
 
   const priced = PRICED_KINDS.has(kind);
@@ -408,6 +410,7 @@ export function DocumentEditor({
       customerId: customer?.id ?? null,
       // Without the permission to pay a supplier the goods are received on credit, whatever was chosen before.
       payment: mayPay ? draft.payment : "credit",
+      method: settings.cashBook ? method : null,
     });
     if (!built.ok) {
       setProblems(built.problems);
@@ -701,6 +704,11 @@ export function DocumentEditor({
           ) : null}
           <FieldError id="stock-doc-paid-error" message={problems.paid ? t("stock.doc.refused.paid") : null} />
         </div>
+      ) : null}
+
+      {settings.cashBook &&
+      ((kind === "receipt" && (draft.supplierId === null || (mayPay && draft.payment !== "credit"))) || kind === "customer_return") ? (
+        <MethodChoice id="stock-doc-method" value={method} disabled={pending} onChange={setMethod} />
       ) : null}
 
       <div className="field">

@@ -65,7 +65,7 @@ _STANDING = "m.kind <> 'reversal' AND NOT EXISTS (SELECT 1 FROM stock_movement r
 
 _DOCUMENT_COLUMNS = (
     "d.id, d.kind, d.number, d.status, d.doc_date, d.supplier_id, d.customer_id, d.currency, d.total, d.paid, "
-    "d.reason, d.note, d.draft, d.ledger_entry_id, d.cash_entry_id, d.created_by, d.created_at, "
+    "d.reason, d.note, d.draft, d.ledger_entry_id, d.created_by, d.created_at, "
     "d.posted_at, d.cancelled_at, d.cancel_reason, "
     "(SELECT s.name FROM supplier s WHERE s.id = d.supplier_id) AS supplier_name, "
     "(SELECT c.display_name FROM customer c WHERE c.id = d.customer_id) AS customer_name"
@@ -80,7 +80,8 @@ _SUPPLIER_LOCKED = f"{_SUPPLIER_BY_ID} FOR NO KEY UPDATE"
 
 _ENTRY_COLUMNS = (
     "e.id, e.supplier_id, e.seq, e.kind, e.amount, e.currency, e.note, e.reverses_id, e.document_id, "
-    "e.cash_entry_id, e.author_id, e.created_at, "
+    "e.author_id, e.created_at, "
+    "EXISTS (SELECT 1 FROM cash_entry k WHERE k.supplier_entry_id = e.id) AS in_cash_book, "
     "EXISTS (SELECT 1 FROM supplier_entry r WHERE r.reverses_id = e.id) AS is_reversed, "
     "d.kind AS document_kind, d.number AS document_number"
 )
@@ -160,7 +161,6 @@ def _document(row: Any) -> DocumentRecord:
         note=row.note,
         draft=json.loads(draft) if isinstance(draft, str) else draft,
         ledger_entry_id=row.ledger_entry_id,
-        cash_entry_id=row.cash_entry_id,
         created_by=row.created_by,
         created_at=row.created_at,
         posted_at=row.posted_at,
@@ -186,10 +186,10 @@ def _entry(row: Any) -> SupplierEntryRecord:
         note=row.note,
         reverses_id=row.reverses_id,
         document_id=row.document_id,
-        cash_entry_id=row.cash_entry_id,
         author_id=row.author_id,
         created_at=row.created_at,
         is_reversed=bool(row.is_reversed),
+        in_cash_book=bool(row.in_cash_book),
         document_kind=row.document_kind,
         document_number=None if row.document_number is None else int(row.document_number),
     )
@@ -512,14 +512,13 @@ class StockQueries:
         posted_by: UUID,
         posted_at: datetime,
         ledger_entry_id: UUID | None,
-        cash_entry_id: UUID | None,
     ) -> None:
         await self._conn.execute(
             text(
                 "UPDATE stock_document SET status = 'posted', draft = NULL, posted_by = :by, posted_at = :at, "
-                "  ledger_entry_id = :entry, cash_entry_id = :cash WHERE id = :id AND status = 'draft'"
+                "  ledger_entry_id = :entry WHERE id = :id AND status = 'draft'"
             ),
-            {"id": document_id, "by": posted_by, "at": posted_at, "entry": ledger_entry_id, "cash": cash_entry_id},
+            {"id": document_id, "by": posted_by, "at": posted_at, "entry": ledger_entry_id},
         )
 
     async def mark_document_cancelled(
@@ -720,16 +719,15 @@ class StockQueries:
         note: str | None,
         reverses_id: UUID | None,
         document_id: UUID | None,
-        cash_entry_id: UUID | None,
         author_id: UUID,
         created_at: datetime,
     ) -> None:
         await self._conn.execute(
             text(
                 "INSERT INTO supplier_entry (id, shop_id, supplier_id, seq, kind, amount, currency, note, "
-                "  reverses_id, document_id, cash_entry_id, author_id, created_at) "
+                "  reverses_id, document_id, author_id, created_at) "
                 "VALUES (:id, :shop_id, :supplier_id, :seq, :kind, :amount, :currency, :note, :reverses_id, "
-                "  :document_id, :cash_entry_id, :author_id, :created_at)"
+                "  :document_id, :author_id, :created_at)"
             ),
             {
                 "id": entry_id,
@@ -742,7 +740,6 @@ class StockQueries:
                 "note": note,
                 "reverses_id": reverses_id,
                 "document_id": document_id,
-                "cash_entry_id": cash_entry_id,
                 "author_id": author_id,
                 "created_at": created_at,
             },
@@ -783,22 +780,66 @@ class StockQueries:
         ).all()
         return [_entry(row) for row in rows]
 
-    async def supplier_entry_of_cash_entry(self, cash_entry_id: UUID) -> SupplierEntryRecord | None:
-        row = (
-            await self._conn.execute(
-                text(f"SELECT {_ENTRY_COLUMNS} {_ENTRY_FROM} WHERE e.cash_entry_id = :cash"), {"cash": cash_entry_id}
-            )
-        ).first()
-        return None if row is None else _entry(row)
+    # --- the cash book (module H) ------------------------------------------------------------------
 
-    async def document_of_cash_entry(self, cash_entry_id: UUID) -> DocumentRecord | None:
-        row = (
-            await self._conn.execute(
-                text(f"SELECT {_DOCUMENT_COLUMNS} FROM stock_document d WHERE d.cash_entry_id = :cash"),
-                {"cash": cash_entry_id},
-            )
-        ).first()
-        return None if row is None else _document(row)
+    async def add_stock_cash_entry(
+        self,
+        *,
+        entry_id: UUID,
+        method: str,
+        currency: str,
+        amount: int,
+        category_id: UUID,
+        note: str | None,
+        day: date,
+        author_id: UUID,
+        supplier_entry_id: UUID | None,
+        stock_document_id: UUID | None,
+        now: datetime,
+    ) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO cash_entry (id, shop_id, direction, method, currency, amount, category_id, note, day, "
+                "  created_at, author_id, supplier_entry_id, stock_document_id) "
+                "VALUES (:id, :shop_id, 'expense', :method, :currency, :amount, :category_id, :note, :day, :now, "
+                "  :author_id, :supplier_entry_id, :stock_document_id)"
+            ),
+            {
+                "id": entry_id,
+                "shop_id": self._shop_id,
+                "method": method,
+                "currency": currency,
+                "amount": amount,
+                "category_id": category_id,
+                "note": note,
+                "day": day,
+                "now": now,
+                "author_id": author_id,
+                "supplier_entry_id": supplier_entry_id,
+                "stock_document_id": stock_document_id,
+            },
+        )
+
+    async def cancel_stock_cash_entries(
+        self, *, supplier_entry_id: UUID | None, stock_document_id: UUID | None, by: UUID, reason: str, now: datetime
+    ) -> int:
+        result = await self._conn.execute(
+            text(
+                "UPDATE cash_entry SET cancelled_at = :now, cancelled_by = :by, cancel_reason = :reason "
+                "WHERE shop_id = :shop_id AND cancelled_at IS NULL "
+                "  AND (supplier_entry_id = CAST(:supplier_entry AS uuid) "
+                "       OR stock_document_id = CAST(:document AS uuid))"
+            ),
+            {
+                "shop_id": self._shop_id,
+                "supplier_entry": supplier_entry_id,
+                "document": stock_document_id,
+                "by": by,
+                "reason": reason,
+                "now": now,
+            },
+        )
+        return int(result.rowcount)
 
     # --- the owner's export -----------------------------------------------------------------------
 

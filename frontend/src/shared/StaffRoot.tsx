@@ -52,7 +52,16 @@ type Phase =
   | { kind: "connecting" }
   | { kind: "signedOut"; everywhere: boolean }
   | { kind: "failed"; error: ApiError }
-  | { kind: "ready"; api: Api; shops: ShopMembership[]; activeShop: string | null; permissionsOn: boolean; isCustomer: boolean };
+  | {
+      kind: "ready";
+      api: Api;
+      shops: ShopMembership[];
+      activeShop: string | null;
+      permissionsOn: boolean;
+      cashBookOn: boolean;
+      stockOn: boolean;
+      isCustomer: boolean;
+    };
 
 const browserFetch: Fetch = (input, init) => window.fetch(input, init);
 
@@ -170,6 +179,8 @@ export function StaffWorkspace({
           shops: mine.items,
           activeShop: mine.activeShop,
           permissionsOn: mine.permissionsOn,
+          cashBookOn: mine.cashBookOn,
+          stockOn: mine.stockOn,
           isCustomer: Array.isArray(accounts) && accounts.length > 0,
         });
       }
@@ -227,26 +238,11 @@ export function StaffWorkspace({
       cancelled = true;
     };
   }, [shopApi, shop, permissionsOn]);
-  // Whether the stock exists for this member of this shop: asked once for each shop of the session. Until
-  // the server has said yes, and whenever it says anything else, nothing of the stock is offered.
-  const [stock, setStock] = useState<{ shopId: string; on: boolean } | null>(null);
-  useEffect(() => {
-    if (!shopApi || !shop) {
-      return undefined;
-    }
-    const controller = new AbortController();
-    const shopId = shop.shopId;
-    shopApi.stockOn(controller.signal).then(
-      (on) => {
-        if (!controller.signal.aborted) {
-          setStock({ shopId, on });
-        }
-      },
-      () => undefined,
-    );
-    return () => controller.abort();
-  }, [shopApi, shop]);
   const reloadSession = useCallback(() => setAttempt((count) => count + 1), []);
+  // The parts of the product the platform has switched on; one object for as long as none changes.
+  const cashBookOn = ready?.cashBookOn ?? false;
+  const stockOn = ready?.stockOn ?? false;
+  const features = useMemo(() => ({ cashBook: cashBookOn, stock: stockOn }), [cashBookOn, stockOn]);
 
   if (phase.kind === "connecting") {
     return (
@@ -350,7 +346,7 @@ export function StaffWorkspace({
         role: shop.role,
         membershipId: shop.membershipId,
         permissions: held?.shopId === shop.shopId ? held.permissions : null,
-        stock: stock?.shopId === shop.shopId && stock.on,
+        features,
       }}
       api={shopApi}
       now={now}

@@ -266,6 +266,8 @@ describe("responses", () => {
       items: [{ shopId: SHOP_ID, name: "Baraka", role: "manager", membershipId: null }],
       activeShop: SHOP_ID,
       permissionsOn: false,
+      cashBookOn: false,
+      stockOn: false,
     });
     const named = fakeServer(() =>
       ok({ items: [{ shop_id: SHOP_ID, name: "Baraka", role: "seller", membership_id: "m-1" }], active_shop: null }),
@@ -284,6 +286,37 @@ describe("responses", () => {
       const other = fakeServer(() => ({ status: 200, body, headers: { "X-Qarz-Permissions": value } }));
       expect((await createApi({ fetch: other.fetch, auth }).myShops()).permissionsOn).toBe(false);
     }
+  });
+
+  it("learns from a header, and from nothing else, that the cash book is switched on", async () => {
+    const auth = { kind: "bearer", token: "t" } as const;
+    const body = { items: [], active_shop: null };
+    const on = fakeServer(() => ({ status: 200, body, headers: { "X-Qarz-Cash-Book": "on" } }));
+    expect(await createApi({ fetch: on.fetch, auth }).myShops()).toMatchObject({ cashBookOn: true, permissionsOn: false });
+    for (const headers of [{}, { "X-Qarz-Cash-Book": "off" }, { "X-Qarz-Cash-Book": "true" }, { "X-Qarz-Permissions": "on" }]) {
+      const other = fakeServer(() => ({ status: 200, body, headers }));
+      expect((await createApi({ fetch: other.fetch, auth }).myShops()).cashBookOn).toBe(false);
+    }
+  });
+
+  it("names a payment's method only when one is given, and never for a sale", async () => {
+    const auth = { kind: "bearer", token: "t" } as const;
+    const answer = {
+      entry: { id: "e-1", seq: 2, kind: "payment", amount: 20000, note: null, created_at: "2026-10-06T07:00:00+00:00", promised_date: null, lines: [], method: "card" },
+      customer: { id: "c-1", display_name: "Ali", phone: null, status: "active", reminders_off: false, credit_limit: null, balance: 0 },
+    };
+    const server = fakeServer(() => ok(answer, 201));
+    const shop = createApi({ fetch: server.fetch, auth }).shop(SHOP_ID);
+    await shop.recordEntry("c-1", { kind: "payment", amount: 20000, note: null, promisedDate: null }, "key-00000001");
+    await shop.recordEntry("c-1", { kind: "payment", amount: 20000, note: null, promisedDate: null, method: "card" }, "key-00000002");
+    expect(server.sent.map((sent) => sent.body)).toEqual([
+      { kind: "payment", amount: 20000 },
+      { kind: "payment", amount: 20000, method: "card" },
+    ]);
+    expect(() =>
+      shop.recordEntry("c-1", { kind: "credit", amount: 20000, note: null, promisedDate: null, method: "card" }, "key-00000003"),
+    ).toThrow(RangeError);
+    expect(server.sent).toHaveLength(2);
   });
 
   it("reads what the member may do in a shop, and takes a missing route as 'by role'", async () => {

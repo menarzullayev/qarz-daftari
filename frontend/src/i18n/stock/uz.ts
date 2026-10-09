@@ -181,6 +181,11 @@ export const uzStock = {
   "stock.pay.cash": "Ta'minotchi tanlanmagan: kirim to'liq to'langan deb yoziladi.",
   "stock.pay.notAllowed": "Ta'minotchiga to'lov yozishga ruxsatingiz yo'q: tovar qarzga olingan deb yoziladi.",
 
+  "stock.method": "To'lov usuli",
+  "stock.method.cash": "Naqd",
+  "stock.method.card": "Karta",
+  "stock.method.transfer": "O'tkazma",
+
   "stock.return.paid": "Mijozga pul bilan qaytarildi, so'm",
   "stock.return.paid.hint": "Qolgan qismi mijozning qarzidan kamaytiriladi. Bo'sh qolsa, hammasi qarzdan kamayadi.",
   "stock.return.offDebt": "Mijoz qarzidan kamaytirildi",

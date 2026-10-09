@@ -128,6 +128,38 @@ describe("a receipt", () => {
   });
 });
 
+describe("how the money was paid", () => {
+  const paid = (patch: Partial<DocumentDraft>) => {
+    const built = buildDocument(draft("receipt", { lines: [line(1, "2", "12000")], method: "card", ...patch }));
+    return built.ok ? built.document.method : "refused";
+  };
+
+  it("is said when something is paid now: a receipt for cash, one paid in full, one paid in part", () => {
+    expect(paid({})).toBe("card");
+    expect(paid({ supplierId: SUPPLIER, payment: "full" })).toBe("card");
+    expect(paid({ supplierId: SUPPLIER, payment: "part", paidText: "1000" })).toBe("card");
+  });
+
+  it("is not said for goods taken on credit, a part of nothing, or a kind that pays nothing", () => {
+    expect(paid({ supplierId: SUPPLIER, payment: "credit" })).toBeUndefined();
+    expect(paid({ supplierId: SUPPLIER, payment: "part", paidText: "0" })).toBeUndefined();
+    const writeOff = buildDocument(draft("write_off", { reason: "lost", method: "cash", lines: [line(1, "1")] }));
+    expect(writeOff.ok && "method" in writeOff.document).toBe(false);
+  });
+
+  it("is never said where nobody was asked: a shop without a cash book", () => {
+    expect(paid({ method: null })).toBeUndefined();
+  });
+
+  it("is said for money handed back to a customer, and not when all of a return lowers the debt", () => {
+    const base = { customerId: CUSTOMER, method: "cash" as const, lines: [line(1, "1", "15000")] };
+    const some = buildDocument(draft("customer_return", { ...base, paidText: "5000" }));
+    expect(some.ok && some.document.method).toBe("cash");
+    const none = buildDocument(draft("customer_return", base));
+    expect(none.ok && "method" in none.document).toBe(false);
+  });
+});
+
 describe("the other kinds", () => {
   it("a return to a supplier needs the supplier", () => {
     const built = buildDocument(draft("supplier_return", { lines: [line(1, "1", "100")] }));
@@ -204,7 +236,8 @@ describe("a stored draft back in the form", () => {
   });
 
   it("is not offered for editing when its prices were kept from this member", () => {
-    const { money: _money, ...hidden } = stored;
-    expect(draftOf({ ...hidden, lines: [{ lineNo: 1, item: ITEM, qty: "2.5" }] })).toBeNull();
+    const hidden: StockDocument = { ...stored, lines: [{ lineNo: 1, item: ITEM, qty: "2.5" }] };
+    delete hidden.money;
+    expect(draftOf(hidden)).toBeNull();
   });
 });
