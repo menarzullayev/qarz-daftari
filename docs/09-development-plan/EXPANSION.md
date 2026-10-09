@@ -137,7 +137,6 @@ Decisions waiting for the founder:
 | 4 | A payment notice with a receipt is now recorded as paid by card by default. Keep? | #100 |
 | 5 | Ask Eskiz whether an approved template's amount may read `12.50 $` or two amounts; otherwise eight new templates | #100 |
 | 6 | Three points on the network: a delivery note whose author has since left the shop or lost the right to sell on credit; partner members' chat identifiers stored in the acting shop's outbox; advance payments between linked shops (`EXCEEDS_BALANCE`). The fourth, totals compared instead of lines, is closed (migration 0047) | #101 |
-| 7 | A sale for cash without a customer (stock is drawn only by credit sales and documents today) | I |
 | 8 | The product's name | founder |
 | 9 | A member who holds `stock.receive` or `stock.adjust` without `stock.view` now reaches the documents list in the Mini App, but not the quick receipt or a document's form: those read the stock's settings, the list of items and the barcode lookup, which the server gives to `stock.view` alone. Open those three reads to who writes documents (they show what is on hand), or keep it so? | leftovers |
 
@@ -151,6 +150,10 @@ and not out of a first page; the Mini App's stock section opens to whoever write
 navigation no longer covers the end of a screen on a phone at 200 % text; the two-language tables in
 code (stock units, write-off reasons, the cash book's categories, the notes a stock document writes, the
 states in the network's export sheets) are texts in all six languages, and a test refuses such a table.
+
+Decided since: a sale for cash without a customer (question 7 of this list as it stood) was decided on
+2026-10-09 and built as migration 0049: a sixth kind of stock document, behind `stock_on`, with its money
+in the cash book (`docs/08-technical-spec/OUTPUT.md`, "Cash sales"; BR-98 to BR-104).
 
 Known and left for later: the period export of the cash book is written inside the request, not by the
 worker; goods lines on a dollar sale stay refused; `network_receipt_finish` does not ask whether the

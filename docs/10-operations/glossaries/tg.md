@@ -28,6 +28,7 @@ refusals, permission names).
 | direction (in or out) | yo'nalish | самт | |
 | payment method | to'lov usuli | тарзи пардохт | |
 | cash (method) | naqd | нақд | |
+| cash sale (a sale without a customer) | naqd savdo | фурӯши нақд | To sell = «фурӯхтан»; the button reads «Фурӯш». The cash book stays «касса». |
 | card (method) | karta | корт | The same word as the subscription payment card. |
 | bank transfer (method) | o'tkazma | интиқол | Colloquially «перевод». |
 | to carry earlier payments into the cash book | kassaga ko'chirish | ба касса гузаронидан | The same verb as moving a due date. |
