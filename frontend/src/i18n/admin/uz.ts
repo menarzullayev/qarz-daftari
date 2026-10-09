@@ -161,6 +161,7 @@ export const uzAdmin = {
   "admin.setting.sms_on": "SMS yoqilgan",
   "admin.setting.sms_monthly_quota": "Bir do'kon uchun oylik SMS kvotasi",
   "admin.setting.online_pay_on": "Onlayn to'lov yoqilgan",
+  "admin.setting.customer_links_on": "Mijoz uchun havola va QR kod (Telegramsiz) yoqilgan",
 
   "admin.audit.filters": "Audit filtrlari",
   "admin.audit.at": "Vaqt",

@@ -39,6 +39,7 @@ exports[`the Telegram Mini App is as it was before the web panel's layouts > man
   "GET /api/v1/me/shops",
   "GET /api/v1/shops/5a0c6d3e-0000-4000-8000-00000000aaaa",
   "GET /api/v1/shops/5a0c6d3e-0000-4000-8000-00000000aaaa/credit-settings",
+  "GET /api/v1/shops/5a0c6d3e-0000-4000-8000-00000000aaaa/share-contact",
 ]
 `;
 
@@ -104,6 +105,7 @@ exports[`the Telegram Mini App is as it was before the web panel's layouts > own
   "GET /api/v1/shops/5a0c6d3e-0000-4000-8000-00000000aaaa/credit-settings",
   "GET /api/v1/shops/5a0c6d3e-0000-4000-8000-00000000aaaa/customers/11111111-1111-4111-8111-111111111111",
   "GET /api/v1/shops/5a0c6d3e-0000-4000-8000-00000000aaaa/customers/11111111-1111-4111-8111-111111111111/link",
+  "GET /api/v1/shops/5a0c6d3e-0000-4000-8000-00000000aaaa/customers/11111111-1111-4111-8111-111111111111/share",
 ]
 `;
 
@@ -134,6 +136,7 @@ exports[`the Telegram Mini App is as it was before the web panel's layouts > own
   "GET /api/v1/me/shops",
   "GET /api/v1/shops/5a0c6d3e-0000-4000-8000-00000000aaaa",
   "GET /api/v1/shops/5a0c6d3e-0000-4000-8000-00000000aaaa/credit-settings",
+  "GET /api/v1/shops/5a0c6d3e-0000-4000-8000-00000000aaaa/share-contact",
   "GET /api/v1/shops/5a0c6d3e-0000-4000-8000-00000000aaaa/support-access",
 ]
 `;

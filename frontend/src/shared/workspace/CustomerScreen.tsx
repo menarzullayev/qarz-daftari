@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { type FormEvent, useState } from "react";
 
 import { useI18n } from "../../i18n/I18nProvider";
 import type { ApiError, ChangedPromise, Customer, CustomerDetail, CustomerPatch, Entry } from "../api";
@@ -6,6 +6,7 @@ import { changedDate, changeRange, DATE_REASON_MAX, isDebtKind, saleDay } from "
 import { formatCalendarDay, formatDateTime, formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
 import { canManage } from "../navigation";
+import { onDemand } from "../onDemand";
 import { parseIsoDate } from "../promise";
 import { DateReasonForm, dayText, PromiseHistory } from "../promiseParts";
 import { Link } from "../router";
@@ -19,6 +20,10 @@ import { cleanName, customerFieldErrors, nameProblem } from "./NewCustomerScreen
 import { ENTRY_KIND_LABELS, errorText, Failure, FieldError, Loading, OverdueLines } from "./parts";
 import { PaymentHistoryNote } from "./PaymentHistoryNote";
 import { ReminderAction } from "./ReminderAction";
+
+// A customer's read-only link, for a manager or an owner: behind a platform switch, so its code is
+// fetched apart and shows nothing until the server has said the switch is on.
+const ShareSection = onDemand(() => import("../share/ShareSection"));
 
 /**
  * Only a manager or an owner is offered a reversal, and only for an entry the server would accept: not
@@ -382,6 +387,7 @@ function Detail({
       <PaymentHistoryNote history={customer.paymentHistory} />
       <CreditLimitSection customer={customer} onSaved={reload} />
       <LinkSection customerId={customer.id} archived={archived} />
+      {mayManage ? <ShareSection customerId={customer.id} archived={archived} /> : null}
 
       <section aria-labelledby="entries-title">
         <h2 id="entries-title">{t("customer.entries")}</h2>

@@ -48,6 +48,8 @@ SETTINGS: dict[str, Setting] = {
     "sms_on": Setting("switch", False, needs_code=True),
     "sms_monthly_quota": Setting("number", 0, 0, 100_000),
     "online_pay_on": Setting("switch", False, needs_code=True),
+    # A customer's secret read-only link and its QR code (the expansion of 2026-10-09, module B).
+    "customer_links_on": Setting("switch", False, needs_code=True),
 }
 
 

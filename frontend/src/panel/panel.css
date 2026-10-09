@@ -209,3 +209,20 @@
     min-width: 0;
   }
 }
+
+/* Across the top of the panel while the device has no connection (pwa/OfflineNotice.tsx). */
+.offline {
+  padding: var(--qd-space-3) var(--qd-space-4);
+  border-bottom: 1px solid var(--qd-line);
+  background: var(--qd-danger-soft);
+  color: var(--qd-danger);
+  font: var(--qd-type-control);
+}
+
+.offline p {
+  margin: 0;
+}
+
+.offline .offline__detail {
+  font: var(--qd-type-small);
+}

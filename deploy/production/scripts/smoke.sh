@@ -9,6 +9,7 @@
 # Environment:
 #   SMOKE_INSECURE=1     accept a certificate that cannot be verified (the local proof only)
 #   SMOKE_AUTH_BURST=10  the burst of the sign-in limit in nginx/snippets/app-server.conf
+#   SMOKE_SHARE_BURST=20 the burst of the limit on the read behind a customer's link, in the same file
 #   SMOKE_VIA_TUNNEL=<address>
 #                        the origin is the proxy as a Cloudflare Tunnel reaches it (the single-host
 #                        deployment): plain HTTP inside the Compose network, with what Cloudflare adds
@@ -27,6 +28,7 @@ HTTP="${2:-http://${HTTPS#https://}}"
 HTTP="${HTTP%/}"
 AUTH_BURST="${SMOKE_AUTH_BURST:-10}"
 AUTH_WAIT="${SMOKE_AUTH_WAIT:-22}"
+SHARE_BURST="${SMOKE_SHARE_BURST:-20}"
 # Given to every request (the name is from when this was only about the certificate).
 TLS=()
 if [ "${SMOKE_INSECURE:-0}" = "1" ]; then TLS=(--insecure); fi
@@ -76,6 +78,9 @@ zeros() { head -c "$1" /dev/zero; }
 # mode, so Telegram's script never builds a callback from text.
 no_eval() { [ -n "$1" ] && ! printf '%s' "$1" | grep -qF "unsafe-eval"; }
 refuses() { ! "$@"; }
+header_is() { [ "$(header "$1")" = "$2" ]; }
+# A policy that sends the page nowhere but its own origin: no scheme, no host, no wildcard in it.
+own_origin_only() { [ -n "$1" ] && ! printf '%s' "$1" | grep -qE 'https?:|\*|data:|blob:'; }
 
 security_headers() { # the headers every answer must carry, each exactly once
   local what="$1" name
@@ -142,6 +147,76 @@ for entry in app panel admin; do
 done
 probe "$HTTPS/assets/no-such-file.js"
 check "a missing asset is 404, not a page" status_is 404
+
+echo "# the panel can be installed, and nothing else can"
+probe "$HTTPS/panel/"
+check "/panel/: the page may register its own worker" header_has Content-Security-Policy "worker-src 'self'"
+check "/panel/: the page may read its own manifest" header_has Content-Security-Policy "manifest-src 'self'"
+check "/panel/ names its manifest" contains "$(body "$HTTPS/panel/")" 'rel="manifest" href="/panel/manifest.webmanifest"'
+for entry in admin app k; do
+  probe "$HTTPS/$entry/"
+  check "/$entry/: the policy allows no worker" refuses header_has Content-Security-Policy "worker-src"
+  check "/$entry/: the policy allows no manifest" refuses header_has Content-Security-Policy "manifest-src"
+  check "/$entry/ names no manifest" refuses contains "$(body "$HTTPS/$entry/")" 'rel="manifest"'
+done
+probe "$HTTPS/panel/manifest.webmanifest"
+manifest="$(body "$HTTPS/panel/manifest.webmanifest")"
+check "the manifest answers 200" status_is 200
+check "the manifest is served as a manifest" header_has Content-Type "application/manifest+json"
+security_headers "manifest"
+check "the manifest opens the panel standalone" contains "$manifest" '"display": "standalone"'
+check "the manifest starts at /panel/" contains "$manifest" '"start_url": "/panel/"'
+check "the manifest's scope is /panel/" contains "$manifest" '"scope": "/panel/"'
+for icon in icon-192.png icon-512.png icon-maskable-512.png; do
+  probe "$HTTPS/panel/icons/$icon"
+  check "the icon $icon answers 200" status_is 200
+  check "the icon $icon is a PNG image" header_has Content-Type "image/png"
+done
+probe "$HTTPS/panel/sw.js"
+worker="$(body "$HTTPS/panel/sw.js")"
+check "the worker answers 200" status_is 200
+check "the worker is served as a script" header_has Content-Type "javascript"
+security_headers "worker"
+check "the worker is checked with the server every time (no-cache)" header_is Cache-Control "no-cache"
+check "the worker is not cached as a built file is" refuses header_has Cache-Control "immutable"
+check "the worker's scope is not widened (no Service-Worker-Allowed)" header_absent Service-Worker-Allowed
+check "the worker's own policy reaches this origin only" header_has Content-Security-Policy "connect-src 'self'"
+check "the worker's own policy names no other host" own_origin_only "$(header Content-Security-Policy)"
+check "the build wrote its list of files into the worker" contains "$worker" '/panel/'
+check "the worker holds no unfilled mark" refuses contains "$worker" '__QD_PANEL_WORKER_MANIFEST__'
+check "the worker leaves the API alone" contains "$worker" '/api/'
+for path in /sw.js /app/sw.js /admin/sw.js /k/sw.js /assets/sw.js; do
+  probe "$HTTPS$path"
+  check "$path is not a worker script" refuses header_has Content-Type "javascript"
+  check "$path: no Service-Worker-Allowed" header_absent Service-Worker-Allowed
+done
+check "the own-origin check refuses a policy that names a host" refuses own_origin_only "connect-src 'self' https://example.org"
+check "the own-origin check refuses an answer without a policy" refuses own_origin_only ""
+
+echo "# the page behind a customer's link (/k/)"
+probe "$HTTPS/k"
+check "/k is sent to /k/ (301)" status_is 301
+probe "$HTTPS/k/"
+page="$(body "$HTTPS/k/")"
+check "/k/ answers 200" status_is 200
+check "/k/ is HTML" header_has Content-Type "text/html"
+security_headers "/k/"
+check "/k/: tells no other site where the visitor came from" header_is Referrer-Policy "no-referrer"
+check "/k/: is not listed by search engines" header_has X-Robots-Tag "noindex"
+check "/k/: is not kept by the browser" header_is Cache-Control "no-store"
+check "/k/: nothing may frame it" header_has Content-Security-Policy "frame-ancestors 'none'"
+check "/k/: X-Frame-Options is DENY" header_has X-Frame-Options "DENY"
+check "/k/: scripts from itself only" header_has Content-Security-Policy "script-src 'self';"
+check "/k/: the policy names no other host" own_origin_only "$(header Content-Security-Policy)"
+check "/k/: no Telegram script is allowed" refuses header_has Content-Security-Policy "telegram.org"
+check "/k/ is the customer's page" contains "$page" '<meta name="robots" content="noindex, nofollow, noarchive"'
+check "/k/ loads nothing from another host" refuses contains "$page" '://'
+asset="$(printf '%s' "$page" | grep -oE '/assets/[A-Za-z0-9._-]+\.js' | head -n 1 || true)"
+probe "$HTTPS${asset:-/assets/none}"
+check "/k/ script ${asset:-(none found)} answers 200" status_is 200
+probe "$HTTPS/k/no/such/page"
+check "/k/ falls back to its page for an unknown path" status_is 200
+check "the fallback carries the same policy" header_is Referrer-Policy "no-referrer"
 
 echo "# metrics are not reachable"
 for path in /metrics /metrics/ //metrics /api/../metrics /api/%2e%2e/metrics /healthz/../metrics; do
@@ -239,6 +314,41 @@ check "the 429 says when to retry" header_once Retry-After
 check "the 429 carries X-Request-Id" header_once X-Request-Id
 probe "$HTTPS/api/v1/me"
 check "other routes are not limited with it" status_is 401
+
+echo "# the read behind a customer's link: one answer for every wrong secret, and a limit by address (burst $SHARE_BURST)"
+# The volleys above filled the general limit; it empties in two seconds.
+sleep 3
+SHARE="$HTTPS/api/v1/customer-share"
+NOT_A_LINK="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+probe "$SHARE"
+check "without a secret it answers 404" status_is 404
+check "the 404 is JSON" header_has Content-Type "application/json"
+check "the 404 is not kept" header_has Cache-Control "no-store"
+without="$(body "$SHARE")"
+check "the 404 has the API's error shape" contains "$without" '"NOT_FOUND"'
+probe -H "X-Share-Token: $NOT_A_LINK" "$SHARE"
+check "a secret nobody was given answers 404" status_is 404
+check "a wrong secret is answered exactly as none" [ "$(body -H "X-Share-Token: $NOT_A_LINK" "$SHARE")" = "$without" ]
+check "a malformed secret is answered exactly as none" [ "$(body -H "X-Share-Token: x" "$SHARE")" = "$without" ]
+probe "$SHARE/$NOT_A_LINK"
+check "a secret in the address is not read (404)" status_is 404
+probe -X POST -H "X-Share-Token: $NOT_A_LINK" "$SHARE"
+check "nothing can be written through it (404)" status_is 404
+# Emptied at once, like the sign-in limit above; the calls after the volley are the ones looked at.
+seq 1 $((SHARE_BURST + 10)) | xargs -P $((SHARE_BURST + 10)) -I{} curl -sS -o /dev/null --max-time 30 "${TLS[@]}" "$SHARE" 2>/dev/null || true
+limited=0
+for _ in 1 2 3 4; do
+  probe "$SHARE"
+  if [ "$STATUS" = "429" ]; then limited=1; break; fi
+done
+check "a further read behind a link answers 429" [ "$limited" -eq 1 ]
+check "the 429 says when to retry" header_once Retry-After
+check "the 429 carries X-Request-Id" header_once X-Request-Id
+sleep 1
+probe "$HTTPS/api/v1/me"
+check "other routes are not limited with it" status_is 401
+probe "$HTTPS/k/"
+check "the page itself is not limited with it" status_is 200
 
 echo
 if [ "$failed" -eq 0 ]; then

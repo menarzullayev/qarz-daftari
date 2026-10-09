@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from "react";
+import { type FormEvent, useState } from "react";
 
 import { useI18n, type Translate } from "../../i18n/I18nProvider";
 import { LANGUAGES } from "../../i18n/types";
 import type { ApiError, ShopSettings, ShopSettingsPatch } from "../api";
 import { useLoad, useSubmit } from "../hooks";
 import type { Role } from "../navigation";
+import { onDemand } from "../onDemand";
 import { NotFoundScreen } from "../screens";
 import { useWorkspace } from "./context";
 import { errorText, Failure, FieldError, Loading } from "./parts";
@@ -31,6 +32,10 @@ export function parsePromiseDays(input: string): number | null {
   const days = Number(text);
   return days >= MIN_PROMISE_DAYS && days <= MAX_PROMISE_DAYS_SETTING ? days : null;
 }
+
+// The phone a shop shows on the page behind a customer's read-only link: behind a platform switch, so
+// its code is fetched apart and shows nothing until the server has said the switch is on.
+const ShareContactSection = onDemand(() => import("../share/ShareContactSection"));
 
 type FieldErrors = { name: string | null; days: string | null };
 const NO_ERRORS: FieldErrors = { name: null, days: null };
@@ -223,5 +228,13 @@ function Settings({ editable }: { editable: boolean }) {
 export function ShopSettingsScreen() {
   const { role } = useWorkspace();
   const access = settingsAccess(role);
-  return access === "none" ? <NotFoundScreen /> : <Settings editable={access === "edit"} />;
+  if (access === "none") {
+    return <NotFoundScreen />;
+  }
+  return (
+    <>
+      <Settings editable={access === "edit"} />
+      <ShareContactSection editable={access === "edit"} />
+    </>
+  );
 }

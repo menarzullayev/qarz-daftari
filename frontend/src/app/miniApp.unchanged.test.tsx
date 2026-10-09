@@ -4,6 +4,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ApiAuth } from "../shared/api";
 import type { Role } from "../shared/navigation";
+// The two sections of a customer's read-only link are fetched apart from the first load. Loaded here
+// beforehand, so that in this test they are there at once and what they ask is in the list every time.
+import "../shared/share/ShareContactSection";
+import "../shared/share/ShareSection";
 import { StaffRoot } from "../shared/StaffRoot";
 import {
   creditSettingsBody,
@@ -99,6 +103,13 @@ function backend(shops: unknown) {
       // Asked by the owner's subscription screen since receipts are sent from it (REQ-054): a deliberate addition.
       case `${SHOP_BASE}/subscription/receipts`:
         return ok({ items: [] });
+      // Asked by a manager's or an owner's customer page and shop settings since a customer's read-only
+      // link (the expansion of 2026-10-09, module B): a deliberate addition. The platform switch is off
+      // here, as it is unless an administrator turns it on, so the answer is that of a route that does
+      // not exist, and the snapshots show that nothing is drawn for it.
+      case `${SHOP_BASE}/customers/${CUSTOMER_ID}/share`:
+      case `${SHOP_BASE}/share-contact`:
+        return refusal(404, "NOT_FOUND", "Topilmadi.");
       default:
         // Anything the Mini App did not ask before this story is refused, and shows in the snapshot.
         return refusal(404, "NOT_FOUND", "Topilmadi.");

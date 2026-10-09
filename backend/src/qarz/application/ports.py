@@ -425,6 +425,16 @@ class ExportCustomer:
 
 
 @dataclass(frozen=True)
+class ShareRecord:
+    """A customer's read-only link that has not been ended. It may have expired: the caller compares."""
+
+    share_id: UUID
+    created_at: datetime
+    expires_at: datetime
+    last_opened_at: datetime | None
+
+
+@dataclass(frozen=True)
 class WaitingLink:
     """Someone who started the bot from the counter code and agreed, not yet attached to a record."""
 
@@ -883,6 +893,37 @@ class TenantSession(Protocol):
     async def link_state(self, customer_id: UUID) -> tuple[str, datetime] | None:
         """Status and start of the customer's live link, if there is one."""
         ...
+
+    async def live_share(self, customer_id: UUID) -> ShareRecord | None:
+        """The customer's read-only link that nobody has ended, if there is one."""
+        ...
+
+    async def issue_share(
+        self,
+        *,
+        share_id: UUID,
+        token_hash: bytes,
+        customer_id: UUID,
+        membership_id: UUID,
+        now: datetime,
+        expires_at: datetime,
+    ) -> None: ...
+
+    async def end_shares(self, customer_id: UUID, now: datetime) -> int:
+        """End every read-only link of the customer that is still alive. Returns how many it ended."""
+        ...
+
+    async def share_opened(self, share_id: UUID, now: datetime, today: date) -> bool:
+        """Note that the link was opened. True when it is the first opening of this day."""
+        ...
+
+    async def customer_language(self, customer_id: UUID) -> str | None: ...
+
+    async def share_phone(self) -> str | None:
+        """The phone the shop shows to customers on the page behind a link."""
+        ...
+
+    async def set_share_phone(self, phone: str | None) -> None: ...
 
     async def waiting_links(self, since: datetime) -> list[WaitingLink]: ...
 
@@ -1657,6 +1698,10 @@ class PlatformSession(Protocol):
         ...
 
     async def end_my_link(self, user_id: UUID, shop_id: UUID) -> bool: ...
+
+    async def customer_share_lookup(self, token_hash: bytes, now: datetime) -> tuple[UUID, UUID, UUID, bytes] | None:
+        """Link, shop, customer and the stored hash behind a live read-only link; None for anything else."""
+        ...
 
     async def mark_recipient_reachable(self, user_id: UUID) -> int: ...
 

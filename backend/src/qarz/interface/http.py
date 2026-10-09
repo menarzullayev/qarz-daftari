@@ -22,6 +22,7 @@ from qarz.application.catalog import CatalogService
 from qarz.application.chat import ChatService
 from qarz.application.credit import CreditService
 from qarz.application.customer_account import CustomerAccountService
+from qarz.application.customer_shares import CustomerShareService
 from qarz.application.customers import CustomerService
 from qarz.application.date_requests import DateRequestService
 from qarz.application.disputes import DisputeService
@@ -50,6 +51,7 @@ from qarz.interface.auth_api import SessionAuthenticator, add_auth_routes
 from qarz.interface.body_limit import BodyLimit
 from qarz.interface.catalog_api import add_catalog_routes
 from qarz.interface.credit_api import add_credit_routes
+from qarz.interface.customer_shares_api import add_customer_share_routes
 from qarz.interface.customers_api import add_customer_routes
 from qarz.interface.date_requests_api import add_date_request_routes
 from qarz.interface.disputes_api import add_dispute_routes
@@ -212,6 +214,7 @@ def create_app(
         add_shop_routes(app, ShopService(storage), current_user)
         add_staff_routes(app, StaffService(storage), current_user)
         add_link_routes(app, LinkService(storage, now), current_user)
+        add_customer_share_routes(app, CustomerShareService(storage, now), current_user)
         add_me_routes(app, CustomerAccountService(storage, now), current_user)
         add_shop_deletion_routes(app, ShopDeletionService(storage, now), current_user)
         add_subscription_routes(app, SubscriptionService(storage, now), current_user)

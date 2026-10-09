@@ -154,6 +154,7 @@ export const ruAdmin: RuAdminCatalog = {
   "admin.setting.sms_on": "SMS включены",
   "admin.setting.sms_monthly_quota": "Месячная квота SMS на магазин",
   "admin.setting.online_pay_on": "Онлайн-оплата включена",
+  "admin.setting.customer_links_on": "Ссылка и QR-код для клиента (без Telegram) включены",
 
   "admin.audit.filters": "Фильтры аудита",
   "admin.audit.at": "Время",

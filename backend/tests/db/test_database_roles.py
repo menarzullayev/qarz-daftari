@@ -37,6 +37,9 @@ DEFINER_FUNCTIONS: dict[str, set[str]] = {
     "accept_staff_invitation(bytea,uuid)": {APP},
     "claim_owned_shop(uuid,boolean)": {APP},
     "customer_token_info(bytea)": {APP},
+    # Which shop and customer a read-only link opens (migration 0039): asked by someone who is nobody
+    # to the service, so outside any shop.
+    "customer_share_lookup(bytea,timestamp with time zone)": {APP},
     "link_customer(bytea,uuid,smallint,text)": {APP},
     "end_my_link(uuid,uuid)": {APP},
     "my_accounts(uuid)": {APP},
@@ -142,6 +145,14 @@ TABLE_RIGHTS: dict[str, tuple[str, str, str]] = {
     "catalog_item": ("SELECT; INSERT; UPDATE; DELETE", "", ""),
     "customer": ("SELECT; INSERT; UPDATE; DELETE", "SELECT", "SELECT; INSERT; UPDATE"),
     "customer_link": ("SELECT; INSERT; UPDATE; DELETE", "", "SELECT; UPDATE"),
+    # A customer's read-only link (migration 0039). The application makes one, ends it and notes that it
+    # was opened; it never deletes one or rewrites whose it is. The worker ends a customer's links when
+    # it completes the removal of their data, and finds them by customer.
+    "customer_share": (
+        "SELECT; INSERT; UPDATE(revoked_at, last_opened_at, opened_on)",
+        "",
+        "SELECT(customer_id, revoked_at); UPDATE(revoked_at)",
+    ),
     "removal_request": ("SELECT; INSERT; UPDATE; DELETE", "", "SELECT; INSERT; UPDATE"),
     "ledger_entry": ("SELECT; INSERT", "SELECT", "SELECT; INSERT"),
     "goods_line": ("SELECT; INSERT", "SELECT", "SELECT"),

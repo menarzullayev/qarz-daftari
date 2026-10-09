@@ -6,6 +6,9 @@ Every registered operation is exercised according to its scope:
   platform administrator without support access, as a stranger, and without signing in;
 - self operations: without signing in, and as any signed-in user;
 - public operations: without signing in, with data that is not validly signed;
+- link operations (opened by a secret link instead of a sign-in): without the secret, with one that is
+  not a live link's, and as every kind of signed-in caller. Each is answered exactly as for a route that
+  does not exist, and changes nothing;
 - administrator operations: as every kind of non-administrator (owner, manager, seller, customer,
   stranger), as everyone who has some but not all of what makes an administrator (on the allow-list
   without an account, without the second factor, with a disabled account, with an expired or closed admin
@@ -18,6 +21,7 @@ An operation that is registered but not described here fails the suite, and so d
 not bound to a registered operation, so nothing can be added without being checked.
 """
 
+import base64
 import hashlib
 import uuid
 from collections.abc import Callable
@@ -227,6 +231,38 @@ def _applied_import(owner: psycopg.Connection, world: World) -> None:
     _stored_import(owner, world, "applied")
 
 
+def _share_token(world: World) -> str:
+    """The secret of customer_a's read-only link in this test's world: 43 URL-safe characters, as the
+    application makes them. Its own for each world, because the database lives for the whole session."""
+    digest = hashlib.sha256(f"suite-share:{world.customer_a}".encode()).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+
+
+def _links_on(owner: psycopg.Connection, world: World) -> None:
+    """The platform switch `customer_links_on`, as an administrator would have turned it on. The row is
+    signed with a user identifier, so the `admin_env` fixture removes it after the test."""
+    owner.execute(
+        "INSERT INTO platform_setting (key, value, updated_by) VALUES ('customer_links_on', 'true', %s) "
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by",
+        (str(world.admin),),
+    )
+
+
+def _live_share(owner: psycopg.Connection, world: World) -> None:
+    """The switch on, and customer_a holding a read-only link made by the manager."""
+    _links_on(owner, world)
+    owner.execute(
+        "INSERT INTO customer_share (id, shop_id, customer_id, token_hash, created_by, expires_at) "
+        "VALUES (gen_random_uuid(), %s, %s, %s, %s, now() + interval '90 days')",
+        (
+            world.shop_a,
+            world.customer_a,
+            hashlib.sha256(_share_token(world).encode()).digest(),
+            world.manager_a_membership,
+        ),
+    )
+
+
 def _support_id(world: World) -> uuid.UUID:
     return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-support:{world.shop_a}")
 
@@ -324,6 +360,34 @@ CALLS: dict[str, Call] = {
     "customers.link.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/customers/{w.customer_a}/link"),
     "customers.link.create": Call(
         "POST", lambda w, shop: f"/api/v1/shops/{shop}/customers/{w.settled_customer_a}/link", None, True, 201
+    ),
+    # A customer's read-only link is behind the platform switch `customer_links_on`; the suite turns it
+    # on, so that the roles are told apart. With the switch off: tests/api/test_customer_shares.py.
+    "customers.share.read": Call(
+        "GET", lambda w, shop: f"/api/v1/shops/{shop}/customers/{w.customer_a}/share", prepare=_links_on
+    ),
+    "customers.share.create": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/customers/{w.settled_customer_a}/share",
+        None,
+        True,
+        201,
+        prepare=_links_on,
+    ),
+    "customers.share.revoke": Call(
+        "DELETE",
+        lambda w, shop: f"/api/v1/shops/{shop}/customers/{w.customer_a}/share",
+        None,
+        True,
+        prepare=_live_share,
+    ),
+    "shop.share_contact.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/share-contact", prepare=_links_on),
+    "shop.share_contact.update": Call(
+        "PUT",
+        lambda w, shop: f"/api/v1/shops/{shop}/share-contact",
+        {"phone": "+998901234567"},
+        True,
+        prepare=_links_on,
     ),
     "counter_code.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/counter-code"),
     "counter_code.rotate": Call("POST", lambda w, shop: f"/api/v1/shops/{shop}/counter-code", None, True, 201),
@@ -532,6 +596,13 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "ledger.entry.promise.choose": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "customers.link.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "customers.link.create": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    # A read-only link keeps showing a customer's balance to whoever holds it: not for a seller to make,
+    # to end, or to look up.
+    "customers.share.read": {Role.MANAGER, Role.OWNER},
+    "customers.share.create": {Role.MANAGER, Role.OWNER},
+    "customers.share.revoke": {Role.MANAGER, Role.OWNER},
+    "shop.share_contact.read": {Role.MANAGER, Role.OWNER},
+    "shop.share_contact.update": {Role.OWNER},
     "counter_code.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     # The code is printed and hangs at the counter; replacing it invalidates the print.
     "counter_code.rotate": {Role.MANAGER, Role.OWNER},
@@ -663,10 +734,16 @@ PUBLIC_CALLS: dict[str, PlainCall] = {
     "auth.telegram_login": PlainCall("POST", "/api/v1/auth/telegram-login", {"id": 1, "auth_date": 1, "hash": "00"}),
 }
 
+# Operations opened by a secret link: the route, and the header that carries the secret.
+LINK_CALLS: dict[str, tuple[str, str, str]] = {
+    "customer_share.view": ("GET", "/api/v1/customer-share", "X-Share-Token"),
+}
+
 BY_SCOPE = {
     scope: sorted(op.name for op in all_operations() if op.scope == scope) for scope in ("shop", "self", "public")
 }
 SHOP_OPS, SELF_OPS, PUBLIC_OPS = BY_SCOPE["shop"], BY_SCOPE["self"], BY_SCOPE["public"]
+LINK_OPS = sorted(op.name for op in all_operations() if op.scope == "link")
 STAFF = [("owner_a", Role.OWNER), ("manager_a", Role.MANAGER), ("seller_a", Role.SELLER)]
 OUTSIDERS = ["suspended_a", "owner_b", "customer_of_a", "admin", "stranger"]
 NO_CREDENTIALS = [{}, {"X-Test-User": "not-a-uuid"}]
@@ -753,6 +830,12 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID, *, shared: bool = True
             "SELECT id, customer_id, user_id, status, waiting_name FROM customer_link WHERE shop_id = %s ORDER BY id",
             (shop,),
         ).fetchall(),
+        owner.execute(
+            "SELECT id, customer_id, token_hash, created_by, expires_at, revoked_at, last_opened_at, opened_on "
+            "FROM customer_share WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
+        owner.execute("SELECT share_phone FROM shop WHERE id = %s", (shop,)).fetchone(),
         owner.execute("SELECT count(*) FROM outbox_message WHERE shop_id = %s", (shop,)).fetchone(),
         owner.execute("SELECT id, status FROM removal_request WHERE shop_id = %s ORDER BY id", (shop,)).fetchall(),
         owner.execute(
@@ -833,7 +916,10 @@ def test_every_operation_is_described_in_the_suite() -> None:
     assert set(ALLOWED_ROLES) == set(SHOP_OPS), "add the new shop operation to ALLOWED_ROLES"
     assert set(SELF_CALLS) == set(SELF_OPS), "add the new self operation to SELF_CALLS"
     assert set(PUBLIC_CALLS) == set(PUBLIC_OPS), "add the new public operation to PUBLIC_CALLS"
-    assert SHOP_OPS and SELF_OPS and PUBLIC_OPS
+    assert set(LINK_CALLS) == set(LINK_OPS), "add the new link operation to LINK_CALLS"
+    assert SHOP_OPS and SELF_OPS and PUBLIC_OPS and LINK_OPS
+    scopes = {op.scope for op in all_operations()}
+    assert scopes == {"shop", "self", "public", "link", "admin", "admin_entry"}, "a new scope needs its own checks"
 
 
 def test_every_api_route_is_a_registered_operation(client: TestClient) -> None:
@@ -1053,6 +1139,55 @@ def test_unsigned_data_signs_nobody_in(client: TestClient, owner: psycopg.Connec
     assert "set-cookie" not in response.headers
     assert owner.execute("SELECT count(*) FROM user_session").fetchone() == sessions
     assert owner.execute("SELECT count(*) FROM app_user").fetchone() == users
+
+
+# --- link operations: without the secret of a live link there is no such route ------------------------
+
+
+NOT_A_LIVE_LINK: dict[str, Callable[[str], str | None]] = {
+    "no secret": lambda live: None,
+    "an empty secret": lambda live: "",
+    "not the shape of a secret": lambda live: "share",
+    "a well-formed secret nobody was given": lambda live: "A" * len(live),
+    "a live secret with one character changed": lambda live: live[:-1] + ("B" if live[-1] == "A" else "A"),
+    "a live secret with something after it": lambda live: live + "0",
+    "a live secret cut short": lambda live: live[:-1],
+}
+
+
+@pytest.mark.parametrize("op_name", LINK_OPS)
+@pytest.mark.parametrize("secret", list(NOT_A_LIVE_LINK))
+@pytest.mark.parametrize("caller", [None, "owner_a", "manager_a", "customer_of_a", "admin", "stranger"])
+def test_without_a_live_secret_a_link_operation_does_not_exist(
+    client: TestClient, world: World, owner: psycopg.Connection, op_name: str, secret: str, caller: str | None
+) -> None:
+    """The switch is on and a live link exists, so "not found" here is the caller's doing. Being signed
+    in, even as the owner of the shop the link belongs to, opens nothing: only the secret does."""
+    method, path, header = LINK_CALLS[op_name]
+    _live_share(owner, world)
+    before = (_snapshot(owner, world.shop_a), _snapshot(owner, world.shop_b))
+    headers = {} if caller is None else as_user(getattr(world, caller))
+    value = NOT_A_LIVE_LINK[secret](_share_token(world))
+    if value is not None:
+        headers = {**headers, header: value}
+    response = client.request(method, path, headers=headers)
+    unknown = client.request(method, "/api/v1/no-such-route", headers=headers)
+    assert response.status_code == unknown.status_code == 404, response.text
+    assert response.json() == unknown.json()
+    assert "set-cookie" not in response.headers
+    assert (_snapshot(owner, world.shop_a), _snapshot(owner, world.shop_b)) == before
+
+
+@pytest.mark.parametrize("op_name", LINK_OPS)
+def test_the_secret_of_a_live_link_opens_it_so_the_refusals_above_are_of_the_secret(
+    client: TestClient, world: World, owner: psycopg.Connection, op_name: str
+) -> None:
+    """The counterpart: with the secret the same request is answered, so what was refused above was the
+    secret and not the route."""
+    method, path, header = LINK_CALLS[op_name]
+    _live_share(owner, world)
+    response = client.request(method, path, headers={header: _share_token(world)})
+    assert response.status_code == 200, response.text
 
 
 # --- the administrator's side: closed to everyone but an administrator who passed the second factor ----

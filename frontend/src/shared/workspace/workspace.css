@@ -1189,4 +1189,21 @@ a.row__link:hover .row__name,
   .startcode__caption {
     font-size: 1.5rem;
   }
+
+  /* One link printed alone (a customer's read-only link, shared/share/ShareSection.tsx): while the
+     page's root carries the class, everything but the marked block is left off the paper. */
+  .print-solo-active body * {
+    visibility: hidden;
+  }
+
+  .print-solo-active .print-solo,
+  .print-solo-active .print-solo * {
+    visibility: visible;
+  }
+
+  .print-solo-active .print-solo {
+    position: absolute;
+    inset: 0 auto auto 0;
+    margin: 0;
+  }
 }

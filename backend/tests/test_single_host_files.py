@@ -153,12 +153,13 @@ def test_both_forms_of_the_proxy_share_their_limits_routes_and_log() -> None:
         "qd_general",
         "qd_auth",
         "qd_pay",
+        "qd_share",
         "qd_webhook",
         "qd_static",
         "qd_conn",
     }
     # Every limit counts by the one address the proxy settled on.
-    assert re.findall(r"^limit_(?:req|conn)_zone (\S+)", zones, flags=re.MULTILINE) == ["$binary_remote_addr"] * 6
+    assert re.findall(r"^limit_(?:req|conn)_zone (\S+)", zones, flags=re.MULTILINE) == ["$binary_remote_addr"] * 7
 
 
 def test_behind_the_tunnel_the_api_is_told_https_and_the_visitors_address() -> None:

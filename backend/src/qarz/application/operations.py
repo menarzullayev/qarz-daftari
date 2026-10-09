@@ -8,6 +8,8 @@ Scopes:
 - "shop": acts on one shop; the caller must be an active member whose role has the capability.
 - "self": acts only on the signed-in caller's own account.
 - "public": callable without signing in (the sign-in endpoints themselves).
+- "link": callable without signing in by whoever holds a secret link; the secret names the one record
+  it opens, and anyone without it is answered as for a route that does not exist.
 - "admin": the platform administrator's side; the caller must be on the allow-list, have an active
   administrator account, and hold an admin session obtained by passing the second factor (ADR-017).
 - "admin_entry": the door to that side, where the second factor is enrolled and passed; the caller must
@@ -20,7 +22,7 @@ from typing import Literal
 
 from qarz.domain.access import Capability
 
-Scope = Literal["shop", "self", "public", "admin", "admin_entry"]
+Scope = Literal["shop", "self", "public", "link", "admin", "admin_entry"]
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,11 @@ def self_operation(name: str) -> Operation:
 def public_operation(name: str) -> Operation:
     """An operation that needs no sign-in."""
     return _register(Operation(name, "public"))
+
+
+def link_operation(name: str) -> Operation:
+    """An operation opened by a secret link instead of a sign-in."""
+    return _register(Operation(name, "link"))
 
 
 def admin_operation(name: str) -> Operation:
