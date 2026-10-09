@@ -5,7 +5,7 @@ next use of a pooled connection, and the row-level security policies hide every 
 """
 
 import json
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Iterator, Mapping
 from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -73,6 +73,7 @@ from qarz.application.ports import (
 )
 from qarz.domain.access import Role
 from qarz.domain.ledger import Entry, EntryKind
+from qarz.domain.ops_alerts import LEDGER_SERIES, Alert, DatabaseFigures
 
 # Measurement rows refer to a shop or an entry by a value derived from its identifier, never by the
 # identifier itself (ADR-010).
@@ -2832,6 +2833,151 @@ class PgPlatformSession:
             text("INSERT INTO job_run (job, period) VALUES (:job, :period) ON CONFLICT (job, period) DO NOTHING"),
             {"job": job, "period": period},
         )
+
+    # --- the operations watch (DEC-078): tables ops_alert and ops_sample, the worker's alone --------------
+
+    async def ops_alerts(self) -> list[Alert]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT key, since, firing_since, value, notified_at, resolved_at, attempts, last_attempt_at, "
+                    "last_outcome FROM ops_alert ORDER BY key"
+                )
+            )
+        ).all()
+        return [
+            Alert(
+                key=str(row.key),
+                since=row.since,
+                firing_since=row.firing_since,
+                value=None if row.value is None else float(row.value),
+                notified_at=row.notified_at,
+                resolved_at=row.resolved_at,
+                attempts=int(row.attempts),
+                last_attempt_at=row.last_attempt_at,
+                last_outcome=row.last_outcome,
+            )
+            for row in rows
+        ]
+
+    async def store_ops_alert(self, alert: Alert) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO ops_alert (key, since, firing_since, value, notified_at, resolved_at, attempts, "
+                "last_attempt_at, last_outcome) VALUES (:key, :since, :firing_since, :value, :notified_at, "
+                ":resolved_at, :attempts, :last_attempt_at, :last_outcome) "
+                "ON CONFLICT (key) DO UPDATE SET since = excluded.since, firing_since = excluded.firing_since, "
+                "value = excluded.value, notified_at = excluded.notified_at, resolved_at = excluded.resolved_at, "
+                "attempts = excluded.attempts, last_attempt_at = excluded.last_attempt_at, "
+                "last_outcome = excluded.last_outcome"
+            ),
+            {
+                "key": alert.key,
+                "since": alert.since,
+                "firing_since": alert.firing_since,
+                "value": alert.value,
+                "notified_at": alert.notified_at,
+                "resolved_at": alert.resolved_at,
+                "attempts": alert.attempts,
+                "last_attempt_at": alert.last_attempt_at,
+                "last_outcome": alert.last_outcome,
+            },
+        )
+
+    async def delete_ops_alert(self, key: str) -> None:
+        await self._conn.execute(text("DELETE FROM ops_alert WHERE key = :key"), {"key": key})
+
+    async def ops_database_figures(self, now: datetime) -> DatabaseFigures:
+        # The same readings as `health_figures` above, as of the caller's clock and with the worker's
+        # rights. Ages and counts only: no recipient, no payload, no shop.
+        waiting = (
+            await self._conn.execute(
+                text(
+                    "SELECT channel, extract(epoch FROM :now - min(next_try_at)) AS seconds "
+                    "FROM outbox_message WHERE status = 'pending' AND next_try_at <= :now GROUP BY channel"
+                ),
+                {"now": now},
+            )
+        ).all()
+        jobs = (
+            await self._conn.execute(
+                text("SELECT job, extract(epoch FROM :now - max(finished_at)) AS seconds FROM job_run GROUP BY job"),
+                {"now": now},
+            )
+        ).all()
+        first = (
+            await self._conn.execute(
+                text("SELECT extract(epoch FROM :now - min(finished_at)) AS seconds FROM job_run"), {"now": now}
+            )
+        ).one()
+        # `next_try_at` dates the last attempt of a message (see health_figures). Retrying: pending, with
+        # its next attempt still ahead. Failed within the hour: what SmsRefused means by "grew".
+        sms = (
+            await self._conn.execute(
+                text(
+                    "SELECT count(*) FILTER (WHERE status = 'pending' AND next_try_at > :now) AS retrying, "
+                    "count(*) FILTER (WHERE status = 'failed' AND next_try_at > :now - interval '1 hour') AS failed "
+                    "FROM outbox_message WHERE channel = 'sms' AND next_try_at > :now - interval '24 hours'"
+                ),
+                {"now": now},
+            )
+        ).one()
+        receipt = (
+            await self._conn.execute(
+                text("SELECT extract(epoch FROM :now - oldest_waiting_receipt()) AS seconds"), {"now": now}
+            )
+        ).one()
+        ledger = (
+            await self._conn.execute(
+                text("SELECT value FROM ops_sample WHERE series = :series ORDER BY taken_at DESC LIMIT 1"),
+                {"series": LEDGER_SERIES},
+            )
+        ).first()
+        return DatabaseFigures(
+            outbox_oldest_due={str(row.channel): float(row.seconds) for row in waiting},
+            job_age={str(row.job): float(row.seconds) for row in jobs},
+            service_age=None if first.seconds is None else float(first.seconds),
+            sms_retrying=int(sms.retrying),
+            sms_failed_last_hour=int(sms.failed),
+            receipt_waiting=None if receipt.seconds is None else max(0.0, float(receipt.seconds)),
+            ledger_mismatches=None if ledger is None else float(ledger.value),
+        )
+
+    async def add_ops_samples(self, taken_at: datetime, values: Mapping[str, float]) -> None:
+        for series, value in values.items():
+            await self._conn.execute(
+                text(
+                    "INSERT INTO ops_sample (series, taken_at, value) VALUES (:series, :taken_at, :value) "
+                    "ON CONFLICT (series, taken_at) DO NOTHING"
+                ),
+                {"series": series, "taken_at": taken_at, "value": float(value)},
+            )
+
+    async def ops_samples(self, since: datetime) -> dict[str, list[tuple[datetime, float]]]:
+        rows = (
+            await self._conn.execute(
+                text("SELECT series, taken_at, value FROM ops_sample WHERE taken_at >= :since ORDER BY taken_at"),
+                {"since": since},
+            )
+        ).all()
+        samples: dict[str, list[tuple[datetime, float]]] = {}
+        for row in rows:
+            samples.setdefault(str(row.series), []).append((row.taken_at, float(row.value)))
+        return samples
+
+    async def prune_ops_samples(self, before: datetime) -> None:
+        # The newest sample of a series stays however old: the daily ledger check is read for a day.
+        await self._conn.execute(
+            text(
+                "DELETE FROM ops_sample s WHERE s.taken_at < :before AND EXISTS "
+                "(SELECT 1 FROM ops_sample n WHERE n.series = s.series AND n.taken_at > s.taken_at)"
+            ),
+            {"before": before},
+        )
+
+    async def ledger_mismatch_count(self) -> int:
+        row = (await self._conn.execute(text("SELECT open_debt_mismatch_count() AS n"))).one()
+        return int(row.n)
 
     async def use_signed_data(self, payload_hash: bytes, expires_at: datetime) -> bool:
         # Two requests with one payload: the second waits for the first's transaction and then conflicts.

@@ -7,6 +7,8 @@
 #   owner, roles  one-shots: the passwords of the database roles, from the connection settings
 #   cloudflared   the tunnel: the only way in. Nothing in this file publishes a port on the host.
 #   backup        the schedule: backups, expiry, the restore test, the checks (no systemd on this host)
+#                 Its figures are shown, read-only, to the worker, which tells the operators' chat
+#                 when a backup, the WAL archive or the restore test is late (DEC-078).
 #   files-backup  the encrypted copy of the stored files, every five minutes
 #   restore, restore-files, db-scratch   started by hand through single-host.sh, never by `up`
 # and what it changes: the proxy loses its published ports and its certificate and listens to the
@@ -139,8 +141,21 @@ services:
     environment:
       QD_FILE_STORE: filesystem
       QD_FILE_ROOT: /var/lib/qarz/files
+      # The operations watch (DEC-078): what it reads on this machine besides the database. Whom it
+      # tells is QD_ALERT_CHAT_IDS, from the env file.
+      QD_ALERT_API_URL: http://api:8000
+      QD_ALERT_BACKUP_FIGURES_DIR: /var/lib/qarz-backup-figures
+      QD_ALERT_FILES_FIGURES_DIR: /var/lib/qarz-files-backup
+      # Every named volume is on the one Docker disk, so this path speaks for the database's too.
+      QD_ALERT_DISK_PATHS: /var/lib/qarz/files
     volumes:
       - files:/var/lib/qarz/files
+      # Read-only, and figures only: when the newest backup ended, how old the newest archived WAL
+      # segment is, whether the restore test passed, when the files were last copied. The worker is
+      # given neither the backups' state (the restore test's throwaway database, the monthly dumps) nor
+      # the bucket's key or the passphrase.
+      - backup-figures:/var/lib/qarz-backup-figures:ro
+      - files-state:/var/lib/qarz-files-backup:ro
 
   proxy:
     # The form behind the tunnel (nginx/single-host.d/qarz.conf): plain HTTP for one peer, no
@@ -213,6 +228,9 @@ services:
       - pgdata:/var/lib/postgresql/data:ro
       - pgsocket:/var/run/postgresql
       - backup-state:/var/lib/qarz-backup
+      # The figures the jobs write, in a volume of their own so that the worker can be shown them and
+      # nothing else of this container (single-host/scripts/env.sh, QD_TEXTFILE_DIR).
+      - backup-figures:/var/lib/qarz-backup-figures
     networks: [egress]
     deploy:
       resources:
@@ -334,5 +352,6 @@ volumes:
   pgsocket: {}
   files: {}
   backup-state: {}
+  backup-figures: {}
   files-state: {}
   pgscratch: {}

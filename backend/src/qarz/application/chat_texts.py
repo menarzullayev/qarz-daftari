@@ -6,6 +6,8 @@ same placeholders.
 
 from datetime import date
 
+from qarz.application.ops_texts import OPS_RU, OPS_UZ
+
 UZ = {
     "welcome_new": (
         "Assalomu alaykum! Qarz Daftari — do'kondagi nasiya hisobi.\n"
@@ -343,6 +345,8 @@ UZ = {
     "EXPORT_NOT_READY": "Bu eksport fayli hali tayyor emas yoki muddati o'tgan.",
     "SUBSCRIPTION_RECEIPT_NOT_ALLOWED": ("Ko'rib chiqilmagan cheklaringiz juda ko'p. Administrator javobini kuting."),
     "currency": "so'm",
+    # The operations alerts (DEC-078), kept in their own module.
+    **OPS_UZ,
 }
 
 RU = {
@@ -666,6 +670,7 @@ RU = {
     "EXPORT_NOT_READY": "Файл этой выгрузки ещё не готов или срок его хранения истёк.",
     "SUBSCRIPTION_RECEIPT_NOT_ALLOWED": ("У вас слишком много нерассмотренных чеков. Дождитесь ответа администратора."),
     "currency": "сум",
+    **OPS_RU,
 }
 
 # The version of the consent text a customer agrees to (REQ-014). Changing the text means a new version.

@@ -16,6 +16,7 @@ from qarz.application.ports import Storage
 from qarz.application.reminders import ReminderService
 from qarz.application.shop_deletion import ShopDeletionService
 from qarz.application.subscription import SubscriptionService
+from qarz.domain.ops_alerts import LEDGER_SERIES
 from qarz.domain.promise import TASHKENT
 from qarz.domain.reminders import hours_to_run
 
@@ -26,6 +27,8 @@ ERASURE = "erasure"
 MEASURE_WEEK = "measure_week"
 RECEIPTS = "receipts"
 SIGN_IN_CLEANUP = "sign_in_cleanup"
+# The daily comparison of the stored open debts with the ledger (DEC-078).
+LEDGER_CHECK = "ledger_check"
 
 
 class Scheduler:
@@ -41,6 +44,7 @@ class Scheduler:
         exports: ExportService | None = None,
         imports: ImportService | None = None,
         sign_in_cleanup: bool = False,
+        ledger_check: bool = False,
     ) -> None:
         self._storage = storage
         self._reminders = reminders
@@ -51,6 +55,10 @@ class Scheduler:
         self._exports = exports
         self._imports = imports
         self._sign_in_cleanup = sign_in_cleanup
+        self._ledger_check = ledger_check
+        # The day and hour of the last attempt: a check that fails is tried again an hour later, not at
+        # every tick, because what makes it fail is most likely its own cost.
+        self._ledger_tried: tuple[str, int] | None = None
         self._now = now or (lambda: datetime.now(UTC))
 
     async def tick(self) -> int:
@@ -116,4 +124,19 @@ class Scheduler:
                 await self._subscriptions.run_daily()
                 async with self._storage.platform() as session:
                     await session.finish_job(SUBSCRIPTIONS, period)
+        if self._ledger_check:
+            # Once a day, at the first tick of the day (just after midnight in Tashkent, the quietest
+            # hour; on the day a release first brings it, at once). Last, so that its failure holds
+            # nothing else back. One statement over every shop, bounded by the worker's statement
+            # timeout; the count is kept as a sample, where the operations watch reads it, and a day
+            # without a finished check is itself an alert (JobNotRunning).
+            period = local.date().isoformat()
+            async with self._storage.platform() as session:
+                done = await session.job_done(LEDGER_CHECK, period)
+            if not done and self._ledger_tried != (period, local.hour):
+                self._ledger_tried = (period, local.hour)
+                async with self._storage.platform() as session:
+                    count = await session.ledger_mismatch_count()
+                    await session.add_ops_samples(self._now(), {LEDGER_SERIES: float(count)})
+                    await session.finish_job(LEDGER_CHECK, period)
         return sent

@@ -21,7 +21,15 @@ BACKEND = REPO / "backend"
 OWNER_URL = "QD_MIGRATION_URL"
 # The SMS provider's account: the worker alone sends, so the API is never handed it.
 ESKIZ = {"QD_ESKIZ_EMAIL", "QD_ESKIZ_PASSWORD", "QD_ESKIZ_SENDER"}
-WORKER_ONLY = {"QD_WORKER_STATEMENT_TIMEOUT_MS", "QD_WORKER_DATABASE_URL"} | ESKIZ
+# The operations watch (DEC-078) runs in the worker: whom it tells and what it reads.
+ALERTS = {
+    "QD_ALERT_CHAT_IDS",
+    "QD_ALERT_API_URL",
+    "QD_ALERT_BACKUP_FIGURES_DIR",
+    "QD_ALERT_FILES_FIGURES_DIR",
+    "QD_ALERT_DISK_PATHS",
+}
+WORKER_ONLY = {"QD_WORKER_STATEMENT_TIMEOUT_MS", "QD_WORKER_DATABASE_URL"} | ESKIZ | ALERTS
 # The connection of each part's own database role (migration 0031): which service may hold which.
 CONNECTIONS = {
     "QD_DATABASE_URL": {"api"},

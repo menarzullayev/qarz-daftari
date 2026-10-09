@@ -1,4 +1,4 @@
-"""Worker process: delivers the outbox. Scheduled jobs join it in later stories.
+"""Worker process: delivers the outbox, runs the scheduled jobs, and watches the service (DEC-078).
 
 Run with:  python -m qarz.interface.worker
 """
@@ -7,6 +7,7 @@ import asyncio
 import contextlib
 import logging
 import signal
+from datetime import UTC, datetime
 
 from aiogram import Bot
 
@@ -15,6 +16,7 @@ from qarz.application.exports import ExportService
 from qarz.application.files import FileService
 from qarz.application.imports import ImportService
 from qarz.application.measurement import MeasurementService
+from qarz.application.ops_watch import OpsWatch, Sources, WorkerHealth
 from qarz.application.payment_notices import PaymentNoticeService
 from qarz.application.reminders import ReminderService
 from qarz.application.scheduler import Scheduler
@@ -23,14 +25,43 @@ from qarz.application.subscription import SubscriptionService
 from qarz.domain.exports import MAX_EXPORT_BYTES
 from qarz.infrastructure.db import Database
 from qarz.infrastructure.file_store import build_file_store
+from qarz.infrastructure.ops_probes import ApiProbe, disk_shares, read_figure_files
 from qarz.infrastructure.settings import Settings
 from qarz.infrastructure.sms_sender import ChannelSender, build_sms_provider, platform_switch
+from qarz.infrastructure.telegram_alerts import TelegramAlerts
 from qarz.infrastructure.telegram_sender import TelegramSender
 from qarz.interface.observability import configure_logging
 
 log = logging.getLogger("qarz.worker")
 IDLE_SECONDS = 0.5
 SCHEDULE_EVERY_SECONDS = 30.0
+WATCH_EVERY_SECONDS = 60.0
+
+
+def build_watch(settings: Settings, database: Database, bot: Bot, health: WorkerHealth) -> OpsWatch:
+    """The operations watch as this deployment configures it. What is not configured is not watched."""
+    backup_dir, files_dir = settings.alert_backup_figures_dir, settings.alert_files_figures_dir
+    disks = settings.alert_disks()
+    sources = Sources(
+        backup=(lambda: read_figure_files(backup_dir)) if backup_dir else None,
+        files=(lambda: read_figure_files(files_dir)) if files_dir else None,
+        disk=(lambda: disk_shares(disks)) if disks else None,
+        api=ApiProbe(settings.alert_api_url, settings.metrics_token) if settings.alert_api_url else None,
+        metrics=bool(settings.metrics_token),
+        health=health,
+    )
+    return OpsWatch(database, TelegramAlerts(bot), chats=settings.alert_chats(), sources=sources)
+
+
+async def watch_loop(watch: OpsWatch, stop: asyncio.Event) -> None:
+    """A round a minute, in its own task: a round that waits for Telegram or the API holds no message back."""
+    while not stop.is_set():
+        try:
+            await watch.run_once()
+        except Exception:
+            log.exception("watch_failed")
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(stop.wait(), timeout=WATCH_EVERY_SECONDS)
 
 
 async def run(settings: Settings, stop: asyncio.Event) -> None:
@@ -63,7 +94,11 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
         measurement=MeasurementService(database),
         # Used sign-in data past its expiry and sessions that expired or were revoked are deleted.
         sign_in_cleanup=True,
+        # The stored open debts are compared with the ledger once a day.
+        ledger_check=True,
     )
+    health = WorkerHealth(started_at=datetime.now(UTC))
+    watching = asyncio.create_task(watch_loop(build_watch(settings, database, bot, health), stop))
     next_schedule = 0.0
     try:
         while not stop.is_set():
@@ -80,10 +115,15 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
                 # Never log message contents; the exception text here comes from the database driver.
                 log.exception("dispatch_failed")
                 result = None
+            else:
+                health.dispatched(datetime.now(UTC))
             if result is None or result.sent == 0:
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(stop.wait(), timeout=IDLE_SECONDS)
     finally:
+        watching.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await watching
         await bot.session.close()
         await database.dispose()
 

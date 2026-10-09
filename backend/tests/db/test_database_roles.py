@@ -47,8 +47,6 @@ DEFINER_FUNCTIONS: dict[str, set[str]] = {
     "online_payment_shop_by_txn(text,text)": {APP},
     "payme_statement(bigint,bigint)": {APP},
     "subscription_receipt_copies(uuid)": {APP},
-    # /metrics, which the API serves: how long the oldest receipt has waited.
-    "oldest_waiting_receipt()": {APP},
     # Whom to tell that a receipt waits: two columns of the administrators' accounts, nothing else.
     "admin_notice_recipients()": {APP},
     # A Telegram administrator of the review group decides a receipt in the chat (DEC-064); the chat is
@@ -82,7 +80,13 @@ DEFINER_FUNCTIONS: dict[str, set[str]] = {
     "claim_import_batch(timestamp with time zone,timestamp with time zone)": {WORKER},
     "shops_with_receipt_work(timestamp with time zone,timestamp with time zone)": {WORKER},
     "purge_expired_sign_ins()": {WORKER},
+    # The operations watch (migration 0035): in how many places the stored open debts differ from the
+    # ledger. A count; the comparison itself stays closed to everybody.
+    "open_debt_mismatch_count()": {WORKER},
     # --- held by two roles ----------------------------------------------------------------------------
+    # How long the oldest receipt has waited: one moment. The API serves it at /metrics, and the worker's
+    # operations watch reads it for the same rule (migration 0035).
+    "oldest_waiting_receipt()": {APP, WORKER},
     # Completing a customer's removal forgets a person nobody else knows. The API completes a removal
     # when the customer asks or the debt is settled; the worker when undoing an import settles it.
     "forget_user_if_unused(uuid)": {APP, WORKER},
@@ -119,6 +123,9 @@ TABLE_RIGHTS: dict[str, tuple[str, str, str]] = {
         "SELECT; INSERT; UPDATE(status, attempts, next_try_at, sent_at)",
     ),
     "job_run": ("SELECT", "", "SELECT; INSERT"),
+    # The state of the operations watch and the samples it compares (migration 0035): the worker's alone.
+    "ops_alert": ("", "", "SELECT; INSERT; UPDATE; DELETE"),
+    "ops_sample": ("", "", "SELECT; INSERT; DELETE"),
     "alembic_version": ("", "", ""),
     "measure.event": ("SELECT; INSERT", "INSERT", "SELECT; INSERT"),
     "measure.weekly": ("", "", "SELECT; INSERT; UPDATE"),

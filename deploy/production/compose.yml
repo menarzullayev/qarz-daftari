@@ -106,7 +106,8 @@ services:
     stop_grace_period: 30s
     # The worker listens on nothing, so the image's HTTP check does not apply and is switched off. A
     # worker that died is restarted by the restart policy; one that runs but does no work shows in the
-    # API's metrics (qd_job_last_finished_seconds, qd_outbox_oldest_due_seconds), not here.
+    # API's metrics (qd_job_last_finished_seconds, qd_outbox_oldest_due_seconds), not here. The worker
+    # watches the rest of the service and tells the operators' chat (DEC-078); nothing watches it.
     healthcheck:
       disable: true
     environment:
@@ -117,6 +118,14 @@ services:
       QD_ESKIZ_EMAIL: ${QD_ESKIZ_EMAIL:-}
       QD_ESKIZ_PASSWORD: ${QD_ESKIZ_PASSWORD:-}
       QD_ESKIZ_SENDER: ${QD_ESKIZ_SENDER:-}
+      # The operations watch (DEC-078): whom it tells, and what it reads besides the database. The
+      # metrics token lets it read the API's counters (error rate, security events); counts only.
+      QD_ALERT_CHAT_IDS: ${QD_ALERT_CHAT_IDS:-}
+      QD_ALERT_API_URL: ${QD_ALERT_API_URL:-}
+      QD_ALERT_BACKUP_FIGURES_DIR: ${QD_ALERT_BACKUP_FIGURES_DIR:-}
+      QD_ALERT_FILES_FIGURES_DIR: ${QD_ALERT_FILES_FIGURES_DIR:-}
+      QD_ALERT_DISK_PATHS: ${QD_ALERT_DISK_PATHS:-}
+      QD_METRICS_TOKEN: ${QD_METRICS_TOKEN:-}
     networks: [egress]
     deploy:
       resources:

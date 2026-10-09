@@ -190,7 +190,7 @@ three are open.
 | Timeouts | 3 s to connect to the API, 20 s between reads or writes, 15 s for a client's body, 10 s for its headers | The API cancels a statement at 5 s; a request may be several statements or an upload. |
 | Host names | `server_name _`: any host name is answered | The public name is not known yet. Restrict it when it is. |
 | Containers | read-only root, all capabilities dropped, `no-new-privileges`, tmpfs `/tmp`; limits: API 1 CPU / 512 MB, worker 1 CPU / 768 MB, proxy 1 CPU / 192 MB, migration 1 CPU / 256 MB | Starting points, not measured under load. |
-| Worker health | No health check; the restart policy restarts a dead worker | It listens on nothing. A worker that runs but does no work shows in the metrics. |
+| Worker health | No health check; the restart policy restarts a dead worker | It listens on nothing. A worker that runs but does no work shows in the metrics. The worker watches the rest of the service and tells the operators' Telegram chat (`QD_ALERT_CHAT_IDS`; `deploy/monitoring/README.md`, "The worker's watch"); nothing watches the worker. |
 | Images | Tagged with the full commit hash; built on the host because there is no registry | `DEPLOY_PULL=1` and the two image names switch to pulling. Base images are pinned by tag, not by digest. |
 | Local ports | 18480 and 18443 on 127.0.0.1, project `qd-deploy-proof` | 80, 443, 8000 and 54329 are taken or reserved on the developer machine. |
 

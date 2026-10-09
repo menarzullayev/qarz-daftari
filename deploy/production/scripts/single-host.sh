@@ -7,7 +7,10 @@
 #                                         roles' passwords, deploy the release (default HEAD), then start
 #                                         the backups and the tunnel. Also the command for a new release.
 #   single-host.sh start | stop           start everything at the current release / stop everything
-#   single-host.sh status                 what runs, how old the newest backup and WAL segment are
+#   single-host.sh status                 what runs, how old the newest backup and WAL segment are,
+#                                         and what the operations watch has firing
+#   single-host.sh alert-test             send one TEST alert to QD_ALERT_CHAT_IDS and say whether
+#                                         Telegram took it (runbook 16; launch criterion 9)
 #   single-host.sh backup <full|diff>     one backup, now
 #   single-host.sh restore-test           restore the latest backup into a throwaway instance and check it
 #   single-host.sh restore [--time '<moment>']   restore the bucket into the EMPTY data volume
@@ -105,6 +108,8 @@ DEPLOY_R2_SECRET_ACCESS_KEY=
 VITE_BOT_USERNAME=
 QD_BOT_TOKEN=
 QD_ADMIN_TG_IDS=
+# Whom the operations watch tells (your Telegram identifier, or a group's). Empty: nobody is told.
+QD_ALERT_CHAT_IDS=
 
 # --- Generated. Copy DEPLOY_BACKUP_PASSPHRASE to two places that are NOT this machine, now. ----------
 # Without it the backups in the bucket cannot be read by anybody, you included.
@@ -177,6 +182,9 @@ status() {
     || say "the files-backup service is not running"
   say "--- disk (the Docker disk that holds the database) ---"
   dce exec -T db df -h /var/lib/postgresql/data | tail -n 1 || true
+  say "--- operations watch (what is firing now; nothing below this line means nothing is) ---"
+  dce exec -T db psql -X -qAt -U postgres -d qarz -c "select key || '  since ' || to_char(since, 'YYYY-MM-DD HH24:MI') || '  ' || case when firing_since is null then 'not yet firing' when resolved_at is not null then 'stopped, not yet said' when notified_at is null then 'FIRING, nobody told (' || coalesce(last_outcome, 'not tried') || ')' else 'FIRING, told ' || to_char(notified_at, 'YYYY-MM-DD HH24:MI') end from ops_alert order by key" \
+    || say "the watch's state could not be read"
 }
 
 restore() {
@@ -214,6 +222,7 @@ case "${1:-}" in
     case "${2:-}" in full | diff) ;; *) die "usage: single-host.sh backup <full|diff>" ;; esac
     use_current; dce exec -T backup /opt/qarz-single/job.sh "$2" ;;
   restore-test) use_current; dce exec -T backup /opt/qarz-single/job.sh restore-test ;;
+  alert-test) use_current; dce exec -T worker python -m qarz.interface.alert_test ;;
   restore) shift; restore "$@" ;;
   restore-files) use_current_or_head; compose run --rm --no-deps restore-files ;;
   pitr) pitr "${2:-}" ;;
@@ -226,5 +235,5 @@ case "${1:-}" in
     [ -n "$(env_value DEPLOY_PUBLIC_HOST)" ] || die "DEPLOY_PUBLIC_HOST has no value in $ENV_FILE"
     bash "$SCRIPTS_DIR/smoke.sh" "https://$(env_value DEPLOY_PUBLIC_HOST)" ;;
   logs) shift; use_current; compose logs --no-color --tail 80 "$@" ;;
-  *) die "usage: single-host.sh env-init [<file>] | up [<git-ref>] | start | stop | status | backup <full|diff> | restore-test | restore [--time '<moment>'] | restore-files | pitr ['<moment>'] | pitr-down | rollback <git-ref> | smoke | logs [<service>...]" ;;
+  *) die "usage: single-host.sh env-init [<file>] | up [<git-ref>] | start | stop | status | alert-test | backup <full|diff> | restore-test | restore [--time '<moment>'] | restore-files | pitr ['<moment>'] | pitr-down | rollback <git-ref> | smoke | logs [<service>...]" ;;
 esac
