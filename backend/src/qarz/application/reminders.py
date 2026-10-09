@@ -3,6 +3,15 @@
 Off until the shop turns them on. One on the promised date, then at most one every seven days while the
 debt stays overdue; a manager or owner may send one by hand, once a day per customer. A reminder states
 the shop and the amount and nothing else, in a fixed polite wording the shop picks from.
+
+**An SMS and dollars.** Every SMS wording is registered with the provider before it may be sent, and the
+registered ones state one so'm amount. So an SMS is the reminder of the so'm book alone, planned as if
+the shop had no dollars: its ground, its kind (due today or overdue) and its amount are the so'm
+book's, and it is not sent when only dollars are due. It never states a dollar amount, never a figure
+that includes one, and nothing in it says that the amount is all that is owed. What it leaves out the
+staff are told: the answer to a reminder sent by hand names the dollars it did not state
+(`usd.unstated`), and the settings of a shop that works in dollars say that SMS carries so'm only
+(`usd.sms`).
 """
 
 from collections.abc import Callable, Sequence
@@ -87,9 +96,11 @@ async def sms_allowance(session: TenantSession, today: date) -> tuple[bool, int,
 def reminder_text(lang: str, template: int, plan: ReminderPlan, channel: Channel, *, shop: str, name: str) -> str:
     """The fixed wording (REQ-024). SMS uses its own short form, whatever template the shop chose."""
     if channel is Channel.SMS:
-        # So'm only: see `qarz.domain.reminders.choose_channel`. Only the Uzbek and the Russian wording
-        # are registered with the provider, so every other language is sent the Uzbek one, whole: the
-        # amount's unit too.
+        # So'm only, and so the caller's plan is the so'm book's alone (see the module's docstring). Only
+        # the Uzbek and the Russian wording are registered with the provider, so every other language
+        # is sent the Uzbek one, whole: the amount's unit too.
+        if plan.amount <= 0 or plan.amount_usd:
+            raise ValueError("an SMS states a so'm amount and nothing else")
         language = languages.sms_language(lang)
         return say(language, f"sms_{plan.kind.value}", shop=shop, name=name, amount=money(language, plan.amount))
     language = lang if languages.is_language(lang) else languages.DEFAULT
@@ -102,9 +113,9 @@ def reminder_text(lang: str, template: int, plan: ReminderPlan, channel: Channel
     )
 
 
-def _by_sms(candidate: ReminderCandidate, plan: ReminderPlan) -> bool:
-    """Whether an SMS could carry this reminder: there is a number, and a so'm amount to state."""
-    return bool(candidate.phone) and plan.amount > 0
+def _by_sms(candidate: ReminderCandidate, in_sum: ReminderPlan | None) -> bool:
+    """Whether an SMS could carry a reminder: there is a number, and the so'm book has one to send."""
+    return bool(candidate.phone) and in_sum is not None
 
 
 def _statuses(
@@ -117,8 +128,11 @@ def _statuses(
     )
 
 
-def _settings_body(settings: ReminderSettings) -> dict[str, Any]:
+def _settings_body(settings: ReminderSettings, dollars: bool = False) -> dict[str, Any]:
+    """`dollars`: the shop works in dollars, and is told that an SMS does not carry them. The body of
+    every other shop is what it always was."""
     return {
+        **({"usd": {"sms": False}} if dollars else {}),
         "on": settings.on,
         "hour": settings.hour,
         "template": settings.template,
@@ -152,7 +166,7 @@ class ReminderService:
             settings = await session.reminder_settings()
             if settings is None:
                 raise NotFound()
-            return _settings_body(settings)
+            return _settings_body(settings, await dollars_on(session))
 
     async def update_settings(
         self,
@@ -190,7 +204,7 @@ class ReminderService:
                 settings = await session.reminder_settings()
                 if settings is None:
                     raise NotFound()
-                return _settings_body(settings)
+                return _settings_body(settings, await dollars_on(session))
 
             return await idempotency.run_once(
                 session,
@@ -214,34 +228,43 @@ class ReminderService:
         settings: ReminderSettings,
         candidate: ReminderCandidate,
         plan: ReminderPlan,
+        in_sum: ReminderPlan | None,
         *,
         kind: str,
         today: date,
         sms: tuple[bool, int],
-    ) -> Channel | None:
-        """Store the reminder and queue its message. None when the customer cannot be reached (BR-18)."""
+    ) -> tuple[Channel, ReminderPlan] | None:
+        """Store the reminder and queue its message. None when the customer cannot be reached (BR-18).
+
+        `plan` is the reminder of everything that is due; `in_sum` the reminder the so'm book alone
+        would send, which is all an SMS can be. Returns the channel and what the message stated.
+        """
         channel = choose_channel(
             telegram_reachable=candidate.tg_id is not None,
-            has_phone=_by_sms(candidate, plan),
+            has_phone=_by_sms(candidate, in_sum),
             sms_on_platform=sms[0],
             sms_on_shop=settings.sms_on,
             sms_quota_left=sms[1],
         )
         if channel is None:
             return None
+        stated = plan
+        if channel is Channel.SMS:
+            assert in_sum is not None  # `_by_sms`
+            stated = in_sum
         if not await session.add_reminder(
             customer_id=candidate.customer_id,
             kind=kind,
             channel=channel.value,
-            amount=plan.amount,
             # What the message stated: an SMS states no dollars.
-            amount_usd=0 if channel is Channel.SMS else plan.amount_usd,
+            amount=stated.amount,
+            amount_usd=stated.amount_usd,
             sent_on=today,
         ):
             raise LimitReached()
         # BR-19: the customer's language if known, else the shop's.
         lang = candidate.lang or settings.lang
-        text = reminder_text(lang, settings.template, plan, channel, shop=settings.name, name=candidate.display_name)
+        text = reminder_text(lang, settings.template, stated, channel, shop=settings.name, name=candidate.display_name)
         recipient = str(candidate.tg_id) if channel is Channel.TELEGRAM else str(candidate.phone)
         await session.enqueue(
             channel=channel.value,
@@ -249,7 +272,7 @@ class ReminderService:
             payload={"text": text},
             dedupe_key=f"reminder:{kind}:{candidate.customer_id}:{today.isoformat()}",
         )
-        return channel
+        return channel, stated
 
     async def send_manual(
         self, user_id: UUID, shop_id: UUID, customer_id: UUID, request_key: str | None
@@ -270,29 +293,36 @@ class ReminderService:
                     raise RemindersOff()
                 dollars = await dollars_on(session)
                 accounts = await session.entries_of_many([customer_id])
-                plan = plan_manual(*_statuses(accounts[customer_id], today, dollars))
+                status, in_dollars = _statuses(accounts[customer_id], today, dollars)
+                plan = plan_manual(status, in_dollars)
                 if plan is None:
                     raise ReminderNotDue()
-                channel = await self._send(
+                in_sum = plan_manual(status)
+                sent = await self._send(
                     session,
                     settings,
                     candidate,
                     plan,
+                    in_sum,
                     kind="manual",
                     today=today,
                     sms=await self._sms_left(session, today),
                 )
-                if channel is None:
+                if sent is None:
                     raise CustomerUnreachable()
+                channel, stated = sent
                 await session.record_activity(
                     membership_id=actor.membership_id,
                     action="reminder.sent_manually",
                     subject_type="customer",
                     subject_id=customer_id,
                 )
-                body: dict[str, Any] = {"sent": True, "channel": channel.value, "amount": plan.amount}
+                body: dict[str, Any] = {"sent": True, "channel": channel.value, "amount": stated.amount}
                 if dollars:
-                    body["usd"] = {"amount": 0 if channel is Channel.SMS else plan.amount_usd}
+                    body["usd"] = {"amount": stated.amount_usd}
+                    if plan.amount_usd > stated.amount_usd:
+                        # Due in dollars and not said: the SMS stated so'm only, and whoever sent it is told.
+                        body["usd"]["unstated"] = plan.amount_usd - stated.amount_usd
                 return body
 
             return await idempotency.run_once(
@@ -324,12 +354,13 @@ class ReminderService:
                     break
                 accounts = await session.entries_of_many([candidate.customer_id for candidate in batch])
                 for candidate in batch:
-                    plan = plan_manual(*_statuses(accounts[candidate.customer_id], today, dollars))
+                    status, in_dollars = _statuses(accounts[candidate.customer_id], today, dollars)
+                    plan = plan_manual(status, in_dollars)
                     if plan is None:
                         continue
                     reachable = choose_channel(
                         telegram_reachable=candidate.tg_id is not None,
-                        has_phone=_by_sms(candidate, plan),
+                        has_phone=_by_sms(candidate, plan_manual(status)),
                         sms_on_platform=sms[0],
                         sms_on_shop=settings.sms_on,
                         sms_quota_left=sms[1],
@@ -381,15 +412,17 @@ class ReminderService:
                     if candidate.reminders_off:
                         continue
                     status, in_dollars = _statuses(accounts[candidate.customer_id], today, dollars)
-                    plan = plan_automatic(status, last.get(candidate.customer_id), today, in_dollars)
+                    last_sent = last.get(candidate.customer_id)
+                    plan = plan_automatic(status, last_sent, today, in_dollars)
                     if plan is None:
                         continue
-                    channel = await self._send(
-                        session, settings, candidate, plan, kind="auto", today=today, sms=(sms_on, sms_left)
+                    in_sum = plan_automatic(status, last_sent, today)
+                    done = await self._send(
+                        session, settings, candidate, plan, in_sum, kind="auto", today=today, sms=(sms_on, sms_left)
                     )
-                    if channel is Channel.SMS:
+                    if done is not None and done[0] is Channel.SMS:
                         sms_left -= 1
-                    if channel is not None:
+                    if done is not None:
                         sent += 1
                 after = batch[-1].customer_id
         return sent

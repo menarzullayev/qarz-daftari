@@ -465,6 +465,7 @@ export const uz = {
   "reminders.sms": "SMS orqali ham yuborish",
   "reminders.sms.hint":
     "SMS faqat platformada ham yoqilgan bo'lsa ishlaydi va mavjud bo'lmasligi mumkin. Telegramga ulangan mijozga eslatma Telegram orqali boradi.",
+  "reminders.sms.usd": "SMS faqat so'mdagi qarzni aytadi. Dollardagi qarz haqidagi eslatma faqat Telegram orqali boradi.",
   "reminders.saved": "Eslatma sozlamalari saqlandi.",
   "reminders.unreachable.title": "Yetib bo'lmaydigan mijozlar",
   "reminders.unreachable.hint":
@@ -476,6 +477,7 @@ export const uz = {
   "reminders.sent.telegram": "Eslatma Telegram orqali yuborildi: {amount}.",
   "reminders.sent.sms": "Eslatma SMS orqali yuborildi: {amount}.",
   "reminders.sent.other": "Eslatma yuborildi: {amount}.",
+  "reminders.sent.usdUnstated": "SMS faqat so'mdagi qarzni aytdi. Dollardagi {amount} qarz eslatilmadi: u faqat Telegram orqali eslatiladi.",
 
   "credit.title": "Nasiya limiti",
   "credit.limit.own": "Limit: {amount} (shu mijoz uchun belgilangan).",

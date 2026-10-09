@@ -317,11 +317,20 @@ export type ReminderSettings = {
   /** The first and the last hour a shop may choose. */
   hours: { first: number; last: number };
   templates: ReminderTemplate[];
+  /**
+   * There only for a shop that works in dollars: whether an SMS states a dollar debt. It does not (the
+   * registered wordings state so'm), and the screen says so.
+   */
+  usdBySms?: boolean;
 };
 export type ReminderSettingsPatch = { on?: boolean; hour?: number; template?: number; smsOn?: boolean };
 
 /** A reminder that was sent by hand: through which channel ("telegram" or "sms") and for what amount. */
-export type SentReminder = { channel: string; amount: number; usdAmount?: number };
+/**
+ * `usdAmount` is what the message stated in dollars. `usdUnstated` is what is due in dollars and the
+ * message did not state: an SMS states so'm only.
+ */
+export type SentReminder = { channel: string; amount: number; usdAmount?: number; usdUnstated?: number };
 
 /** A customer with something due and no channel to be reminded through (REQ-043). */
 export type UnreachableCustomer = {
@@ -923,12 +932,15 @@ function reminderSettings(value: unknown): ReminderSettings {
         overdue: wordings(template["overdue"]),
       };
     }),
+    ...(body["usd"] === undefined || body["usd"] === null ? {} : { usdBySms: flag(record(body["usd"])["sms"]) }),
   };
 }
 
 function sentReminder(value: unknown): SentReminder {
   const body = record(value);
-  return { channel: text(body["channel"]), amount: whole(body["amount"]), ...usdAmount(body["usd"]) };
+  const usd = body["usd"] === undefined || body["usd"] === null ? null : record(body["usd"]);
+  const unstated = usd === null || usd["unstated"] === undefined ? {} : { usdUnstated: whole(usd["unstated"]) };
+  return { channel: text(body["channel"]), amount: whole(body["amount"]), ...usdAmount(body["usd"]), ...unstated };
 }
 
 function unreachableCustomer(value: unknown): UnreachableCustomer {

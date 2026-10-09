@@ -462,6 +462,7 @@ export const kaa: PartialCatalog<typeof uz> = {
   "reminders.sms": "SMS arqalı da jiberiw",
   "reminders.sms.hint":
     "SMS tek platformada da qosılǵan bolsa isleydi hám bolmawı da múmkin. Telegramǵa jalǵanǵan qarıydarǵa eskertiw Telegram arqalı baradı.",
+  "reminders.sms.usd": "SMS tek swmdaǵı qarızdı aytadı. Dollardaǵı qarız haqqındaǵı eskertiw tek Telegram arqalı baradı.",
   "reminders.saved": "Eskertiw sazlawları saqlandı.",
   "reminders.unreachable.title": "Xabar jetpeytuǵın qarıydarlar",
   "reminders.unreachable.hint":
@@ -473,6 +474,7 @@ export const kaa: PartialCatalog<typeof uz> = {
   "reminders.sent.telegram": "Eskertiw Telegram arqalı jiberildi: {amount}.",
   "reminders.sent.sms": "Eskertiw SMS arqalı jiberildi: {amount}.",
   "reminders.sent.other": "Eskertiw jiberildi: {amount}.",
+  "reminders.sent.usdUnstated": "SMS tek swmdaǵı qarızdı ayttı. Dollardaǵı {amount} qarız eskertilmedi: ol tek Telegram arqalı eskertiledi.",
 
   "credit.title": "Nesiye limiti",
   "credit.limit.own": "Limit: {amount} (usı qarıydar ushın belgilengen).",

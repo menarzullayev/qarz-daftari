@@ -480,6 +480,7 @@ export const ru: RuCatalog = {
   "reminders.sms": "Отправлять также по SMS",
   "reminders.sms.hint":
     "SMS работают, только если они включены и на платформе, и могут быть недоступны. Клиенту, подключённому к Telegram, напоминание придёт в Telegram.",
+  "reminders.sms.usd": "В SMS называется только долг в сумах. Напоминание о долге в долларах приходит только в Telegram.",
   "reminders.saved": "Настройки напоминаний сохранены.",
   "reminders.unreachable.title": "Клиенты без связи",
   "reminders.unreachable.hint":
@@ -491,6 +492,7 @@ export const ru: RuCatalog = {
   "reminders.sent.telegram": "Напоминание отправлено в Telegram: {amount}.",
   "reminders.sent.sms": "Напоминание отправлено по SMS: {amount}.",
   "reminders.sent.other": "Напоминание отправлено: {amount}.",
+  "reminders.sent.usdUnstated": "В SMS назван только долг в сумах. О долге {amount} в долларах не напомнили: о нём напоминают только в Telegram.",
 
   "credit.title": "Лимит долга",
   "credit.limit.own": "Лимит: {amount} (задан для этого клиента).",

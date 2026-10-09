@@ -646,6 +646,21 @@ the language to `qarz.domain.languages.SMS_LANGUAGES`.
 
 The wordings themselves are agent drafts awaiting the founder's review (DEC-035).
 
+**Dollars.** A shop that works in dollars is reminded of dollars by Telegram only. The four registered
+texts state one amount in so'm, so an SMS is the reminder of the so'm debt alone: it is planned from the
+so'm debt as if the shop had no dollars, it states the so'm amount and nothing else, and none goes out
+when only dollars are due. The code refuses to make an SMS text with a dollar amount in it, and a test
+holds it to that. The staff are told what an SMS leaves out: under the SMS switch on the reminders
+screen, and after a reminder sent by hand ("the SMS stated so'm only; 12.50 $ was not mentioned").
+
+To let an SMS carry dollars, the founder asks Eskiz one question when registering: may the variable
+part `{amount}` of the approved templates also be `12.50 $`, or `70 000 so'm va 12.50 $` (Russian:
+`70 000 сум и 12.50 $`)? If Eskiz says yes, no new template is needed and the change is in
+`qarz.application.reminders` only (the SMS takes the whole plan and `both()` writes the amount). If
+Eskiz wants the unit to be part of the fixed text, eight more templates are registered first (dollars
+only, and both amounts; due today and overdue; Uzbek and Russian), added to the table above and to the
+catalog, and only then sent. Until one of the two is done, nothing changes here.
+
 ## 13. Onboard a shop, including its paper ledger
 
 1. The owner starts the bot, opens a shop and gets the trial (if `trial_on`). While the free plan is on

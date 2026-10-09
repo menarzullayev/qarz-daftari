@@ -29,6 +29,7 @@ from .conftest import World, as_user
 from .test_chat import chat_of
 from .test_customers_ledger import key, read, shop, write
 from .test_exports import ask, work, workbook
+from .test_reminders import run_job
 
 pytestmark = pytest.mark.db
 
@@ -688,8 +689,142 @@ def test_a_customer_reachable_only_by_sms_is_not_reminded_of_dollars_by_sms(
         assert owner.execute(
             "SELECT count(*) FROM outbox_message WHERE channel = 'sms' AND shop_id = %s", (world.shop_a,)
         ).fetchone() == (0,)
+        assert owner.execute("SELECT count(*) FROM reminder WHERE shop_id = %s", (world.shop_a,)).fetchone() == (0,)
     finally:
         owner.execute("DELETE FROM platform_setting WHERE key IN ('sms_on', 'sms_monthly_quota')")
+
+
+@pytest.fixture
+def sms_shop(world: World, owner: psycopg.Connection) -> Iterator[None]:
+    """SMS is on for the platform and for shop A, whose reminders are on. Ali is no longer linked to
+    Telegram and has a phone number: an SMS is the only way to him."""
+    owner.execute("UPDATE shop SET reminders_on = true, sms_on = true WHERE id = %s", (world.shop_a,))
+    owner.execute("UPDATE customer SET phone = '+998901112233' WHERE id = %s", (world.customer_a,))
+    owner.execute("UPDATE customer_link SET status = 'unreachable' WHERE customer_id = %s", (world.customer_a,))
+    owner.execute(
+        "INSERT INTO platform_setting (key, value, updated_by) VALUES ('sms_on', 'true', 'test'), "
+        "('sms_monthly_quota', '100', 'test')"
+    )
+    try:
+        yield
+    finally:
+        owner.execute("DELETE FROM platform_setting WHERE key IN ('sms_on', 'sms_monthly_quota')")
+
+
+def _sms_texts(owner: psycopg.Connection, world: World) -> list[str]:
+    rows = owner.execute(
+        "SELECT payload->>'text' FROM outbox_message WHERE channel = 'sms' AND shop_id = %s ORDER BY created_at, id",
+        (world.shop_a,),
+    ).fetchall()
+    return [str(text) for (text,) in rows]
+
+
+def _remind(client: TestClient, world: World, customer: uuid.UUID) -> Any:
+    return write(client, world.manager_a, "POST", f"{shop(world)}/reminders/manual", {"customer_id": str(customer)})
+
+
+def test_an_sms_to_a_customer_who_owes_both_states_the_sum_only_and_the_staff_are_told_what_it_left_out(
+    client: TestClient, world: World, owner: psycopg.Connection, dollars: None, sms_shop: None
+) -> None:
+    """The so'm part is due today and the dollar part is overdue. The SMS is the so'm book's reminder,
+    whole: its registered wording for "due today", its amount, no dollar figure and no sum of the two."""
+    today = tashkent_date(datetime.now(UTC))
+    owner.execute("UPDATE promise SET promised_date = %s WHERE entry_id = %s", (today, world.entry_a))
+    sale = record(client, world, "credit", 1_200, promised_date=str(today))
+    assert sale.status_code == 201, sale.text
+    owner.execute(
+        "UPDATE promise SET promised_date = %s WHERE entry_id = %s",
+        (today - timedelta(days=3), sale.json()["entry"]["id"]),
+    )
+    owner.execute("SELECT refresh_open_debts(ARRAY[%s::uuid])", (world.customer_a,))
+
+    sent = _remind(client, world, world.customer_a)
+    assert sent.status_code == 201, sent.text
+    # What the message stated, and beside it what was due in dollars and not said.
+    assert sent.json() == {"sent": True, "channel": "sms", "amount": 50_000, "usd": {"amount": 0, "unstated": 1_200}}
+    assert _sms_texts(owner, world) == [
+        say("uz", "sms_due_today", shop="Shop A", name="Ali", amount=money("uz", 50_000))
+    ]
+    text = _sms_texts(owner, world)[0]
+    assert "$" not in text and "12" not in text.replace("50", ""), "no dollar figure, and no figure made of one"
+    assert text != say("uz", "sms_overdue", shop="Shop A", name="Ali", amount=money("uz", 50_000)), (
+        "not 'overdue': it is the dollars that are overdue, and the SMS does not speak of them"
+    )
+    assert owner.execute(
+        "SELECT channel, amount, amount_usd FROM reminder WHERE customer_id = %s", (world.customer_a,)
+    ).fetchall() == [("sms", 50_000, 0)], "the record is of what was stated"
+    settings = read(client, world.manager_a, f"{shop(world)}/reminders").json()
+    assert settings["usd"] == {"sms": False}, "the shop is told that an SMS carries so'm only"
+
+
+def test_a_customer_who_owes_sum_only_is_reminded_by_sms_as_before_and_is_not_listed(
+    client: TestClient, world: World, owner: psycopg.Connection, dollars: None, sms_shop: None
+) -> None:
+    """The counterpart: in a shop that works in dollars, a so'm debt and its SMS are what they always were."""
+    today = tashkent_date(datetime.now(UTC))
+    owner.execute(
+        "UPDATE promise SET promised_date = %s WHERE entry_id = %s", (today - timedelta(days=1), world.entry_a)
+    )
+    owner.execute("SELECT refresh_open_debts(ARRAY[%s::uuid])", (world.customer_a,))
+    assert read(client, world.manager_a, f"{shop(world)}/reminders/unreachable").json()["items"] == []
+    sent = _remind(client, world, world.customer_a)
+    assert sent.json() == {"sent": True, "channel": "sms", "amount": 50_000, "usd": {"amount": 0}}
+    assert _sms_texts(owner, world) == [say("uz", "sms_overdue", shop="Shop A", name="Ali", amount=money("uz", 50_000))]
+
+
+def test_the_hourly_job_sends_no_sms_on_the_ground_of_a_dollar_debt(
+    client: TestClient,
+    world: World,
+    owner: psycopg.Connection,
+    dollars: None,
+    sms_shop: None,
+    worker_database_url: str,
+) -> None:
+    """So'm overdue and reminded three days ago; dollars fall due today. By Telegram that is a reminder
+    of both today. An SMS would repeat the so'm reminder four days early for a debt it does not name."""
+    now = datetime.now(UTC)
+    today = tashkent_date(now)
+    owner.execute("UPDATE shop SET reminder_hour = 10 WHERE id = %s", (world.shop_a,))
+    owner.execute(
+        "UPDATE promise SET promised_date = %s WHERE entry_id = %s", (today - timedelta(days=9), world.entry_a)
+    )
+    assert record(client, world, "credit", 1_200, promised_date=str(today)).status_code == 201
+    owner.execute("SELECT refresh_open_debts(ARRAY[%s::uuid])", (world.customer_a,))
+    owner.execute(
+        "INSERT INTO reminder (id, shop_id, customer_id, kind, channel, amount, sent_on) "
+        "VALUES (gen_random_uuid(), %s, %s, 'auto', 'sms', 50000, %s)",
+        (world.shop_a, world.customer_a, today - timedelta(days=3)),
+    )
+    run_job(worker_database_url, now, lambda service, _: service.run_hour(10))  # every shop whose hour it is
+    assert _sms_texts(owner, world) == []
+    # Once the so'm book has a reminder of its own to send, it goes out: so'm only.
+    owner.execute(
+        "UPDATE reminder SET sent_on = %s WHERE customer_id = %s", (today - timedelta(days=7), world.customer_a)
+    )
+    run_job(worker_database_url, now, lambda service, _: service.run_hour(10))
+    assert _sms_texts(owner, world) == [say("uz", "sms_overdue", shop="Shop A", name="Ali", amount=money("uz", 50_000))]
+    assert owner.execute(
+        "SELECT amount, amount_usd FROM reminder WHERE customer_id = %s AND sent_on = %s", (world.customer_a, today)
+    ).fetchall() == [(50_000, 0)]
+
+
+def test_without_dollars_the_reminder_answers_have_no_reason_and_no_dollar_key(
+    client: TestClient, world: World, owner: psycopg.Connection, sms_shop: None
+) -> None:
+    """Neither switch is on: the three answers are exactly what they were."""
+    today = tashkent_date(datetime.now(UTC))
+    owner.execute("UPDATE promise SET promised_date = %s WHERE entry_id = %s", (today, world.entry_a))
+    owner.execute("SELECT refresh_open_debts(ARRAY[%s::uuid])", (world.customer_a,))
+    settings = read(client, world.manager_a, f"{shop(world)}/reminders").json()
+    assert set(settings) == {"on", "hour", "template", "sms_on", "hours", "templates"}
+    assert _remind(client, world, world.customer_a).json() == {"sent": True, "channel": "sms", "amount": 50_000}
+    owner.execute("UPDATE shop SET sms_on = false WHERE id = %s", (world.shop_a,))
+    listed = read(client, world.manager_a, f"{shop(world)}/reminders/unreachable").json()["items"]
+    assert listed == [
+        {"customer_id": str(world.customer_a), "display_name": "Ali", "phone": "+998901112233", "amount": 50_000}
+    ]
+    refused = _remind(client, world, world.settled_customer_a)
+    assert refused.json()["error"]["code"] == "REMINDER_NOT_DUE"
 
 
 # --- the export ------------------------------------------------------------------------------------------------

@@ -467,6 +467,7 @@ export const tg: PartialCatalog<typeof uz> = {
   "reminders.sms": "Бо SMS ҳам фиристодан",
   "reminders.sms.hint":
     "SMS танҳо вақте кор мекунад, ки дар платформа ҳам фаъол бошад, ва мумкин аст дастрас набошад. Ба мизоҷи ба Telegram пайваст ёдоварӣ тавассути Telegram меравад.",
+  "reminders.sms.usd": "SMS танҳо қарзи сӯмиро мегӯяд. Ёдоварӣ дар бораи қарзи долларӣ танҳо тавассути Telegram меравад.",
   "reminders.saved": "Танзимоти ёдоварӣ нигоҳ дошта шуд.",
   "reminders.unreachable.title": "Мизоҷоне, ки ба онҳо расида намешавад",
   "reminders.unreachable.hint":
@@ -478,6 +479,7 @@ export const tg: PartialCatalog<typeof uz> = {
   "reminders.sent.telegram": "Ёдоварӣ тавассути Telegram фиристода шуд: {amount}.",
   "reminders.sent.sms": "Ёдоварӣ тавассути SMS фиристода шуд: {amount}.",
   "reminders.sent.other": "Ёдоварӣ фиристода шуд: {amount}.",
+  "reminders.sent.usdUnstated": "SMS танҳо қарзи сӯмиро гуфт. Қарзи долларии {amount} ёдоварӣ нашуд: он танҳо тавассути Telegram ёдоварӣ мешавад.",
 
   "credit.title": "Лимити насия",
   "credit.limit.own": "Лимит: {amount} (барои ҳамин мизоҷ муайян шудааст).",

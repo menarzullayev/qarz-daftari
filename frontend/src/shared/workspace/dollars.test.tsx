@@ -341,6 +341,28 @@ describe("a customer's page", () => {
     await waitFor(() => expect(plain(screen.getByRole("status").textContent)).toBe("Eslatma Telegram orqali yuborildi: 5.00 $."));
   });
 
+  it("says that an SMS stated so'm only, and what was due in dollars and not mentioned", async () => {
+    const server = shop(detailBody({ usd: { balance: 1250, credit_limit: null } }), creditSettingsBody({ usd: CREDIT_USD }), () =>
+      ok({ sent: true, channel: "sms", amount: 45000, usd: { amount: 0, unstated: 1250 } }),
+    );
+    await open(server);
+    fireEvent.click(screen.getByRole("button", { name: "Eslatma yuborish" }));
+    await waitFor(() => expect(plain(screen.getByRole("status").textContent)).toBe("Eslatma SMS orqali yuborildi: 45 000 so'm."));
+    expect(plain(screen.getByText(/^SMS faqat so'mdagi qarzni aytdi\./).textContent)).toBe(
+      "SMS faqat so'mdagi qarzni aytdi. Dollardagi 12.50 $ qarz eslatilmadi: u faqat Telegram orqali eslatiladi.",
+    );
+  });
+
+  it("adds nothing to an SMS that left no dollars out", async () => {
+    const server = shop(detailBody({ usd: { balance: 0, credit_limit: null } }), creditSettingsBody({ usd: CREDIT_USD }), () =>
+      ok({ sent: true, channel: "sms", amount: 45000, usd: { amount: 0 } }),
+    );
+    await open(server);
+    fireEvent.click(screen.getByRole("button", { name: "Eslatma yuborish" }));
+    await waitFor(() => expect(plain(screen.getByRole("status").textContent)).toBe("Eslatma SMS orqali yuborildi: 45 000 so'm."));
+    expect(screen.queryByText(/SMS faqat so'mdagi qarzni aytdi/)).toBeNull();
+  });
+
   it("shows a seller the dollar limit and no way to change it", async () => {
     await open(inDollars(), "seller");
     expect(plain(dollarLimit().textContent)).toContain("Limit: 500.00 $");
@@ -777,12 +799,24 @@ describe("disputes, date requests and reminders", () => {
     expectNoDollars();
   });
 
-  const unreachable = (item: Record<string, unknown>) =>
+  const unreachable = (item: Record<string, unknown>, settings: Record<string, unknown> = {}) =>
     fakeServer((sent) =>
       sent.path.endsWith("/unreachable")
         ? ok({ items: [{ customer_id: CUSTOMER_ID, display_name: "Ali Valiyev", phone: null, amount: 45000, ...item }] })
-        : ok(remindersBody()),
+        : ok(remindersBody(settings)),
     );
+  const SMS_NOTE = /^SMS faqat so'mdagi qarzni aytadi\. Dollardagi qarz haqidagi eslatma faqat Telegram orqali boradi\./;
+
+  it("tells a shop that works in dollars, under the SMS switch, that an SMS states so'm only, and no other shop", async () => {
+    renderScreen(<RemindersScreen />, { fetch: unreachable({ usd: { amount: 0 } }, { usd: { sms: false } }).fetch, role: "manager" });
+    expect(await screen.findByText(SMS_NOTE)).toBeTruthy();
+    cleanup();
+    renderScreen(<RemindersScreen />, { fetch: unreachable({}).fetch, role: "manager" });
+    await screen.findByText("Ali Valiyev");
+    await screen.findByRole("button", { name: "Saqlash" });
+    expect(screen.queryByText(SMS_NOTE)).toBeNull();
+    expectNoDollars();
+  });
 
   it("shows what is due in each currency of a customer nobody can reach", async () => {
     renderScreen(<RemindersScreen />, { fetch: unreachable({ usd: { amount: 1250 } }).fetch, role: "manager" });

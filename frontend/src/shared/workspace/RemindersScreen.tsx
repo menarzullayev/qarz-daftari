@@ -225,6 +225,8 @@ function SettingsForm({ settings, editable }: { settings: ReminderSettings; edit
           <span>{t("reminders.sms")}</span>
         </label>
         <p className="field__hint">{t("reminders.sms.hint")}</p>
+        {/* Only a shop that works in dollars is told, and only while an SMS does not carry them. */}
+        {saved.usdBySms === false ? <p className="field__hint">{t("reminders.sms.usd")}</p> : null}
       </div>
 
       {editable ? (

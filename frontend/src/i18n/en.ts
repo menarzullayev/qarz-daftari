@@ -471,6 +471,7 @@ export const en: PartialCatalog<typeof uz, EnPlural> = {
   "reminders.sms": "Also send by SMS",
   "reminders.sms.hint":
     "SMS works only if it is also turned on for the platform, and may not be available. A customer connected to Telegram gets the reminder in Telegram.",
+  "reminders.sms.usd": "An SMS states a debt in soum only. A reminder of a debt in dollars goes out through Telegram only.",
   "reminders.saved": "Reminder settings saved.",
   "reminders.unreachable.title": "Customers who cannot be reached",
   "reminders.unreachable.hint":
@@ -482,6 +483,7 @@ export const en: PartialCatalog<typeof uz, EnPlural> = {
   "reminders.sent.telegram": "Reminder sent by Telegram: {amount}.",
   "reminders.sent.sms": "Reminder sent by SMS: {amount}.",
   "reminders.sent.other": "Reminder sent: {amount}.",
+  "reminders.sent.usdUnstated": "The SMS stated the debt in soum only. The {amount} owed in dollars was not mentioned: it is reminded of through Telegram only.",
 
   "credit.title": "Credit limit",
   "credit.limit.own": "Limit: {amount} (set for this customer).",
