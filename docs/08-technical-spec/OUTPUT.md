@@ -556,15 +556,15 @@ What the front end is held to, and where each rule is enforced. All of it runs i
 
 | Page | LCP measured / budget | Usable measured / budget | TBT measured / budget | CLS measured / budget |
 |---|---|---|---|---|
-| `/app/` | 1804 ms / 2500 ms | 1776 ms / 2500 ms | 0 ms / 200 ms | 0.017 / 0.1 |
-| `/panel/` | 1312 ms / 1900 ms | 1365 ms / 1900 ms | 0 ms / 200 ms | 0 / 0.05 |
-| `/k/` | 628 ms / 1000 ms | 601 ms / 1000 ms | 0 ms / 100 ms | 0 / 0.05 |
+| `/app/` | 1856 ms / 2500 ms | 1829 ms / 2500 ms | 0 ms / 200 ms | 0.022 / 0.1 |
+| `/panel/` | 1344 ms / 1900 ms | 1396 ms / 1900 ms | 0 ms / 200 ms | 0 / 0.05 |
+| `/k/` | 636 ms / 1000 ms | 609 ms / 1000 ms | 0 ms / 100 ms | 0 / 0.05 |
 
-"Usable" is the moment the thing the person came for is on the screen: the overview's totals, the sign-in button, the amount owed. TBT (total blocking time) stands in for INP, which needs a person's taps. Telegram's own script, which the Mini App's page loads from telegram.org before anything else, is answered by the suite at once and is not in these figures.
+"Usable" is the moment the thing the person came for is on the screen: the overview's totals, the sign-in button, the amount owed. TBT (total blocking time) stands in for INP, which needs a person's taps; it counts from the first paint, and the one task over 50 ms that each of the two applications runs (62 to 71 ms on the slowed processor, starting the application) ends before it. Telegram's own script, which the Mini App's page loads from telegram.org before anything else, is answered by the suite at once and is not in these figures.
 
 **NFR-010** ("first load at most 300 KB compressed and usable within 3 seconds on a low-end Android phone on a 3G connection") is checked in two halves: the size by `npm run size`, and the three seconds by the `usable` budget of `/app/` above, on the throttled profile. Neither is a measurement on a real low-end phone over a real mobile network; that has not been done.
 
-**What is not covered.** The journeys other than 01 and 04 run at one width each. Text size is not checked on a 390 px phone (see the table). The keyboard journey is one path through the Mini App, not every screen. The contrast guard covers the nine tokens Telegram replaces; a color Telegram's theme does not carry comes from the design system and is covered by its own test.
+**What is not covered.** The journeys other than 01 and 04 run at one width each. Text size is held to on the main screens only, and not on a 390 px phone: there, at twice the text size, the tab bar grows to 176 px against the 120 px kept free for it and covers the last lines of a screen, and the overview and the customer book are up to 76 px wider than the window. The keyboard journey is one path through the Mini App, not every screen. The contrast guard covers the nine tokens Telegram replaces; a color Telegram's theme does not carry comes from the design system and is covered by its own test.
 
 ## Observability requirements
 

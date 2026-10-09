@@ -23,14 +23,14 @@ const GOOD_CLS = 0.1;
 
 const BUDGETS = {
   // The overview with its totals, after signing in with the launch data: five round trips in a row.
-  // Measured: LCP 1804 ms, usable 1776 ms, TBT 0 ms, CLS 0.017. LCP is held to the "good" bound, which
-  // is the measurement and two fifths more; "usable" to the same, half a second inside NFR-010's three.
+  // Measured: LCP 1856 ms, usable 1829 ms, TBT 0 ms, CLS 0.022. LCP is held to the "good" bound, which
+  // is the measurement and a third more; "usable" to the same, half a second inside NFR-010's three.
   app: { lcpMs: 2500, usableMs: 2500, tbtMs: 200, cls: GOOD_CLS },
   // The sign-in screen: what a visitor to the panel is shown first, every time (a reload asks again).
-  // Measured: LCP 1312 ms, usable 1365 ms, TBT 0 ms, CLS 0.
+  // Measured: LCP 1344 ms, usable 1396 ms, TBT 0 ms, CLS 0.
   panel: { lcpMs: 1900, usableMs: 1900, tbtMs: 200, cls: 0.05 },
   // A customer's own account behind their link: one small script and one request.
-  // Measured: LCP 628 ms, usable 601 ms, TBT 0 ms, CLS 0.
+  // Measured: LCP 636 ms, usable 609 ms, TBT 0 ms, CLS 0.
   k: { lcpMs: 1000, usableMs: 1000, tbtMs: 100, cls: 0.05 },
 } as const satisfies Record<string, Budget>;
 
@@ -68,10 +68,10 @@ test("the measure itself: blocking time counts what is over 50 ms after the firs
   expect(overBudget({ ...fine, cls: 0.11 }, BUDGETS.app)).toEqual(["CLS 0.11 is over 0.1"]);
   expect(overBudget({ ...fine, tbtMs: 201 }, BUDGETS.app)).toEqual(["TBT 201 ms is over 200 ms"]);
   // What today's pages measure passes each page's own budget, and the Mini App's figures fail the customer page's.
-  expect(overBudget({ ...fine, lcpMs: 1804, usableMs: 1776, tbtMs: 0, cls: 0.017 }, BUDGETS.app)).toEqual([]);
-  expect(overBudget({ ...fine, lcpMs: 1312, usableMs: 1365, tbtMs: 0, cls: 0 }, BUDGETS.panel)).toEqual([]);
-  expect(overBudget({ ...fine, lcpMs: 628, usableMs: 601, tbtMs: 0, cls: 0 }, BUDGETS.k)).toEqual([]);
-  expect(overBudget({ ...fine, lcpMs: 1804, usableMs: 1776, tbtMs: 0, cls: 0.017 }, BUDGETS.k)).toHaveLength(2);
+  expect(overBudget({ ...fine, lcpMs: 1856, usableMs: 1829, tbtMs: 0, cls: 0.022 }, BUDGETS.app)).toEqual([]);
+  expect(overBudget({ ...fine, lcpMs: 1344, usableMs: 1396, tbtMs: 0, cls: 0 }, BUDGETS.panel)).toEqual([]);
+  expect(overBudget({ ...fine, lcpMs: 636, usableMs: 609, tbtMs: 0, cls: 0 }, BUDGETS.k)).toEqual([]);
+  expect(overBudget({ ...fine, lcpMs: 1856, usableMs: 1829, tbtMs: 0, cls: 0.022 }, BUDGETS.k)).toHaveLength(2);
   // A page that reported no paint at all was not measured, and that is not a pass.
   expect(overBudget({ ...fine, lcpMs: 0 }, BUDGETS.app)).toEqual(["no largest contentful paint was reported: nothing was measured"]);
   expect(best([fine, { ...fine, lcpMs: 1700, tbtMs: 300 }])).toEqual({ ...fine, lcpMs: 1700 });

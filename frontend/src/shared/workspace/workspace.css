@@ -1187,6 +1187,13 @@ a.row__link:hover .row__name,
     border-radius: var(--qd-radius-xl);
   }
 
+  /* The main figure spans two columns here, so there must be two: a figure is at least 9rem wide and
+     never more than half of the row. With larger text two columns of 9rem are wider than the screen;
+     at the ordinary text size half of the row is always the larger of the two at this width. */
+  .figures {
+    grid-template-columns: repeat(auto-fit, minmax(min(9rem, calc(50% - var(--qd-space-3) / 2)), 1fr));
+  }
+
   .figure--main {
     grid-column: span 2;
   }
