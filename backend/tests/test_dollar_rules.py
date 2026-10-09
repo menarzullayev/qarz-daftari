@@ -113,10 +113,10 @@ def test_a_reversal_belongs_to_the_book_of_the_entry_it_reverses() -> None:
     entries = account()
     target = entries[1]  # the dollar sale
     reversal = entry(5, EntryKind.REVERSAL, target.amount, USD, reverses=target.id)
-    # In its own book it cancels the sale: the 20.00 paid can no longer stand, which the ledger reports.
-    with pytest.raises(LedgerIntegrityError):
-        ledger.balance(ledger.in_currency([*entries, reversal], USD))
-    # Asked properly, it is refused because the dollar balance would go below zero; so'm has no say.
+    # In its own book it cancels the sale: the 20.00 paid would then stand as an advance (INV-3), a state
+    # the ledger reads and does not reject...
+    assert ledger.balance(ledger.in_currency([*entries, reversal], USD)) < 0
+    # ...and asked properly, in a shop that does not accept advances, it is refused for that; so'm has no say.
     assert ledger.validate_new_entry(
         ledger.in_currency(entries, USD), EntryKind.REVERSAL, target.amount, target.id
     ) is (Refusal.NEGATIVE_BALANCE)

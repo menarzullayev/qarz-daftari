@@ -243,6 +243,8 @@ export const ruPanel: RuPanelCatalog = {
   "activity.action.network.order_declined": "Заказ партнёра отклонён",
   "activity.action.network.order_cancelled": "Заказ партнёра отменён",
   "activity.action.network.note_issued": "Оформлена накладная",
+  "activity.action.network.note_posted_for_owner":
+    "Накладная проведена от имени владельца: оформивший её сотрудник больше не может записывать продажи в долг",
   "activity.action.network.note_corrected": "Накладная исправлена",
   "activity.action.network.note_received": "Накладная подтверждена, товар принят",
   "activity.action.network.note_rejected": "Накладная отклонена",

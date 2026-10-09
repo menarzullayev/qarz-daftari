@@ -77,6 +77,14 @@ export function loweredPlan(
   return to < from ? { from, to } : null;
 }
 
+/**
+ * Whether `changes` switch off a free plan that is on. Every shop the plan holds is then limited, whatever
+ * number is saved with the switch (BR-33): the server is asked how many they are before it is sent.
+ */
+export function planSwitchedOff(values: Readonly<Record<string, SettingValue>>, changes: Readonly<Record<string, SettingValue>>): boolean {
+  return values["free_plan_on"] === true && changes["free_plan_on"] === false;
+}
+
 export type Parsed = { ok: true; value: SettingValue } | { ok: false };
 
 /**

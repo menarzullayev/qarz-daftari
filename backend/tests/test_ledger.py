@@ -649,9 +649,6 @@ CORRUPT: dict[str, list[Entry]] = {
     "payment with a promised date": [credit(1, 100), replace(payment(2, 50), promised_date=LATER)],
     "disputed payment": [credit(1, 100), replace(payment(2, 50), disputed=True)],
     "disputed reversal": [credit(1, 100), replace(reversal(2, credit(1, 100)), disputed=True)],
-    "payment before any debt": [payment(1, 50), credit(2, 100)],
-    "payment larger than the balance": [credit(1, 100), payment(2, 101)],
-    "reversal of a paid-off credit": [credit(1, 100), payment(2, 100), reversal(3, credit(1, 100))],
 }
 
 CALLS: dict[str, Callable[[list[Entry]], object]] = {
@@ -965,3 +962,18 @@ def test_a_new_entry_is_never_dated_before_the_accounts_last_entry() -> None:
     assert not_before([], BASE) == BASE
     # The latest time counts, not the last in the list.
     assert not_before(list(reversed(account)), BASE) == last.created_at
+
+
+def test_a_book_below_zero_is_read_and_not_rejected() -> None:
+    """It used to be corrupt data. Since advances it is a state a book can be in (INV-3): whether a NEW
+    entry may put it there is asked of `validate_new_entry`, which still refuses by default
+    (tests/test_ledger_advances.py)."""
+    for entries in (
+        [payment(1, 50), credit(2, 100)],
+        [credit(1, 100), payment(2, 101)],
+        [credit(1, 100), payment(2, 100), reversal(3, credit(1, 100))],
+    ):
+        for call in CALLS.values():
+            call(entries)
+    assert balance([credit(1, 100), payment(2, 101)]) == -1
+    assert validate_new_entry([credit(1, 100)], PAYMENT, 101) == Refusal.EXCEEDS_BALANCE

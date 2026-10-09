@@ -424,13 +424,24 @@ class ExportService:
             ("summary_made", _local(until)),
             ("summary_customers", len(people)),
             ("summary_debtors", sum(1 for balance in owed[UZS].values() if balance > 0)),
-            ("summary_outstanding", sum(owed[UZS].values())),
+            # What the customers who owe add up to: an advance is never taken from it (INV-3).
+            ("summary_outstanding", sum(balance for balance in owed[UZS].values() if balance > 0)),
         ]
+        held = -sum(balance for balance in owed[UZS].values() if balance < 0)
+        if held:
+            # Only in a file of a shop that holds an advance: every other file is what it always was.
+            figures.append(("summary_advances", held))
         if with_dollars:
             figures += [
                 ("summary_debtors_usd", sum(1 for balance in owed[USD].values() if balance > 0)),
-                ("summary_outstanding_usd", _amount(USD, sum(owed[USD].values()))),
+                (
+                    "summary_outstanding_usd",
+                    _amount(USD, sum(balance for balance in owed[USD].values() if balance > 0)),
+                ),
             ]
+            held_usd = -sum(balance for balance in owed[USD].values() if balance < 0)
+            if held_usd:
+                figures.append(("summary_advances_usd", _amount(USD, held_usd)))
         figures.append(("summary_entries", ledger.data_rows))
         for label, value in figures:
             summary.append((word(lang, label), value))

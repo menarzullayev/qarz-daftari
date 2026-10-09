@@ -20,7 +20,7 @@ import { owesAnything } from "./CustomersScreen";
 import { GoodsList } from "./GoodsEditor";
 import { LinkSection } from "./LinkSection";
 import { cleanName, customerFieldErrors, nameProblem } from "./NewCustomerScreen";
-import { ENTRY_KIND_LABELS, errorText, Failure, FieldError, Loading, Money, OverdueLines } from "./parts";
+import { BalanceLine, ENTRY_KIND_LABELS, errorText, Failure, FieldError, Loading, OverdueLines } from "./parts";
 import { PaymentHistoryNote } from "./PaymentHistoryNote";
 import { ReminderAction } from "./ReminderAction";
 
@@ -341,12 +341,7 @@ function Detail({
         {archived ? <p className="notice">{t("customer.archived")}</p> : null}
         {customer.remindersOff ? <p className="row__meta">{t("customer.remindersOff")}</p> : null}
 
-        <p className="balance balance--large">
-          <span>{t("customer.balance")}</span>{" "}
-          <strong>
-            <Money uzs={customer.balance} usd={customer.usd?.balance} />
-          </strong>
-        </p>
+        <BalanceLine label={t("customer.balance")} uzs={customer.balance} usd={customer.usd?.balance} large />
         <OverdueLines overdue={customer.overdue} />
         {customer.usd?.overdue ? <OverdueLines overdue={customer.usd.overdue} currency="USD" /> : null}
 

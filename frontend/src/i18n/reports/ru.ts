@@ -20,6 +20,8 @@ export const ruReports: RuReportsCatalog = {
 
   "reports.outstanding.start": "Долг на начало периода",
   "reports.outstanding.end": "Долг на конец периода",
+  "reports.advances.start": "Авансы на начало периода",
+  "reports.advances.end": "Авансы на конец периода",
   "reports.netChange": "Изменение за период",
   "reports.credit": "Продано в долг",
   "reports.payments": "Возвращено (оплаты)",
@@ -33,6 +35,9 @@ export const ruReports: RuReportsCatalog = {
   "reports.equation": "Проверка",
   "reports.equation.hint": "Долг на начало + продано в долг + начальный долг − оплаты = долг на конец",
   "reports.equation.line": "{start} + {credit} + {opening} − {payments} = {end}",
+  "reports.equation.line.advances":
+    "({start} − {advancesStart}) + {credit} + {opening} − {payments} = ({end} − {advancesEnd})",
+  "reports.equation.hint.advances": "Авансы клиентов считаются за вычетом из долга: (долг − авансы).",
   "reports.equation.mismatch":
     "Расчёт не сошёлся: слева {computed}, а долг на конец периода {end}. Сообщите в поддержку.",
 

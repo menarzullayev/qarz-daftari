@@ -127,6 +127,8 @@ UZ: dict[str, str | tuple[str, ...]] = {
     "owed_usd": "Qarzi ($)",
     "summary_debtors_usd": "Dollarda qarzdor mijozlar soni",
     "summary_outstanding_usd": "Jami qarz ($)",
+    "summary_advances": "Mijozlarning oldindan to'lovlari (avans)",
+    "summary_advances_usd": "Mijozlarning oldindan to'lovlari ($)",
     "summary_months_usd": (
         "Oylar bo'yicha, dollarda (bekor qilingan yozuvlar va bekor qilish yozuvlari hisobga olinmagan)"
     ),
@@ -459,6 +461,8 @@ RU: dict[str, str | tuple[str, ...]] = {
     "owed_usd": "Долг ($)",
     "summary_debtors_usd": "Число должников в долларах",
     "summary_outstanding_usd": "Всего долг ($)",
+    "summary_advances": "Предоплаты клиентов (авансы)",
+    "summary_advances_usd": "Предоплаты клиентов ($)",
     "summary_months_usd": "По месяцам, в долларах (отменённые записи и записи об отмене не учтены)",
     "summary_entries": "Число записей в книге",
     "summary_months": "По месяцам (отменённые записи и записи об отмене не учтены)",

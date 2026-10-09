@@ -65,10 +65,14 @@ function Totals({
     const entries = t("reports.entries", { count });
     return customers === undefined ? entries : t("reports.activity", { entries, customers: formatCustomerCount(customers, language) });
   };
-  const { outstanding, credit, payments, opening, reversals } = report;
+  const { outstanding, advances, credit, payments, opening, reversals } = report;
   // The server states that this holds exactly; it is shown in figures so a person can check it, and a
-  // response in which it does not hold is said to be wrong rather than passed off as a report.
-  const computed = outstanding.start + credit.amount + opening.amount - payments.amount;
+  // response in which it does not hold is said to be wrong rather than passed off as a report. With
+  // advances it holds of the position as a whole: what is owed less what is held, at both ends.
+  const heldStart = advances?.start ?? 0;
+  const heldEnd = advances?.end ?? 0;
+  const computed = outstanding.start - heldStart + credit.amount + opening.amount - payments.amount;
+  const position = outstanding.end - heldEnd;
 
   return (
     <>
@@ -81,6 +85,19 @@ function Totals({
           <dt>{t("reports.outstanding.end")}</dt>
           <dd>{money(outstanding.end)}</dd>
         </div>
+        {/* Beside the debt and never taken from it; a shop that held no advance has no such figures. */}
+        {advances ? (
+          <>
+            <div className="figure">
+              <dt>{t("reports.advances.start")}</dt>
+              <dd>{money(advances.start)}</dd>
+            </div>
+            <div className="figure">
+              <dt>{t("reports.advances.end")}</dt>
+              <dd>{money(advances.end)}</dd>
+            </div>
+          </>
+        ) : null}
         <div className="figure">
           <dt>{t("reports.netChange")}</dt>
           <dd>{report.netChange > 0 ? `+${money(report.netChange)}` : money(report.netChange)}</dd>
@@ -118,18 +135,29 @@ function Totals({
       <section aria-labelledby="reports-equation">
         <h3 id="reports-equation">{t("reports.equation")}</h3>
         <p className="hint">{t("reports.equation.hint")}</p>
+        {advances ? <p className="hint">{t("reports.equation.hint.advances")}</p> : null}
         <p className="equation">
-          {t("reports.equation.line", {
-            start: money(outstanding.start),
-            credit: money(credit.amount),
-            opening: money(opening.amount),
-            payments: money(payments.amount),
-            end: money(outstanding.end),
-          })}
+          {advances
+            ? t("reports.equation.line.advances", {
+                start: money(outstanding.start),
+                advancesStart: money(advances.start),
+                credit: money(credit.amount),
+                opening: money(opening.amount),
+                payments: money(payments.amount),
+                end: money(outstanding.end),
+                advancesEnd: money(advances.end),
+              })
+            : t("reports.equation.line", {
+                start: money(outstanding.start),
+                credit: money(credit.amount),
+                opening: money(opening.amount),
+                payments: money(payments.amount),
+                end: money(outstanding.end),
+              })}
         </p>
-        {computed === outstanding.end ? null : (
+        {computed === position ? null : (
           <p className="notice notice--error" role="alert">
-            {t("reports.equation.mismatch", { computed: money(computed), end: money(outstanding.end) })}
+            {t("reports.equation.mismatch", { computed: money(computed), end: money(position) })}
           </p>
         )}
       </section>

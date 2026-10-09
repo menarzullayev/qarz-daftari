@@ -21,6 +21,8 @@ export const enReports: PartialCatalog<typeof uzReports, EnPlural> = {
 
   "reports.outstanding.start": "Debt at the start of the period",
   "reports.outstanding.end": "Debt at the end of the period",
+  "reports.advances.start": "Advances held at the start of the period",
+  "reports.advances.end": "Advances held at the end of the period",
   "reports.netChange": "Change over the period",
   "reports.credit": "Credit sales",
   "reports.payments": "Paid back (payments)",
@@ -35,6 +37,9 @@ export const enReports: PartialCatalog<typeof uzReports, EnPlural> = {
   "reports.equation.hint":
     "Debt at the start + credit sales + opening debt − payments = debt at the end of the period",
   "reports.equation.line": "{start} + {credit} + {opening} − {payments} = {end}",
+  "reports.equation.line.advances":
+    "({start} − {advancesStart}) + {credit} + {opening} − {payments} = ({end} − {advancesEnd})",
+  "reports.equation.hint.advances": "Customers' advances are taken from the debt on both sides: (debt − advances).",
   "reports.equation.mismatch":
     "The figures do not match: the left side is {computed}, but the debt at the end of the period is {end}. Tell support.",
 

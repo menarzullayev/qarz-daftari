@@ -37,6 +37,9 @@ _STATUS = {
     "ALREADY_REVERSED": 409,
     "CANNOT_REVERSE_REVERSAL": 409,
     "WOULD_GO_NEGATIVE": 409,
+    "ADVANCE_NOT_CONFIRMED": 409,
+    "ADVANCE_TOO_LARGE": 409,
+    "ADVANCES_STAND": 409,
     "PROMISE_ALREADY_SET": 409,
     "CUSTOMER_ALREADY_LINKED": 409,
     "DISPUTE_NOT_ALLOWED": 409,
@@ -141,6 +144,14 @@ _MESSAGES = {
         "ALREADY_REVERSED": "Bu yozuv allaqachon bekor qilingan.",
         "CANNOT_REVERSE_REVERSAL": "Bekor qilish yozuvini bekor qilib bo'lmaydi.",
         "WOULD_GO_NEGATIVE": "Bekor qilinsa qarz manfiy bo'lib qoladi. Avval keyingi to'lovni bekor qiling.",
+        "ADVANCE_NOT_CONFIRMED": (
+            "To'lov mijozning qarzidan katta. Ortiqchasi oldindan to'lov (avans) bo'lib qolishini tasdiqlang."
+        ),
+        "ADVANCE_TOO_LARGE": "Oldindan to'lov juda katta: bitta mijozning avansi bitta yozuv chegarasidan oshmaydi.",
+        "ADVANCES_STAND": (
+            "Oldindan to'lovni o'chirib bo'lmaydi: ba'zi mijozlarning avansi turibdi. Avval ular nasiyaga "
+            "ishlatilsin yoki to'lov bekor qilinsin."
+        ),
         "PROMISE_ALREADY_SET": "Muddat allaqachon belgilangan. Endi uni menejer yoki do'kon egasi o'zgartiradi.",
         "CATALOG_NAME_TAKEN": "Katalogda shu nomli mahsulot bor (yashirilgan bo'lishi ham mumkin).",
         "CATALOG_ITEM_NOT_LEARNED": "Bu mahsulot allaqachon ko'rib chiqilgan.",
@@ -272,6 +283,14 @@ _MESSAGES = {
         "ALREADY_REVERSED": "Эта запись уже отменена.",
         "CANNOT_REVERSE_REVERSAL": "Запись об отмене отменить нельзя.",
         "WOULD_GO_NEGATIVE": "После такой отмены долг стал бы отрицательным. Сначала отмените более позднюю оплату.",
+        "ADVANCE_NOT_CONFIRMED": (
+            "Оплата больше долга клиента. Подтвердите, что остаток останется предоплатой (авансом)."
+        ),
+        "ADVANCE_TOO_LARGE": "Предоплата слишком велика: аванс одного клиента не может превышать предел одной записи.",
+        "ADVANCES_STAND": (
+            "Предоплату нельзя отключить: у некоторых клиентов есть аванс. Сначала он должен уйти в счёт "
+            "продаж в долг, или отмените оплату."
+        ),
         "PROMISE_ALREADY_SET": "Срок уже задан. Теперь его меняет менеджер или владелец магазина.",
         "CATALOG_NAME_TAKEN": "В каталоге уже есть товар с таким названием (возможно, он скрыт).",
         "CATALOG_ITEM_NOT_LEARNED": "Этот товар уже проверен.",
