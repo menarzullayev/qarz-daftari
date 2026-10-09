@@ -480,13 +480,14 @@ export const ru: RuCatalog = {
   "reminders.sms": "Отправлять также по SMS",
   "reminders.sms.hint":
     "SMS работают, только если они включены и на платформе, и могут быть недоступны. Клиенту, подключённому к Telegram, напоминание придёт в Telegram.",
-  "reminders.sms.usd": "В SMS называется только долг в сумах. Напоминание о долге в долларах приходит только в Telegram.",
+  "reminders.sms.usd": "В SMS называется только долг в сумах. Напоминание о долге в долларах приходит только в Telegram: клиент с долгом в долларах, не подключённый к Telegram, виден в списке ниже.",
   "reminders.saved": "Настройки напоминаний сохранены.",
   "reminders.unreachable.title": "Клиенты без связи",
   "reminders.unreachable.hint":
     "У этих клиентов есть долг с наступившим сроком, но напоминание отправить некуда. Создайте личную ссылку на странице клиента и подключите его к Telegram.",
   "reminders.unreachable.none": "Нет клиентов, до которых не доходят напоминания.",
   "reminders.unreachable.noPhone": "Телефон не указан",
+  "reminders.unreachable.usd": "О долге в долларах по SMS не напоминают: в SMS называются только сумы. Подключите клиента к Telegram.",
   "reminders.send": "Отправить напоминание",
   "reminders.send.pending": "Отправка…",
   "reminders.sent.telegram": "Напоминание отправлено в Telegram: {amount}.",

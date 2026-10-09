@@ -462,13 +462,14 @@ export const kaa: PartialCatalog<typeof uz> = {
   "reminders.sms": "SMS arqalı da jiberiw",
   "reminders.sms.hint":
     "SMS tek platformada da qosılǵan bolsa isleydi hám bolmawı da múmkin. Telegramǵa jalǵanǵan qarıydarǵa eskertiw Telegram arqalı baradı.",
-  "reminders.sms.usd": "SMS tek swmdaǵı qarızdı aytadı. Dollardaǵı qarız haqqındaǵı eskertiw tek Telegram arqalı baradı.",
+  "reminders.sms.usd": "SMS tek swmdaǵı qarızdı aytadı. Dollardaǵı qarız haqqındaǵı eskertiw tek Telegram arqalı baradı: dollarda qarızı bar, Telegramǵa jalǵanbaǵan qarıydar tómendegi dizimde kórinedi.",
   "reminders.saved": "Eskertiw sazlawları saqlandı.",
   "reminders.unreachable.title": "Xabar jetpeytuǵın qarıydarlar",
   "reminders.unreachable.hint":
     "Bul qarıydarlarda tólew múddeti kelgen qarız bar, biraq eskertiw jiberiw jolı joq. Qarıydar betinde jeke silteme jaratıp, onı Telegramǵa jalǵań.",
   "reminders.unreachable.none": "Eskertiw jetip barmaytuǵın qarıydar joq.",
   "reminders.unreachable.noPhone": "Telefon kiritilmegen",
+  "reminders.unreachable.usd": "Dollardaǵı qarız SMS arqalı eskertilmeydi: SMS tek swmdı aytadı. Qarıydardı Telegramǵa jalǵań.",
   "reminders.send": "Eskertiw jiberiw",
   "reminders.send.pending": "Jiberilmekte…",
   "reminders.sent.telegram": "Eskertiw Telegram arqalı jiberildi: {amount}.",

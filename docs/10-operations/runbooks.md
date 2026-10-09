@@ -651,7 +651,9 @@ texts state one amount in so'm, so an SMS is the reminder of the so'm debt alone
 so'm debt as if the shop had no dollars, it states the so'm amount and nothing else, and none goes out
 when only dollars are due. The code refuses to make an SMS text with a dollar amount in it, and a test
 holds it to that. The staff are told what an SMS leaves out: under the SMS switch on the reminders
-screen, and after a reminder sent by hand ("the SMS stated so'm only; 12.50 $ was not mentioned").
+screen, after a reminder sent by hand ("the SMS stated so'm only; 12.50 $ was not mentioned"), and in
+the list of customers who cannot be reached, which names every customer without Telegram whose dollar
+debt is due.
 
 To let an SMS carry dollars, the founder asks Eskiz one question when registering: may the variable
 part `{amount}` of the approved templates also be `12.50 $`, or `70 000 so'm va 12.50 $` (Russian:

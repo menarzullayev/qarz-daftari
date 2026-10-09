@@ -467,13 +467,14 @@ export const tg: PartialCatalog<typeof uz> = {
   "reminders.sms": "Бо SMS ҳам фиристодан",
   "reminders.sms.hint":
     "SMS танҳо вақте кор мекунад, ки дар платформа ҳам фаъол бошад, ва мумкин аст дастрас набошад. Ба мизоҷи ба Telegram пайваст ёдоварӣ тавассути Telegram меравад.",
-  "reminders.sms.usd": "SMS танҳо қарзи сӯмиро мегӯяд. Ёдоварӣ дар бораи қарзи долларӣ танҳо тавассути Telegram меравад.",
+  "reminders.sms.usd": "SMS танҳо қарзи сӯмиро мегӯяд. Ёдоварӣ дар бораи қарзи долларӣ танҳо тавассути Telegram меравад: мизоҷе, ки қарзи долларӣ дорад ва ба Telegram пайваст нест, дар рӯйхати поён дида мешавад.",
   "reminders.saved": "Танзимоти ёдоварӣ нигоҳ дошта шуд.",
   "reminders.unreachable.title": "Мизоҷоне, ки ба онҳо расида намешавад",
   "reminders.unreachable.hint":
     "Ин мизоҷон қарзе доранд, ки мӯҳлати пардохташ расидааст, вале роҳи фиристодани ёдоварӣ нест. Дар саҳифаи мизоҷ пайванди шахсӣ сохта, ӯро ба Telegram пайваст кунед.",
   "reminders.unreachable.none": "Мизоҷе, ки ёдоварӣ ба ӯ намерасад, нест.",
   "reminders.unreachable.noPhone": "Телефон ворид нашудааст",
+  "reminders.unreachable.usd": "Қарзи долларӣ бо SMS ёдоварӣ намешавад: SMS танҳо сӯмро мегӯяд. Мизоҷро ба Telegram пайваст кунед.",
   "reminders.send": "Фиристодани ёдоварӣ",
   "reminders.send.pending": "Фиристода истодааст…",
   "reminders.sent.telegram": "Ёдоварӣ тавассути Telegram фиристода шуд: {amount}.",

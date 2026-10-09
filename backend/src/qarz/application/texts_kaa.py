@@ -741,6 +741,10 @@ ERRORS: dict[str, str] = {
     "CUSTOMER_UNREACHABLE": (
         "Bul qarıydarǵa xabar jetpeydi: Telegram jalǵanbaǵan, al SMS óshirilgen yamasa nomer joq."
     ),
+    "CUSTOMER_UNREACHABLE_USD": (
+        "Bul qarıydardıń tólew múddeti kelgen qarızı tek dollarda, al SMS tek swmdaǵı qarızdı aytadı. "
+        "Eskertiw jiberiw ushın qarıydardı Telegramǵa jalǵań."
+    ),
     "LIMIT_REACHED": "Bul sawda qarıydardıń nesiye limitinen asadı. Menedjer yamasa dúkan iyesi jaza aladı.",
     "DELETION_ALREADY_REQUESTED": "Dúkandı óshiriw álleqashan soralǵan.",
     "DELETION_NOT_REQUESTED": "Dúkandı óshiriw soralmaǵan.",

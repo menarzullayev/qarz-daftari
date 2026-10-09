@@ -340,6 +340,11 @@ export type UnreachableCustomer = {
   amount: number;
   /** What is due in dollars, in cents; absent when the shop has no dollars. */
   usdAmount?: number;
+  /**
+   * Why, told only in a shop that works in dollars: "usd_needs_telegram" when a dollar debt is due,
+   * which no SMS states, or "no_channel".
+   */
+  reason?: string;
 };
 
 /**
@@ -951,6 +956,7 @@ function unreachableCustomer(value: unknown): UnreachableCustomer {
     phone: textOrNull(body["phone"]),
     amount: whole(body["amount"]),
     ...usdAmount(body["usd"]),
+    ...(typeof body["reason"] === "string" ? { reason: body["reason"] } : {}),
   };
 }
 

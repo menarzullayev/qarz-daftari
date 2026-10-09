@@ -288,6 +288,8 @@ function Unreachable() {
                 </span>
               </Link>
               <p className="row__meta">{customer.phone ?? t("reminders.unreachable.noPhone")}</p>
+              {/* A number is there and still nothing reaches them: the reason, in a shop that works in dollars. */}
+              {customer.reason === "usd_needs_telegram" ? <p className="row__meta">{t("reminders.unreachable.usd")}</p> : null}
             </li>
           ))}
         </ul>

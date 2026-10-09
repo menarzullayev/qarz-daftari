@@ -10,8 +10,9 @@ the shop had no dollars: its ground, its kind (due today or overdue) and its amo
 book's, and it is not sent when only dollars are due. It never states a dollar amount, never a figure
 that includes one, and nothing in it says that the amount is all that is owed. What it leaves out the
 staff are told: the answer to a reminder sent by hand names the dollars it did not state
-(`usd.unstated`), and the settings of a shop that works in dollars say that SMS carries so'm only
-(`usd.sms`).
+(`usd.unstated`), the settings of a shop that works in dollars say that SMS carries so'm only
+(`usd.sms`), and a customer whose dollar debt is due and who has no Telegram is on the list of those
+who cannot be reached, with the reason (`reason`), whether or not an SMS tells them of their so'm.
 """
 
 from collections.abc import Callable, Sequence
@@ -77,6 +78,18 @@ class LimitReached(AppError):
 
 class CustomerUnreachable(AppError):
     code = "CUSTOMER_UNREACHABLE"
+
+
+class DollarsNeedTelegram(CustomerUnreachable):
+    """Only dollars are due, and the customer has no Telegram: an SMS could not say what is owed."""
+
+    wording = "CUSTOMER_UNREACHABLE_USD"
+
+
+# Why a customer is on the list of those who cannot be reached, told only in a shop that works in
+# dollars: nothing reaches them at all, or their dollar debt is due and only Telegram could carry it.
+NO_CHANNEL = "no_channel"
+USD_NEEDS_TELEGRAM = "usd_needs_telegram"
 
 
 async def sms_allowance(session: TenantSession, today: date) -> tuple[bool, int, int]:
@@ -309,6 +322,9 @@ class ReminderService:
                     sms=await self._sms_left(session, today),
                 )
                 if sent is None:
+                    if in_sum is None:
+                        # Only dollars are due: a number and SMS would not have helped, and the words say so.
+                        raise DollarsNeedTelegram({"reason": USD_NEEDS_TELEGRAM})
                     raise CustomerUnreachable()
                 channel, stated = sent
                 await session.record_activity(
@@ -365,16 +381,19 @@ class ReminderService:
                         sms_on_shop=settings.sms_on,
                         sms_quota_left=sms[1],
                     )
-                    if reachable is None:
-                        items.append(
-                            {
-                                "customer_id": str(candidate.customer_id),
-                                "display_name": candidate.display_name,
-                                "phone": candidate.phone,
-                                "amount": plan.amount,
-                                **({"usd": {"amount": plan.amount_usd}} if dollars else {}),
-                            }
-                        )
+                    # A dollar debt that is due reaches a customer through Telegram or not at all: one
+                    # whom an SMS tells of their so'm is still listed for their dollars.
+                    if reachable is None or (reachable is Channel.SMS and plan.amount_usd > 0):
+                        item: dict[str, Any] = {
+                            "customer_id": str(candidate.customer_id),
+                            "display_name": candidate.display_name,
+                            "phone": candidate.phone,
+                            "amount": plan.amount,
+                        }
+                        if dollars:
+                            item["usd"] = {"amount": plan.amount_usd}
+                            item["reason"] = USD_NEEDS_TELEGRAM if plan.amount_usd > 0 else NO_CHANNEL
+                        items.append(item)
                 after = batch[-1].customer_id
             return {"items": items}
 

@@ -741,6 +741,10 @@ ERRORS: dict[str, str] = {
     "CUSTOMER_UNREACHABLE": (
         "This customer cannot be reached: Telegram is not connected, and SMS is off or there is no number."
     ),
+    "CUSTOMER_UNREACHABLE_USD": (
+        "What this customer owes now is in dollars only, and an SMS states a debt in soum only. "
+        "To send a reminder, connect the customer to Telegram."
+    ),
     "LIMIT_REACHED": "This sale goes over the customer's credit limit. A manager or the shop owner can record it.",
     "DELETION_ALREADY_REQUESTED": "Shop deletion was already requested.",
     "DELETION_NOT_REQUESTED": "Shop deletion was not requested.",

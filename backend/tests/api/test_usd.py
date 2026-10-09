@@ -678,6 +678,8 @@ def test_a_customer_reachable_only_by_sms_is_not_reminded_of_dollars_by_sms(
         )
         listed = read(client, world.manager_a, f"{shop(world)}/reminders/unreachable").json()["items"]
         assert [(i["display_name"], i["amount"], i["usd"]) for i in listed] == [("Vali", 0, {"amount": 1_200})]
+        # And the staff are told why: a number and SMS are there, and still nothing can be sent.
+        assert listed[0]["reason"] == "usd_needs_telegram" and listed[0]["phone"] == "+998901112233"
         refused = write(
             client,
             world.manager_a,
@@ -685,7 +687,16 @@ def test_a_customer_reachable_only_by_sms_is_not_reminded_of_dollars_by_sms(
             f"{shop(world)}/reminders/manual",
             {"customer_id": str(world.settled_customer_a)},
         )
-        assert refused.json()["error"]["code"] == "CUSTOMER_UNREACHABLE"
+        assert (refused.status_code, refused.json()["error"]) == (
+            409,
+            {
+                "code": "CUSTOMER_UNREACHABLE",
+                "message": message_text("uz", "CUSTOMER_UNREACHABLE_USD"),
+                "fields": {"reason": "usd_needs_telegram"},
+            },
+        )
+        assert "faqat dollarda" in refused.json()["error"]["message"]
+        assert message_text("uz", "CUSTOMER_UNREACHABLE_USD") != message_text("uz", "CUSTOMER_UNREACHABLE")
         assert owner.execute(
             "SELECT count(*) FROM outbox_message WHERE channel = 'sms' AND shop_id = %s", (world.shop_a,)
         ).fetchone() == (0,)
@@ -753,6 +764,11 @@ def test_an_sms_to_a_customer_who_owes_both_states_the_sum_only_and_the_staff_ar
     assert owner.execute(
         "SELECT channel, amount, amount_usd FROM reminder WHERE customer_id = %s", (world.customer_a,)
     ).fetchall() == [("sms", 50_000, 0)], "the record is of what was stated"
+    # The dollars are still unreminded, and the list of those who cannot be reached says so.
+    listed = read(client, world.manager_a, f"{shop(world)}/reminders/unreachable").json()["items"]
+    assert [(i["display_name"], i["amount"], i["usd"], i["reason"]) for i in listed] == [
+        ("Ali", 50_000, {"amount": 1_200}, "usd_needs_telegram")
+    ]
     settings = read(client, world.manager_a, f"{shop(world)}/reminders").json()
     assert settings["usd"] == {"sms": False}, "the shop is told that an SMS carries so'm only"
 
@@ -770,6 +786,10 @@ def test_a_customer_who_owes_sum_only_is_reminded_by_sms_as_before_and_is_not_li
     sent = _remind(client, world, world.customer_a)
     assert sent.json() == {"sent": True, "channel": "sms", "amount": 50_000, "usd": {"amount": 0}}
     assert _sms_texts(owner, world) == [say("uz", "sms_overdue", shop="Shop A", name="Ali", amount=money("uz", 50_000))]
+    # Nothing at all reaches a customer without a number: the reason is the general one.
+    owner.execute("UPDATE customer SET phone = NULL WHERE id = %s", (world.customer_a,))
+    listed = read(client, world.manager_a, f"{shop(world)}/reminders/unreachable").json()["items"]
+    assert [(i["display_name"], i["reason"]) for i in listed] == [("Ali", "no_channel")]
 
 
 def test_the_hourly_job_sends_no_sms_on_the_ground_of_a_dollar_debt(

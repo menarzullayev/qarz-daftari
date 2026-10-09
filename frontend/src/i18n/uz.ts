@@ -465,13 +465,14 @@ export const uz = {
   "reminders.sms": "SMS orqali ham yuborish",
   "reminders.sms.hint":
     "SMS faqat platformada ham yoqilgan bo'lsa ishlaydi va mavjud bo'lmasligi mumkin. Telegramga ulangan mijozga eslatma Telegram orqali boradi.",
-  "reminders.sms.usd": "SMS faqat so'mdagi qarzni aytadi. Dollardagi qarz haqidagi eslatma faqat Telegram orqali boradi.",
+  "reminders.sms.usd": "SMS faqat so'mdagi qarzni aytadi. Dollardagi qarz haqidagi eslatma faqat Telegram orqali boradi: dollarda qarzi bor, Telegramga ulanmagan mijoz quyidagi ro'yxatda ko'rinadi.",
   "reminders.saved": "Eslatma sozlamalari saqlandi.",
   "reminders.unreachable.title": "Yetib bo'lmaydigan mijozlar",
   "reminders.unreachable.hint":
     "Bu mijozlarda to'lash muddati kelgan qarz bor, lekin eslatma yuborish yo'li yo'q. Mijoz sahifasida shaxsiy havola yaratib, uni Telegramga ulang.",
   "reminders.unreachable.none": "Eslatma yetib bormaydigan mijoz yo'q.",
   "reminders.unreachable.noPhone": "Telefon kiritilmagan",
+  "reminders.unreachable.usd": "Dollardagi qarz SMS orqali eslatilmaydi: SMS faqat so'mni aytadi. Mijozni Telegramga ulang.",
   "reminders.send": "Eslatma yuborish",
   "reminders.send.pending": "Yuborilmoqda…",
   "reminders.sent.telegram": "Eslatma Telegram orqali yuborildi: {amount}.",

@@ -152,6 +152,10 @@ _MESSAGES = {
         "REMINDER_NOT_DUE": "Bu mijozda muddati o'tgan yoki bugun to'lanadigan qarz yo'q.",
         "REMINDER_LIMIT_REACHED": "Bu mijozga bugun eslatma allaqachon yuborilgan. Kuniga bitta mumkin.",
         "CUSTOMER_UNREACHABLE": "Bu mijozga yetib bo'lmaydi: Telegram ulanmagan, SMS esa o'chiq yoki raqam yo'q.",
+        "CUSTOMER_UNREACHABLE_USD": (
+            "Bu mijozning to'lash muddati kelgan qarzi faqat dollarda, SMS esa faqat so'mdagi qarzni aytadi. "
+            "Eslatma yuborish uchun mijozni Telegramga ulang."
+        ),
         "LIMIT_REACHED": "Bu savdo mijozning nasiya limitidan oshadi. Menejer yoki do'kon egasi yoza oladi.",
         "DELETION_ALREADY_REQUESTED": "Do'konni o'chirish allaqachon so'ralgan.",
         "DELETION_NOT_REQUESTED": "Do'konni o'chirish so'ralmagan.",
@@ -264,6 +268,10 @@ _MESSAGES = {
         "REMINDER_NOT_DUE": "У этого клиента нет просроченного долга и долга со сроком сегодня.",
         "REMINDER_LIMIT_REACHED": "Этому клиенту сегодня уже отправлено напоминание. Можно одно в день.",
         "CUSTOMER_UNREACHABLE": "С этим клиентом нет связи: Telegram не подключён, а SMS выключены или нет номера.",
+        "CUSTOMER_UNREACHABLE_USD": (
+            "У этого клиента долг с наступившим сроком только в долларах, а в SMS называется только долг в сумах. "
+            "Чтобы отправить напоминание, подключите клиента к Telegram."
+        ),
         "LIMIT_REACHED": "Эта продажа превысит лимит клиента. Записать может менеджер или владелец.",
         "DELETION_ALREADY_REQUESTED": "Удаление магазина уже запрошено.",
         "DELETION_NOT_REQUESTED": "Удаление магазина не запрашивалось.",
@@ -344,7 +352,7 @@ _WITH_FIELDS = {"FREE_PLAN_FULL": ("limit",)}
 
 # The messages that say more than their code does (`AppError.wording`), and the code each belongs to.
 # They are not codes: a client never sees their names, only their words under the code's own name.
-_WORDINGS = {"GOODS_NOT_IN_DOLLARS": "VALIDATION"}
+_WORDINGS = {"GOODS_NOT_IN_DOLLARS": "VALIDATION", "CUSTOMER_UNREACHABLE_USD": "CUSTOMER_UNREACHABLE"}
 
 
 def error_response(

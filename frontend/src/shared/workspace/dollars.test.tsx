@@ -805,15 +805,29 @@ describe("disputes, date requests and reminders", () => {
         ? ok({ items: [{ customer_id: CUSTOMER_ID, display_name: "Ali Valiyev", phone: null, amount: 45000, ...item }] })
         : ok(remindersBody(settings)),
     );
-  const SMS_NOTE = /^SMS faqat so'mdagi qarzni aytadi\. Dollardagi qarz haqidagi eslatma faqat Telegram orqali boradi\./;
+  const WHY = "Dollardagi qarz SMS orqali eslatilmaydi: SMS faqat so'mni aytadi. Mijozni Telegramga ulang.";
+  const SMS_NOTE = /^SMS faqat so'mdagi qarzni aytadi\. Dollardagi qarz haqidagi eslatma faqat Telegram orqali boradi/;
 
-  it("tells a shop that works in dollars, under the SMS switch, that an SMS states so'm only, and no other shop", async () => {
-    renderScreen(<RemindersScreen />, { fetch: unreachable({ usd: { amount: 0 } }, { usd: { sms: false } }).fetch, role: "manager" });
+  it("says why a customer with a number is still out of reach: the debt is in dollars, and an SMS states so'm only", async () => {
+    const server = unreachable({ phone: "+998901234567", amount: 0, usd: { amount: 1250 }, reason: "usd_needs_telegram" }, { usd: { sms: false } });
+    renderScreen(<RemindersScreen />, { fetch: server.fetch, role: "manager" });
+    await screen.findByText("Ali Valiyev");
+    const row = within(screen.getByRole("region", { name: "Yetib bo'lmaydigan mijozlar" })).getByRole("listitem");
+    expect([...row.querySelectorAll("p")].map((line) => plain(line.textContent))).toEqual(["+998901234567", WHY]);
+    expect(plain(within(row).getByRole("link").textContent)).toBe("Ali Valiyev0 so'm 12.50 $");
+    // And under the SMS switch the shop is told once, for every customer.
     expect(await screen.findByText(SMS_NOTE)).toBeTruthy();
+  });
+
+  it("gives no reason where nothing at all reaches the customer, and none in a shop without dollars", async () => {
+    renderScreen(<RemindersScreen />, { fetch: unreachable({ usd: { amount: 0 }, reason: "no_channel" }, { usd: { sms: false } }).fetch, role: "manager" });
+    await screen.findByText("Ali Valiyev");
+    expect(screen.queryByText(WHY)).toBeNull();
     cleanup();
     renderScreen(<RemindersScreen />, { fetch: unreachable({}).fetch, role: "manager" });
     await screen.findByText("Ali Valiyev");
     await screen.findByRole("button", { name: "Saqlash" });
+    expect(screen.queryByText(WHY)).toBeNull();
     expect(screen.queryByText(SMS_NOTE)).toBeNull();
     expectNoDollars();
   });
