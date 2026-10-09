@@ -17,6 +17,7 @@ export const uz = {
   "nav.stock": "Ombor",
   "nav.stockDocuments": "Ombor hujjatlari",
   "nav.suppliers": "Ta'minotchilar",
+  "nav.network": "Hamkorlar",
   "nav.reminders": "Eslatmalar",
   "nav.reports": "Hisobotlar",
   "nav.cash": "Kassa",

@@ -316,6 +316,93 @@ A value that is none of the six is refused with `VALIDATION` on `lang` (`must be
 
 **Reviewed or not.** English was written with the Uzbek and Russian texts side by side. Tajik and Karakalpak were written by a model and have not been read by a native speaker: they are not to be offered to shops as finished before `docs/10-operations/translation-review.md` is worked through. Nothing in the interface marks them; the checklist and the three glossaries (`docs/10-operations/glossaries/`) are where that is tracked.
 
+## The network between shops
+
+Expansion module J (decision 7 of 2026-10-09; business rules BR-80 to BR-96). Behind the platform switch `network_on` (off by default, asks for the second factor), and only while `stock_on` is on as well. With either off every route below answers 404 to everyone, before the caller is asked who they are; no function of migration 0045 does anything; no existing answer differs by a byte (`tests/api/test_network.py`).
+
+### The trust model
+
+This is the only feature in which one shop's step reaches another shop's rows. Tenant isolation (forced row-level security by `qd.shop_id`, ADR-016) is kept whole:
+
+1. **No policy is widened.** The nine tables of migration 0045 are ordinary tenant tables: `shop_id`, forced row-level security, the one policy every tenant table has. A shop reads its own rows, with no function in between.
+2. **What two shops share is stored twice.** Each side holds its own copy under its own `shop_id`, with the same identifier. A copy holds only what that side may know (BR-82). The buyer's catalogue item of a line is on the buyer's copy only, the supplier's on the supplier's; the supplier's customer and issuing member are on the supplier's copy only. An identifier is not a handle: every read is by row-level security and every write verifies the link, so a shop that is no party gets the answer a missing thing gets.
+3. **The application cannot write a shared table.** `qd_app` holds `SELECT` on them and nothing else. Every change is one call of a `SECURITY DEFINER` function (owner's rights, `search_path = public, pg_temp`, closed to PUBLIC, granted to `qd_app` by name) that writes both copies in the caller's transaction.
+4. **Every function verifies before it writes:** the acting shop is the tenant of the transaction (`network_guard`); both switches are on; the acting member is an active member of the acting shop (`network_member`); a link joins exactly the two shops named, with opposite roles (`network_pair`); the acting side has the role the step belongs to; the thing is in the state the step starts from. Any failure of the first four is `NETWORK_NOT_FOUND`, which the API answers as 404.
+5. **Books are never written by these functions.** A shop's ledger, stock and supplier accounts are written only by the application's own paths, under that shop's tenant setting.
+6. **A transaction names a second tenant in exactly one case:** the buyer confirming a delivery note. `network_enter_peer` moves the setting to the supplier of that note and `network_leave_peer` moves it back; between them the application writes the supplier's sale through the ordinary ledger and stock code, confined by row-level security to the supplier's rows. `network_receipt_finish` then refuses to mark the note received unless both shops' books hold exactly what the note says. `tests/api/test_network_more.py` holds the source to it: the tenant setting is written in one place, the function is called in one place of the storage, and that is asked for in one place of the application.
+
+What these functions are not: a boundary against the application role itself. `qd_app` can already name any tenant at the start of a transaction; authorization of the person is the application's, as for every request. What they guarantee is that the code path between two shops cannot be taken for shops that are not linked, by the wrong side, or in the wrong state, whatever the application does.
+
+### Schema (migration 0045)
+
+| Table | Holds | Application role |
+|---|---|---|
+| `network_invite` | A code as its SHA-256, the role the inviting shop will have, expiry, use, withdrawal | select, insert, update of `revoked_at` |
+| `network_link` | One side of a link: the partner's shop, this shop's role, state, the partner's name and phone as known, this shop's own supplier or customer row for the partner, the two counters | select |
+| `network_order_draft` | An order the buyer has not sent (its lines as JSON) | select, insert, update, delete: it never crosses |
+| `network_order`, `network_order_line` | One side of a sent order and its lines | select |
+| `network_note`, `network_note_line` | One side of a delivery note; what it says cannot be updated by anyone (trigger `network_note_guard`, `network_note_line_guard`) | select |
+| `network_payment` | One side of a payment, with this side's own entry for it | select |
+| `network_event` | The history of a link, order, note or payment as this side may know it; insert-only | select |
+
+Also: `stock_document.origin_ref` is unique where set (a receipt answers one note). `erase_shop` deletes the erased shop's nine tables and, on each partner's side, ends the link, closes what waited, and clears the partner's name and phone (BR-96).
+
+### The functions
+
+Every one begins with points 4.1 to 4.4 above (the last four lines of the table check the tenant differently, as stated). "Pair lock" is `network_pair`: both copies of the link `FOR UPDATE`, lower shop identifier first.
+
+| Function | Who and when | What it checks beyond the common part | What it writes |
+|---|---|---|---|
+| `network_lock(shop, peer, link)` | Any step, first | Pair lock | Nothing; returns the link's state |
+| `network_invite_redeem(shop, code_hash, role, member, now)` | A shop presents a code | The code exists, is unused, not withdrawn, not expired, another shop's, for the opposite role; both shops are active; no live link in that direction | Marks the code used; both copies of a requested link, each with the other's name |
+| `network_link_decide(shop, peer, link, accept, member, now)` | The inviting shop answers | Acting side made the invitation; state `requested`; both shops active | State on both copies; on acceptance each side's copy gets the other's phone |
+| `network_link_end(shop, peer, link, member, now)` | Either side | State `requested` or `active` | Closes open notes, orders and payments; unlinks the buyer's supplier row; state `ended` |
+| `network_link_attach(shop, link, counterpart, made, member)` | A shop names its own row for the partner | Own copy only; link active with no row yet; the row is this shop's own active supplier (not linked elsewhere) or customer | `supplier.linked_shop_id`; the link's own copy |
+| `network_notice_recipients(shop, peer, link)` | Before telling the partner | A link joins the two (any state) | Nothing; returns Telegram chat, language, role and stored permission changes of the partner's active members, nothing else |
+| `network_order_send(shop, peer, link, order, member, note, wanted, lines, now)` | The buyer | Acting side is the buyer; link active; 1 to 100 lines | Both copies of the order and lines (the buyer's item only on its own); deletes the draft |
+| `network_order_accept(shop, peer, order, member, currency, lines, now)` | The supplier | Acting side is the supplier; order `sent`; link active; both shops work in the currency; every line answered once; total above zero | Accepted quantity and price on both copies (the supplier's item only on its own); currency and total |
+| `network_order_close(shop, peer, order, member, reason, now)` | Either side | Order `sent`, `accepted`, or `delivered` with no note waiting | `cancelled` (buyer) or `declined` (supplier); a rejected note becomes void |
+| `network_note_issue(shop, peer, order, note, member, customer, paid, reason, lines, now)` | The supplier | Acting side is the supplier; link active; the customer is the link's; both shops work in the currency; first note of an accepted order with no lines given, or a correction with a reason of a note not received; lines are the order's; total above zero; paid within the total | Supersedes the note before; both copies of the note and its lines; order `delivered` |
+| `network_note_reject(shop, peer, note, member, reason, lines, now)` | The buyer | Acting side is the buyer; note `issued`; link active | `rejected` with the reason; the counted quantities |
+| `network_enter_peer(home, peer, note)` | The buyer's confirmation | `home` is the tenant and the buyer; link active; both copies of the note `issued` (locked); the peer shop is active | The tenant setting becomes the peer |
+| `network_leave_peer(home, peer, note)` | The same transaction | The tenant is that peer, entered for that note in this transaction; the note still waits | The tenant setting becomes `home` again |
+| `network_receipt_finish(shop, peer, note, member, document, entry, paid_entry, now)` | The buyer's confirmation, last | Buyer; both copies `issued`; link active; the document is this shop's posted receipt with this note as `origin_ref`, this supplier, the note's currency, total and paid; the entry is the peer's standing credit sale to the note's customer for the note's total in its currency by the member who issued the note; the payment entry likewise when something was paid | Both copies `received` with this side's posting; order `received` |
+| `network_payment_record(shop, peer, link, payment, member, amount, currency, note, entry, now)` | Either side | Link active; both shops work in the currency; the entry is this shop's own standing payment of that amount by that member on the link's supplier (buyer) or customer (supplier); one entry stands for one payment | Both copies, `awaiting` |
+| `network_payment_decide(shop, peer, payment, member, confirm, reason, entry, now)` | The side that did not record it | Not the recorder; `awaiting`; link active; confirming: its own entry as above; declining: a reason | `confirmed` with this side's entry, or `declined` |
+| `network_payment_withdraw(shop, peer, payment, member, now)` | The recorder | Recorder; `awaiting`; its own entry is already cancelled | `withdrawn` |
+
+Each writes the step into `network_event` and `activity` of both shops (`network_log`): the acting side with its member, the other side as the partner's, with no member.
+
+### Locks
+
+Every step of a link takes the pair lock first, before anything of either shop's own books: so two steps of one link take turns, and the loser of two answers to one note finds its state changed and is refused. The confirmation then writes the shop with the lower identifier first, whichever role it has, so two confirmations between the same two shops in opposite directions take both shops' rows in one order. Inside a shop the order is the stock's: customer, document, items (sorted, `FOR NO KEY UPDATE`), supplier, cash. An ordinary sale or payment of either shop takes no lock of the network. `tests/api/test_network_races.py` runs the five races (two confirmations of one note; a confirmation against a correction and against ending the link; confirmations in opposite directions over the same goods; a confirmation against the supplier's own sale and payment to the same customer; two payments and a confirmation over one link) and asserts the exact statuses.
+
+### API (under `/api/v1/shops/{id}/network`; writes are idempotent by `Idempotency-Key`)
+
+| Route | Operation | Permission |
+|---|---|---|
+| `GET` (the root) | `network.overview`: links, what waits for this shop's step, open codes (to who manages links) | `network.view` |
+| `GET links/{link}` | `network.links.read`: the link, the reconciliation (BR-93), the history | `network.view` |
+| `POST invites`, `DELETE invites/{invite}` | `network.invites.create` (the code is in the answer once), `.revoke` | `network.manage` |
+| `POST links`, `POST links/{link}/accept`, `/decline`, `/end`, `PUT links/{link}/counterpart` | `network.links.request`, `.accept`, `.decline`, `.end`, `.attach` | `network.manage` |
+| `GET/POST drafts`, `GET/PUT/DELETE drafts/{draft}`, `POST drafts/{draft}/send` | `network.drafts.*`, `network.orders.send` | `network.order` |
+| `GET orders`, `GET orders/{order}` | `network.orders.list`, `.read` | `network.view` |
+| `POST orders/{order}/cancel` | `network.orders.cancel` (the buyer) | `network.order` |
+| `POST orders/{order}/accept`, `/decline`, `/deliver` | `network.orders.accept`, `.decline`, `network.notes.issue` | `network.fulfil`; issuing also `credits.record` |
+| `GET notes`, `GET notes/{note}` | `network.notes.list`, `.read` | `network.view` |
+| `POST notes/{note}/correct` | `network.notes.correct` | `network.fulfil` and `credits.record` |
+| `POST notes/{note}/confirm`, `/reject` | `network.notes.confirm`, `.reject` | `network.confirm`; confirming also `stock.receive`, and `suppliers.pay` when something was paid |
+| `GET payments`, `GET payments/{payment}` | `network.payments.list`, `.read` | `network.view` |
+| `POST payments`, `POST payments/{payment}/confirm`, `/decline`, `/withdraw` | `network.payments.record`, `.confirm`, `.decline`, `.withdraw` | `network.confirm`; an entry also needs its book's permission (BR-95) |
+
+No route takes, returns or searches for another shop's identifier. Refusals: `NETWORK_STATE` (409: not this side's step, or not in this state), `NETWORK_INVITE_INVALID` (404, one answer for every reason), `NETWORK_LINK_EXISTS`, `NETWORK_TOO_MANY_INVITES`, `NETWORK_PARTNER_UNAVAILABLE`, `NETWORK_COUNTERPART_INVALID`, `NETWORK_CURRENCY`, `NETWORK_BOOKS_MISMATCH`, `NETWORK_PARTNER_REFUSED` (409: the partner's books could not take the entry; no reason and no fields).
+
+**Clients.** While both switches are on, `GET /me/shops` carries the header `X-Qarz-Network: on` (absent otherwise; the body is unchanged). The panel then offers the section "Hamkorlar" to a member who holds `network.view`; the Mini App a screen of what waits and an order composer; both are loaded on demand. The bot has no command: it only tells.
+
+**Elsewhere.** The owner's export gains four sheets (links, orders, delivery notes, payments: the shop's own side) for a shop that has a link, and is unchanged for one that has none.
+
+**Not built**, and refused or left out rather than half done: a price list or any view of the supplier's catalogue; part deliveries of an order (one note counts per order); a confirmation with quantities other than the note's (reject, then a corrected note); returns between shops and any cancellation of a received note through the network (each shop corrects its own books with its own documents, and the reconciliation shows the difference); a public link to a note; refunds from the supplier to the buyer; changing a link's roles; live updates of a partner's name or phone after the link is made; a bot command.
+
 ## Events
 
 Domain events are raised and handled inside the command's transaction; effects on the outside world go through the outbox (ADR-007).
@@ -396,6 +483,11 @@ Behind the platform switch `permissions_on` (off by default, asks for the second
 | Suppliers | `suppliers.view` | - | Yes | Yes | Suppliers with balances; a supplier's account |
 | Suppliers | `suppliers.manage` | - | Yes | Yes | Add, change, archive suppliers; an opening balance and its cancellation |
 | Suppliers | `suppliers.pay` | - | Yes | Yes | A payment to a supplier and its cancellation; paying at once on a receipt |
+| Partners | `network.view` | - | Yes | Yes | The network between shops: links, orders, delivery notes, payments, reconciliation (behind `network_on`) |
+| Partners | `network.manage` | - | - | Yes | Codes; asking for, accepting, declining and ending a link; naming the partner's row |
+| Partners | `network.order` | - | Yes | Yes | Write, send and cancel orders to a supplier |
+| Partners | `network.fulfil` | - | Yes | Yes | Accept or decline incoming orders; issue and correct delivery notes (also `credits.record`) |
+| Partners | `network.confirm` | - | Yes | Yes | Confirm or reject delivery notes; record, confirm, decline, take back payments (also the book's own permission) |
 | Reminders | `reminders.send` | - | Yes | Yes | Send a reminder; list unreachable customers |
 | Reports | `reports.view` | - | Yes | Yes | Period and overdue reports |
 | Reports | `reports.export` | - | Yes | Yes | Request, list, download exports |

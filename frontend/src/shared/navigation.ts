@@ -30,7 +30,7 @@ export function canManage(role: Role): boolean {
  * A part of the product that exists only while the platform has switched it on. The server says which
  * are on (a header of the person's shops); a section of one that is off is offered to nobody.
  */
-export type Feature = "cashBook" | "stock";
+export type Feature = "cashBook" | "stock" | "network";
 export type Features = Readonly<Partial<Record<Feature, boolean>>>;
 
 /** A section opens for whoever holds any one of `needs`, and only while its `feature`, if any, is on. */
@@ -91,6 +91,17 @@ const STOCK_SECTIONS: readonly (StaffSection & { office?: true })[] = [
 
 export const STOCK_SECTION_IDS: readonly string[] = STOCK_SECTIONS.map((section) => section.id);
 
+/**
+ * The network between shops (the expansion's module J): two shops linked as buyer and supplier. One
+ * section, behind the platform switch `network_on`, which the server says with a header of the
+ * person's shops as it does for the stock; it follows the stock's sections.
+ */
+const NETWORK_SECTIONS: readonly StaffSection[] = [
+  { id: "network", path: "/network", labelKey: "nav.network", needs: ["network.view"], feature: "network" },
+];
+
+export const NETWORK_SECTION_IDS: readonly string[] = NETWORK_SECTIONS.map((section) => section.id);
+
 /** The section the stock's own follow: goods are in the catalog, the stock counts them. */
 const STOCK_AFTER = "catalog";
 
@@ -106,6 +117,7 @@ export function staffSections(role: Role, permissions?: Held, features: Features
     all.push(section);
     if (section.id === STOCK_AFTER) {
       all.push(...STOCK_SECTIONS.filter((added) => added.office !== true || office));
+      all.push(...NETWORK_SECTIONS);
     }
   }
   return all

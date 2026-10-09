@@ -33,6 +33,8 @@ PERMISSIONS_HEADER = "X-Qarz-Permissions"
 CASH_BOOK_HEADER = "X-Qarz-Cash-Book"
 # Sent with the caller's shops while the stock is switched on (expansion module I).
 STOCK_HEADER = "X-Qarz-Stock"
+# Sent with the caller's shops while the network between shops is switched on (expansion module J).
+NETWORK_HEADER = "X-Qarz-Network"
 
 
 class ActiveShop(BaseModel):
@@ -68,6 +70,8 @@ def add_account_routes(
             response.headers[CASH_BOOK_HEADER] = "on"
         if await account.stock_on():
             response.headers[STOCK_HEADER] = "on"
+        if await account.network_on():
+            response.headers[NETWORK_HEADER] = "on"
         return body
 
     @app.put("/api/v1/me/active-shop", name=SET_ACTIVE_SHOP.name)

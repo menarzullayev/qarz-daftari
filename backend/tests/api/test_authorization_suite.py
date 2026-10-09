@@ -390,6 +390,180 @@ def _stocktake(world: World) -> dict[str, Any]:
     return {"kind": "stocktake", "lines": [{"item_id": str(world.catalog_item_a), "qty": "4"}]}
 
 
+def _net_id(world: World, what: str) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-network-{what}:{world.shop_a}")
+
+
+def _net_code(world: World) -> str:
+    return f"suite-network-code-{world.shop_a.hex}"
+
+
+# Every identifier of the network a call of the suite names: none of them is shop B's to use.
+NETWORK_THINGS = (
+    "invite", "link-buys", "link-sells", "link-asked", "draft", "order-sent", "order-incoming", "order-accepted",
+    "note-incoming", "note-issued", "payment-theirs", "payment-own",
+)  # fmt: skip
+
+
+def _network(owner: psycopg.Connection, world: World) -> None:
+    """The switches `network_on` and `stock_on`, and shop A linked both ways to a third shop, C, with one
+    thing of the network in each state a call needs. The partner is not shop B on purpose: every call the
+    suite then sends through shop B about these things is a shop that is no party to them, and must get
+    the 404 of a thing that does not exist. A fourth shop, D, has asked A for a link and holds a code A
+    may present. With a switch off none of these routes exists: tests/api/test_network.py."""
+    for key in ("network_on", "stock_on"):
+        owner.execute(
+            "INSERT INTO platform_setting (key, value, updated_by) VALUES (%s, 'true', %s) "
+            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by",
+            (key, str(world.admin)),
+        )
+    a, mine = world.shop_a, world.manager_a_membership
+    c, d = _net_id(world, "shop-c"), _net_id(world, "shop-d")
+    staff = {}
+    for shop, name in ((c, "Shop C"), (d, "Shop D")):
+        user, staff[shop] = uuid.uuid4(), uuid.uuid4()
+        owner.execute("INSERT INTO shop (id, name) VALUES (%s, %s)", (shop, name))
+        owner.execute("INSERT INTO app_user (id, tg_id) VALUES (%s, %s)", (user, uuid.uuid4().int % 10**15))
+        owner.execute(
+            "INSERT INTO membership (id, shop_id, user_id, role) VALUES (%s, %s, %s, 'owner')",
+            (staff[shop], shop, user),
+        )
+        owner.execute(
+            "INSERT INTO subscription (shop_id, state, trial_ends) VALUES (%s, 'trial', current_date + 30)", (shop,)
+        )
+    theirs = c
+    their_customer, supplier = _net_id(world, "customer-c"), _net_id(world, "supplier")
+    owner.execute(
+        "INSERT INTO customer (id, shop_id, display_name, name_norm) VALUES (%s, %s, 'Shop A', 'shop a')",
+        (their_customer, c),
+    )
+    owner.execute(
+        "INSERT INTO supplier (id, shop_id, name, name_norm, linked_shop_id) VALUES (%s, %s, 'Shop C', 'shop c', %s)",
+        (supplier, a, c),
+    )
+    owner.execute("UPDATE catalog_item SET tracked = true WHERE id = %s", (world.catalog_item_a,))
+    buys, sells, asked = _net_id(world, "link-buys"), _net_id(world, "link-sells"), _net_id(world, "link-asked")
+    link = (
+        "INSERT INTO network_link (shop_id, id, peer_shop_id, role, state, invited, peer_name, supplier_id, "
+        "  customer_id, order_seq, note_seq, requested_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 3, 1, now())"
+    )
+    for row in (
+        (a, buys, c, "buyer", "active", False, "Shop C", supplier, None),
+        (c, buys, a, "supplier", "active", True, "Shop A", None, their_customer),
+        (a, sells, c, "supplier", "active", True, "Shop C", None, None),
+        (c, sells, a, "buyer", "active", False, "Shop A", None, None),
+        (a, asked, d, "supplier", "requested", True, "Shop D", None, None),
+        (d, asked, a, "buyer", "requested", False, "Shop A", None, None),
+    ):
+        owner.execute(link, row)
+    invite = (
+        "INSERT INTO network_invite (id, shop_id, code_hash, as_role, created_by, expires_at) "
+        "VALUES (%s, %s, %s, %s, %s, now() + interval '1 day')"
+    )
+    owner.execute(
+        invite, (_net_id(world, "invite"), a, hashlib.sha256(f"suite-own-{a}".encode()).digest(), "buyer", mine)
+    )
+    code = hashlib.sha256(_net_code(world).encode()).digest()
+    owner.execute(invite, (uuid.uuid4(), d, code, "supplier", staff[d]))
+    owner.execute(
+        "INSERT INTO network_order_draft (id, shop_id, link_id, lines, created_by) VALUES (%s, %s, %s, %s::jsonb, %s)",
+        (
+            _net_id(world, "draft"),
+            a,
+            buys,
+            json.dumps([{"name": "Un", "unit": "kg", "qty": "5", "item_id": None}]),
+            mine,
+        ),
+    )
+    # Orders: one A sent, one that came to A, one A accepted, and two that were delivered (one each way).
+    orders = (
+        ("order-sent", buys, 1, "sent", "buyer"),
+        ("order-incoming", sells, 1, "sent", "supplier"),
+        ("order-accepted", sells, 2, "accepted", "supplier"),
+        ("order-delivered", sells, 3, "delivered", "supplier"),
+        ("order-arrived", buys, 2, "delivered", "buyer"),
+    )
+    for name, link_id, number, status, role in orders:
+        priced = status != "sent"
+        for shop, side in ((a, role), (theirs, "buyer" if role == "supplier" else "supplier")):
+            owner.execute(
+                "INSERT INTO network_order (shop_id, id, link_id, role, number, status, currency, total, sent_at, "
+                "  sent_by, updated_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, now(), %s, now())",
+                (
+                    shop,
+                    _net_id(world, name),
+                    link_id,
+                    side,
+                    number,
+                    status,
+                    "UZS" if priced else None,
+                    5000 if priced else None,
+                    {a: mine, theirs: staff[c]}[shop] if side == "buyer" else None,
+                ),
+            )
+            owner.execute(
+                "INSERT INTO network_order_line (shop_id, order_id, line_no, name, unit, qty, item_id, accepted_qty, "
+                "  unit_price) VALUES (%s, %s, 1, 'Non', 'dona', 1, %s, %s, %s)",
+                (
+                    shop,
+                    _net_id(world, name),
+                    world.catalog_item_a if shop == a and side == "buyer" else None,
+                    1 if priced else None,
+                    5000 if priced else None,
+                ),
+            )
+    # Delivery notes: one issued to A (it confirms or rejects), one A issued (it corrects).
+    for name, order_name, link_id, role in (
+        ("note-incoming", "order-arrived", buys, "buyer"),
+        ("note-issued", "order-delivered", sells, "supplier"),
+    ):
+        for shop, side in ((a, role), (theirs, "buyer" if role == "supplier" else "supplier")):
+            seller = side == "supplier"
+            owner.execute(
+                "INSERT INTO network_note (shop_id, id, link_id, order_id, role, number, status, currency, total, "
+                "  paid, issued_at, issued_by, customer_id) "
+                "VALUES (%s, %s, %s, %s, %s, 1, 'issued', 'UZS', 5000, 0, now(), %s, %s)",
+                (
+                    shop,
+                    _net_id(world, name),
+                    link_id,
+                    _net_id(world, order_name),
+                    side,
+                    ({a: mine, theirs: staff[c]}[shop]) if seller else None,
+                    their_customer if seller and shop == theirs else None,
+                ),
+            )
+            owner.execute(
+                "INSERT INTO network_note_line (shop_id, note_id, line_no, name, unit, qty, unit_price, line_total, "
+                "  item_id) VALUES (%s, %s, 1, 'Non', 'dona', 1, 5000, 5000, %s)",
+                (shop, _net_id(world, name), world.catalog_item_a if shop == a and side == "buyer" else None),
+            )
+    # Payments over the link A buys through: one C recorded (A answers), one A recorded (A may take back).
+    entry = _net_id(world, "supplier-entry")
+    owner.execute(
+        "INSERT INTO supplier_entry (id, shop_id, supplier_id, seq, kind, amount, author_id) "
+        "VALUES (%s, %s, %s, 1, 'payment', 20000, %s)",
+        (entry, a, supplier, mine),
+    )
+    for name, own, amount in (("payment-theirs", False, 10000), ("payment-own", True, 20000)):
+        for shop, side, recorded in ((a, "buyer", own), (theirs, "supplier", not own)):
+            owner.execute(
+                "INSERT INTO network_payment (shop_id, id, link_id, role, recorded_by_own, status, amount, currency, "
+                "  recorded_at, supplier_entry_id) VALUES (%s, %s, %s, %s, %s, 'awaiting', %s, 'UZS', now(), %s)",
+                (shop, _net_id(world, name), buys, side, recorded, amount, entry if shop == a and own else None),
+            )
+
+
+def _net(path: str, thing: str | None = None) -> Callable[[World, uuid.UUID], str]:
+    """The path of a call of the network, naming one of the things `_network` made."""
+
+    def build(world: World, shop: uuid.UUID) -> str:
+        found = path if thing is None else path.replace("{id}", str(_net_id(world, thing)))
+        return f"/api/v1/shops/{shop}/network{found}"
+
+    return build
+
+
 def _permissions_on(owner: psycopg.Connection, world: World) -> None:
     """The permission matrix exists only while its switch is on; off, its routes answer 404 to everyone
     (tests/api/test_permissions.py)."""
@@ -397,6 +571,65 @@ def _permissions_on(owner: psycopg.Connection, world: World) -> None:
 
 
 CALLS: dict[str, Call] = {
+    # The network between shops is behind `network_on` and `stock_on`; the suite turns both on and links
+    # shop A to a third shop (`_network`). With a switch off: tests/api/test_network.py.
+    "network.overview": Call("GET", _net(""), prepare=_network),
+    "network.links.read": Call("GET", _net("/links/{id}", "link-buys"), prepare=_network),
+    "network.invites.create": Call("POST", _net("/invites"), {"as": "supplier"}, True, 201, prepare=_network),
+    "network.invites.revoke": Call("DELETE", _net("/invites/{id}", "invite"), None, True, prepare=_network),
+    # The code is shop D's (`_body`): shop B may present it as well as shop A, and names nothing of A's.
+    "network.links.request": Call("POST", _net("/links"), None, True, 201, prepare=_network),
+    "network.links.accept": Call("POST", _net("/links/{id}/accept", "link-asked"), None, True, prepare=_network),
+    "network.links.decline": Call("POST", _net("/links/{id}/decline", "link-asked"), None, True, prepare=_network),
+    "network.links.end": Call("POST", _net("/links/{id}/end", "link-buys"), None, True, prepare=_network),
+    "network.links.attach": Call("PUT", _net("/links/{id}/counterpart", "link-sells"), None, True, prepare=_network),
+    "network.drafts.list": Call("GET", _net("/drafts"), prepare=_network),
+    "network.drafts.read": Call("GET", _net("/drafts/{id}", "draft"), prepare=_network),
+    # The body names a link of shop A (`_body`): sent to shop B it is refused as no link of that shop.
+    "network.drafts.create": Call("POST", _net("/drafts"), None, True, 201, prepare=_network),
+    "network.drafts.update": Call("PUT", _net("/drafts/{id}", "draft"), None, True, prepare=_network),
+    "network.drafts.delete": Call("DELETE", _net("/drafts/{id}", "draft"), None, True, prepare=_network),
+    "network.orders.send": Call("POST", _net("/drafts/{id}/send", "draft"), None, True, prepare=_network),
+    "network.orders.list": Call("GET", _net("/orders"), prepare=_network),
+    "network.orders.read": Call("GET", _net("/orders/{id}", "order-sent"), prepare=_network),
+    "network.orders.cancel": Call(
+        "POST", _net("/orders/{id}/cancel", "order-sent"), {"reason": "Suite uchun"}, True, prepare=_network
+    ),
+    "network.orders.accept": Call(
+        "POST",
+        _net("/orders/{id}/accept", "order-incoming"),
+        {"lines": [{"line_no": 1, "qty": "1", "unit_price": 5000}]},
+        True,
+        prepare=_network,
+    ),
+    "network.orders.decline": Call(
+        "POST", _net("/orders/{id}/decline", "order-incoming"), {"reason": "Suite uchun"}, True, prepare=_network
+    ),
+    "network.notes.issue": Call(
+        "POST", _net("/orders/{id}/deliver", "order-accepted"), None, True, 201, prepare=_network
+    ),
+    "network.notes.list": Call("GET", _net("/notes"), prepare=_network),
+    "network.notes.read": Call("GET", _net("/notes/{id}", "note-incoming"), prepare=_network),
+    "network.notes.correct": Call(
+        "POST", _net("/notes/{id}/correct", "note-issued"), {"reason": "Suite uchun"}, True, 201, prepare=_network
+    ),
+    # The one call that writes two shops' books: a receipt in shop A and a credit sale in shop C.
+    "network.notes.confirm": Call("POST", _net("/notes/{id}/confirm", "note-incoming"), None, True, prepare=_network),
+    "network.notes.reject": Call(
+        "POST", _net("/notes/{id}/reject", "note-incoming"), {"reason": "Suite uchun"}, True, prepare=_network
+    ),
+    "network.payments.list": Call("GET", _net("/payments"), prepare=_network),
+    "network.payments.read": Call("GET", _net("/payments/{id}", "payment-theirs"), prepare=_network),
+    "network.payments.record": Call("POST", _net("/payments"), None, True, 201, prepare=_network),
+    "network.payments.confirm": Call(
+        "POST", _net("/payments/{id}/confirm", "payment-theirs"), None, True, prepare=_network
+    ),
+    "network.payments.decline": Call(
+        "POST", _net("/payments/{id}/decline", "payment-theirs"), {"reason": "Suite uchun"}, True, prepare=_network
+    ),
+    "network.payments.withdraw": Call(
+        "POST", _net("/payments/{id}/withdraw", "payment-own"), None, True, prepare=_network
+    ),
     # The stock, its documents and the suppliers are behind the platform switch `stock_on`; the suite turns
     # it on, so that the roles are told apart. With the switch off: tests/api/test_stock.py.
     "stock.settings.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/stock/settings", prepare=_stock),
@@ -842,6 +1075,49 @@ CALLS: dict[str, Call] = {
 # Written by hand from REQ-033 and the specification's authorization table; deliberately not derived
 # from the code under test.
 ALLOWED_ROLES: dict[str, set[Role]] = {
+    # The network between shops: connecting to another shop is the owner's; the rest is the managers'.
+    **{
+        name: {Role.OWNER}
+        for name in (
+            "network.invites.create",
+            "network.invites.revoke",
+            "network.links.request",
+            "network.links.accept",
+            "network.links.decline",
+            "network.links.end",
+            "network.links.attach",
+        )
+    },
+    **{
+        name: {Role.MANAGER, Role.OWNER}
+        for name in (
+            "network.overview",
+            "network.links.read",
+            "network.drafts.list",
+            "network.drafts.read",
+            "network.drafts.create",
+            "network.drafts.update",
+            "network.drafts.delete",
+            "network.orders.send",
+            "network.orders.list",
+            "network.orders.read",
+            "network.orders.cancel",
+            "network.orders.accept",
+            "network.orders.decline",
+            "network.notes.issue",
+            "network.notes.list",
+            "network.notes.read",
+            "network.notes.correct",
+            "network.notes.confirm",
+            "network.notes.reject",
+            "network.payments.list",
+            "network.payments.read",
+            "network.payments.record",
+            "network.payments.confirm",
+            "network.payments.decline",
+            "network.payments.withdraw",
+        )
+    },
     # Who may look at the shop's data is the owner's to see and to stop (REQ-059).
     "shop.support_access.list": {Role.OWNER},
     "shop.support_access.end": {Role.OWNER},
@@ -1083,6 +1359,15 @@ def _body(world: World, op_name: str, call: Call) -> dict[str, Any] | None:
         return {"into": str(world.catalog_item_a)}
     if op_name in ("stock.documents.create", "stock.documents.update"):
         return _stocktake(world)
+    if op_name == "network.links.request":
+        return {"code": _net_code(world), "as": "buyer"}
+    if op_name == "network.links.attach":
+        return {"counterpart_id": str(world.settled_customer_a)}
+    if op_name in ("network.drafts.create", "network.drafts.update"):
+        line = {"name": "Un", "unit": "kg", "qty": "5"}
+        return {"link_id": str(_net_id(world, "link-buys")), "lines": [line]}
+    if op_name == "network.payments.record":
+        return {"link_id": str(_net_id(world, "link-buys")), "amount": 10000}
     if op_name == "cash.entry.create":
         return {"direction": "expense", "method": "cash", "amount": 50000, "category_id": str(_cash_category_id(world))}
     return call.json
@@ -1389,6 +1674,7 @@ def test_a_member_of_one_shop_cannot_reach_another(
         _cash_category_id(world),
         _cash_spare_category_id(world),
         _cash_entry_id(world),
+        *(_net_id(world, thing) for thing in NETWORK_THINGS),
     )
     uses_foreign_resource = any(str(resource) in call.path(world, world.shop_b) for resource in foreign)
     if uses_foreign_resource:

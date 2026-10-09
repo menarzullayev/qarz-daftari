@@ -446,6 +446,8 @@ export type MyShops = {
   cashBookOn: boolean;
   /** The platform has switched the stock on: a shop then answers its stock and supplier routes. */
   stockOn: boolean;
+  /** The platform has switched the network between shops on: a shop then answers its network routes. */
+  networkOn: boolean;
 };
 
 /** A customer's objection to one entry. `status`: open, declined, withdrawn, or reversed (the shop agreed). */
@@ -1070,6 +1072,8 @@ export const PERMISSIONS_HEADER = "X-Qarz-Permissions";
 export const CASH_BOOK_HEADER = "X-Qarz-Cash-Book";
 /** The header the server sends with a person's shops while the stock is switched on. */
 export const STOCK_HEADER = "X-Qarz-Stock";
+/** The header the server sends with a person's shops while the network between shops is switched on. */
+export const NETWORK_HEADER = "X-Qarz-Network";
 
 function myShops(value: unknown, headers: Headers): MyShops {
   const body = fieldsOf<Wire["MyShops"]>(value);
@@ -1077,6 +1081,7 @@ function myShops(value: unknown, headers: Headers): MyShops {
     permissionsOn: headers.get(PERMISSIONS_HEADER) === "on",
     cashBookOn: headers.get(CASH_BOOK_HEADER) === "on",
     stockOn: headers.get(STOCK_HEADER) === "on",
+    networkOn: headers.get(NETWORK_HEADER) === "on",
     items: list(body.raw("items"), (element) => {
       const shop = fieldsOf<Wire["MyShop"]>(element);
       const role = shop.raw("role");

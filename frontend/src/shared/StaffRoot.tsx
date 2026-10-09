@@ -61,6 +61,7 @@ type Phase =
       permissionsOn: boolean;
       cashBookOn: boolean;
       stockOn: boolean;
+      networkOn: boolean;
       isCustomer: boolean;
     };
 
@@ -191,6 +192,7 @@ export function StaffWorkspace({
           permissionsOn: mine.permissionsOn,
           cashBookOn: mine.cashBookOn,
           stockOn: mine.stockOn,
+          networkOn: mine.networkOn,
           isCustomer: Array.isArray(accounts) && accounts.length > 0,
         });
       }
@@ -251,7 +253,11 @@ export function StaffWorkspace({
   // The parts of the product the platform has switched on; one object for as long as none changes.
   const cashBookOn = ready?.cashBookOn ?? false;
   const stockOn = ready?.stockOn ?? false;
-  const features = useMemo(() => ({ cashBook: cashBookOn, stock: stockOn }), [cashBookOn, stockOn]);
+  const networkOn = ready?.networkOn ?? false;
+  const features = useMemo(
+    () => ({ cashBook: cashBookOn, stock: stockOn, network: networkOn }),
+    [cashBookOn, stockOn, networkOn],
+  );
 
   if (phase.kind === "connecting") {
     return (

@@ -74,6 +74,8 @@ const ImportScreen = lazy(() => withMessages(import("./imports/ImportScreen")));
 const SupportAccessSection = lazy(() => withMessages(import("./support/SupportAccessSection")));
 // The stock, its documents and the suppliers: one module, fetched when one of their screens is opened.
 const StockScreens = lazy(() => import("./stock/StockScreens"));
+// The network between shops: likewise one module, fetched when one of its screens is opened.
+const NetworkScreens = lazy(() => import("./network/NetworkScreens"));
 
 /**
  * Support access under the settings of the Mini App, for the owner alone: nobody else may read it, so
@@ -177,6 +179,12 @@ function workspaceScreen(
       return (
         <Suspense fallback={<Loading />}>
           <StockScreens view={route.view} office={extension !== undefined} />
+        </Suspense>
+      );
+    case "network":
+      return (
+        <Suspense fallback={<Loading />}>
+          <NetworkScreens view={route.view} office={extension !== undefined} />
         </Suspense>
       );
     case "reminders":

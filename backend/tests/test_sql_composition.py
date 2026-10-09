@@ -79,6 +79,15 @@ def test_the_stock_storage_sql_is_built_only_from_constants_with_no_exception() 
     assert unsafe_interpolations(source) == []
 
 
+def test_the_network_storage_sql_is_built_only_from_constants_with_no_exception() -> None:
+    """`infrastructure/db_network.py` (module J) is held to the same rule, without an allowed line. It
+    holds the calls of the functions through which one shop's step reaches another's rows: every
+    argument of each is a bound parameter."""
+    source = (DB_MODULE.parent / "db_network.py").read_text(encoding="utf-8")
+    assert "network_enter_peer" in source, "the module that is checked is the one that holds the calls"
+    assert unsafe_interpolations(source) == []
+
+
 def test_the_check_catches_a_value_put_into_sql() -> None:
     assert unsafe_interpolations('q = f"SELECT * FROM customer WHERE id = {customer_id}"\n') == [1]
     assert unsafe_interpolations("q = f\"SELECT {_COLUMNS} FROM customer WHERE name = '{name}'\"\n") == [1]
