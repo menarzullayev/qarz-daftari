@@ -77,11 +77,19 @@ Measured on 2026-10-09 with the clock of the machine the agents ran on. "Done" h
 | Front-end quality pass merged (#98) | 16:51 | 5:51 |
 | Final pass on the network merged (#101) | 17:12 | 6:12 |
 | Gaps left by the modules closed (#100) | 17:31 | 6:31 |
+| A race the combined modules exposed on `main`, corrected (#103) | 17:54 | 6:54 |
+| `main` green with everything in it | 18:03 | 7:03 |
 
 Before starting, the coordinating agent had called this "several months of work" (stock "several weeks
 on its own", the network "two to three months"). That estimate was of a team of people and was wrong by
 far more than an order of magnitude for writing the code. After two hours of measurement it estimated
-10 to 14 hours in all; it took 6 hours 31 minutes.
+10 to 14 hours in all; it took 6 hours 31 minutes to the last module merge and 7 hours 3 minutes to a green `main`.
+
+The half hour between the two is itself a finding. Every pull request was green on its own; `main` with all of
+them failed twice in a row, on the load test's check that times within a customer's entries never run backwards.
+The race was always there (an entry's time is read before the customer is locked, its number taken under the
+lock); the work the modules added between the two points made it show. No pull request's CI could have shown
+it, only the run after everything was merged. It was corrected in #103 with a test that fails without the fix.
 
 What the six and a half hours produced, against the commit the plan was merged at (`68ec0b2`):
 533 files changed, about 106 000 lines added; nine migrations (0038 to 0046); the back-end suite grew
