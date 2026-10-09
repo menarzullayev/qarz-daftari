@@ -89,6 +89,14 @@ export const enCash: PartialCatalog<typeof uzCash, EnPlural> = {
   "cash.summary.day": "Day",
   "cash.summary.dayRow": "Income: {income} · Expense: {expense}",
 
+  "cash.export": "Excel file",
+  "cash.export.hint": "Every entry of this period (cancelled ones too, marked) and its totals in one .xlsx file.",
+  "cash.export.make": "Export the period to a file",
+  "cash.export.open": "Download file",
+  "cash.export.valid": "The link is valid for 5 minutes, until {date}. If it does not open, get a new one.",
+  "cash.export.again": "Get new link",
+  "cash.export.tooMany": "There are too many entries in this period to fit in one file. Choose a shorter period.",
+
   "cash.categories.income": "Income categories",
   "cash.categories.expense": "Expense categories",
   "cash.categories.archived": "archived",

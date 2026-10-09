@@ -91,6 +91,15 @@ export const uzCash = {
   "cash.summary.day": "Kun",
   "cash.summary.dayRow": "Kirim: {income} · Chiqim: {expense}",
 
+  "cash.export": "Excel fayl",
+  "cash.export.hint":
+    "Shu davrning barcha yozuvlari (bekor qilinganlari ham belgilangan holda) va yakunlari bitta .xlsx faylda.",
+  "cash.export.make": "Davrni faylga chiqarish",
+  "cash.export.open": "Faylni yuklab olish",
+  "cash.export.valid": "Havola 5 daqiqa, {date} gacha amal qiladi. Ochilmasa, yangisini oling.",
+  "cash.export.again": "Yangi havola olish",
+  "cash.export.tooMany": "Bu davrda yozuvlar juda ko'p: bitta faylga sig'maydi. Qisqaroq davrni tanlang.",
+
   "cash.categories.income": "Kirim toifalari",
   "cash.categories.expense": "Chiqim toifalari",
   "cash.categories.archived": "arxivda",

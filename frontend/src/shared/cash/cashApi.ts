@@ -85,6 +85,9 @@ export type CashSummary = {
   days: { date: string; currency: CashCurrency; income: number; expense: number }[];
 };
 
+/** A period of the book as a workbook: a link that needs no session and works for five minutes. */
+export type CashExport = { from: string; to: string; entries: number; url: string; expiresAt: string };
+
 export type NewCashEntry = {
   direction: Direction;
   method: Method;
@@ -217,6 +220,17 @@ function summary(value: unknown): CashSummary {
 
 const written = (value: unknown): CashEntry => entry(record(value)["entry"]);
 
+function exported(value: unknown): CashExport {
+  const body = record(value);
+  return {
+    from: text(body["from"]),
+    to: text(body["to"]),
+    entries: whole(body["entries"]),
+    url: text(body["url"]),
+    expiresAt: text(body["expires_at"]),
+  };
+}
+
 export function cashOf(api: ShopApi) {
   const base = `${api.base}/cash`;
   const categoryPath = (id: string) => `${base}/categories/${encodeURIComponent(id)}`;
@@ -228,6 +242,14 @@ export function cashOf(api: ShopApi) {
 
     summary(from: string, to: string, signal?: AbortSignal): Promise<CashSummary> {
       return api.send({ method: "GET", path: `${base}/summary`, query: { from, to }, signal, read: summary });
+    },
+
+    /**
+     * Writes the period ("YYYY-MM-DD" to "YYYY-MM-DD") as a workbook: every entry dated in it, cancelled
+     * ones marked, and what they come to. The link in the answer is a credential: keep it out of storage.
+     */
+    exportPeriod(from: string, to: string, idempotencyKey: string): Promise<CashExport> {
+      return api.send({ method: "POST", path: `${base}/export`, body: { from, to }, idempotencyKey, read: exported });
     },
 
     categories(signal?: AbortSignal): Promise<CashCategories> {

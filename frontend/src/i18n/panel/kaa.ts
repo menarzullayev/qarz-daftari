@@ -174,6 +174,7 @@ export const kaaPanel: PartialCatalog<typeof uzPanel> = {
   "activity.action.cash.category_changed": "Kassa kategoriyası ózgertildi",
   "activity.action.cash.category_deleted": "Kassa kategoriyası óshirildi",
   "activity.action.cash.backfilled": "Aldıńǵı tólemler kassaǵa kóshirildi",
+  "activity.action.cash.exported": "Kassa dáwiri faylǵa shıǵarıldı",
   "activity.action.customer.removal_requested": "Qarıydar maǵlıwmatların óshiriwdi soradı",
   "activity.action.customer.updated": "Qarıydar ózgertildi",
   "activity.action.dispute.declined": "Narazılıq ret etildi",

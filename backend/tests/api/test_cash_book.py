@@ -160,6 +160,7 @@ def _every_route(world: World) -> list[tuple[str, str, Any]]:
         ),
         ("POST", f"{base(world)}/entries/{some}/cancellation", {"reason": "xato"}),
         ("POST", f"{base(world)}/backfill", {}),
+        ("POST", f"{base(world)}/export", {"from": today().isoformat(), "to": today().isoformat()}),
     ]
 
 
@@ -191,7 +192,7 @@ def test_the_check_above_would_notice_a_route_that_answered(
         for method, path, body in _every_route(world)
     ]
     # The category and the entry named are not the shop's: not found, and a category that is not valid.
-    assert statuses == [200, 200, 200, 201, 404, 404, 422, 404, 200]
+    assert statuses == [200, 200, 200, 201, 404, 404, 422, 404, 200, 201]
 
 
 def test_a_client_learns_that_the_cash_book_is_on_from_a_header_and_only_then(

@@ -467,6 +467,27 @@
         "title": "CashEntryCustomer",
         "type": "object"
       },
+      "CashExportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "maxLength": 32,
+            "title": "From",
+            "type": "string"
+          },
+          "to": {
+            "maxLength": 32,
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "CashExportRequest",
+        "type": "object"
+      },
       "CashLine": {
         "additionalProperties": false,
         "description": "One method of one currency: `opening + income - expense = closing`.",
@@ -6213,6 +6234,74 @@
           }
         },
         "summary": "Cash.Entry.Cancel"
+      }
+    },
+    "/api/v1/shops/{shop_id}/cash/export": {
+      "post": {
+        "operationId": "cash_export_api_v1_shops__shop_id__cash_export_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Shop Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CashExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cash Export Api V1 Shops  Shop Id  Cash Export Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cash.Export"
       }
     },
     "/api/v1/shops/{shop_id}/cash/summary": {

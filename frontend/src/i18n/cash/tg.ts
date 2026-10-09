@@ -90,6 +90,15 @@ export const tgCash: PartialCatalog<typeof uzCash> = {
   "cash.summary.day": "Рӯз",
   "cash.summary.dayRow": "Воридот: {income} · Хароҷот: {expense}",
 
+  "cash.export": "Файли Excel",
+  "cash.export.hint": "Ҳамаи сабтҳои ин давра (бекоршудаҳо низ, бо қайд) ва ҷамъбасти он дар як файли .xlsx.",
+  "cash.export.make": "Давраро ба файл баровардан",
+  "cash.export.open": "Боргирии файл",
+  "cash.export.valid": "Пайванд 5 дақиқа, то {date} амал мекунад. Агар кушода нашавад, навашро гиред.",
+  "cash.export.again": "Гирифтани пайванди нав",
+  "cash.export.tooMany":
+    "Дар ин давра сабтҳо аз ҳад зиёданд: ба як файл намеғунҷанд. Давраи кӯтоҳтарро интихоб кунед.",
+
   "cash.categories.income": "Категорияҳои воридот",
   "cash.categories.expense": "Категорияҳои хароҷот",
   "cash.categories.archived": "дар архив",

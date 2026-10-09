@@ -3,6 +3,9 @@
 Every route here depends on `switched_on` before anything else, so while the platform switch
 `cash_book_on` is off each of them answers as a route that does not exist: to a member of staff, to a
 stranger, and to someone who is not signed in, alike.
+
+`POST .../cash/export` writes one period as a workbook (`qarz.application.cash_export`) and answers with
+a link to it, as a download of the shop's export does.
 """
 
 from collections.abc import Awaitable, Callable
@@ -25,6 +28,7 @@ from qarz.application.cash_book import (
     UPDATE_CATEGORY,
     CashBookService,
 )
+from qarz.application.cash_export import EXPORT_CASH, CashExportService
 from qarz.domain.cash import PAGE
 from qarz.interface.cash_answers import CashCategories, CashDay, CashSummary
 from qarz.interface.shops_api import IdempotencyKey
@@ -77,7 +81,18 @@ class CashBackfill(BaseModel):
     since: date | None = None
 
 
-def add_cash_routes(app: FastAPI, service: CashBookService, current_user: CurrentUser) -> None:
+class CashExportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    # The first and the last Tashkent day of the period, as "YYYY-MM-DD". Plain text, checked by the
+    # operation after the caller is known to be a member, like the period of the summary.
+    first: str = Field(alias="from", max_length=32)
+    last: str = Field(alias="to", max_length=32)
+
+
+def add_cash_routes(
+    app: FastAPI, service: CashBookService, current_user: CurrentUser, exports: CashExportService | None = None
+) -> None:
     async def switched_on() -> None:
         await service.require_on()
 
@@ -107,6 +122,17 @@ def add_cash_routes(app: FastAPI, service: CashBookService, current_user: Curren
         last: Annotated[str | None, Query(alias="to")] = None,
     ) -> dict[str, Any]:
         return await service.summary(user_id, shop_id, raw_first=first, raw_last=last)
+
+    if exports is not None:
+        period_export = exports
+
+        @app.post(base + "/export", name=EXPORT_CASH.name, status_code=201, dependencies=behind_switch)
+        async def export_period(
+            shop_id: UUID, body: CashExportRequest, user_id: user, idempotency_key: IdempotencyKey = None
+        ) -> dict[str, Any]:
+            return await period_export.export(
+                user_id, shop_id, raw_first=body.first, raw_last=body.last, request_key=idempotency_key
+            )
 
     @app.post(base + "/entries", name=RECORD_CASH.name, status_code=201, dependencies=behind_switch)
     async def record_entry(

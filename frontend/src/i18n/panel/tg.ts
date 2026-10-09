@@ -176,6 +176,7 @@ export const tgPanel: PartialCatalog<typeof uzPanel> = {
   "activity.action.cash.category_changed": "Категорияи касса тағйир дода шуд",
   "activity.action.cash.category_deleted": "Категорияи касса нест карда шуд",
   "activity.action.cash.backfilled": "Пардохтҳои пештара ба касса гузаронида шуданд",
+  "activity.action.cash.exported": "Давраи касса ба файл бароварда шуд",
   "activity.action.customer.removal_requested": "Мизоҷ нест кардани маълумоташро дархост кард",
   "activity.action.customer.updated": "Мизоҷ тағйир дода шуд",
   "activity.action.dispute.declined": "Эътироз рад шуд",

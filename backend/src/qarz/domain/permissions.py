@@ -357,7 +357,7 @@ CATALOGUE: tuple[Permission, ...] = (
         "Kassani ko'rish: kunlik daftar, qoldiqlar, davr hisoboti",
         "Просмотр кассы: книга за день, остатки, отчёт за период",
         _MANAGERS,
-        ("cash.day", "cash.summary", "cash.categories.list"),
+        ("cash.day", "cash.summary", "cash.export", "cash.categories.list"),
     ),
     # Recording is one operation with two permissions, like an entry of the ledger: taking money in and
     # paying it out are different things to allow.

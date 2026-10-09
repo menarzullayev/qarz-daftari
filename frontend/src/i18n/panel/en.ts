@@ -178,6 +178,7 @@ export const enPanel: PartialCatalog<typeof uzPanel, EnPlural> = {
   "activity.action.cash.category_changed": "Cash book category changed",
   "activity.action.cash.category_deleted": "Cash book category deleted",
   "activity.action.cash.backfilled": "Earlier payments copied to the cash book",
+  "activity.action.cash.exported": "Cash book period exported to a file",
   "activity.action.customer.removal_requested": "Customer asked to delete their data",
   "activity.action.customer.updated": "Customer changed",
   "activity.action.dispute.declined": "Dispute declined",

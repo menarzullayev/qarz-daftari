@@ -181,6 +181,19 @@ class CashSession(Protocol):
 
     async def cash_entries_exist(self) -> bool: ...
 
+    async def count_cash_entries(self, *, first: date, before: date) -> int:
+        """How many entries, cancelled ones included, are dated from `first` up to but not including
+        `before`."""
+        ...
+
+    async def cash_entries_of_period(
+        self, *, first: date, before: date, until: datetime, after: tuple[date, datetime, UUID] | None, limit: int
+    ) -> list[CashEntryRecord]:
+        """A page of the entries dated from `first` up to but not including `before` and written up to
+        `until`, cancelled ones included, by day and then by when they were written. `after` is the last
+        row of the page before."""
+        ...
+
     async def export_cash_entries(
         self, *, until: datetime, after: tuple[date, datetime, UUID] | None, limit: int
     ) -> list[CashExportRow]:

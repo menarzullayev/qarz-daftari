@@ -173,6 +173,7 @@ export const ruPanel: RuPanelCatalog = {
   "activity.action.cash.category_changed": "Изменена статья кассы",
   "activity.action.cash.category_deleted": "Удалена статья кассы",
   "activity.action.cash.backfilled": "Прежние оплаты перенесены в кассу",
+  "activity.action.cash.exported": "Период кассы выгружен в файл",
   "activity.action.customer.removal_requested": "Клиент запросил удаление данных",
   "activity.action.customer.updated": "Клиент изменён",
   "activity.action.dispute.declined": "Возражение отклонено",
