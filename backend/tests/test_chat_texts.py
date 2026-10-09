@@ -35,6 +35,8 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
     """A domain refusal must reach the seller in words, not as the generic error."""
     spoken_elsewhere = {
         "IMPORT_NOT_APPLICABLE",  # an import is made in the Mini App, not in the chat
+        "ADVANCE_NOT_CONFIRMED",  # asked as a question with a button ("advance_confirm"), never said as a refusal
+        "ADVANCES_STAND",  # the shop's settings are changed in the application, not in the chat
         "IMPORT_UNDO_REFUSED",
         "UNAUTHENTICATED",  # the chat has no sign-in step
         "RATE_LIMITED",  # the API's limit; the chat is not called through the API

@@ -15,6 +15,11 @@ export type Activity = { amount: number; count: number };
 /** The money of a period in one currency: every figure comes from that currency's entries only. */
 export type PeriodMoney = {
   outstanding: { start: number; end: number };
+  /**
+   * What the shop held of customers who had paid ahead, at both ends of the period: there only when it
+   * held any. It stands beside `outstanding`, which is what debtors owe and is never reduced by it.
+   */
+  advances?: { start: number; end: number };
   credit: Activity & { customers: number };
   payments: Activity & { customers: number };
   opening: Activity;
@@ -63,8 +68,12 @@ function periodMoney(value: unknown): PeriodMoney {
   const body = record(value);
   const outstanding = record(body["outstanding"]);
   const onTime = record(body["on_time"]);
+  const held = body["advances"];
   return {
     outstanding: { start: whole(outstanding["start"]), end: whole(outstanding["end"]) },
+    ...(held === undefined || held === null
+      ? {}
+      : { advances: { start: whole(record(held)["start"]), end: whole(record(held)["end"]) } }),
     credit: withCustomers(body["credit"]),
     payments: withCustomers(body["payments"]),
     opening: activity(body["opening"]),

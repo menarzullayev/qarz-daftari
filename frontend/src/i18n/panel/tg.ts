@@ -246,6 +246,8 @@ export const tgPanel: PartialCatalog<typeof uzPanel> = {
   "activity.action.network.order_declined": "Фармоиши шарик рад шуд",
   "activity.action.network.order_cancelled": "Фармоиши шарик бекор шуд",
   "activity.action.network.note_issued": "Борхат дода шуд",
+  "activity.action.network.note_posted_for_owner":
+    "Борхат аз номи соҳиби мағоза навишта шуд: корманде, ки онро дода буд, дигар насия навишта наметавонад",
   "activity.action.network.note_corrected": "Борхат ислоҳ шуд",
   "activity.action.network.note_received": "Борхат тасдиқ шуд, мол қабул шуд",
   "activity.action.network.note_rejected": "Борхат рад шуд",

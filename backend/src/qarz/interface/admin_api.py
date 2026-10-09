@@ -296,10 +296,12 @@ def add_admin_routes(
     # --- platform settings and the audit ----------------------------------------------------------------
 
     @app.get(BASE + "/settings", name=READ_SETTINGS.name)
-    async def read_settings(user_id: admin, free_plan_customers: str | None = None) -> dict[str, Any]:
-        # The number is read by the service, and only while the free plan is on: with it off the
-        # question is not looked at, whatever it holds.
-        return await service.read_settings(user_id, free_plan_customers)
+    async def read_settings(
+        user_id: admin, free_plan_customers: str | None = None, free_plan_on: str | None = None
+    ) -> dict[str, Any]:
+        # Both are read by the service, and only while the free plan is on: with it off neither
+        # question is looked at, whatever it holds.
+        return await service.read_settings(user_id, free_plan_customers, free_plan_on)
 
     @app.patch(BASE + "/settings", name=UPDATE_SETTINGS.name)
     async def update_settings(

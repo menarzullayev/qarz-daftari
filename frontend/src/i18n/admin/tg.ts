@@ -157,6 +157,7 @@ export const tgAdmin: PartialCatalog<typeof uzAdmin> = {
   "admin.settings.saved": "Танзимот нигоҳ дошта шуд. Тағйирёфтаҳо:",
   "admin.settings.changed": "{name}: {before} → {after}",
   "admin.settings.plan.confirm": "Тарифи ройгон аз {from} то {to} мизоҷ кам карда мешавад.",
+  "admin.settings.plan.off": "Тарифи ройгон хомӯш карда мешавад.",
   "admin.settings.plan.shops": "Мағозаҳое, ки ба ҳолати маҳдуд мегузаранд: {count} то. Дар онҳо насияи нав навишта намешавад; маълумоти навишташуда нигоҳ дошта мешавад, дидан ва қабули пардохт кор мекунанд.",
   "admin.settings.plan.ownersTold": "Ба соҳибони ин мағозаҳо дар бот хабар фиристода мешавад: чӣ шуд ва /obuna.",
   "admin.settings.plan.yes": "Ҳа, нигоҳ дошта шавад",

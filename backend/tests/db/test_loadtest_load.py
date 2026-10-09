@@ -186,10 +186,40 @@ _BREAKAGES = {
 def test_the_database_checks_notice_a_broken_rule(conn: psycopg.Connection[Any], rule: str) -> None:
     # What the loader does while it copies; the transaction is rolled back, and with it this change.
     conn.execute("ALTER TABLE goods_line DISABLE TRIGGER USER")
+    # Several breakages add a payment nobody owes. The database itself refuses that in a shop that does
+    # not accept advances (the test below); the check is for a database where that guard did not hold.
+    conn.execute("ALTER TABLE ledger_entry DISABLE TRIGGER open_debt_after_entries")
     changed = conn.execute(_BREAKAGES[rule])
     assert changed.rowcount >= 1, "the breakage found nothing to break"
     found = database_problems(conn)
     assert any(rule in problem for problem in found), found
+
+
+def test_the_database_itself_refuses_a_balance_below_zero_where_advances_are_not_accepted(
+    conn: psycopg.Connection[Any],
+) -> None:
+    with pytest.raises(psycopg.errors.CheckViolation, match="only in a shop that accepts advances"), conn.transaction():
+        conn.execute(_BREAKAGES["a running balance is negative"])
+    assert not any("negative" in problem for problem in database_problems(conn))
+
+
+def test_a_balance_below_zero_is_no_problem_in_a_shop_that_accepts_advances(conn: psycopg.Connection[Any]) -> None:
+    """The rule is "negative only where the shop accepts advances", not "never negative" and not "anything goes"."""
+    conn.execute(
+        f"UPDATE shop SET accept_advances = true WHERE id = (SELECT shop_id FROM customer WHERE id = {_CUSTOMER})"
+    )
+    assert conn.execute(_BREAKAGES["a running balance is negative"]).rowcount == 1
+    assert database_problems(conn) == []
+    # The stored advance is the ledger's, and the shop cannot stop accepting advances while it stands.
+    assert conn.execute(f"SELECT amount > 0 FROM customer_advance WHERE customer_id = {_CUSTOMER}").fetchall() == [
+        (True,)
+    ]
+    with pytest.raises(psycopg.errors.CheckViolation, match="advances stand"), conn.transaction():
+        conn.execute("UPDATE shop SET accept_advances = false WHERE accept_advances")
+    # A stored advance that is not the ledger's is noticed.
+    conn.execute("ALTER TABLE customer_advance DISABLE TRIGGER USER")
+    conn.execute("UPDATE customer_advance SET amount = amount + 1")
+    assert any("a stored advance differs" in problem for problem in database_problems(conn))
 
 
 # --- the driver against the real application ---------------------------------------------------------------

@@ -106,8 +106,19 @@ async def _period_money(
     staff = await session.period_staff(start, end, currency)
     debtors = await session.debtors_as_of(end, TOP_DEBTORS, currency)
     on_time_amount, due_amount = await session.fell_due(first, due_before(last, today), currency)
+    # In a shop that accepts advances, what customers owed and what the shop held of customers in credit
+    # are two figures, the second only when there was any. In a shop that does not, the report is what
+    # it always was: one figure, which a payment that outlived a sale reversed later could already take
+    # below what the others owed at an earlier date (there is no advance to show apart; none stands).
+    apart = await session.accepts_advances()
+    held_start, held_end = (0, 0) if apart else (totals.advances_start, totals.advances_end)
     return totals, {
-        "outstanding": {"start": totals.outstanding_start, "end": totals.outstanding_end},
+        "outstanding": {"start": totals.outstanding_start - held_start, "end": totals.outstanding_end - held_end},
+        **(
+            {"advances": {"start": totals.advances_start, "end": totals.advances_end}}
+            if apart and (totals.advances_start or totals.advances_end)
+            else {}
+        ),
         "credit": {
             "amount": totals.credit_amount,
             "count": totals.credit_count,
@@ -119,7 +130,9 @@ async def _period_money(
             "customers": totals.payment_customers,
         },
         "opening": {"amount": totals.opening_amount, "count": totals.opening_count},
-        "net_change": totals.outstanding_end - totals.outstanding_start,
+        # Of the position as a whole (owed minus held): what the period's entries moved it by.
+        "net_change": (totals.outstanding_end - totals.advances_end)
+        - (totals.outstanding_start - totals.advances_start),
         "reversals": {"amount": totals.reversal_amount, "count": totals.reversal_count},
         "on_time": {
             "due_amount": due_amount,

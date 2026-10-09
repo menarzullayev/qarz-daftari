@@ -11,6 +11,7 @@ The HTTP API and the chat both use them, each wrapping them in its own idempoten
 import time
 from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime, timedelta
+from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -103,7 +104,29 @@ _REFUSAL_CODES = {
     Refusal.ALREADY_REVERSED: "ALREADY_REVERSED",
     Refusal.REVERSAL_OF_REVERSAL: "CANNOT_REVERSE_REVERSAL",
     Refusal.NEGATIVE_BALANCE: "WOULD_GO_NEGATIVE",
+    Refusal.ADVANCE_TOO_LARGE: "ADVANCE_TOO_LARGE",
 }
+
+
+class Advance(StrEnum):
+    """What a writer of a payment wants done when the payment is larger than the debt.
+
+    Whatever it asks, a shop that does not accept advances refuses such a payment as it always did.
+    """
+
+    REFUSE = "refuse"  # EXCEEDS_BALANCE, as in a shop that does not accept advances
+    ASK = "ask"  # ADVANCE_NOT_CONFIRMED with the two amounts: the author is to be asked first
+    ACCEPT = "accept"  # the author was asked, or the act itself is the confirmation
+
+
+def advance_cap(currency: Currency) -> int:
+    """The most one customer may be in credit by in a currency: what one entry of it may be.
+
+    One payment is already bounded by that. The same bound on what stands keeps a second and a third
+    mistyped payment from piling up, and keeps every sum of advances as far inside a bigint as every
+    sum of debts is.
+    """
+    return RULES[currency].max_entry
 
 
 async def close_dispute_on_reversal(session: TenantSession, actor: Membership, entry_id: UUID, now: datetime) -> None:
@@ -199,6 +222,16 @@ class LedgerRefused(AppError):
     def __init__(self, code: str) -> None:
         self.code = code
         super().__init__()
+
+
+class AdvanceNotConfirmed(AppError):
+    """The payment is larger than the debt, the shop accepts advances, and nobody has confirmed this one.
+
+    Its fields say what the customer owes now and what would be kept as their advance, in the payment's
+    currency, so that the question put to the author names real amounts.
+    """
+
+    code = "ADVANCE_NOT_CONFIRMED"
 
 
 class PromiseAlreadySet(AppError):
@@ -390,8 +423,13 @@ async def append_entry_in(
     currency: Currency = UZS,
     method: cash.Method | None = None,
     money_received: bool = True,
+    advance: Advance = Advance.REFUSE,
 ) -> dict[str, Any]:
     """Add a credit sale or a payment to one customer's account, in one currency.
+
+    `advance` is what to do with a payment larger than the debt in a shop that accepts advances (INV-3):
+    the excess stays as the customer's advance, a balance below zero in that currency's book, which the
+    next credit sales use up. Every path that does not say otherwise refuses it as before.
 
     `method` is how a payment was made (cash unless it says otherwise). It matters only while the cash
     book is on, where the payment is written as money received (`qarz.application.cash_feed`).
@@ -412,6 +450,20 @@ async def append_entry_in(
     now = ledger.not_before(everything, now)
     book = ledger.in_currency(everything, currency)
     refusal = ledger.validate_new_entry(book, kind, amount)
+    # The setting is asked only now, when it decides something, and is held until this transaction ends.
+    if (
+        refusal is Refusal.EXCEEDS_BALANCE
+        and advance is not Advance.REFUSE
+        and await session.accepts_advances(lock=True)
+    ):
+        refusal = ledger.validate_new_entry(book, kind, amount, advance_cap=advance_cap(currency))
+        if refusal is None and advance is Advance.ASK:
+            owed = ledger.balance(book)
+            # What they owe now, how much of this payment is beyond it, and what their advance would
+            # then be in all (more than `over` when they are in credit already).
+            raise AdvanceNotConfirmed(
+                {"debt": str(max(owed, 0)), "over": str(amount - max(owed, 0)), "advance": str(amount - owed)}
+            )
     if refusal is not None:
         raise _refuse(refusal)
 
@@ -557,9 +609,14 @@ async def reverse_entry_in(
         raise NotFound()
     currency = original.currency
     dollars = await require_shown(session, currency)
-    refusal = ledger.validate_new_entry(
-        ledger.in_currency(everything, currency), EntryKind.REVERSAL, original.amount, entry_id
-    )
+    book = ledger.in_currency(everything, currency)
+    refusal = ledger.validate_new_entry(book, EntryKind.REVERSAL, original.amount, entry_id)
+    if refusal is Refusal.NEGATIVE_BALANCE and await session.accepts_advances(lock=True):
+        # A sale that payments already cover is cancelled: in a shop that accepts advances what was
+        # paid for it stays as the customer's advance. Elsewhere the later payment is cancelled first.
+        refusal = ledger.validate_new_entry(
+            book, EntryKind.REVERSAL, original.amount, entry_id, advance_cap=advance_cap(currency)
+        )
     if refusal is not None:
         raise _refuse(refusal)
 
@@ -836,7 +893,14 @@ class LedgerService:
         lines: Sequence[LineRequest] | None = None,
         currency: str | None = None,
         method: str | None = None,
+        advance: bool = False,
     ) -> dict[str, Any]:
+        """Record a credit sale or a payment.
+
+        `advance` is the author's answer to "this is more than the debt: keep the rest as an advance?".
+        Without it such a payment is answered with `ADVANCE_NOT_CONFIRMED` and the two amounts in a shop
+        that accepts advances, and refused as it always was in one that does not.
+        """
         started = time.perf_counter()
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, RECORD_ENTRY)
@@ -844,6 +908,8 @@ class LedgerService:
             money = await require_currency(session, currency)
             entry_kind, text, total, goods = clean_sale(kind, amount, note, promised_date, lines, money)
             paid_by = cash_feed.clean_method(kind, method)
+            if advance and entry_kind is not EntryKind.PAYMENT:
+                raise ValidationFailed({"advance": "only a payment can be kept as an advance"})
             require_kind(actor, entry_kind)
             await require_writable(session, self._today(), new_credit=entry_kind is EntryKind.CREDIT)
 
@@ -861,6 +927,7 @@ class LedgerService:
                     lines=goods,
                     currency=money,
                     method=paid_by,
+                    advance=Advance.ACCEPT if advance else Advance.ASK,
                 )
 
             # Only an entry in dollars carries its currency, so a so'm request keeps its fingerprint.
@@ -880,6 +947,9 @@ class LedgerService:
             if paid_by is not None:
                 # Likewise only a payment that names its method.
                 request["method"] = paid_by.value
+            if advance:
+                # And only a payment confirmed as an advance.
+                request["advance"] = True
             return await idempotency.run_once(
                 session, key=key, operation=RECORD_ENTRY.name, user_id=user_id, request=request, action=apply
             )
@@ -991,10 +1061,64 @@ class LedgerService:
             actor = await require_member(session, user_id, READ_OVERVIEW)
             await require_viewable(session, actor, self._today())
             body = _totals_body(await session.shop_totals(self._today()))
+            _add_advances(body, await session.advance_totals())
             if await dollars_on(session):
                 # What is owed in dollars, counted on its own: a customer who owes both is in both counts.
                 body["usd"] = _totals_body(await session.shop_totals(self._today(), USD))
+                _add_advances(body["usd"], await session.advance_totals(USD))
             return body
+
+    async def in_credit(
+        self, user_id: UUID, shop_id: UUID, *, cursor: str | None, limit: int, currency: str | None = None
+    ) -> dict[str, Any]:
+        """Who the shop holds an advance of, largest first, in one currency: so'm unless dollars are asked.
+
+        The other side of `debtors`, and never mixed with it: an item's `balance` is below zero by the
+        advance. In a shop that works in dollars every item also has the customer's balance in the
+        other currency, whichever way that one stands.
+        """
+        async with self._storage.tenant(shop_id) as session:
+            actor = await require_member(session, user_id, LIST_DEBTORS)
+            await require_viewable(session, actor, self._today())
+            if not 1 <= limit <= MAX_PAGE:
+                raise ValidationFailed({"limit": f"must be between 1 and {MAX_PAGE}"})
+            dollars = await dollars_on(session)
+            if currency not in (None, UZS.value) and not (dollars and currency == USD.value):
+                raise ValidationFailed({"currency": "must be UZS or USD" if dollars else "must be UZS"})
+            listed = USD if currency == USD.value else UZS
+            before: tuple[int, UUID] | None = None
+            if cursor:
+                amount_text, customer_id = decode_cursor(cursor, 2)
+                try:
+                    before = (int(amount_text), UUID(customer_id))
+                except ValueError as error:
+                    raise ValidationFailed({"cursor": "not a cursor returned by this API"}) from error
+            rows = await session.advances_page(before=before, limit=limit + 1, currency=listed)
+            page, more = rows[:limit], len(rows) > limit
+            today = self._today()
+            owed: dict[UUID, DebtFigures] = {}
+            held: dict[UUID, int] = {}
+            if dollars and page:
+                # The page's customers in the other currency, whichever way each stands there.
+                ids, other = [customer.customer_id for customer, _ in page], UZS if listed is USD else USD
+                owed, held = await session.debt_figures(ids, today, other), await session.advances_of(ids, other)
+            items: list[dict[str, Any]] = []
+            for customer, amount in page:
+                # Nothing is overdue in the currency the customer is in credit in.
+                here = DebtFigures(-amount, 0, None, 0)
+                beside = owed.get(customer.customer_id) or DebtFigures(-held.get(customer.customer_id, 0), 0, None, 0)
+                in_som, in_usd = (beside, here) if listed is USD else (here, beside)
+                item = {
+                    **customer_body(customer, in_som.balance, in_usd.balance if dollars else None),
+                    "overdue": _figures_overdue(in_som, today),
+                }
+                if dollars:
+                    item["usd"]["overdue"] = _figures_overdue(in_usd, today)
+                items.append(item)
+            return {
+                "items": items,
+                "next_cursor": encode_cursor(page[-1][1], page[-1][0].customer_id) if more else None,
+            }
 
     async def debtors(
         self,
@@ -1034,6 +1158,7 @@ class LedgerService:
             )
             page, more = rows[:limit], len(rows) > limit
             nothing = DebtFigures(0, 0, None, 0)
+            nothing = DebtFigures(0, 0, None, 0)
             other: dict[UUID, DebtFigures] = {}
             if dollars and page:
                 # The page's customers in the currency the list is not sorted by.
@@ -1064,6 +1189,16 @@ def _totals_body(totals: ShopTotals) -> dict[str, Any]:
         "overdue": {"amount": totals.overdue_amount, "customers": totals.overdue_customers},
         "due_today": totals.due_today_amount,
     }
+
+
+def _add_advances(body: dict[str, Any], totals: tuple[int, int]) -> None:
+    """What the shop holds of its customers' money, beside what they owe it and never taken from it.
+
+    Only when there is any, so the overview of a shop that holds no advance is what it always was.
+    """
+    amount, customers = totals
+    if customers:
+        body["advances"] = {"amount": amount, "customers": customers}
 
 
 def _figures_overdue(figures: DebtFigures, today: date) -> dict[str, Any]:

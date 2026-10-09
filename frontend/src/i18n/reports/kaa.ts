@@ -21,6 +21,8 @@ export const kaaReports: PartialCatalog<typeof uzReports> = {
 
   "reports.outstanding.start": "Dáwir basındaǵı qarız",
   "reports.outstanding.end": "Dáwir aqırındaǵı qarız",
+  "reports.advances.start": "Dáwir basındaǵı avanslar",
+  "reports.advances.end": "Dáwir aqırındaǵı avanslar",
   "reports.netChange": "Dáwirdegi ózgeris",
   "reports.credit": "Berilgen nesiye",
   "reports.payments": "Qaytarılǵan (tólemler)",
@@ -35,6 +37,9 @@ export const kaaReports: PartialCatalog<typeof uzReports> = {
   "reports.equation.hint":
     "Dáwir basındaǵı qarız + berilgen nesiye + baslanǵısh qarız − tólemler = dáwir aqırındaǵı qarız",
   "reports.equation.line": "{start} + {credit} + {opening} − {payments} = {end}",
+  "reports.equation.line.advances":
+    "({start} − {advancesStart}) + {credit} + {opening} − {payments} = ({end} − {advancesEnd})",
+  "reports.equation.hint.advances": "Qarıydarlardıń avansları qarızdan alıp esaplanadı: (qarız − avanslar).",
   "reports.equation.mismatch":
     "Esap sáykes kelmedi: shep tárepi {computed}, al dáwir aqırındaǵı qarız {end}. Qollap-quwatlaw xızmetine xabar beriń.",
 

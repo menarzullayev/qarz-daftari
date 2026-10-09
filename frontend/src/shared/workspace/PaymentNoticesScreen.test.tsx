@@ -87,6 +87,15 @@ describe("the list of open notices", () => {
     expect(within(row("Vali Aliyev")).queryByRole("button", { name: "Chek havolasini olish" })).toBeNull();
   });
 
+  it("says the advance of a customer in credit in words, never as a debt below zero", async () => {
+    const server = shop([openNoticeBody({ customer_balance: -15000 }), OTHER]);
+    show(server);
+    const first = await screen.findByText(exact("Xabar qilingan summa: 50\u00a0000 so'm. Haqdor: 15\u00a0000 so'm."));
+    expect(first.closest("li")?.textContent).not.toMatch(/Mijozning qarzi|[-−]\s?15/);
+    // The customer who owes is listed as before.
+    expect(screen.getByText(exact("Xabar qilingan summa: 30\u00a0000 so'm. Mijozning qarzi: 30\u00a0000 so'm."))).toBeTruthy();
+  });
+
   it("warns when the same receipt was sent to the shop before, and only then", async () => {
     show(shop([openNoticeBody({ receipt_seen_before: true }), OTHER]));
     const warning = "Diqqat: aynan shu chek fayli bu do'konga avval ham yuborilgan.";

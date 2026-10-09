@@ -139,6 +139,7 @@ TENANT_TABLES = [
     "promise", "customer_link", "dispute", "payment_notice", "date_change_request", "reminder",
     "removal_request", "stored_file", "subscription", "subscription_receipt", "support_access", "activity",
     "request_key", "ownership_transfer", "online_payment", "export_job", "open_debt", "customer_share",
+    "customer_advance",
     "catalog_barcode", "supplier", "supplier_entry", "supplier_balance", "stock_document", "stock_document_line",
     "stock_movement", "stock_level",
     "cash_category", "cash_entry",

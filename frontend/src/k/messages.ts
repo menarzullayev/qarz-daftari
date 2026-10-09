@@ -43,7 +43,7 @@ const ru: Readonly<Record<MessageKey, string>> = {
   "shop.phone": "Телефон магазина: ",
   "balance.owed": "Ваш долг",
   "balance.none": "Долга нет",
-  "balance.credit": "Ваша переплата",
+  "balance.credit": "У вас предоплата",
   "overdue": "Из них просрочено: {amount}",
   "dueToday": "Оплатить сегодня: {amount}",
   "entries.title": "Записи",

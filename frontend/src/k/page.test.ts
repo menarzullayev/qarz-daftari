@@ -198,13 +198,15 @@ describe("what the page shows", () => {
 
   it.each([
     [0, "Qarzingiz yo'q", null],
-    [-15000, "15 000 so'm", "Ortiqcha to'lovingiz"],
+    [-15000, "15 000 so'm", "Siz haqdorsiz (oldindan to'lov)"],
   ])("says what a balance of %d means", async (balance, amount, label) => {
     const root = await open(server(json({ ...ACCOUNT, balance, overdue: { amount: 0, due_today: 0 } })).fetch);
     expect(root.querySelector(".summary__amount")?.textContent).toBe(amount);
     expect(root.querySelector(".summary__label")?.textContent ?? null).toBe(label);
     expect(root.querySelector(".summary__overdue")).toBeNull();
     expect(root.querySelector(".summary__due")).toBeNull();
+    // An advance is said by its label and the amount itself, never by a minus sign.
+    expect(root.querySelector(".summary")?.textContent).not.toMatch(/[-−]\s?15/);
   });
 
   it("leaves out the phone when the shop gave none, and the name when there is none", async () => {

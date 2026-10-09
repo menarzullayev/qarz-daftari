@@ -222,8 +222,10 @@ class PeriodTotals:
     reversals recorded.
     """
 
-    outstanding_start: int
+    outstanding_start: int  # what customers owed: those in credit are not taken from it
     outstanding_end: int
+    advances_start: int  # what the shop held of customers in credit, beside it
+    advances_end: int
     credit_amount: int
     credit_count: int
     credit_customers: int
@@ -306,6 +308,7 @@ class CreditSettings:
     default_limit: int | None
     sellers_may_exceed: bool
     default_limit_usd: int | None = None  # whole cents
+    accept_advances: bool = False  # whether a customer may pay more than they owe (INV-3)
 
 
 @dataclass(frozen=True)
@@ -736,6 +739,40 @@ class TenantSession(CashSession, StockSession, NetworkSession, Protocol):
     async def set_dollars_setting(self, on: bool) -> None:
         """Store the setting. Takes the shop's lock for it and then the shop's row, so it waits for every
         writer of a dollar amount, whichever of the two that writer holds."""
+        ...
+
+    async def accepts_advances(self, *, lock: bool = False) -> bool:
+        """The shop's own setting "accept advances": whether a customer may pay more than they owe (INV-3).
+
+        With `lock`, the shop's row stays shared until the transaction ends: whoever writes an entry
+        that takes a book below zero asks this way, so that the setting cannot be turned off under them.
+        """
+        ...
+
+    async def set_accept_advances(self, on: bool) -> bool:
+        """Store the setting; False, with nothing stored, when it is turned off while an advance stands.
+
+        Takes the shop's row first, so it waits for every entry that is making an advance, and looks
+        for advances only then.
+        """
+        ...
+
+    async def advances_stand(self) -> bool:
+        """Whether any customer of the shop is in credit now, in any currency."""
+        ...
+
+    async def advance_totals(self, currency: Currency = Currency.UZS) -> tuple[int, int]:
+        """What the shop holds as advances in one currency, and of how many customers."""
+        ...
+
+    async def advances_page(
+        self, *, before: tuple[int, UUID] | None, limit: int, currency: Currency = Currency.UZS
+    ) -> list[tuple[CustomerRecord, int]]:
+        """Customers in credit in one currency with what each is in credit by, the largest advance first."""
+        ...
+
+    async def advances_of(self, customer_ids: list[UUID], currency: Currency = Currency.UZS) -> dict[UUID, int]:
+        """What each of the customers is in credit by in one currency. Absent: not in credit."""
         ...
 
     async def dollars_recorded(self) -> bool:

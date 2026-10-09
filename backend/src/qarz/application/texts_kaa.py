@@ -99,6 +99,14 @@ CHAT: dict[str, str] = {
         "Tek summanı jazıń. Swmda: 50000. Dollarda summadan keyin $ belgisin qoyıń: 50$ yamasa 50.25$"
     ),
     "two_amounts": "{first} hám {second}",
+    "in_credit": "{zero} (aldınnan tólengen: {amount})",
+    "advance_confirm": (
+        "{shop}\n{name}: tólem {amount}\nQarızı: {debt}\nTólem qarızdan {over} kóp. Artıǵı qarıydardıń "
+        "aldınnan tólemi (avans) bolıp qaladı hám keyingi nesiyeler usınnan qaplanadı.\nUsılay jazılsın "
+        "ba?"
+    ),
+    "advance_yes": "✅ Awa, avans bolıp qalsın",
+    "ADVANCE_TOO_LARGE": "Aldınnan tólem júdá úlken: bir qarıydardıń avansı bir jazba shegarasınan aspaydı.",
     "PROMISE_BEFORE_SALE": "Múddet sawda kúninen aldın bolıwı múmkin emes.",
     "PROMISE_TOO_FAR": "Múddet sawda kúninen kóp degende 365 kún keyin bolıwı múmkin.",
     "SUBSCRIPTION_LIMITED": "Jazılıw tamamlanǵan: jańa nesiye jazılmaydı. Tólem qabıllaw isley beredi. /obuna",
@@ -293,6 +301,10 @@ CHAT: dict[str, str] = {
         "«{shop}»: biypul tarif endi {limit} qarıydarǵa shekem, al sizde {used} qarıydar bar. Endi jańa "
         "nesiye jazılmaydı; tólem qabıllaw, kóriw hám qarıydarlarǵa xabarlar isley beredi, maǵlıwmatlarıńız "
         "saqlanadı. Tolıq islew ushın: /obuna"
+    ),
+    "free_plan_off": (
+        "«{shop}»: biypul tarif óshirildi. Endi jańa nesiye jazılmaydı; tólem qabıllaw, kóriw hám "
+        "qarıydarlarǵa xabarlar isley beredi, maǵlıwmatlarıńız saqlanadı. Tolıq islew ushın: /obuna"
     ),
     "move_date_button": "📅 Múddetti kóshiriw",
     "ask_move_date": "Tólew múddeti qaysı sánege kóshirilsin? kún.ay kórinisinde jazıń, mısalı 25.10",
@@ -596,6 +608,8 @@ EXPORT: dict[str, str | tuple[str, ...]] = {
     "owed_usd": "Qarızı ($)",
     "summary_debtors_usd": "Dollarda qarızdar qarıydarlar sanı",
     "summary_outstanding_usd": "Jámi qarız ($)",
+    "summary_advances": "Qarıydarlardıń aldınnan tólemleri (avans)",
+    "summary_advances_usd": "Qarıydarlardıń aldınnan tólemleri ($)",
     "summary_months_usd": ("Aylar boyınsha, dollarda (biykarlanǵan jazbalar hám biykarlaw jazbaları esapqa alınbaǵan)"),
     "summary_entries": "Dápterdegi jazbalar sanı",
     "summary_months": "Aylar boyınsha (biykarlanǵan jazbalar hám biykarlaw jazbaları esapqa alınbaǵan)",
@@ -864,6 +878,14 @@ ERRORS: dict[str, str] = {
     "ALREADY_REVERSED": "Bul jazba álleqashan biykarlanǵan.",
     "CANNOT_REVERSE_REVERSAL": "Biykarlaw jazbasın biykarlap bolmaydı.",
     "WOULD_GO_NEGATIVE": "Biykarlansa qarız teris bolıp qaladı. Aldın keyingi tólemdi biykarlań.",
+    "ADVANCE_NOT_CONFIRMED": (
+        "Tólem qarıydardıń qarızınan úlken. Artıǵı aldınnan tólem (avans) bolıp qalıwın tastıyıqlań."
+    ),
+    "ADVANCE_TOO_LARGE": "Aldınnan tólem júdá úlken: bir qarıydardıń avansı bir jazba shegarasınan aspaydı.",
+    "ADVANCES_STAND": (
+        "Aldınnan tólemdi óshirip bolmaydı: ayırım qarıydarlardıń avansı tur. Aldın ol nesiyege "
+        "isletilsin yamasa tólem biykarlansın."
+    ),
     "PROMISE_ALREADY_SET": "Múddet álleqashan belgilengen. Endi onı menedjer yamasa dúkan iyesi ózgertedi.",
     "CATALOG_NAME_TAKEN": "Katalogta usı atlı ónim bar (jasırılǵan bolıwı da múmkin).",
     "CATALOG_ITEM_NOT_LEARNED": "Bul ónim álleqashan kórip shıǵılǵan.",

@@ -147,6 +147,7 @@ export const ruAdmin: RuAdminCatalog = {
   "admin.settings.saved": "Настройки сохранены. Что изменилось:",
   "admin.settings.changed": "{name}: {before} → {after}",
   "admin.settings.plan.confirm": "Бесплатный тариф уменьшается с {from} до {to} клиентов.",
+  "admin.settings.plan.off": "Бесплатный тариф отключается.",
   "admin.settings.plan.shops": "Магазинов, которые перейдут в ограниченный режим: {count}. В них не записываются новые продажи в долг; записанные данные сохраняются, просмотр и приём оплат работают.",
   "admin.settings.plan.ownersTold": "Владельцам этих магазинов будет отправлено сообщение в боте: что произошло и /obuna.",
   "admin.settings.plan.yes": "Да, сохранить",

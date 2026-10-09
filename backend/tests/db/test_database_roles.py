@@ -127,6 +127,9 @@ DEFINER_FUNCTIONS: dict[str, set[str]] = {
     "open_debt_mismatches(uuid)": NOBODY,
     "open_debts_of(uuid[])": NOBODY,
     "refresh_open_debts(uuid[])": NOBODY,
+    "customer_advances_of(uuid[])": NOBODY,
+    "customer_advance_mismatches(uuid)": NOBODY,
+    "shop_advances_guard()": NOBODY,
     # The stock (migration 0043): the two triggers that keep what is on hand and what a supplier is
     # owed, and the two comparisons of those figures with their ledgers.
     "stock_movement_apply()": NOBODY,
@@ -232,6 +235,8 @@ TABLE_RIGHTS: dict[str, tuple[str, str, str]] = {
     "goods_line": ("SELECT; INSERT", "SELECT", "SELECT"),
     "promise": ("SELECT; INSERT", "SELECT", "SELECT; INSERT"),
     "open_debt": ("SELECT", "", ""),
+    # Written, like the open debts, by the trigger alone: no request can store an advance the ledger does not give.
+    "customer_advance": ("SELECT", "", ""),
     "dispute": ("SELECT; INSERT; UPDATE; DELETE", "SELECT", "SELECT; UPDATE"),
     "date_change_request": ("SELECT; INSERT; UPDATE; DELETE", "SELECT", "SELECT; UPDATE"),
     "payment_notice": ("SELECT; INSERT; UPDATE; DELETE", "SELECT", "SELECT; UPDATE"),

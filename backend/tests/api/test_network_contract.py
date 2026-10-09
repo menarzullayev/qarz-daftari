@@ -568,9 +568,10 @@ def test_a_received_note_is_in_both_books_line_for_line_as_the_note_says(
 def test_the_suppliers_sale_is_written_in_the_name_of_who_issued_the_note_and_by_nobody_of_the_buyer(
     client: TestClient, world: World, on: None, owner: psycopg.Connection
 ) -> None:
-    """The one entry written without its author's live permission check (`sell_in`): it carries the
-    authority of the note. Its author is the supplier's member who issued the note, never a member of
-    the buyer; and the buyer's member who confirmed needs no permission of the supplier's and gets none."""
+    """The one entry written with no member of its shop present (`sell_in`): it carries the authority of
+    the note. Its author is the supplier's member who issued the note (the owner once that member has
+    left or may no longer record a sale: tests/api/test_network_note_author.py), never a member of the
+    buyer; and the buyer's member who confirmed needs no permission of the supplier's and gets none."""
     d = deal(client, world)
     _, note_id = delivered(client, d)
     issuer = owner.execute(

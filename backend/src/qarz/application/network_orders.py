@@ -16,10 +16,20 @@ side refuses, nothing is written anywhere; a refusal of the supplier's books is 
 without its reason, which is the supplier's own business.
 
 On the supplier's side the sale is written with the authority of the note itself: it was issued by a
-member who held `network.fulfil` and `credits.record` at that moment, the entry is in that member's name,
-and no member of the supplier is present when the buyer confirms. That is the only place an entry is
-written without its author's live permission check, and the database refuses to mark the note received
-unless the entry is that customer's, that amount and that member's (`network_receipt_finish`).
+member who held `network.fulfil` and `credits.record` at that moment, and no member of the supplier is
+present when the buyer confirms. The note is the shop's commitment, so the sale is written whatever has
+become of that member since; WHOSE NAME it is in is decided when it is written (`author_of`):
+
+- the member who issued the note, while still an active member of the shop who holds `credits.record`
+  (the permission issuing a note asks for; nothing more is asked for the payment of what was handed over
+  on delivery, as nothing more was asked when the note was issued);
+- otherwise the shop's owner, and the supplier's activity log says so: who issued the note, and that it
+  was posted in the owner's name (`network.note_posted_for_owner`).
+
+The sale, the goods out of the stock, the payment and its line in the cash book all carry that one
+author. This is the only place an entry is written without a member present, and the database refuses to
+mark the note received unless the entry is that customer's, that amount and that author's by the same
+rule (`network_receipt_finish` with `network_note_author`, migration 0048).
 """
 
 from collections.abc import Callable, Sequence
@@ -30,7 +40,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from qarz.application import idempotency, stock_cash
-from qarz.application.authorization import require_permission
+from qarz.application.authorization import may, require_permission
 from qarz.application.chat_texts import say
 from qarz.application.customers import (
     MAX_PAGE,
@@ -698,6 +708,31 @@ class OrderService:
             )
 
 
+# Why a note's sale is in the owner's name and not its issuer's (the detail of the activity row).
+ISSUER_NOT_ACTIVE = "issuer_not_active"
+ISSUER_NOT_PERMITTED = "issuer_not_permitted"
+
+
+def author_of(issuer_id: UUID, issuer: Membership | None, owner_id: UUID | None) -> tuple[Membership, str | None]:
+    """In whose name the supplier's side of a confirmed note is written, and why it is not the issuer's.
+
+    `issuer` is the member who issued the note as they stand now, or None when they are no longer an
+    active member (suspended, removed). While they are active and hold `credits.record` the sale is
+    theirs, as it always was. Otherwise it is the owner's. The database decides the same from the same
+    rows (`network_note_author`, migration 0048; tests/db/test_network_note_author.py holds the two
+    together) and refuses any other author.
+
+    Either way the entry is written with an owner's authority: the note was agreed when it was issued,
+    and a limit on the buyer's account does not stop its delivery from being written.
+    """
+    if issuer is not None and may(issuer, permissions.CREDITS_RECORD):
+        return Membership(issuer_id, Role.OWNER), None
+    if owner_id is None:
+        # A shop with no active owner writes nothing.
+        raise NotFound()
+    return Membership(owner_id, Role.OWNER), ISSUER_NOT_ACTIVE if issuer is None else ISSUER_NOT_PERMITTED
+
+
 async def sell_in(
     there: TenantSession, note_id: UUID, *, now: datetime, method: Method | None = None
 ) -> tuple[UUID, UUID | None]:
@@ -717,7 +752,23 @@ async def sell_in(
     if note is None or note.role != network.SUPPLIER or note.issued_by is None or note.customer_id is None:
         raise NotFound()
     lines = await there.network_note_lines(note_id)
-    author = Membership(note.issued_by, Role.OWNER)
+    issuer, owner_id = await there.network_note_poster(note.issued_by)
+    author, left = author_of(note.issued_by, issuer, owner_id)
+    if left is not None:
+        # Said in the name of the member who issued the note: the log then shows who that was, and the
+        # action says in whose name it was posted. The entries below are the owner's.
+        await there.record_activity(
+            membership_id=note.issued_by,
+            action="network.note_posted_for_owner",
+            subject_type="network_note",
+            subject_id=note_id,
+            detail={
+                "number": note.number,
+                "issued_by": str(note.issued_by),
+                "posted_as": str(author.membership_id),
+                "reason": left,
+            },
+        )
     settings = await there.shop_settings()
     lang = "uz" if settings is None else settings.lang
     currency = Currency(note.currency)

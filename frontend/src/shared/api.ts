@@ -254,6 +254,11 @@ export type OverviewFigures = {
   overdueAmount: number;
   overdueCustomers: number;
   dueToday: number;
+  /**
+   * What the shop holds of customers who paid ahead, and of how many: there only while it holds any.
+   * It stands beside `outstanding` and is never taken from it.
+   */
+  advances?: { amount: number; customers: number };
 };
 /** `usd`: the same figures of the dollar debts, in cents; absent when the shop has no dollars. */
 export type Overview = OverviewFigures & { usd?: OverviewFigures };
@@ -275,6 +280,11 @@ export type NewEntry = {
   note: string | null;
   promisedDate: string | null;
   method?: PaymentMethod;
+  /**
+   * A payment only: what is beyond the debt stays as the customer's advance. Sent after the server asked
+   * (`ADVANCE_NOT_CONFIRMED`) and the person said yes; absent, the request is the one it always was.
+   */
+  advance?: true;
 } & (
   | { amount: number; currency?: Currency; lines?: never }
   | { lines: readonly NewLine[]; amount?: never; currency?: never }
@@ -298,6 +308,26 @@ export type StockWarning =
   | { kind: "unit"; itemId: string; name: string; unit: string };
 export type StockNoted = { stockWarnings?: StockWarning[] };
 
+/**
+ * What a payment larger than the debt would do, as an `ADVANCE_NOT_CONFIRMED` refusal states it in the
+ * payment's currency: what is owed now, how much of the payment is beyond it, and the advance after it.
+ */
+export type AdvanceFigures = { debt: number; over: number; advance: number };
+
+const MINOR_UNITS = /^\d{1,15}$/;
+
+/** The figures of an `ADVANCE_NOT_CONFIRMED` refusal, or null for any other error or unreadable figures. */
+export function advanceAsked(error: ApiError | null): AdvanceFigures | null {
+  if (error?.code !== "ADVANCE_NOT_CONFIRMED") {
+    return null;
+  }
+  const { debt, over, advance } = error.fields;
+  if (debt === undefined || over === undefined || advance === undefined || ![debt, over, advance].every((text) => MINOR_UNITS.test(text))) {
+    return null;
+  }
+  return { debt: Number(debt), over: Number(over), advance: Number(advance) };
+}
+
 /** A credit limit and the balance that met it, both in the entry's currency. */
 export type LimitFigures = { limit: number; balance: number };
 
@@ -320,11 +350,18 @@ export type CreditSettings = {
   sellersMayExceed: boolean;
   bounds: { min: number; max: number };
   usd?: { defaultLimit: number | null; bounds: { min: number; max: number } };
+  /**
+   * The shop accepts advances: a customer may pay more than they owe, and the excess is their advance.
+   * Absent unless the owner turned it on, so the settings of a shop that did not are what they always were.
+   */
+  acceptAdvances?: true;
 };
 export type CreditSettingsPatch = {
   defaultLimit?: number | null;
   sellersMayExceed?: boolean;
   defaultLimitUsd?: number | null;
+  /** The owner's alone: the server refuses it from anyone else. */
+  acceptAdvances?: boolean;
 };
 
 /** One fixed wording of a reminder, in every language the server has it: language code to text. */
@@ -851,7 +888,16 @@ function overviewFigures(value: unknown): OverviewFigures {
     overdueAmount: late.get("amount", whole),
     overdueCustomers: late.get("customers", whole),
     dueToday: body.get("due_today", whole),
+    ...advancesHeld(body.raw("advances")),
   };
+}
+
+function advancesHeld(value: unknown): Pick<OverviewFigures, "advances"> {
+  if (value === undefined || value === null) {
+    return {};
+  }
+  const held = fieldsOf<Wire["OverviewAdvances"]>(value);
+  return { advances: { amount: held.get("amount", whole), customers: held.get("customers", whole) } };
 }
 
 function overview(value: unknown): Overview {
@@ -926,6 +972,7 @@ function creditSettings(value: unknown): CreditSettings {
     defaultLimit: wholeOrNull(body["default_credit_limit"]),
     sellersMayExceed: flag(body["sellers_may_exceed"]),
     bounds: { min, max },
+    ...(body["accept_advances"] === true ? { acceptAdvances: true as const } : {}),
     ...dollars(body["usd"], (value) => {
       const inDollars = record(value);
       const [least, most] = range(inDollars["limit_bounds"]);
@@ -1556,7 +1603,9 @@ function shopApi(transport: Transport, shopId: string) {
     },
 
     recordEntry(customerId: string, input: NewEntry, idempotencyKey: string): Promise<RecordedEntry> {
-      const body: Wire["NewEntry"] = { kind: input.kind };
+      // `advance` has a default in the description, so the generated type makes it required; it is sent
+      // only when it is said, and a request without it is the one it always was.
+      const body: Omit<Wire["NewEntry"], "advance"> & { advance?: true } = { kind: input.kind };
       if (input.lines !== undefined) {
         // The type says so too; a caller that got around it must not send goods priced in so'm as dollars.
         if (input.kind !== "credit" || (input as { currency?: Currency }).currency === "USD") {
@@ -1582,6 +1631,12 @@ function shopApi(transport: Transport, shopId: string) {
           throw new RangeError("only a payment has a method");
         }
         body.method = input.method;
+      }
+      if (input.advance !== undefined) {
+        if (input.kind !== "payment") {
+          throw new RangeError("only a payment can be kept as an advance");
+        }
+        body.advance = true;
       }
       return call(transport, {
         method: "POST",
@@ -1913,6 +1968,9 @@ function shopApi(transport: Transport, shopId: string) {
       if (patch.sellersMayExceed !== undefined) {
         body["sellers_may_exceed"] = patch.sellersMayExceed;
       }
+      if (patch.acceptAdvances !== undefined) {
+        body["accept_advances"] = patch.acceptAdvances;
+      }
       return call(transport, {
         method: "PATCH",
         path: `${base}/credit-settings`,
@@ -1980,7 +2038,7 @@ function shopApi(transport: Transport, shopId: string) {
 
     /** Who owes, largest debt first: by the so'm debt, or with `currency: "USD"` by the dollar debt. */
     debtors(
-      params: { overdue: boolean; cursor?: string | null; limit?: number; currency?: Currency },
+      params: { overdue: boolean; cursor?: string | null; limit?: number; currency?: Currency; inCredit?: boolean },
       signal?: AbortSignal,
     ): Promise<Page<Debtor>> {
       return call(transport, {
@@ -1992,6 +2050,8 @@ function shopApi(transport: Transport, shopId: string) {
           limit: params.limit?.toString(),
           // So'm is the server's default and is not named, so the request is the one it always was.
           currency: params.currency === "USD" ? "USD" : undefined,
+          // The other list: customers the shop holds an advance of. Named only when asked for.
+          in_credit: params.inCredit ? "true" : undefined,
         },
         signal,
         read: page(debtor),

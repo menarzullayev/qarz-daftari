@@ -155,6 +155,7 @@ export const enAdmin: PartialCatalog<typeof uzAdmin, EnPlural> = {
   "admin.settings.saved": "Settings saved. What changed:",
   "admin.settings.changed": "{name}: {before} → {after}",
   "admin.settings.plan.confirm": "The free plan goes down from {from} to {to} customers.",
+  "admin.settings.plan.off": "The free plan is switched off.",
   "admin.settings.plan.shops": "Shops that will become limited: {count}. They cannot record new credit sales; what they recorded is kept, and viewing and taking payments keep working.",
   "admin.settings.plan.ownersTold": "The owners of these shops are sent a message in the bot: what happened and /obuna.",
   "admin.settings.plan.yes": "Yes, save",

@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from uuid import UUID
 
 if TYPE_CHECKING:
-    from qarz.application.ports import StaffContact, TenantSession
+    from qarz.application.ports import Membership, StaffContact, TenantSession
 
 
 class NetworkRefused(Exception):
@@ -326,6 +326,11 @@ class NetworkSession(Protocol):
         ...
 
     async def network_note_lines(self, note_id: UUID) -> list[NoteLine]: ...
+
+    async def network_note_poster(self, issuer_id: UUID) -> "tuple[Membership | None, UUID | None]":
+        """Who may stand as the author of a note's sale in this shop: the member who issued the note, if
+        still an active member (with what decides their permissions now), and the shop's owner."""
+        ...
 
     async def network_reject_note(
         self,

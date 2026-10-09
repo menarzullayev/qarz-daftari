@@ -602,6 +602,36 @@ class NetworkQueries:
             for row in rows
         ]  # fmt: skip
 
+    async def network_note_poster(self, issuer_id: UUID) -> tuple[Membership | None, UUID | None]:
+        rows = (
+            await self._conn.execute(
+                # The shop is named as well as held by row-level security, as for `active_membership`.
+                # The switch and the member's own changes are read here, in the confirming transaction.
+                text(
+                    "SELECT m.id, m.role, m.permissions_granted, m.permissions_denied, "
+                    "coalesce((SELECT p.value = 'true'::jsonb FROM platform_setting p "
+                    "          WHERE p.key = 'permissions_on'), false) AS permissions_on "
+                    "FROM membership m "
+                    "WHERE m.shop_id = :shop AND m.status = 'active' AND (m.id = :issuer OR m.role = 'owner')"
+                ),
+                {"shop": self._shop_id, "issuer": issuer_id},
+            )
+        ).all()
+        issuer: Membership | None = None
+        owner_id: UUID | None = None
+        for row in rows:
+            if row.id == issuer_id:
+                issuer = Membership(
+                    row.id,
+                    Role(row.role),
+                    permissions_on=bool(row.permissions_on),
+                    granted=frozenset(row.permissions_granted),
+                    denied=frozenset(row.permissions_denied),
+                )
+            if row.role == Role.OWNER.value:
+                owner_id = row.id
+        return issuer, owner_id
+
     async def network_reject_note(
         self,
         peer_shop_id: UUID,

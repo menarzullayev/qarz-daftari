@@ -244,6 +244,8 @@ export const kaaPanel: PartialCatalog<typeof uzPanel> = {
   "activity.action.network.order_declined": "Sherik buyırtpası ret etildi",
   "activity.action.network.order_cancelled": "Sherik buyırtpası biykarlandı",
   "activity.action.network.note_issued": "Júk xatı berildi",
+  "activity.action.network.note_posted_for_owner":
+    "Júk xatı dúkan iyesi atınan jazıldı: onı bergen xızmetker endi nesiye jaza almaydı",
   "activity.action.network.note_corrected": "Júk xatı dúzetildi",
   "activity.action.network.note_received": "Júk xatı tastıyıqlandı, tovar qabıllandı",
   "activity.action.network.note_rejected": "Júk xatı ret etildi",

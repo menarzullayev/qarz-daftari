@@ -65,7 +65,7 @@ def test_the_listed_actions_are_exactly_the_ones_the_code_writes() -> None:
     assert sorted(subjects) == LISTED["subjects"]
     # What is known today, so that an empty search does not pass as "nothing to name".
     assert (
-        len(actions) == 20 and {"network.note_received", "network.order_cancelled", "network.invite_created"} <= actions
+        len(actions) == 21 and {"network.note_received", "network.order_cancelled", "network.invite_created"} <= actions
     )
 
 

@@ -148,12 +148,16 @@ def problems(shops: list[ShopData]) -> list[str]:
                     )
                 )
             try:
-                # The domain refuses a negative running balance, a reversal of a reversal, an entry
-                # reversed twice, a reversal with another amount, and a debt without a promise.
+                # The domain refuses a reversal of a reversal, an entry reversed twice, a reversal with
+                # another amount, and a debt without a promise.
                 balance = ledger.balance(domain_entries)
+                lowest = ledger.lowest_balance(domain_entries)
             except LedgerIntegrityError as error:
                 found.append(f"{who}: {error}")
                 continue
+            if lowest < 0:
+                # No generated shop accepts advances, so none of its books may ever go below zero (INV-3).
+                found.append(f"{who}: a running balance is negative in a shop that does not accept advances")
             if customer["status"] == "archived" and balance != 0:
                 found.append(f"{who} is archived but owes {balance}")
 
@@ -172,14 +176,20 @@ _DATABASE_RULES: dict[str, LiteralString] = {
         "SELECT id FROM (SELECT id, created_at, lag(created_at) OVER (PARTITION BY customer_id ORDER BY seq) AS before "
         "FROM ledger_entry) e WHERE created_at < before LIMIT 5"
     ),
-    "a running balance is negative": (
-        "SELECT id FROM (SELECT e.id, sum(CASE "
+    # INV-3: a book goes below zero only as an advance, and only a shop that accepts advances holds
+    # one. Each currency is a book of its own. A shop cannot stop accepting advances while one stands,
+    # so a shop that does not accept them now has no book below zero now; the running balance of every
+    # entry is looked at, not only the last, because none of the generated shops has ever accepted them.
+    "a running balance is negative in a shop that does not accept advances": (
+        "SELECT r.id FROM (SELECT e.id, e.shop_id, sum(CASE "
         "  WHEN e.kind IN ('credit', 'opening') THEN e.amount "
         "  WHEN e.kind = 'payment' THEN -e.amount "
         "  WHEN t.kind = 'payment' THEN e.amount ELSE -e.amount END) "
-        "  OVER (PARTITION BY e.customer_id ORDER BY e.seq) AS running "
-        "FROM ledger_entry e LEFT JOIN ledger_entry t ON t.id = e.reverses_id) r WHERE running < 0 LIMIT 5"
+        "  OVER (PARTITION BY e.customer_id, e.currency ORDER BY e.seq) AS running "
+        "FROM ledger_entry e LEFT JOIN ledger_entry t ON t.id = e.reverses_id) r "
+        "JOIN shop s ON s.id = r.shop_id WHERE r.running < 0 AND NOT s.accept_advances LIMIT 5"
     ),
+    "a stored advance differs from the ledger": "SELECT customer_id FROM customer_advance_mismatches(NULL) LIMIT 5",
     "a reversal does not undo an earlier entry of the same customer, not itself a reversal, for the same amount": (
         "SELECT e.id FROM ledger_entry e JOIN ledger_entry t ON t.id = e.reverses_id "
         "WHERE t.customer_id <> e.customer_id OR t.seq >= e.seq OR t.kind = 'reversal' OR t.amount <> e.amount LIMIT 5"

@@ -19,7 +19,7 @@ from qarz.application.admin_receipts import CHAT as DECIDED_IN_CHAT
 from qarz.application.admin_receipts import AdminReceiptService, ReceiptAlreadyDecided
 from qarz.application.authorization import may
 from qarz.application.cash_book import book_in
-from qarz.application.chat_texts import CONSENT_VERSION, LANGUAGE_NAMES, both, day, money, say
+from qarz.application.chat_texts import CONSENT_VERSION, LANGUAGE_NAMES, both, day, money, owed, say
 from qarz.application.currencies import USD, UZS, balance_in, currency_of, platform_dollars, tag
 from qarz.application.customer_account import CustomerAccountService
 from qarz.application.customers import (
@@ -54,6 +54,8 @@ from qarz.application.ledger_service import (
     CHOOSE_PROMISE,
     RECORD_ENTRY,
     REVERSE_ENTRY,
+    Advance,
+    AdvanceNotConfirmed,
     append_entry_in,
     choose_promise_in,
     clean_entry,
@@ -137,7 +139,7 @@ def _amounts(lang: str, body: dict[str, Any]) -> dict[str, str]:
     currency = currency_of(body["entry"])
     return {
         "amount": money(lang, body["entry"]["amount"], currency),
-        "balance": money(lang, balance_in(body["customer"], currency), currency),
+        "balance": owed(lang, balance_in(body["customer"], currency), currency),
     }
 
 
@@ -920,7 +922,7 @@ class ChatService:
         lang = incoming.lang
         await session.drop_pending(incoming.user_id, "notice")
         in_dollars = await self._owed_in_dollars(session, account)
-        if account.balance <= 0 and not in_dollars:
+        if account.balance <= 0 and (in_dollars or 0) <= 0:
             await replies.show(say(lang, "notice_nothing_owed", shop=account.shop_name))
             return
         await session.put_pending(
@@ -1906,8 +1908,13 @@ class ChatService:
         amount: int,
         note: str | None,
         currency: Currency = UZS,
+        advance: bool = False,
     ) -> dict[str, Any]:
-        """Record the entry, creating the customer first when asked to, as one idempotent write."""
+        """Record the entry, creating the customer first when asked to, as one idempotent write.
+
+        A payment larger than the debt is never recorded silently: in a shop that accepts advances it
+        raises `AdvanceNotConfirmed` until the seller has said yes to the question (`advance`).
+        """
         actor = await require_member(session, incoming.user_id, RECORD_ENTRY)
         require_kind(actor, kind)
         if new_name is not None:
@@ -1935,6 +1942,7 @@ class ChatService:
                 # "Ali -45000 karta": a payment whose note is exactly a way of paying was made that way.
                 # It matters only while the cash book is on; the note itself stays as it was typed.
                 method=cash.method_from_note(note) if kind is EntryKind.PAYMENT else None,
+                advance=Advance.ACCEPT if advance else Advance.ASK,
             )
 
         return await idempotency.run_once(
@@ -1950,11 +1958,69 @@ class ChatService:
                     "kind": kind.value,
                     "amount": amount,
                     "note": note,
+                    # Only a payment confirmed as an advance carries the key.
+                    **({"advance": True} if advance else {}),
                 },
                 currency,
             ),
             action=apply,
         )
+
+    async def _ask_advance(
+        self,
+        session: PlatformSession,
+        incoming: Incoming,
+        replies: Replies,
+        shop: MyShop,
+        asked: AdvanceNotConfirmed,
+        *,
+        customer_id: UUID,
+        name: str,
+        amount: int,
+        note: str | None,
+        currency: Currency,
+        show: bool,
+    ) -> None:
+        """The payment is more than the debt: ask the seller before anything is written.
+
+        The same step as for a name that matches several customers: what was typed waits, and one
+        button records it. That button names the one customer and says the rest is to be an advance.
+        """
+        lang = incoming.lang
+        pending_id = self._pending_id(incoming)
+        await session.put_pending(
+            pending_id=pending_id,
+            user_id=incoming.user_id,
+            kind="entry",
+            payload=tag(
+                {
+                    "shop": shop.shop_id.hex,
+                    "name": name,
+                    "kind": EntryKind.PAYMENT.value,
+                    "amount": amount,
+                    "note": note,
+                    "candidates": [customer_id.hex],
+                    "advance": True,
+                },
+                currency,
+            ),
+            now=self._now(),
+            expires_at=self._now() + PENDING_LIFETIME,
+        )
+        text = say(
+            lang,
+            "advance_confirm",
+            shop=shop.name,
+            name=name,
+            amount=money(lang, amount, currency),
+            debt=money(lang, int(asked.fields["debt"]), currency),
+            over=money(lang, int(asked.fields["over"]), currency),
+        )
+        keyboard: Keyboard = [
+            [(say(lang, "advance_yes"), callback("pk", pending_id.hex, 0))],
+            [(say(lang, "cancel"), callback("x", pending_id.hex))],
+        ]
+        await (replies.show(text, keyboard) if show else replies.send(text, keyboard))
 
     async def _entry(
         self, session: PlatformSession, incoming: Incoming, replies: Replies, shop: MyShop, parsed: ParsedEntry
@@ -1965,6 +2031,7 @@ class ChatService:
         amount_text = money(lang, parsed.amount, currency)
         saved: dict[str, Any] | None = None
         candidates: list[tuple[UUID, str, int]] = []
+        exact: list[Any] = []
         try:
             async with self._storage.tenant(shop.shop_id) as tenant:
                 await require_member(tenant, incoming.user_id, RECORD_ENTRY)
@@ -1998,8 +2065,24 @@ class ChatService:
                     if currency is not UZS:
                         # Beside each name, what they owe in the currency of this entry: a payment in
                         # dollars is for someone who owes dollars.
-                        owed = await tenant.balances([found_id for found_id, _, _ in candidates], currency)
-                        candidates = [(found_id, name, owed.get(found_id, 0)) for found_id, name, _ in candidates]
+                        theirs = await tenant.balances([found_id for found_id, _, _ in candidates], currency)
+                        candidates = [(found_id, name, theirs.get(found_id, 0)) for found_id, name, _ in candidates]
+        except AdvanceNotConfirmed as asked:
+            # Only the one customer of that exact name is written to without a question, so it is theirs.
+            await self._ask_advance(
+                session,
+                incoming,
+                replies,
+                shop,
+                asked,
+                customer_id=exact[0][0].customer_id,
+                name=exact[0][0].display_name,
+                amount=parsed.amount,
+                note=parsed.note,
+                currency=currency,
+                show=False,
+            )
+            return
         except AppError as error:
             await replies.send(self._error_text(lang, error))
             return
@@ -2043,7 +2126,7 @@ class ChatService:
             )
             return
         choices: Keyboard = [
-            [(f"{name} · {money(lang, balance, currency)}", callback("pk", pending_id.hex, index))]
+            [(f"{name} · {owed(lang, balance, currency)}", callback("pk", pending_id.hex, index))]
             for index, (_, name, balance) in enumerate(candidates)
         ]
         if kind is EntryKind.CREDIT:
@@ -2098,7 +2181,26 @@ class ChatService:
                     amount=int(payload["amount"]),
                     note=payload.get("note"),
                     currency=parse_code(payload.get("currency")) or UZS,
+                    # Set only by the question about an advance, which this press answers with yes.
+                    advance=payload.get("advance") is True,
                 )
+        except AdvanceNotConfirmed as asked:
+            # The customer picked from the list owes less than was typed: asked like any such payment.
+            assert customer_id is not None  # a new customer is made only for a credit sale
+            await self._ask_advance(
+                session,
+                incoming,
+                replies,
+                shops[shop_id],
+                asked,
+                customer_id=customer_id,
+                name=str(payload["name"]),
+                amount=int(payload["amount"]),
+                note=payload.get("note"),
+                currency=parse_code(payload.get("currency")) or UZS,
+                show=True,
+            )
+            return
         except AppError as error:
             await replies.show(self._error_text(lang, error))
             return
