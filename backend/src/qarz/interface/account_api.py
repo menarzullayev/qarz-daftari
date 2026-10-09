@@ -29,6 +29,8 @@ CurrentUser = Callable[..., Awaitable[UUID]]
 
 # Sent with the caller's shops while the per-member permissions are switched on (expansion module G).
 PERMISSIONS_HEADER = "X-Qarz-Permissions"
+# Sent with the caller's shops while the cash book is switched on (expansion module H).
+CASH_BOOK_HEADER = "X-Qarz-Cash-Book"
 
 
 class ActiveShop(BaseModel):
@@ -60,6 +62,8 @@ def add_account_routes(
             # Tells a client that each shop now answers what the member may do there. Absent while the
             # switch is off: nothing in the answer differs from before then.
             response.headers[PERMISSIONS_HEADER] = "on"
+        if await account.cash_book_on():
+            response.headers[CASH_BOOK_HEADER] = "on"
         return body
 
     @app.put("/api/v1/me/active-shop", name=SET_ACTIVE_SHOP.name)

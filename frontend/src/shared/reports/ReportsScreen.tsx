@@ -4,7 +4,7 @@ import { useI18n, type Translate } from "../../i18n/I18nProvider";
 import type { ApiError } from "../api";
 import { formatCustomerCount, formatMoney, tashkentDay } from "../format";
 import { useLoad } from "../hooks";
-import { type Column, useDesktop } from "../layout";
+import type { Column } from "../layout";
 import type { Currency } from "../money";
 import { isRole } from "../navigation";
 import { toIsoDate } from "../promise";
@@ -13,6 +13,7 @@ import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
 import { useMay, useWorkspace } from "../workspace/context";
 import { CurrencyToggle, Empty, Failure, FieldError, Loading } from "../workspace/parts";
+import { Figures } from "./Figures";
 import "./messages";
 import {
   checkPeriod,
@@ -49,52 +50,6 @@ function refusedPeriod(error: ApiError | null): PeriodProblems {
 /** How long a membership's code is: the end of its identifier, as on the panel's staff screen. */
 const CODE_LENGTH = 6;
 
-/**
- * A list of a report: a real table on a wide screen of the web panel, readable rows on a phone. The
- * figures are the same either way; `row` is how one item reads when there are no columns to align it in.
- */
-function Figures<T>({
-  caption,
-  columns,
-  items,
-  rowKey,
-  row,
-  foot,
-  footRow,
-}: {
-  caption: string;
-  columns: readonly Column<T>[];
-  items: readonly T[];
-  rowKey: (item: T) => string;
-  row: (item: T) => { name: ReactNode; amount?: string; detail?: string };
-  foot?: readonly ReactNode[];
-  footRow?: { name: string; amount?: string; detail?: string };
-}) {
-  const desktop = useDesktop();
-  if (desktop) {
-    return <desktop.Table caption={caption} columns={columns} items={items} rowKey={rowKey} {...(foot ? { foot } : {})} />;
-  }
-  const line = (key: string, { name, amount, detail }: { name: ReactNode; amount?: string; detail?: string }, total = false) => (
-    <li key={key} className={total ? "row row--total" : "row"}>
-      <p className="row__link">
-        <span className="row__name">{name}</span>
-        {amount === undefined ? null : <span className="row__amount">{amount}</span>}
-      </p>
-      {detail === undefined ? null : <p className="row__meta">{detail}</p>}
-    </li>
-  );
-  return (
-    <ul className="rows" aria-label={caption}>
-      {items.map((item) => line(rowKey(item), row(item)))}
-      {footRow ? line("total", footRow, true) : null}
-    </ul>
-  );
-}
-
-/**
- * `report` is the money of one currency, so'm or dollars, and `currency` says which; `counts` are the
- * period's customers and disputes, which belong to neither.
- */
 function Totals({
   report,
   counts,

@@ -161,7 +161,9 @@ const sources = () =>
     .map((name) => ({ name, text: readFileSync(resolve(SRC, name), "utf8") }));
 
 describe("the reports stay out of the first load (NFR-010)", () => {
-  const REPORTS = /^(shared\/reports\/|i18n\/reports\/)/;
+  // The cash screen is loaded on demand like the reports, and shares their period, tables and words:
+  // what it imports from them travels with it, never with the first load.
+  const REPORTS = /^(shared\/reports\/|i18n\/reports\/|shared\/cash\/)/;
 
   it("are loaded on demand: nothing imports the reports or the date-request list except through import()", () => {
     const offenders: string[] = [];
@@ -175,6 +177,8 @@ describe("the reports stay out of the first load (NFR-010)", () => {
     expect(offenders).toEqual([]);
     const app = sources().find((source) => source.name === "shared/StaffApp.tsx")?.text ?? "";
     expect(app).toContain('lazy(() => import("./reports/ReportsScreen"))');
+    expect(app).toContain('lazy(() => import("./cash/CashScreen"))');
+    expect(app).not.toMatch(/^import .*["']\.\/cash\//m);
     expect(app).toContain('lazy(() => import("./workspace/DateRequestsScreen"))');
   });
 

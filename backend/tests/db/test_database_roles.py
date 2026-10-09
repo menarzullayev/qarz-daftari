@@ -153,6 +153,12 @@ TABLE_RIGHTS: dict[str, tuple[str, str, str]] = {
         "",
         "SELECT(customer_id, revoked_at); UPDATE(revoked_at)",
     ),
+    # The cash book (migration 0042). The application writes an entry and cancels one, and that is all
+    # it may do to it: no delete, and no update of anything but the three columns of a cancellation. A
+    # category it may rename, archive and, while nothing was written under it, delete. The worker reads
+    # both for the shop's export.
+    "cash_entry": ("SELECT; INSERT; UPDATE(cancelled_at, cancelled_by, cancel_reason)", "", "SELECT"),
+    "cash_category": ("SELECT; INSERT; DELETE; UPDATE(name, name_norm, archived_at)", "", "SELECT"),
     "removal_request": ("SELECT; INSERT; UPDATE; DELETE", "", "SELECT; INSERT; UPDATE"),
     "ledger_entry": ("SELECT; INSERT", "SELECT", "SELECT; INSERT"),
     "goods_line": ("SELECT; INSERT", "SELECT", "SELECT"),

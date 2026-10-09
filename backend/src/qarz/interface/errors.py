@@ -68,6 +68,12 @@ _STATUS = {
     "IMPORT_UNDO_REFUSED": 409,
     "SUBSCRIPTION_RECEIPT_NOT_ALLOWED": 409,
     "RECEIPT_ALREADY_DECIDED": 409,
+    "CASH_ENTRY_OF_LEDGER": 409,
+    "CASH_ENTRY_CANCELLED": 409,
+    "CASH_CATEGORY_ARCHIVED": 409,
+    "CASH_CATEGORY_NAME_TAKEN": 409,
+    "CASH_CATEGORY_FIXED": 409,
+    "CASH_CATEGORY_IN_USE": 409,
 }
 
 _MESSAGES = {
@@ -136,6 +142,14 @@ _MESSAGES = {
         "IMPORT_UNDO_REFUSED": "Bu importni bekor qilib bo'lmaydi: muddat o'tgan yoki yozuvlarga to'lov qilingan.",
         "SUBSCRIPTION_RECEIPT_NOT_ALLOWED": "Ko'rib chiqilmagan cheklaringiz juda ko'p. Administrator javobini kuting.",
         "RECEIPT_ALREADY_DECIDED": "Bu chek bo'yicha qaror allaqachon qabul qilingan.",
+        "CASH_ENTRY_OF_LEDGER": (
+            "Bu yozuv mijozning to'lovi. Uni bekor qilish uchun mijoz sahifasida o'sha to'lovni bekor qiling."
+        ),
+        "CASH_ENTRY_CANCELLED": "Bu kassa yozuvi allaqachon bekor qilingan.",
+        "CASH_CATEGORY_ARCHIVED": "Bu toifa arxivda. Boshqa toifani tanlang yoki uni arxivdan chiqaring.",
+        "CASH_CATEGORY_NAME_TAKEN": "Shu nomli toifa allaqachon bor (arxivda bo'lishi ham mumkin).",
+        "CASH_CATEGORY_FIXED": "Mijozlar to'lovi tushadigan toifani arxivlab yoki o'chirib bo'lmaydi.",
+        "CASH_CATEGORY_IN_USE": "Bu toifada yozuvlar bor, uni o'chirib bo'lmaydi. Arxivlash mumkin.",
         "ONLINE_PAY_OFF": "Onlayn to'lov hozircha yoqilmagan. Karta orqali to'lash: /obuna",
         "RATE_LIMITED": "So'rovlar juda ko'p. Biroz kutib, qayta urinib ko'ring.",
         "TIMEOUT": "So'rov juda uzoq davom etdi va to'xtatildi. Hech narsa saqlanmadi. Qayta urinib ko'ring.",
@@ -208,6 +222,14 @@ _MESSAGES = {
             "У вас слишком много нерассмотренных чеков. Дождитесь ответа администратора."
         ),
         "RECEIPT_ALREADY_DECIDED": "По этому чеку решение уже принято.",
+        "CASH_ENTRY_OF_LEDGER": (
+            "Эта запись — оплата клиента. Чтобы отменить её, отмените эту оплату на странице клиента."
+        ),
+        "CASH_ENTRY_CANCELLED": "Эта запись кассы уже отменена.",
+        "CASH_CATEGORY_ARCHIVED": "Эта статья в архиве. Выберите другую или верните её из архива.",
+        "CASH_CATEGORY_NAME_TAKEN": "Статья с таким названием уже есть (возможно, в архиве).",
+        "CASH_CATEGORY_FIXED": "Статью, в которую попадают оплаты клиентов, нельзя архивировать или удалить.",
+        "CASH_CATEGORY_IN_USE": "В этой статье есть записи, удалить её нельзя. Можно архивировать.",
         "ONLINE_PAY_OFF": "Онлайн-оплата пока не включена. Оплата переводом на карту: /obuna",
         "RATE_LIMITED": "Слишком много запросов. Подождите немного и повторите.",
         "TIMEOUT": "Запрос выполнялся слишком долго и был остановлен. Ничего не сохранено. Повторите попытку.",

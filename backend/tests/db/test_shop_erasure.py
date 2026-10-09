@@ -39,6 +39,7 @@ def fill(owner: psycopg.Connection, shop: Shop) -> uuid.UUID:
     payment = add_entry(owner, shop, seq=2, amount=10000, kind="payment")
     add_entry(owner, shop, seq=3, amount=10000, kind="reversal", reverses=payment)
     linked = uuid.uuid4()
+    cash_income, cash_expense = uuid.uuid4(), uuid.uuid4()
     owner.execute("INSERT INTO app_user (id, tg_id) VALUES (%s, %s)", (linked, uuid.uuid4().int % 10**15))
     statements: list[tuple[str, tuple[Any, ...]]] = [
         (
@@ -115,6 +116,24 @@ def fill(owner: psycopg.Connection, shop: Shop) -> uuid.UUID:
             "INSERT INTO date_change_request (id, shop_id, entry_id, requested_date) "
             "VALUES (gen_random_uuid(), %s, %s, current_date + 9)",
             (shop.shop_id, entry),
+        ),
+        (
+            "INSERT INTO cash_category (id, shop_id, direction, name, name_norm, system_key) VALUES "
+            "(%s, %s, 'income', 'Qarz qaytdi', 'qarz qaytdi', 'debt_repaid'), "
+            "(%s, %s, 'expense', 'Ijara', 'ijara', NULL)",
+            (cash_income, shop.shop_id, cash_expense, shop.shop_id),
+        ),
+        (
+            # One entry the ledger wrote for the payment above, and one written by hand and cancelled.
+            "INSERT INTO cash_entry (id, shop_id, direction, method, amount, category_id, day, author_id, "
+            "ledger_entry_id) VALUES (gen_random_uuid(), %s, 'income', 'cash', 10000, %s, current_date, %s, %s)",
+            (shop.shop_id, cash_income, shop.member_id, payment),
+        ),
+        (
+            "INSERT INTO cash_entry (id, shop_id, direction, method, amount, category_id, day, author_id, "
+            "cancelled_at, cancelled_by, cancel_reason) "
+            "VALUES (gen_random_uuid(), %s, 'expense', 'card', 300000, %s, current_date, %s, now(), %s, 'Xato')",
+            (shop.shop_id, cash_expense, shop.member_id, shop.member_id),
         ),
     ]
     for sql, values in statements:

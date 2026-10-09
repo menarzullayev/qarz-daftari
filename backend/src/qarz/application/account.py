@@ -12,6 +12,7 @@ from qarz.application.operations import operation, self_operation
 from qarz.application.ports import Storage
 from qarz.application.shops import require_member
 from qarz.domain.access import Capability
+from qarz.domain.cash import SWITCH as CASH_SWITCH
 
 LIST_MY_SHOPS = self_operation("me.shops.list")
 SET_ACTIVE_SHOP = self_operation("me.active_shop.set")
@@ -33,6 +34,12 @@ class AccountService:
         """
         async with self._storage.platform() as session:
             return await session.platform_setting(SWITCH) is True
+
+    async def cash_book_on(self) -> bool:
+        """Whether the cash book is on (expansion module H). Said in a header as well, and only when it
+        is on: a client offers the cash book only then."""
+        async with self._storage.platform() as session:
+            return await session.platform_setting(CASH_SWITCH) is True
 
     async def my_shops(self, user_id: UUID) -> dict[str, Any]:
         async with self._storage.platform() as session:

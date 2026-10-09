@@ -382,3 +382,58 @@ describe("what the workspace offers when the server keeps permissions per member
     expect(navLinks()).toEqual(["Umumiy ko'rinish", "Mijozlar", "Yangi yozuv", "Katalog"]);
   });
 });
+
+describe("the cash book in the workspace", () => {
+  const navLinks = () => within(screen.getByRole("navigation")).getAllByRole("link").map((link) => link.textContent);
+
+  /** The person's shops, with the header the server sends while the cash book is on. */
+  function withCashBook(role: Role) {
+    return backend({}, (sent) => {
+      if (sent.path === "/api/v1/me/shops") {
+        return {
+          status: 200,
+          body: { items: [membership(role)], active_shop: SHOP_ID },
+          headers: { "X-Qarz-Cash-Book": "on" },
+        };
+      }
+      if (sent.path === `${SHOP_BASE}/cash/categories`) {
+        return ok({ items: [], currencies: ["UZS"] });
+      }
+      if (sent.path === `${SHOP_BASE}/cash/day`) {
+        return ok({ date: "2026-10-06", balances: [], totals: [], entries: [], next_cursor: null });
+      }
+      return null;
+    });
+  }
+
+  it("is not offered, and nothing of it is asked, while the server does not say it is on", async () => {
+    const server = backend({ items: [membership("owner")], active_shop: SHOP_ID });
+    start(server);
+    await screen.findByText("Ali Valiyev");
+    expect(navLinks()).not.toContain("Kassa");
+    go("#/cash");
+    expect(heading()).toBe("Sahifa topilmadi");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(server.sent.filter((sent) => sent.path.includes("/cash"))).toHaveLength(0);
+  });
+
+  it("is a section of a manager's workspace once the server says it is on", async () => {
+    const server = withCashBook("manager");
+    start(server);
+    await screen.findByText("Ali Valiyev");
+    expect(navLinks()).toContain("Kassa");
+    go("#/cash");
+    expect(heading()).toBe("Kassa");
+    expect(await screen.findByRole("heading", { name: "Kassa: 2026-yil 6-oktabr" })).toBeTruthy();
+  });
+
+  it("is not a section of a seller's workspace even then", async () => {
+    const server = withCashBook("seller");
+    start(server);
+    await screen.findByText("Ali Valiyev");
+    expect(navLinks()).toEqual(["Umumiy ko'rinish", "Mijozlar", "Yangi yozuv", "Katalog"]);
+    go("#/cash");
+    expect(heading()).toBe("Sahifa topilmadi");
+    expect(server.sent.filter((sent) => sent.path.includes("/cash"))).toHaveLength(0);
+  });
+});

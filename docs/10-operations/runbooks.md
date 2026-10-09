@@ -528,6 +528,30 @@ limited shop then send no SMS, and their owners are shown SMS as something payin
    worker. The token Eskiz gives (30 days) is held only in the worker's memory: it is never logged and
    never stored, and a restart obtains a new one with the first message.
 
+### The cash book (`cash_book_on`)
+
+Off by default; turning it on or off asks for the second factor. It needs migration `0042` and nothing
+else: no setting of a shop, no environment variable, no restart.
+
+1. **What turning it on does.** Every shop's managers and owner get the section "Kassa" in the Mini App
+   and the panel and the command `/kassa` in the bot; the payment form asks how the money came. From that
+   moment each customer's payment is also written into the shop's cash book as income ("Qarz qaytdi").
+   A shop's categories are written the first time its book is used, in the shop's language.
+2. **What it does not do.** It copies nothing from the past: a shop's book starts empty. An owner who
+   wants earlier payments in the book presses "Avvalgi to'lovlarni kassaga ko'chirish" under "Toifalar"
+   (optionally from a chosen day). It can be pressed again safely; it writes each payment once.
+3. **Turning it off** hides the section, the command and the method again and stops new payments from
+   being written into the book. Nothing is deleted: the entries are there when it is turned on again.
+   A payment that was in the book and is reversed while the switch is off is still cancelled in the
+   book. Payments recorded while it was off are missing from the book until an owner copies them in.
+4. **"A cash book entry is wrong."** Nobody edits or deletes one, operators included. A manager or the
+   owner cancels it with a reason and records the right one; the cancelled entry stays in the list. An
+   entry that is a customer's payment is cancelled by reversing that payment on the customer's page
+   (runbook 6); recording the payment again with the right method writes the right entry.
+5. **"The balance is below zero" or "does not match the till."** The book holds what was written into
+   it. A shop that started with money in the till records it once as income in "Boshlang'ich qoldiq",
+   dated the day it starts.
+
 ### The free plan (`free_plan_on`, `free_plan_customers`)
 
 Built and switched off (expansion module A; domain rules BR-33 to BR-35). Like every module of the

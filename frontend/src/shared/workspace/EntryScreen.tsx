@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 
 import { useI18n, type Translate } from "../../i18n/I18nProvider";
-import type { ApiError, ChosenPromise, CustomerDetail, EntryKind, NewEntry, RecordedEntry } from "../api";
+import { PAYMENT_METHODS } from "../api";
+import type { ApiError, ChosenPromise, CustomerDetail, EntryKind, NewEntry, PaymentMethod, RecordedEntry } from "../api";
 import { type CalendarDay, formatCalendarDay, formatMoney, tashkentDay } from "../format";
 import { linesSumProblem, MAX_LINES_SUM, MIN_LINES_SUM } from "../goods";
 import { useLoad, useSubmit } from "../hooks";
@@ -201,7 +202,7 @@ function Recorded({ saved, today, onAnother }: { saved: Saved; today: CalendarDa
 }
 
 function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; kind: EntryKind; onRecorded: () => void }) {
-  const { api, now } = useWorkspace();
+  const { api, now, features } = useWorkspace();
   const can = useMay();
   const { t, language } = useI18n();
   // The shop's default limit and its rule for sellers; a payment meets no limit and asks for nothing.
@@ -211,6 +212,9 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
   );
   const [amountText, setAmountText] = useState("");
   const [note, setNote] = useState("");
+  // While the cash book is on, a payment says how the money came: it goes to that balance of the book.
+  const askMethod = kind === "payment" && features?.cashBook === true;
+  const [method, setMethod] = useState<PaymentMethod>("cash");
   const [choice, setChoice] = useState<PromiseChoice>("default");
   const [picked, setPicked] = useState("");
   const [errors, setErrors] = useState<FieldErrors>(NO_ERRORS);
@@ -275,7 +279,13 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
     if (!promise.ok || found.note !== null) {
       return;
     }
-    const rest = { kind, note: cleanNote === "" ? null : cleanNote, promisedDate: promise.date };
+    const rest = {
+      kind,
+      note: cleanNote === "" ? null : cleanNote,
+      promisedDate: promise.date,
+      // Named only where the server knows the field: for a payment, while the cash book is on.
+      ...(askMethod ? { method } : {}),
+    };
     if (itemized) {
       if (reading.lines !== null && linesSumProblem(reading.sum) === null) {
         submit({ ...rest, lines: reading.lines });
@@ -402,6 +412,24 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
           {mayProceed === null ? null : (
             <p>{t(mayProceed ? "credit.warn.allowed" : "credit.limit.sellersStopped")}</p>
           )}
+        </div>
+      ) : null}
+
+      {askMethod ? (
+        <div className="field">
+          <label htmlFor="entry-method">{t("entry.method")}</label>
+          <select
+            id="entry-method"
+            className="input"
+            value={method}
+            onChange={(event) => setMethod(PAYMENT_METHODS.find((way) => way === event.target.value) ?? "cash")}
+          >
+            {PAYMENT_METHODS.map((way) => (
+              <option key={way} value={way}>
+                {t(`entry.method.${way}`)}
+              </option>
+            ))}
+          </select>
         </div>
       ) : null}
 

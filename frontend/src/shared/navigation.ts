@@ -26,8 +26,15 @@ export function canManage(role: Role): boolean {
   return RANK[role] >= RANK.manager;
 }
 
-/** A section opens for whoever holds any one of `needs`. */
-type StaffSection = NavItem & { needs: readonly PermissionKey[] };
+/**
+ * A part of the product that exists only while the platform has switched it on. The server says which
+ * are on (a header of the person's shops); a section of one that is off is offered to nobody.
+ */
+export type Feature = "cashBook";
+export type Features = Readonly<Partial<Record<Feature, boolean>>>;
+
+/** A section opens for whoever holds any one of `needs`, and only while its `feature`, if any, is on. */
+type StaffSection = NavItem & { needs: readonly PermissionKey[]; feature?: Feature };
 
 /**
  * Sections of the staff workspace and the permissions that open each (REQ-033; the server's catalogue).
@@ -43,6 +50,15 @@ const STAFF_SECTIONS: readonly StaffSection[] = [
   { id: "catalog", path: "/catalog", labelKey: "nav.catalog", needs: ["ledger.view"] },
   { id: "reminders", path: "/reminders", labelKey: "nav.reminders", needs: ["reminders.send", "settings.view"] },
   { id: "reports", path: "/reports", labelKey: "nav.reports", needs: ["reports.view"] },
+  // The cash book (expansion module H), behind the platform switch `cash_book_on`: for whoever may read
+  // it, record in it or arrange its categories.
+  {
+    id: "cash",
+    path: "/cash",
+    labelKey: "nav.cash",
+    needs: ["cash.view", "cash.record_income", "cash.record_expense", "cash.categories"],
+    feature: "cashBook",
+  },
   { id: "disputes", path: "/disputes", labelKey: "nav.disputes", needs: ["disputes.decide"] },
   { id: "importExport", path: "/import-export", labelKey: "nav.importExport", needs: ["imports.run", "reports.export"] },
   { id: "staff", path: "/staff", labelKey: "nav.staff", needs: ["staff.manage"] },
@@ -58,10 +74,12 @@ export const STAFF_SECTION_IDS: readonly string[] = STAFF_SECTIONS.map((section)
  * Exactly the sections the member may open, in display order: by what the server said they hold, or by
  * the role alone when it said nothing (`permissions` absent or null).
  */
-export function staffSections(role: Role, permissions?: Held): NavItem[] {
-  return STAFF_SECTIONS.filter((section) => mayAny({ role, permissions }, section.needs)).map(
-    ({ id, path, labelKey }) => ({ id, path, labelKey }),
-  );
+export function staffSections(role: Role, permissions?: Held, features: Features = {}): NavItem[] {
+  return STAFF_SECTIONS.filter(
+    (section) =>
+      (section.feature === undefined || features[section.feature] === true) &&
+      mayAny({ role, permissions }, section.needs),
+  ).map(({ id, path, labelKey }) => ({ id, path, labelKey }));
 }
 
 /** How many sections fit in the bottom tab bar of a phone; the rest sit behind "More". */
