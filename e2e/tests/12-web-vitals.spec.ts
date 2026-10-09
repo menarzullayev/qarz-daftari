@@ -10,8 +10,9 @@ import { best, type Budget, measure, overBudget, PROFILE, totalBlockingTime, typ
  * low-end Android phone on a 3G connection": the `usableMs` of /app/ below is that check, and the
  * bundle budget of frontend/scripts/size.ts is the other half of the same requirement.
  *
- * The budgets are what a run of this suite measured, with headroom for a slower runner; the comment
- * beside each says what was measured. Raising one is a decision, made here, in the change that needs it.
+ * The budgets are what a run of this suite measured on GitHub's runner (the better of two loads), with
+ * headroom for a slower runner; the comment beside each says what was measured. Raising one is a
+ * decision, made here, in the change that needs it.
  *
  * Not measured: Telegram's own script, which the Mini App's page loads from telegram.org before
  * anything else. The suite answers that request itself, at once, so the time Telegram's server takes is
@@ -22,11 +23,15 @@ const GOOD_CLS = 0.1;
 
 const BUDGETS = {
   // The overview with its totals, after signing in with the launch data: five round trips in a row.
-  app: { lcpMs: 2500, usableMs: 3000, tbtMs: 600, cls: GOOD_CLS },
+  // Measured: LCP 1804 ms, usable 1776 ms, TBT 0 ms, CLS 0.017. LCP is held to the "good" bound, which
+  // is the measurement and two fifths more; "usable" to the same, half a second inside NFR-010's three.
+  app: { lcpMs: 2500, usableMs: 2500, tbtMs: 200, cls: GOOD_CLS },
   // The sign-in screen: what a visitor to the panel is shown first, every time (a reload asks again).
-  panel: { lcpMs: 2500, usableMs: 3000, tbtMs: 600, cls: GOOD_CLS },
+  // Measured: LCP 1312 ms, usable 1365 ms, TBT 0 ms, CLS 0.
+  panel: { lcpMs: 1900, usableMs: 1900, tbtMs: 200, cls: 0.05 },
   // A customer's own account behind their link: one small script and one request.
-  k: { lcpMs: 2500, usableMs: 3000, tbtMs: 300, cls: GOOD_CLS },
+  // Measured: LCP 628 ms, usable 601 ms, TBT 0 ms, CLS 0.
+  k: { lcpMs: 1000, usableMs: 1000, tbtMs: 100, cls: 0.05 },
 } as const satisfies Record<string, Budget>;
 
 const LOADS = 2;
@@ -43,7 +48,7 @@ function throttled(vitals: Vitals): boolean {
 
 function report(name: string, runs: readonly Vitals[], taken: Vitals, budget: Budget): void {
   const line = (vitals: Vitals) =>
-    `LCP ${vitals.lcpMs} ms, FCP ${vitals.fcpMs} ms, usable ${vitals.usableMs} ms, TBT ${vitals.tbtMs} ms, CLS ${vitals.cls}`;
+    `LCP ${vitals.lcpMs} ms, FCP ${vitals.fcpMs} ms, usable ${vitals.usableMs} ms, TBT ${vitals.tbtMs} ms, CLS ${vitals.cls} (${vitals.longTasks} long tasks, the longest ${vitals.longestTaskMs} ms)`;
   console.log(`[web vitals] ${name}: ${line(taken)}`);
   runs.forEach((run, index) => console.log(`[web vitals]   load ${index + 1}: ${line(run)}`));
   console.log(`[web vitals]   budget: LCP ${budget.lcpMs} ms, usable ${budget.usableMs} ms, TBT ${budget.tbtMs} ms, CLS ${budget.cls}`);
@@ -54,12 +59,19 @@ test("the measure itself: blocking time counts what is over 50 ms after the firs
   expect(totalBlockingTime([[100, 40], [200, 50], [300, 51], [400, 250]], 0)).toBe(201);
   // A task before the first paint blocked nobody: there was nothing to tap.
   expect(totalBlockingTime([[100, 400], [900, 120]], 500)).toBe(70);
-  const fine: Vitals = { lcpMs: 1800, fcpMs: 900, usableMs: 2000, tbtMs: 120, cls: 0.02 };
+  const fine: Vitals = { lcpMs: 1800, fcpMs: 900, usableMs: 2000, tbtMs: 120, cls: 0.02, longTasks: 2, longestTaskMs: 170 };
   expect(overBudget(fine, BUDGETS.app)).toEqual([]);
   expect(overBudget({ ...fine, lcpMs: 2501 }, BUDGETS.app)).toEqual(["LCP 2501 ms is over 2500 ms"]);
-  expect(overBudget({ ...fine, usableMs: 3001 }, BUDGETS.app)).toEqual(["usable after 3001 ms, over 3000 ms"]);
+  expect(overBudget({ ...fine, usableMs: 2501 }, BUDGETS.app)).toEqual(["usable after 2501 ms, over 2500 ms"]);
+  // NFR-010's three seconds are never the looser bound.
+  expect(BUDGETS.app.usableMs).toBeLessThanOrEqual(3000);
   expect(overBudget({ ...fine, cls: 0.11 }, BUDGETS.app)).toEqual(["CLS 0.11 is over 0.1"]);
-  expect(overBudget({ ...fine, tbtMs: 601 }, BUDGETS.app)).toEqual(["TBT 601 ms is over 600 ms"]);
+  expect(overBudget({ ...fine, tbtMs: 201 }, BUDGETS.app)).toEqual(["TBT 201 ms is over 200 ms"]);
+  // What today's pages measure passes each page's own budget, and the Mini App's figures fail the customer page's.
+  expect(overBudget({ ...fine, lcpMs: 1804, usableMs: 1776, tbtMs: 0, cls: 0.017 }, BUDGETS.app)).toEqual([]);
+  expect(overBudget({ ...fine, lcpMs: 1312, usableMs: 1365, tbtMs: 0, cls: 0 }, BUDGETS.panel)).toEqual([]);
+  expect(overBudget({ ...fine, lcpMs: 628, usableMs: 601, tbtMs: 0, cls: 0 }, BUDGETS.k)).toEqual([]);
+  expect(overBudget({ ...fine, lcpMs: 1804, usableMs: 1776, tbtMs: 0, cls: 0.017 }, BUDGETS.k)).toHaveLength(2);
   // A page that reported no paint at all was not measured, and that is not a pass.
   expect(overBudget({ ...fine, lcpMs: 0 }, BUDGETS.app)).toEqual(["no largest contentful paint was reported: nothing was measured"]);
   expect(best([fine, { ...fine, lcpMs: 1700, tbtMs: 300 }])).toEqual({ ...fine, lcpMs: 1700 });

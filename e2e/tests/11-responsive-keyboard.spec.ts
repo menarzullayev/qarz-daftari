@@ -12,8 +12,9 @@ import { newPerson } from "../support/telegram.ts";
  * added and a credit recorded with the keyboard alone.
  *
  * The other journeys each run at one width, because what they press differs by layout (a table on a
- * wide screen is a list on a narrow one). Here one signed-in page is resized and walked through its
- * screens, which costs one sign-in for every width: the proxy limits sign-ins by address.
+ * wide screen is a list on a narrow one). Here one signed-in page is walked through its screens and
+ * resized around each, which costs one sign-in for all the widths (the proxy limits sign-ins by
+ * address) and one read of each screen's data (the API limits requests by person).
  */
 
 const WIDTHS = [
@@ -60,20 +61,96 @@ function staffScreens(customerId: string): string[] {
   ];
 }
 
-/** Opens each screen at each width and holds it to its window; every failure is named, not the first only. */
-async function walk(page: Page, entry: string, screens: readonly string[]): Promise<void> {
-  for (const [name, size] of WIDTHS) {
-    await page.setViewportSize(size);
-    for (const path of screens) {
-      await goTo(page, path);
+/**
+ * What the page asked of the API while it was walked. The API allows one person a burst of 60 requests
+ * and two a second after that (interface/rate_limit.py); a walk that asks faster is answered "too many"
+ * and would then be measuring the screens' failure notices, not the screens.
+ */
+type Traffic = { asked: number; since: number; tooMany: string[]; broken: string[] };
+
+function watchTraffic(page: Page): Traffic {
+  const traffic: Traffic = { asked: 0, since: Date.now(), tooMany: [], broken: [] };
+  page.on("response", (response) => {
+    const url = new URL(response.url());
+    if (!url.pathname.startsWith("/api/")) {
+      return;
+    }
+    traffic.asked += 1;
+    const said = `${response.request().method()} ${url.pathname} -> ${response.status()}`;
+    if (response.status() === 429) {
+      traffic.tooMany.push(said);
+    } else if (response.status() >= 500) {
+      traffic.broken.push(said);
+    }
+  });
+  return traffic;
+}
+
+/** Waits until a screen's worth of requests fits the allowance again, counted more strictly than the API counts. */
+async function paced(traffic: Traffic): Promise<void> {
+  const allowed = () => 45 + 1.6 * ((Date.now() - traffic.since) / 1000);
+  while (traffic.asked + 10 > allowed()) {
+    await new Promise((done) => setTimeout(done, 200));
+  }
+}
+
+type DoubleText = {
+  /** The screens that are also held to twice the text size. */
+  screens: readonly string[];
+  /** At these widths a finding fails the test. */
+  strict: readonly (typeof WIDTHS)[number][];
+  /** At these it is printed. */
+  printed: readonly (typeof WIDTHS)[number][];
+};
+
+/**
+ * Opens each screen once and holds it to its window at each width; the main screens then also at twice
+ * the text size. A screen is opened once and the window resized around it, so the walk asks the API for
+ * each screen's data once. Every failure is named, not the first only.
+ */
+async function walk(page: Page, entry: string, screens: readonly string[], traffic: Traffic, double: DoubleText): Promise<void> {
+  for (const path of screens) {
+    await paced(traffic);
+    await goTo(page, path);
+    await settled(page);
+    for (const [name, size] of WIDTHS) {
+      await page.setViewportSize(size);
+      // Another layout may be another set of components, which read again.
       await settled(page);
       const where = `${entry}#${path} at ${name} width (${size.width}px)`;
-      // The address is one of the application's: a screen that is not there would prove nothing.
+      // The screen is the application's and is itself: an address that is not there, a screen that
+      // failed to draw, or one showing "could not be read" would prove nothing about its layout.
       await expect.soft(page.getByRole("heading", { level: 1 }).first(), where).not.toHaveText("Sahifa topilmadi");
       await expect.soft(page.getByText("Kutilmagan xatolik yuz berdi."), where).toHaveCount(0);
+      await expect.soft(page.locator(".shell__main").getByRole("button", { name: "Qayta urinish" }), `${where}: nothing failed to load`).toHaveCount(0);
       await expectNoSidewaysScroll(page, where, { soft: true });
     }
+    if (double.screens.includes(path)) {
+      await setTextSize(page, 200);
+      for (const [width, strict] of [...double.strict.map((width) => [width, true] as const), ...double.printed.map((width) => [width, false] as const)]) {
+        const [name, size] = width;
+        await page.setViewportSize(size);
+        await settled(page);
+        const where = `${entry}#${path} at 200% text, ${name} width (${size.width}px)`;
+        expect(await page.evaluate(() => getComputedStyle(document.documentElement).fontSize), where).toBe("32px");
+        const findings = await textSizeFindings(page);
+        if (strict) {
+          await expectNoSidewaysScroll(page, where, { soft: true });
+          expect.soft(findings, where).toEqual([]);
+        } else {
+          const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+          for (const finding of sideways > 0 ? [`${sideways}px wider than the window`, ...findings] : findings) {
+            console.log(`[not held to yet] ${where}: ${finding}`);
+          }
+        }
+      }
+      await setTextSize(page, 100);
+    }
   }
+  // The walk saw the screens themselves: the API refused nothing for being asked too often, and broke nothing.
+  expect(traffic.tooMany, `${entry}: the walk asked the API too often, and was shown failure notices`).toEqual([]);
+  expect(traffic.broken, `${entry}: the API failed`).toEqual([]);
+  console.log(`[walk] ${entry}: ${screens.length} screens, ${traffic.asked} API requests in ${Math.round((Date.now() - traffic.since) / 1000)} s`);
 }
 
 type Finding = string;
@@ -152,61 +229,39 @@ async function setTextSize(page: Page, percent: 100 | 200): Promise<void> {
   }, percent === 200 ? "32px" : "");
 }
 
-/** The main screens at twice the text size. `strict` fails the test on a finding; otherwise it is printed. */
-async function walkAtDoubleText(page: Page, entry: string, screens: readonly string[], width: (typeof WIDTHS)[number], strict: boolean): Promise<void> {
-  const [name, size] = width;
-  await page.setViewportSize(size);
-  await setTextSize(page, 200);
-  for (const path of screens) {
-    await goTo(page, path);
-    await settled(page);
-    const where = `${entry}#${path} at 200% text, ${name} width (${size.width}px)`;
-    expect(await page.evaluate(() => getComputedStyle(document.documentElement).fontSize), where).toBe("32px");
-    const findings = await textSizeFindings(page);
-    if (strict) {
-      await expectNoSidewaysScroll(page, where, { soft: true });
-      expect.soft(findings, where).toEqual([]);
-    } else {
-      const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-      for (const finding of sideways > 0 ? [`${sideways}px wider than the window`, ...findings] : findings) {
-        console.log(`[not held to yet] ${where}: ${finding}`);
-      }
-    }
-  }
-  await setTextSize(page, 100);
-}
-
 test("the Mini App: no screen is wider than its window at any width, and the main screens hold at twice the text size", async ({ page, chat }) => {
   test.setTimeout(150_000);
   const { owner, shopName, customerId } = await shopWithBook(chat, "Keng");
+  const traffic = watchTraffic(page);
   await openMiniApp(page, owner);
   await expect(page.getByRole("banner").locator("strong")).toHaveText(shopName);
   await expect(page.locator("main dl dd").nth(0)).toHaveText("9 906 000 so'm");
 
   // "More" is the phone's own screen: the sections that do not fit the tab bar.
-  await walk(page, "/app/", [...staffScreens(customerId), "/more"]);
-
-  const main = ["/", "/customers", `/customers/${customerId}`, `/customers/${customerId}/credit`, "/customers/new"];
-  // Twice the text at a tablet's width leaves each line the room a phone gives at the ordinary size.
-  await walkAtDoubleText(page, "/app/", main, WIDTHS[1], true);
-  // A phone at twice the text size is narrower than any width the screens are designed for: measured
-  // and printed, so that it is known, and not yet a failure.
-  await walkAtDoubleText(page, "/app/", main, WIDTHS[0], false);
+  await walk(page, "/app/", [...staffScreens(customerId), "/more"], traffic, {
+    screens: ["/", "/customers", `/customers/${customerId}`, `/customers/${customerId}/credit`, "/customers/new"],
+    // Twice the text at a tablet's width is the width WCAG's reflow asks for (640px and up).
+    strict: [WIDTHS[1]],
+    // A phone at twice the text size is narrower than any width the screens are designed for: measured
+    // and printed, so that it is known, and not yet a failure.
+    printed: [WIDTHS[0]],
+  });
 });
 
 test("the panel: no screen is wider than its window at any width, a phone's included, and the main screens hold at twice the text size", async ({ page, chat }) => {
   test.setTimeout(150_000);
   const { owner, shopName, customerId } = await shopWithBook(chat, "Panel");
+  const traffic = watchTraffic(page);
   await signInOnWeb(page, owner, "/panel/");
   await expect(page.getByRole("banner").locator("strong")).toHaveText(shopName);
   await expect(page.locator("main dl dd").nth(0)).toHaveText("9 906 000 so'm");
 
   // The owner's back office is the panel's own: the staff and what was done in the shop.
-  await walk(page, "/panel/", [...staffScreens(customerId), "/staff", "/activity"]);
-
-  const main = ["/", "/customers", `/customers/${customerId}`, `/customers/${customerId}/credit`, "/reports", "/staff"];
-  await walkAtDoubleText(page, "/panel/", main, WIDTHS[2], true);
-  await walkAtDoubleText(page, "/panel/", main, WIDTHS[1], true);
+  await walk(page, "/panel/", [...staffScreens(customerId), "/staff", "/activity"], traffic, {
+    screens: ["/", "/customers", `/customers/${customerId}`, `/customers/${customerId}/credit`, "/reports", "/staff"],
+    strict: [WIDTHS[2], WIDTHS[1]],
+    printed: [],
+  });
 });
 
 /** What has the focus, for a failure's message. */

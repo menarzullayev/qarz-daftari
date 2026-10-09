@@ -32,6 +32,13 @@ export type Vitals = {
   tbtMs: number;
   /** A fraction of the view; no unit. */
   cls: number;
+  /**
+   * How many tasks ran longer than 50 ms from the start of the load, and the longest of them: with the
+   * processor slowed, starting the application is one, so a zero here means the browser reported none
+   * and the blocking time above was not measured.
+   */
+  longTasks: number;
+  longestTaskMs: number;
 };
 
 type Collected = {
@@ -105,6 +112,8 @@ export async function measure(context: BrowserContext, usable: string, open: (pa
       usableMs: Math.round(seen.usable ?? Number.POSITIVE_INFINITY),
       tbtMs: Math.round(totalBlockingTime(seen.long, seen.fcp)),
       cls: Math.round(seen.cls * 1000) / 1000,
+      longTasks: seen.long.length,
+      longestTaskMs: Math.round(Math.max(0, ...seen.long.map(([, duration]) => duration))),
     };
   } finally {
     await devtools.send("Emulation.setCPUThrottlingRate", { rate: 1 });
@@ -126,6 +135,8 @@ export function best(runs: readonly Vitals[]): Vitals {
     usableMs: least((run) => run.usableMs),
     tbtMs: least((run) => run.tbtMs),
     cls: least((run) => run.cls),
+    longTasks: least((run) => run.longTasks),
+    longestTaskMs: least((run) => run.longestTaskMs),
   };
 }
 
