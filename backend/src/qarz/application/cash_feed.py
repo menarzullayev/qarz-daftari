@@ -37,7 +37,7 @@ async def switched_on(session: TenantSession) -> bool:
     return await session.platform_setting(cash.SWITCH) is True
 
 
-def clean_method(kind: str, method: str | None) -> Method | None:
+def clean_method(kind: str, method: object) -> Method | None:
     """The method a new ledger entry names, or None when it names none. Only a payment has one."""
     if method is None:
         return None

@@ -3237,6 +3237,8 @@ export interface components {
         qarz__interface__payment_notices_api__Accept: {
             /** Amount */
             amount?: number | null;
+            /** Method */
+            method?: string | null;
         };
         /** Accept */
         qarz__interface__staff_api__Accept: {

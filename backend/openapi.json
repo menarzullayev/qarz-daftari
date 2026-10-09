@@ -3357,6 +3357,18 @@
               }
             ],
             "title": "Amount"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
           }
         },
         "title": "Accept",

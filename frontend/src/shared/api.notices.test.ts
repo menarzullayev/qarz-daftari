@@ -125,6 +125,14 @@ describe("the shop's side of payment notices", () => {
     expect(() => shop.acceptPaymentNotice(NOTICE_ID, 45000.5, KEY)).toThrow(RangeError);
   });
 
+  it("names how the money came only when it is told to: otherwise the body is what it was", async () => {
+    const { server, shop } = client(() => ok({}));
+    await shop.acceptPaymentNotice(NOTICE_ID, null, KEY, "card");
+    await shop.acceptPaymentNotice(NOTICE_ID, 45000, KEY, "transfer");
+    await shop.acceptPaymentNotice(NOTICE_ID, null, KEY, undefined);
+    expect(server.sent.map((sent) => sent.body)).toEqual([{ method: "card" }, { amount: 45000, method: "transfer" }, {}]);
+  });
+
   it("declines with a tidied reason of 3 to 300 characters, and refuses another before sending", async () => {
     const { server, shop } = client(() => ok({}));
     await shop.declinePaymentNotice(NOTICE_ID, "  Pul   kelmadi ", KEY);

@@ -1557,16 +1557,22 @@ function shopApi(transport: Transport, shopId: string) {
 
     /**
      * Accepts a notice, which records a payment. `amount` corrects what the customer stated; null
-     * records the stated amount.
+     * records the stated amount. `method` says how the money came, and only while the cash book is on:
+     * otherwise the server does not know the field.
      */
-    acceptPaymentNotice(noticeId: string, amount: number | null, idempotencyKey: string): Promise<void> {
+    acceptPaymentNotice(
+      noticeId: string,
+      amount: number | null,
+      idempotencyKey: string,
+      method?: PaymentMethod,
+    ): Promise<void> {
       if (amount !== null && !Number.isSafeInteger(amount)) {
         throw new RangeError("amount must be a whole number of UZS");
       }
       return call(transport, {
         method: "POST",
         path: `${base}/payment-notices/${segment(noticeId)}/accept`,
-        body: amount === null ? {} : { amount },
+        body: { ...(amount === null ? {} : { amount }), ...(method === undefined ? {} : { method }) },
         idempotencyKey,
         read: () => undefined,
       });

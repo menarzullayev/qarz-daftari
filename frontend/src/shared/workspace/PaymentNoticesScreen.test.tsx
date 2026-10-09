@@ -276,6 +276,48 @@ describe("accepting", () => {
   });
 });
 
+describe("how an accepted notice was paid, while the cash book is on", () => {
+  const METHOD = "To'lov usuli";
+  const withCashBook = (server: ReturnType<typeof fakeServer>) =>
+    renderScreen(<PaymentNoticesScreen />, { fetch: server.fetch, role: "seller", features: { cashBook: true } });
+  const vali = () => row("Vali Aliyev");
+
+  it("is not asked for while the cash book is off: the form and the request are what they were", async () => {
+    const server = shop();
+    show(server);
+    click(await waitFor(ali), "Qabul qilish");
+    expect(screen.queryByLabelText(METHOD)).toBeNull();
+    click(ali(), "Ha, to'lov yozilsin");
+    await screen.findByRole("status");
+    expect(server.writes()[0]?.body).toEqual({});
+  });
+
+  it("starts as card for a notice with a receipt and is sent with the acceptance", async () => {
+    const server = shop();
+    withCashBook(server);
+    click(await waitFor(ali), "Qabul qilish");
+    const select = within(ali()).getByLabelText<HTMLSelectElement>(METHOD);
+    expect(select.value).toBe("card");
+    expect([...select.options].map((option) => option.textContent)).toEqual(["Naqd", "Karta", "O'tkazma"]);
+    click(ali(), "Ha, to'lov yozilsin");
+    await screen.findByRole("status");
+    expect(server.writes()[0]).toMatchObject({ path: `${PATH}/${NOTICE_ID}/accept`, body: { method: "card" } });
+  });
+
+  it("starts as cash for a notice without a receipt, and sends what was chosen instead", async () => {
+    const server = shop();
+    withCashBook(server);
+    click(await waitFor(vali), "Qabul qilish");
+    const select = within(vali()).getByLabelText<HTMLSelectElement>(METHOD);
+    expect(select.value).toBe("cash");
+    fireEvent.change(select, { target: { value: "transfer" } });
+    fireEvent.change(within(vali()).getByLabelText("Yoziladigan to'lov summasi, so'm"), { target: { value: "25000" } });
+    click(vali(), "Ha, to'lov yozilsin");
+    await screen.findByRole("status");
+    expect(server.writes()[0]).toMatchObject({ path: `${PATH}/${OTHER_ID}/accept`, body: { amount: 25000, method: "transfer" } });
+  });
+});
+
 describe("declining", () => {
   const REASON = "Rad etish sababi";
 

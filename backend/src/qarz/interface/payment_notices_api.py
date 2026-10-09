@@ -15,8 +15,10 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Request, Response
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, ConfigDict, Field, WithJsonSchema
 
+from qarz.application.cash_feed import UNKNOWN_FIELD
 from qarz.application.errors import ValidationFailed
 from qarz.application.files import FileService
 from qarz.application.payment_notices import (
@@ -50,6 +52,13 @@ class Accept(BaseModel):
 
     # Absent or null records the amount the customer stated; a number corrects it (BR-14).
     amount: int | None = None
+    # How the money came: "cash", "card" or "transfer". Left out: "card" for a notice with a receipt and
+    # "cash" for one without. Only while the cash book is on; while it is off the field does not exist,
+    # and a request that carries it is refused like any other request with an unknown field. Whatever is
+    # sent is taken as it is and checked by the operation, so that this refusal is the same for any value.
+    method: Annotated[
+        Any, WithJsonSchema({"anyOf": [{"type": "string", "maxLength": 16}, {"type": "null"}], "title": "Method"})
+    ] = None
 
 
 class Decline(BaseModel):
@@ -163,7 +172,20 @@ def add_payment_notice_routes(app: FastAPI, service: PaymentNoticeService, curre
         body: Accept | None = None,
         idempotency_key: IdempotencyKey = None,
     ) -> dict[str, Any]:
-        return await service.accept(user_id, shop_id, notice_id, None if body is None else body.amount, idempotency_key)
+        if body is not None and "method" in body.model_fields_set and not await service.cash_book_on():
+            # While the cash book is off the field does not exist: the request is answered exactly as it
+            # was before the field was added, as one that carries a field the API does not know.
+            raise RequestValidationError(
+                [{"type": "extra_forbidden", "loc": ("body", "method"), "msg": UNKNOWN_FIELD, "input": body.method}]
+            )
+        return await service.accept(
+            user_id,
+            shop_id,
+            notice_id,
+            None if body is None else body.amount,
+            idempotency_key,
+            None if body is None else body.method,
+        )
 
     @app.post("/api/v1/shops/{shop_id}/payment-notices/{notice_id}/decline", name=DECLINE_NOTICE.name)
     async def decline_notice(
