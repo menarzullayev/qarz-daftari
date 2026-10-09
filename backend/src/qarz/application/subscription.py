@@ -30,7 +30,7 @@ from qarz.domain.subscription import (
 READ_SUBSCRIPTION = operation("shop.subscription.read", Capability.ADMINISTER_SHOP)
 
 PRICE = "price_uzs"
-CARD = "card_number"
+CARDS = "payment_cards"
 
 
 async def subscription_body(session: TenantSession, today: date) -> dict[str, Any]:
@@ -40,7 +40,7 @@ async def subscription_body(session: TenantSession, today: date) -> dict[str, An
     end = period_end(state, trial_ends, paid_through) if effective in (TRIAL, ACTIVE) else None
     # Read as the administrator's panel shows it: a stored value outside the allowed range does not apply.
     price = platform_settings.effective(PRICE, await session.platform_setting(PRICE))
-    card = await session.platform_setting(CARD)
+    cards = platform_settings.payment_cards(await session.platform_setting(CARDS))
     return {
         "state": effective,
         "trial_ends": None if trial_ends is None else trial_ends.isoformat(),
@@ -50,13 +50,21 @@ async def subscription_body(session: TenantSession, today: date) -> dict[str, An
         "price_uzs": price
         if isinstance(price, int) and not isinstance(price, bool) and price > 0
         else DEFAULT_PRICE_UZS,
-        # Where to transfer the payment (REQ-054). Absent until the administrator has set it.
-        "card_number": card if isinstance(card, str) and card.strip() else None,
+        # Where to transfer the payment (REQ-054): the cards in the order they are offered, the primary one
+        # first. Empty until the administrator has set one. `card_number` is the primary card's number, as
+        # it was when there was one card only.
+        "card_number": cards[0]["number"] if cards else None,
+        "cards": [{"number": card["number"], "label": card["label"]} for card in cards],
     }
 
 
-def subscription_text(lang: str, shop: str, body: dict[str, Any]) -> str:
-    """What `/obuna` says."""
+def grouped(number: str) -> str:
+    """A card number in groups of four, as it is printed on the card."""
+    return " ".join(number[at : at + 4] for at in range(0, len(number), 4))
+
+
+def subscription_text(lang: str, shop: str, body: dict[str, Any], card: int = 0) -> str:
+    """What `/obuna` says. `card` is the place in the list of the card it tells the owner to pay to."""
     lines = [say(lang, "sub_header", shop=shop)]
     if body["ends_on"] is not None:
         key = "sub_state_trial" if body["state"] == TRIAL else "sub_state_active"
@@ -64,10 +72,11 @@ def subscription_text(lang: str, shop: str, body: dict[str, Any]) -> str:
     else:
         lines.append(say(lang, f"sub_state_{body['state']}"))
     lines.append(say(lang, "sub_price", price=money(lang, body["price_uzs"])))
-    if body["card_number"] is None:
+    if not body["cards"]:
         lines.append(say(lang, "sub_no_card"))
     else:
-        lines.append(say(lang, "sub_pay_to", card=body["card_number"]))
+        chosen = body["cards"][card]
+        lines.append(say(lang, "sub_pay_to", label=chosen["label"], card=grouped(chosen["number"])))
     return "\n".join(lines)
 
 
@@ -93,16 +102,21 @@ class SubscriptionService:
                 raise NotFound()
             return subscription_text(lang, settings.name, await subscription_body(session, self._today()))
 
-    async def chat_offer(self, user_id: UUID, shop_id: UUID, lang: str) -> tuple[str, str, int | None]:
-        """What `/obuna` says, the shop's name, and the monthly price when there is a card to pay to."""
+    async def chat_offer(
+        self, user_id: UUID, shop_id: UUID, lang: str, card: int = 0
+    ) -> tuple[str, str, int | None, list[dict[str, str]]]:
+        """What `/obuna` says, the shop's name, the monthly price when there is a card to pay to, and the
+        cards. `card` is the place of the card the text names; one that is not in the list is the primary."""
         async with self._storage.tenant(shop_id) as session:
             await require_member(session, user_id, READ_SUBSCRIPTION)
             settings = await session.shop_settings()
             if settings is None:
                 raise NotFound()
             body = await subscription_body(session, self._today())
-        price = None if body["card_number"] is None else int(body["price_uzs"])
-        return subscription_text(lang, settings.name, body), settings.name, price
+        cards: list[dict[str, str]] = body["cards"]
+        price = int(body["price_uzs"]) if cards else None
+        place = card if 0 <= card < len(cards) else 0
+        return subscription_text(lang, settings.name, body, place), settings.name, price, cards
 
     async def run_daily(self) -> int:
         """Warn owners and move ended periods to limited. Safe to repeat on the same day."""

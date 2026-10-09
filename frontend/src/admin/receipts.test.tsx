@@ -150,9 +150,16 @@ describe("one receipt", () => {
   const press = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
   const question = () => [...(screen.getByRole("group").querySelectorAll("p:not(.actions)") ?? [])].map((part) => part.textContent?.replace(/\s/g, " "));
 
+  it("says which card the owner paid to when the receipt names one, by its name and last four digits", async () => {
+    receipt(receiptDetailBody({ paid_to_card: "Uzcard · Kapitalbank ··7890" }));
+    await screen.findByRole("button", { name: "Tasdiqlash" });
+    expect(facts().slice(4, 8)).toEqual(["Ko'rsatilgan oylar", "2", "To'langan karta", "Uzcard · Kapitalbank ··7890"]);
+  });
+
   it("shows the shop, what its owner stated and the state, and records nothing but the look", async () => {
     const { server } = receipt();
     await screen.findByRole("button", { name: "Tasdiqlash" });
+    // The receipt names no card, so no line is made up for one.
     expect(facts()).toEqual(["Do'kon", "Baraka savdo", "Ko'rsatilgan summa", "200 000 so'm", "Ko'rsatilgan oylar", "2", "Yuborilgan", "2026-yil 6-oktabr, 11:00", "Holat", "Kutmoqda"]);
     expect(screen.getByRole("link", { name: "Baraka savdo" }).getAttribute("href")).toBe(`#/shops/${SHOP_ID}`);
     expect(screen.getByRole("link", { name: "Cheklar navbati" }).getAttribute("href")).toBe("#/receipts");

@@ -88,6 +88,11 @@ export type AdminReceipt = {
    * administrator of the platform; then `decidedBy` is null.
    */
   decidedByTgId: number | null;
+  /**
+   * The card the owner says they paid to, as its label and last four digits: which account's statement
+   * to look at. Null for a receipt that names none.
+   */
+  paidToCard: string | null;
   hasFile: boolean;
 };
 
@@ -128,7 +133,9 @@ export type AdminShopDetail = AdminShop & {
   changes: AuditRow[];
 };
 
-export type SettingValue = boolean | number | string | null;
+/** A card owners may pay the subscription to: sixteen digits and a short name for it. */
+export type PaymentCard = { number: string; label: string };
+export type SettingValue = boolean | number | string | PaymentCard[] | null;
 export type PlatformSettings = {
   values: Readonly<Record<string, SettingValue>>;
   /** The settings whose change asks for a code from the authenticator again. */
@@ -254,6 +261,7 @@ function adminReceipt(value: unknown): AdminReceipt {
     decidedAt: textOrNull(body["decided_at"]),
     decidedBy: textOrNull(body["decided_by"]),
     decidedByTgId: telegramIdOrNull(body["decided_by_tg_id"]),
+    paidToCard: textOrNull(body["paid_to_card"]),
     hasFile: flag(body["has_file"]),
   };
 }
@@ -316,6 +324,10 @@ function shopDetail(value: unknown): AdminShopDetail {
 function settingValue(value: unknown): SettingValue {
   if (value === null || typeof value === "boolean" || typeof value === "string") {
     return value;
+  }
+  if (Array.isArray(value)) {
+    // The cards to pay to: the only setting that is a list.
+    return list(value, (item) => ({ number: text(record(item)["number"]), label: text(record(item)["label"]) }));
   }
   return whole(value);
 }

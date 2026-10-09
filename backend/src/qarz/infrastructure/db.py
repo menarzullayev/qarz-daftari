@@ -308,7 +308,8 @@ _LINKED_CUSTOMERS = (
 # Rows of one bulk statement: small enough that no statement comes near the timeout.
 _BULK_ROWS = 500
 _RECEIPT_COLUMNS = (
-    "r.id, r.stated_amount, r.stated_months, r.status, r.months, r.reject_reason, r.created_at, r.decided_at, r.file_id"
+    "r.id, r.stated_amount, r.stated_months, r.status, r.months, r.reject_reason, r.created_at, r.decided_at, "
+    "r.file_id, r.paid_to_card"
 )
 _RECEIPT_BY_ID = f"SELECT {_RECEIPT_COLUMNS} FROM subscription_receipt r WHERE r.id = :id"
 _RECEIPTS_OF_SHOP = (
@@ -316,7 +317,7 @@ _RECEIPTS_OF_SHOP = (
 )
 _ADMIN_RECEIPT_COLUMNS = (
     "receipt_id, shop_id, shop_name, stated_amount, stated_months, status, months, reject_reason, created_at, "
-    "decided_at, decided_by, decided_by_tg"
+    "decided_at, decided_by, decided_by_tg, paid_to_card"
 )
 _NOTICE_SELECT = (
     "SELECT n.id, n.customer_id, n.amount, n.file_id, n.status, n.payment_entry, e.amount AS recorded_amount, "
@@ -1973,15 +1974,24 @@ class PgTenantSession:
             row.created_at,
             row.decided_at,
             row.file_id,
+            row.paid_to_card,
         )
 
     async def add_subscription_receipt(
-        self, *, receipt_id: UUID, stated_amount: int, stated_months: int, file_id: UUID, now: datetime
+        self,
+        *,
+        receipt_id: UUID,
+        stated_amount: int,
+        stated_months: int,
+        file_id: UUID,
+        paid_to_card: str | None,
+        now: datetime,
     ) -> SubscriptionReceiptRecord:
         await self._conn.execute(
             text(
-                "INSERT INTO subscription_receipt (id, shop_id, file_id, stated_amount, stated_months, created_at) "
-                "VALUES (:id, :shop_id, :file_id, :amount, :months, :now)"
+                "INSERT INTO subscription_receipt "
+                "(id, shop_id, file_id, stated_amount, stated_months, paid_to_card, created_at) "
+                "VALUES (:id, :shop_id, :file_id, :amount, :months, :paid_to_card, :now)"
             ),
             {
                 "id": receipt_id,
@@ -1989,6 +1999,7 @@ class PgTenantSession:
                 "file_id": file_id,
                 "amount": stated_amount,
                 "months": stated_months,
+                "paid_to_card": paid_to_card,
                 "now": now,
             },
         )
@@ -3482,6 +3493,7 @@ class PgPlatformSession:
             copies=copies,
             file=file,
             decided_by_tg=None if row.decided_by_tg is None else int(row.decided_by_tg),
+            paid_to_card=row.paid_to_card,
         )
 
     async def admin_has_live_session(self, user_id: UUID, now: datetime) -> bool:

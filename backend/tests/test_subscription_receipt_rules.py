@@ -218,7 +218,18 @@ def form(**parts: bytes) -> bytes:
 
 
 def test_a_form_carries_the_amount_the_months_and_the_file() -> None:
-    assert parse_receipt_form(FORM, form(amount=b"300000", months=b" 3 ", receipt=JPEG)) == (300_000, 3, JPEG)
+    assert parse_receipt_form(FORM, form(amount=b"300000", months=b" 3 ", receipt=JPEG)) == (300_000, 3, JPEG, None)
+
+
+def test_a_form_may_name_the_card_that_was_paid_to() -> None:
+    named = form(amount=b"300000", months=b"3", receipt=JPEG, card=b" 8600 1234 5678 9012 ")
+    assert parse_receipt_form(FORM, named) == (300_000, 3, JPEG, "8600 1234 5678 9012")
+    # Present and empty is not the same as absent: the application refuses it as a card it does not know.
+    assert parse_receipt_form(FORM, form(amount=b"1", months=b"1", receipt=JPEG, card=b""))[3] == ""
+    # Digits that are not ASCII never reach the comparison as digits.
+    arabic = "٨٦٠٠١٢٣٤٥٦٧٨٩٠١٢".encode()
+    parsed = parse_receipt_form(FORM, form(amount=b"1", months=b"1", receipt=JPEG, card=arabic))[3]
+    assert parsed is not None and not any(sign.isdigit() for sign in parsed)
 
 
 @pytest.mark.parametrize(
@@ -237,6 +248,7 @@ def test_a_form_carries_the_amount_the_months_and_the_file() -> None:
         (FORM, form(amount=b"1" * 13, months=b"1", receipt=JPEG), "amount"),
         (FORM, form(amount=b"100000", months=b"1", receipt=JPEG, note=b"x"), "_"),
         (FORM, form(amount=b"100000", amount_=b"200000", months=b"1", receipt=JPEG), "_"),
+        (FORM, form(amount=b"100000", months=b"1", receipt=JPEG, card=b"8600", card_=b"5614"), "_"),
         (FORM, b"not a form at all", "_"),
     ],
 )

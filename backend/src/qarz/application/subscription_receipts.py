@@ -3,8 +3,9 @@
 The owner transfers the money outside the system and sends the receipt with what they paid and for how
 many months. Nothing changes by that: the receipt waits for an administrator
 (`qarz.application.admin_receipts`). The administrators and the review group are told a receipt is
-waiting; the text names the shop, the amount and the months, never a card, and the image itself is not
-forwarded: a reviewer opens it through a signed link from the administrator's side.
+waiting; the text names the shop, the amount, the months and the card the owner says they paid to, by
+its label and last four digits, never by its number, and the image itself is not forwarded: a reviewer
+opens it through a signed link from the administrator's side.
 """
 
 import hashlib
@@ -36,6 +37,8 @@ LIST_RECEIPTS = operation("shop.subscription.receipts.list", Capability.ADMINIST
 
 FILE_PURPOSE = "subscription_receipt"
 REVIEW_GROUP = "review_group"
+CARDS = "payment_cards"
+MAX_PAID_TO = 60  # the column's limit: a label of forty characters, the mark and four digits fit
 HISTORY = 50
 _HINTS = {
     ReceiptRefusal.AMOUNT_OUT_OF_RANGE: ("amount", f"a whole amount between {MIN_AMOUNT} and {MAX_AMOUNT} UZS"),
@@ -64,6 +67,8 @@ def receipt_body(record: SubscriptionReceiptRecord) -> dict[str, Any]:
         "reject_reason": record.reject_reason,
         "created_at": record.created_at.isoformat(),
         "decided_at": None if record.decided_at is None else record.decided_at.isoformat(),
+        # The card the owner chose to pay to, as its label and last four digits; null when not said.
+        "paid_to_card": record.paid_to_card,
     }
 
 
@@ -138,6 +143,9 @@ class SubscriptionReceiptService:
                 amount=money(lang, record.stated_amount),
                 months=record.stated_months,
             )
+            if record.paid_to_card is not None:
+                # Which account's statement to look at. The label and four digits, not the number.
+                text += "\n" + say(lang, "receipt_card", card=record.paid_to_card)
             if copies > 0:
                 text += "\n" + say(lang, "a_receipt_copies", count=copies)
             await session.enqueue(
@@ -147,7 +155,13 @@ class SubscriptionReceiptService:
             )
 
     async def _submit_in(
-        self, session: TenantSession, user_id: UUID, amount: int, months: int, staged: StagedFile
+        self,
+        session: TenantSession,
+        user_id: UUID,
+        amount: int,
+        months: int,
+        staged: StagedFile,
+        paid_to: str | None,
     ) -> dict[str, Any]:
         now = self._now()
         actor = await require_member(session, user_id, SUBMIT_RECEIPT)
@@ -156,7 +170,12 @@ class SubscriptionReceiptService:
             session, staged, purpose=FILE_PURPOSE, now=now, delete_after=delete_file_after(now)
         )
         record = await session.add_subscription_receipt(
-            receipt_id=uuid4(), stated_amount=amount, stated_months=months, file_id=file_id, now=now
+            receipt_id=uuid4(),
+            stated_amount=amount,
+            stated_months=months,
+            file_id=file_id,
+            paid_to_card=paid_to,
+            now=now,
         )
         await session.record_activity(
             membership_id=actor.membership_id,
@@ -180,12 +199,20 @@ class SubscriptionReceiptService:
         request_key: str | None = None,
         *,
         update_key: str | None = None,
+        card: str | None = None,
+        paid_to: str | None = None,
     ) -> dict[str, Any]:
         """Send a receipt for the caller's shop. Open in every mode: paying is how a shop leaves one.
 
         The chat passes `update_key`, the key it derives from the Telegram update, which has a form no
         API caller can send; an API caller must give `request_key`.
+
+        `card` is the number of the card the owner says they paid to; it must be one of the cards offered
+        now. The chat, where the card was chosen from the list before the receipt was asked for, passes
+        `paid_to` instead: the card's label and last four digits as they were then. Neither is required.
         """
+        if paid_to is not None and not 1 <= len(paid_to) <= MAX_PAID_TO:
+            paid_to = None
         async with self._storage.tenant(shop_id) as session:
             await require_member(session, user_id, SUBMIT_RECEIPT)
             key = update_key if update_key is not None else idempotency.validate_key(request_key)
@@ -196,6 +223,12 @@ class SubscriptionReceiptService:
             # checked again under the lock, where it counts.
             if await session.stored_response(key) is None:
                 await self._require_sendable(session, amount, months, lock=False)
+            if card is not None:
+                offered = platform_settings.payment_cards(await session.platform_setting(CARDS))
+                chosen = platform_settings.find_card(offered, card)
+                if chosen is None:
+                    raise ValidationFailed({"card": "must be the number of one of the cards to pay to"})
+                paid_to = platform_settings.card_tag(chosen)
         # Stored before the writing transaction opens: no network call is made while a row is locked.
         staged = await self._files.stage(checked)
         recorded = False
@@ -204,7 +237,7 @@ class SubscriptionReceiptService:
 
                 async def apply() -> dict[str, Any]:
                     nonlocal recorded
-                    body = await self._submit_in(session, user_id, int(amount), int(months), staged)
+                    body = await self._submit_in(session, user_id, int(amount), int(months), staged, paid_to)
                     recorded = True
                     return body
 
@@ -213,7 +246,14 @@ class SubscriptionReceiptService:
                     key=key,
                     operation=SUBMIT_RECEIPT.name,
                     user_id=user_id,
-                    request={"amount": amount, "months": months, "receipt": hashlib.sha256(receipt).hexdigest()},
+                    request={
+                        "amount": amount,
+                        "months": months,
+                        "receipt": hashlib.sha256(receipt).hexdigest(),
+                        # Absent, not null, when no card was named: a request made before cards could be
+                        # named is then the same request when it is repeated.
+                        **({} if paid_to is None else {"card": paid_to}),
+                    },
                     action=apply,
                 )
         except BaseException:

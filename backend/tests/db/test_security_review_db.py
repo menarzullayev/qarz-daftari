@@ -239,9 +239,9 @@ def test_the_rights_check_catches_a_table_granted_carelessly(database_url: str) 
 @pytest.mark.parametrize(
     "statement",
     [
-        # The card number owners are told to pay to, the price, the switches.
-        "INSERT INTO platform_setting (key, value, updated_by) VALUES ('card_number', '\"8600000000000000\"', 'x')",
-        "UPDATE platform_setting SET value = '\"8600000000000000\"' WHERE key = 'card_number'",
+        # The cards owners are told to pay to, the price, the switches.
+        "INSERT INTO platform_setting (key, value, updated_by) VALUES ('payment_cards', '[]', 'x')",
+        "UPDATE platform_setting SET value = '[]' WHERE key = 'payment_cards'",
         "DELETE FROM platform_setting",
         "TRUNCATE platform_setting",
         # Who a person is, and whether their one trial is used.

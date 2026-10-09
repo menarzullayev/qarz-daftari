@@ -479,7 +479,7 @@ REFUSED = [
         "VALUES (gen_random_uuid(), gen_random_uuid(), 'shop.viewed', 'shop', 'x')",
     ),
     (APP, "SELECT response FROM admin_request_key"),
-    (APP, "SELECT admin_set_platform_setting(gen_random_uuid(), 'card_number', '\"8600\"', NULL, NULL, now())"),
+    (APP, "SELECT admin_set_platform_setting(gen_random_uuid(), 'payment_cards', '[]', NULL, NULL, now())"),
     (APP, "SELECT * FROM admin_shop_search(gen_random_uuid(), current_date, NULL, NULL, NULL, NULL, NULL, 10)"),
     (APP, "SELECT * FROM admin_open_shop(gen_random_uuid(), gen_random_uuid(), now())"),
     (APP, "SELECT * FROM admin_reassign_owner(gen_random_uuid(), gen_random_uuid(), 1, 'x', now())"),
@@ -511,7 +511,7 @@ REFUSED = [
     (ADMIN, "INSERT INTO signin_replay (payload_hash, expires_at) VALUES ('\\x00', now())"),
     (ADMIN, "UPDATE app_user SET lang = 'ru'"),
     (ADMIN, "SELECT lang FROM app_user"),
-    (ADMIN, "INSERT INTO platform_setting (key, value, updated_by) VALUES ('card_number', '\"8600\"', 'x')"),
+    (ADMIN, "INSERT INTO platform_setting (key, value, updated_by) VALUES ('payment_cards', '[]', 'x')"),
     (ADMIN, "UPDATE admin_account SET status = 'active'"),
     (ADMIN, "DELETE FROM admin_audit"),
     (ADMIN, "SELECT erase_shop(gen_random_uuid())"),
@@ -541,7 +541,7 @@ REFUSED = [
         "INSERT INTO admin_audit (id, admin_id, action, target_type, target_id) "
         "VALUES (gen_random_uuid(), gen_random_uuid(), 'shop.viewed', 'shop', 'x')",
     ),
-    (WORKER, "SELECT admin_set_platform_setting(gen_random_uuid(), 'card_number', '\"8600\"', NULL, NULL, now())"),
+    (WORKER, "SELECT admin_set_platform_setting(gen_random_uuid(), 'payment_cards', '[]', NULL, NULL, now())"),
     (WORKER, "SELECT * FROM admin_reassign_owner(gen_random_uuid(), gen_random_uuid(), 1, 'x', now())"),
     (
         WORKER,

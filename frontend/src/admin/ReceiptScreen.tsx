@@ -244,6 +244,13 @@ function Detail({ api, loaded, reload, onAlready }: { api: AdminApi; loaded: Adm
         <dd>{receipt.statedAmount === null ? NONE : formatMoney(receipt.statedAmount, language)}</dd>
         <dt>{t("admin.queue.statedMonths")}</dt>
         <dd>{receipt.statedMonths ?? NONE}</dd>
+        {/* Which account's statement to look at. A receipt that names no card has no such line. */}
+        {receipt.paidToCard === null ? null : (
+          <>
+            <dt>{t("admin.rc.paidTo")}</dt>
+            <dd>{receipt.paidToCard}</dd>
+          </>
+        )}
         <dt>{t("admin.receipts.created")}</dt>
         <dd>{formatInstant(receipt.createdAt, language)}</dd>
         <dt>{t("admin.receipts.status")}</dt>

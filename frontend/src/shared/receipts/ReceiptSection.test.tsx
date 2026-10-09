@@ -68,6 +68,7 @@ describe("the owner's receipt API", () => {
         rejectReason: null,
         createdAt: "2026-10-06T06:00:00+00:00",
         decidedAt: "2026-10-06T06:30:00+00:00",
+        paidToCard: null,
       },
     ]);
     const [posted, listed] = server.sent;
@@ -78,6 +79,17 @@ describe("the owner's receipt API", () => {
     // The browser writes the content type with its boundary; none is set by hand.
     expect(posted?.headers["Content-Type"]).toBeUndefined();
     expect([listed?.method, listed?.path]).toEqual(["GET", PATH]);
+  });
+
+  it("names the card that was paid to in the form when one was chosen, and reads it back as the server keeps it", async () => {
+    const server = shop([ownReceiptBody({ paid_to_card: "Humo · Anorbank ··9012" })]);
+    await api(server).submit({ amount: 100000, months: 1, receipt: image(), card: "8600123456789012" }, "key-0000-0001");
+    expect(Object.keys(server.sent[0]?.form ?? {}).sort()).toEqual(["amount", "card", "months", "receipt"]);
+    expect(server.sent[0]?.form?.["card"]).toBe("8600123456789012");
+    expect((await api(server).list())[0]?.paidToCard).toBe("Humo · Anorbank ··9012");
+    // No card chosen, said either way: the field is left out, not sent empty.
+    await api(server).submit({ amount: 100000, months: 1, receipt: image(), card: null }, "key-0000-0002");
+    expect(Object.keys(server.sent[2]?.form ?? {}).sort()).toEqual(["amount", "months", "receipt"]);
   });
 
   it("sends no amount or months that is not a whole number, and refuses answers that are not the contract", async () => {
@@ -231,6 +243,59 @@ describe("the form", () => {
     await waitFor(() => expect(server.writes()).toHaveLength(2));
     expect(server.writes()[0]?.headers["Idempotency-Key"]).toBe(server.writes()[1]?.headers["Idempotency-Key"]);
     expect(screen.queryByText(/^Chek yuborildi\./)).toBeNull();
+  });
+});
+
+describe("the card a receipt is for", () => {
+  const HUMO = { number: "8600123456789012", label: "Humo · Anorbank" };
+  const UZCARD = { number: "5614681234567890", label: "Uzcard · Kapitalbank" };
+  const showFor = (server: Shop, card: typeof HUMO | null) =>
+    renderScreen(<ReceiptSection priceUzs={100000} card={card} />, { fetch: server.fetch, role: "owner" });
+
+  it("says which card the receipt is for, by label and last four digits, and sends that card's number", async () => {
+    const server = shop();
+    showFor(server, UZCARD);
+    await screen.findByText("Hali chek yuborilmagan.");
+    expect(screen.getByText("Karta: Uzcard · Kapitalbank ··7890")).toBeTruthy();
+    expect(screen.queryByText(/5614/)).toBeNull();
+    choose(image());
+    send();
+    expect(await screen.findByText(/^Chek yuborildi\./)).toBeTruthy();
+    expect(server.writes()).toHaveLength(1);
+    expect(server.writes()[0]?.form?.["card"]).toBe("5614681234567890");
+  });
+
+  it("names no card and sends none when there is none to choose", async () => {
+    const server = shop();
+    showFor(server, null);
+    await screen.findByText("Hali chek yuborilmagan.");
+    expect(screen.queryByText(/^Karta:/)).toBeNull();
+    choose(image());
+    send();
+    expect(await screen.findByText(/^Chek yuborildi\./)).toBeTruthy();
+    expect(Object.keys(server.writes()[0]?.form ?? {})).not.toContain("card");
+  });
+
+  it("says that the cards changed when the server does not know the card, and keeps what was filled in", async () => {
+    const server = shop([], () => refusal(422, "VALIDATION", "Kiritilgan ma'lumot noto'g'ri.", { card: "must be the number of one of the cards to pay to" }));
+    showFor(server, HUMO);
+    await screen.findByText("Hali chek yuborilmagan.");
+    type(months(), "3");
+    choose(image());
+    send();
+    expect((await screen.findByRole("alert")).textContent).toBe("Kartalar ro'yxati o'zgargan. Sahifani yangilab, kartani qaytadan tanlang.");
+    expect(months().value).toBe("3");
+    expect(screen.queryByText(/^Chek yuborildi\./)).toBeNull();
+  });
+
+  it("shows in the history which card each receipt was paid to, and nothing for one that names none", async () => {
+    showFor(shop([ownReceiptBody({ paid_to_card: "Humo · Anorbank ··9012" }), ownReceiptBody({ id: "r2" })]), null);
+    await waitFor(() =>
+      expect(history()).toEqual([
+        ["2026-yil 6-oktabr, 11:00200 000 so'm", "2 oy uchun", "Karta: Humo · Anorbank ··9012", "Ko'rib chiqilishini kutmoqda"],
+        ["2026-yil 6-oktabr, 11:00200 000 so'm", "2 oy uchun", "Ko'rib chiqilishini kutmoqda"],
+      ]),
+    );
   });
 });
 

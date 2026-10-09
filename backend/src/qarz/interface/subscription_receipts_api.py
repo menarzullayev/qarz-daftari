@@ -1,8 +1,9 @@
 """HTTP routes for paying the subscription by card transfer: the owner sends a receipt and sees what
 became of the receipts sent before (REQ-054, REQ-055).
 
-A receipt is sent as `multipart/form-data` with the fields `amount`, `months` and `receipt`. The body is
-read with a hard limit and only after the caller is known to be the shop's owner.
+A receipt is sent as `multipart/form-data` with the fields `amount`, `months` and `receipt`, and
+optionally `card`: the number of the card the owner paid to, one of those the subscription names. The
+body is read with a hard limit and only after the caller is known to be the shop's owner.
 """
 
 import re
@@ -21,7 +22,7 @@ from qarz.interface.shops_api import IdempotencyKey
 CurrentUser = Callable[..., Awaitable[UUID]]
 
 _PATH = "/api/v1/shops/{shop_id}/subscription/receipts"
-_FIELDS = frozenset({"amount", "months", "receipt"})
+_FIELDS = frozenset({"amount", "months", "receipt", "card"})
 # The route whose body may exceed the general limit: it carries the receipt.
 SUBSCRIPTION_RECEIPT_UPLOAD = Allowance(
     "POST",
@@ -41,15 +42,18 @@ def _whole_number(raw: bytes | None, field: str) -> int:
     return int(text)
 
 
-def parse_receipt_form(content_type: str, body: bytes) -> tuple[int, int, bytes]:
-    """Amount, months and file of a new receipt. Their bounds are the application's to check."""
+def parse_receipt_form(content_type: str, body: bytes) -> tuple[int, int, bytes, str | None]:
+    """Amount, months and file of a new receipt, and the card paid to when one is named. Their bounds,
+    and whether the card is one of those offered, are the application's to check."""
     if content_type.split(";", 1)[0].strip().lower() != "multipart/form-data":
         raise ValidationFailed({"_": "send multipart/form-data with the fields amount, months and receipt"})
     fields = parse_form(content_type, body, _FIELDS)
     amount, months = _whole_number(fields.get("amount"), "amount"), _whole_number(fields.get("months"), "months")
     if "receipt" not in fields:
         raise ValidationFailed({"receipt": "required"})
-    return amount, months, fields["receipt"]
+    # Anything that is not ASCII becomes a replacement character, which is in no card's number.
+    card = None if "card" not in fields else fields["card"].decode("ascii", "replace").strip()
+    return amount, months, fields["receipt"], card
 
 
 def add_subscription_receipt_routes(
@@ -64,8 +68,8 @@ def add_subscription_receipt_routes(
         # Who is asking comes first: for anyone but the owner nothing of the body is read.
         await service.require_owner(user_id, shop_id, idempotency_key)
         body = await read_limited(request, MAX_BODY_BYTES)
-        amount, months, receipt = parse_receipt_form(request.headers.get("content-type", ""), body)
-        return await service.submit(user_id, shop_id, amount, months, receipt, idempotency_key)
+        amount, months, receipt, card = parse_receipt_form(request.headers.get("content-type", ""), body)
+        return await service.submit(user_id, shop_id, amount, months, receipt, idempotency_key, card=card)
 
     @app.get(_PATH, name=LIST_RECEIPTS.name)
     async def list_receipts(shop_id: UUID, user_id: user) -> dict[str, Any]:

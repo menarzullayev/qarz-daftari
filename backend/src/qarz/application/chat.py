@@ -498,8 +498,11 @@ class ChatService:
             await self._notice_shop(session, incoming, replies, arguments[0])
         elif action in ("pns", "pnx"):
             await self._notice_finish(session, incoming, replies, action)
-        elif action == "srm" and len(arguments) == 2:
-            await self._sub_receipt_start(session, incoming, replies, arguments[0], arguments[1])
+        elif action == "srm" and len(arguments) in (2, 4):
+            # Two parts: a button sent before a card could be chosen. It still works, for no card.
+            await self._sub_receipt_start(session, incoming, replies, arguments[0], arguments[1], arguments[2:])
+        elif action in ("sro", "src") and len(arguments) == 3:
+            await self._sub_card_pressed(session, incoming, replies, action, arguments[0], arguments[1:])
         elif action in ("sra", "srj") and len(arguments) == 1:
             await self._receipt_pressed(session, incoming, replies, action, arguments[0])
         elif action == "srn":
@@ -922,42 +925,105 @@ class ChatService:
 
     # --- paying the subscription by card transfer (REQ-054) -------------------------------------------
 
+    @staticmethod
+    def _card_mark(cards: list[dict[str, str]], place: int) -> tuple[int, str]:
+        """How a button names a card: its place in the list and the last four digits of its number.
+
+        The number itself does not fit beside a shop in Telegram's 64 bytes and has no business in a
+        button. The digits are the check: when the list has changed, the place holds another card.
+        """
+        return place, cards[place]["number"][-4:]
+
+    @staticmethod
+    def _card_at(cards: list[dict[str, str]], mark: list[str]) -> int | None:
+        """The place of the card a button names, if the list still has that card there."""
+        place_text, last4 = mark
+        if not (place_text.isascii() and place_text.isdigit() and len(place_text) <= 2):
+            return None
+        place = int(place_text)
+        return place if place < len(cards) and cards[place]["number"][-4:] == last4 else None
+
     async def _subscription_offer(
-        self, incoming: Incoming, replies: Replies, shop: MyShop, *, months: int | None = None
-    ) -> tuple[str, int] | None:
-        """Show `/obuna` with the periods to pay for, or return the shop's name and price for a chosen one."""
+        self, incoming: Incoming, replies: Replies, shop: MyShop, *, card: int = 0, edit: bool = False
+    ) -> None:
+        """Show `/obuna`: the card to pay to, the periods to pay for, and the way to the other cards.
+
+        `card` is the place of the card shown; one the list does not have is the primary. With `edit`
+        the message whose button was pressed is replaced.
+        """
         lang = incoming.lang
         try:
-            text, name, price = await self._subscriptions.chat_offer(incoming.user_id, shop.shop_id, lang)
+            text, _, price, cards = await self._subscriptions.chat_offer(incoming.user_id, shop.shop_id, lang, card)
         except AppError as error:
             await replies.show(self._error_text(lang, error))
-            return None
-        if months is not None:
-            if price is None:
-                await replies.show(text)
-                return None
-            return name, price
+            return
+        out = replies.show if edit else replies.send
         if price is None:
-            await replies.send(text)
-            return None
-        await replies.send(
-            text + "\n" + say(lang, "sub_choose_months"),
+            await out(text)
+            return
+        mark = self._card_mark(cards, card if 0 <= card < len(cards) else 0)
+        keyboard: Keyboard = [
             [
-                [
-                    (
-                        say(lang, "sub_months_button", months=count, amount=money(lang, expected_amount(price, count))),
-                        callback("srm", shop.shop_id.hex, count),
-                    )
-                ]
-                for count in OFFERED_MONTHS
-            ],
-        )
-        return None
+                (
+                    say(lang, "sub_months_button", months=count, amount=money(lang, expected_amount(price, count))),
+                    callback("srm", shop.shop_id.hex, count, *mark),
+                )
+            ]
+            for count in OFFERED_MONTHS
+        ]
+        if len(cards) > 1:
+            keyboard.append(
+                [(say(lang, "sub_other_cards_button", count=len(cards) - 1), callback("sro", shop.shop_id.hex, *mark))]
+            )
+        await out(text + "\n" + say(lang, "sub_choose_months"), keyboard)
+
+    async def _sub_card_pressed(
+        self,
+        session: PlatformSession,
+        incoming: Incoming,
+        replies: Replies,
+        action: str,
+        shop_hex: str,
+        mark: list[str],
+    ) -> None:
+        """ "Other cards" under `/obuna` (`sro`): list them. A card of that list, or the way back (`src`):
+        show `/obuna` again with that card as the one to pay to."""
+        lang = incoming.lang
+        shop_id = _uuid(shop_hex)
+        mine = {shop.shop_id: shop for shop in await session.my_memberships(incoming.user_id)}
+        if shop_id is None or shop_id not in mine:
+            await replies.show(say(lang, "expired"))
+            return
+        try:
+            _, _, _, cards = await self._subscriptions.chat_offer(incoming.user_id, shop_id, lang)
+        except AppError as error:
+            await replies.show(self._error_text(lang, error))
+            return
+        place = self._card_at(cards, mark)
+        if place is None or action == "src" or len(cards) < 2:
+            # A button from before the list changed names a card that is not there any more: what is
+            # offered now is shown in its place, with the primary card.
+            await self._subscription_offer(incoming, replies, mine[shop_id], card=place or 0, edit=True)
+            return
+        others: Keyboard = [
+            [(platform_settings.card_tag(other), callback("src", shop_id.hex, *self._card_mark(cards, at)))]
+            for at, other in enumerate(cards)
+            if at != place
+        ]
+        back = [(say(lang, "sub_cards_back"), callback("src", shop_id.hex, *self._card_mark(cards, place)))]
+        await replies.show(say(lang, "sub_choose_card"), [*others, back])
 
     async def _sub_receipt_start(
-        self, session: PlatformSession, incoming: Incoming, replies: Replies, shop_hex: str, months_text: str
+        self,
+        session: PlatformSession,
+        incoming: Incoming,
+        replies: Replies,
+        shop_hex: str,
+        months_text: str,
+        mark: list[str],
     ) -> None:
-        """A period was chosen under `/obuna`: remember it and ask for the receipt."""
+        """A period was chosen under `/obuna`: remember it, with the card that was shown, and ask for the
+        receipt."""
         lang = incoming.lang
         shop_id = _uuid(shop_hex)
         mine = {shop.shop_id: shop for shop in await session.my_memberships(incoming.user_id)}
@@ -965,10 +1031,23 @@ class ChatService:
         if shop_id is None or shop_id not in mine or months not in OFFERED_MONTHS:
             await replies.show(say(lang, "expired"))
             return
-        offer = await self._subscription_offer(incoming, replies, mine[shop_id], months=months)
-        if offer is None:
+        try:
+            text, name, price, cards = await self._subscriptions.chat_offer(incoming.user_id, shop_id, lang)
+        except AppError as error:
+            await replies.show(self._error_text(lang, error))
             return
-        name, price = offer
+        if price is None:
+            await replies.show(text)
+            return
+        paid_to: str | None = None
+        if mark:
+            place = self._card_at(cards, mark)
+            if place is None:
+                # The card the button was under is not in the list any more. Nothing is remembered: the
+                # owner is shown the cards as they are now and chooses again.
+                await self._subscription_offer(incoming, replies, mine[shop_id], edit=True)
+                return
+            paid_to = platform_settings.card_tag(cards[place])
         amount = expected_amount(price, months)
         for kind in ("notice", "sub_receipt"):
             await session.drop_pending(incoming.user_id, kind)
@@ -976,14 +1055,15 @@ class ChatService:
             pending_id=self._pending_id(incoming),
             user_id=incoming.user_id,
             kind="sub_receipt",
-            payload={"shop": shop_id.hex, "months": months, "amount": amount},
+            # The card as the receipt will name it: its label and last four digits, not its number.
+            payload={"shop": shop_id.hex, "months": months, "amount": amount, "card": paid_to},
             now=self._now(),
             expires_at=self._now() + PENDING_LIFETIME,
         )
-        await replies.show(
-            say(lang, "ask_sub_receipt", shop=name, months=months, amount=money(lang, amount)),
-            [[(say(lang, "cancel"), callback("srx"))]],
-        )
+        asked = say(lang, "ask_sub_receipt", shop=name, months=months, amount=money(lang, amount))
+        if paid_to is not None:
+            asked += "\n" + say(lang, "receipt_card", card=paid_to)
+        await replies.show(asked, [[(say(lang, "cancel"), callback("srx"))]])
 
     async def _sub_receipt_send(
         self,
@@ -997,14 +1077,23 @@ class ChatService:
         cancel: Keyboard = [[(say(lang, "cancel"), callback("srx"))]]
         shop_id = _uuid(str(payload.get("shop", "")))
         mine = {shop.shop_id: shop for shop in await session.my_memberships(incoming.user_id)}
-        amount, months = payload.get("amount"), payload.get("months")
+        amount, months, card = payload.get("amount"), payload.get("months"), payload.get("card")
         if shop_id is None or shop_id not in mine or not isinstance(amount, int) or not isinstance(months, int):
             await session.drop_pending(incoming.user_id, "sub_receipt")
             await replies.send(say(lang, "expired"))
             return
         try:
             # A file that could not be had, or is too large, is refused like any other that is no receipt.
-            await self._receipts.submit(incoming.user_id, shop_id, amount, months, content, update_key=incoming.key)
+            await self._receipts.submit(
+                incoming.user_id,
+                shop_id,
+                amount,
+                months,
+                content,
+                update_key=incoming.key,
+                # The card chosen under /obuna. A question asked before a card could be chosen has none.
+                paid_to=card if isinstance(card, str) else None,
+            )
         except AppError as error:
             if isinstance(error, ValidationFailed) and "receipt" in error.fields:
                 await replies.send(say(lang, "sub_receipt_invalid"), cancel)

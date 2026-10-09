@@ -279,9 +279,24 @@ export type Subscription = {
   endsOn: string | null;
   daysLeft: number | null;
   priceUzs: number;
-  /** Where to transfer the payment; null until the administrator has set it. */
+  /** The primary card's number; null until the administrator has set a card. */
   cardNumber: string | null;
+  /** The cards the payment may be transferred to, in the order they are offered: the first is the primary. */
+  cards: PaymentCard[];
 };
+
+/** A card to pay the subscription to: sixteen digits and the name the administrator gave it. */
+export type PaymentCard = { number: string; label: string };
+
+/** A card number in groups of four, as it is printed on the card. */
+export function groupedCard(number: string): string {
+  return number.replace(/(.{4})(?=.)/g, "$1 ");
+}
+
+/** How a receipt names the card it was paid to: the label and the last four digits, never the number. */
+export function cardTag(card: PaymentCard): string {
+  return `${card.label} ··${card.number.slice(-4)}`;
+}
 
 export type AddedLines = { id: string; amount: number; lines: GoodsLine[] };
 export type ChosenPromise = { id: string; amount: number; promisedDate: string };
@@ -750,7 +765,14 @@ function subscription(value: unknown): Subscription {
     daysLeft: wholeOrNull(body["days_left"]),
     priceUzs: whole(body["price_uzs"]),
     cardNumber: textOrNull(body["card_number"]),
+    // A server from before there were several cards sends none: its one card is then the list.
+    cards: body["cards"] === undefined ? [] : list(body["cards"], paymentCard),
   };
+}
+
+function paymentCard(value: unknown): PaymentCard {
+  const body = record(value);
+  return { number: text(body["number"]), label: text(body["label"]) };
 }
 
 function addedLines(value: unknown): AddedLines {

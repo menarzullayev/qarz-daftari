@@ -397,7 +397,13 @@ shop.
    group: Telegram promises an answer about another member only to a bot that is one, and without an
    answer every such press is refused.
 2. Check the transfer in the card's own statement: the amount, the date, the sender. The image is never
-   proof by itself.
+   proof by itself. There may be several receiving cards (Settings, "cards to pay to"; up to ten, the
+   first is the primary one the owner is shown first). The announcement and the receipt's page say
+   which one the owner chose, by its label and the last four digits of its number ("Karta: Humo ·
+   Anorbank ··9012"): look at that card's statement. No such line means the owner did not say (a
+   receipt sent before there were several cards, or from a button of an old message): look at every
+   card's statement. The line is what the owner chose, not proof of where the money went; a card that
+   was renamed or removed since is still named as it was when the receipt was sent.
 3. Look at the warning about copies: the same file sent before, by this or any other shop.
 4. Approve with the months the money covers (correct the months in the panel if the owner stated them
    wrongly), or reject with a reason; the owner is told the reason word for word.
@@ -407,6 +413,15 @@ shop.
 **Suspected forgery or reuse.** Reject it. If it was already approved, correct the paid-through date and
 consider suspension (the owner is told the reason you write). Note the receipt's identifier and the copies
 shown; the file is kept three years.
+
+**Changing the receiving cards.** In the panel's Settings: add a card with a label that tells the cards
+apart to an owner (the kind and the bank, such as "Humo · Anorbank") and its sixteen digits; move a card
+up to make it the primary one; remove a card that must not be paid to any more. Saving asks for the
+authenticator code again, as the price does. The change applies at once: `/obuna` and the subscription
+page show the new list, and a button of an older `/obuna` message that names a removed card shows the
+list as it is now instead of asking for a receipt. The audit shows each card's label and last four
+digits, never a whole number. Migration 0036 turned the one card number that was stored into a list of
+that one card, labelled "Karta": give it a proper label.
 
 **Not yet possible.** None of this has run with a real bot, a real group or a real card (launch
 criterion 15). The admin panel's receipt screens were exercised against a fake server only.

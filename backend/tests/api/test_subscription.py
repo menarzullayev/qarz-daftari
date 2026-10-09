@@ -2,6 +2,7 @@
 
 import asyncio
 import itertools
+import json
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -94,6 +95,7 @@ def test_the_owner_sees_the_state_the_price_and_where_to_pay(
         "days_left": 30,
         "price_uzs": 100_000,  # the initial price (REQ-053)
         "card_number": None,
+        "cards": [],
     }
     for other in (world.manager_a, world.seller_a):
         assert client.get(f"{shop(world)}/subscription", headers=as_user(other)).status_code == 403
@@ -104,16 +106,44 @@ def test_the_price_and_card_come_from_the_administrators_settings(
 ) -> None:
     owner.execute(
         "INSERT INTO platform_setting (key, value, updated_by) VALUES ('price_uzs', '150000', 'test'), "
-        "('card_number', '\"8600 0000 0000 0000\"', 'test') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
+        "('payment_cards', %s, 'test') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+        (json.dumps([{"number": "8600000000000000", "label": "Humo · Anorbank"}]),),
     )
     try:
         body = client.get(f"{shop(world)}/subscription", headers=as_user(world.owner_a)).json()
-        assert (body["price_uzs"], body["card_number"]) == (150_000, "8600 0000 0000 0000")
+        assert (body["price_uzs"], body["card_number"]) == (150_000, "8600000000000000")
+        assert body["cards"] == [{"number": "8600000000000000", "label": "Humo · Anorbank"}]
         said = chat_of(client, owner, world.owner_a).say("/obuna").text
         assert say("uz", "sub_price", price=money("uz", 150_000)) in said
-        assert say("uz", "sub_pay_to", card="8600 0000 0000 0000") in said
+        # In groups of four, as on the card, with the label that says which card it is.
+        assert say("uz", "sub_pay_to", label="Humo · Anorbank", card="8600 0000 0000 0000") in said
     finally:
-        owner.execute("DELETE FROM platform_setting WHERE key IN ('price_uzs', 'card_number')")
+        owner.execute("DELETE FROM platform_setting WHERE key IN ('price_uzs', 'payment_cards')")
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        '"8600000000000000"',  # the single number the setting used to be
+        '[{"number": "8600", "label": "Humo"}]',
+        '[{"number": "8600000000000000", "label": ""}]',
+        "null",
+    ],
+)
+def test_a_stored_list_that_is_not_valid_offers_no_card(
+    client: TestClient, world: World, owner: psycopg.Connection, stored: str
+) -> None:
+    owner.execute(
+        "INSERT INTO platform_setting (key, value, updated_by) VALUES ('payment_cards', %s, 'test') "
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+        (stored,),
+    )
+    try:
+        body = client.get(f"{shop(world)}/subscription", headers=as_user(world.owner_a)).json()
+        assert (body["card_number"], body["cards"]) == (None, [])
+        assert say("uz", "sub_no_card") in chat_of(client, owner, world.owner_a).say("/obuna").text
+    finally:
+        owner.execute("DELETE FROM platform_setting WHERE key = 'payment_cards'")
 
 
 @pytest.mark.parametrize(

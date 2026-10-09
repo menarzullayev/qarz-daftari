@@ -402,7 +402,7 @@ class AdminService:
         """Change switches and prices. Sensitive ones need a fresh code, which is used up by the change."""
         key = idempotency.validate_key(request_key)
         fields: dict[str, str] = {}
-        cleaned: dict[str, bool | int | str | None] = {}
+        cleaned: dict[str, platform_settings.Value] = {}
         for name, value in changes.items():
             try:
                 cleaned[name] = platform_settings.validate(name, value)

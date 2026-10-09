@@ -494,6 +494,9 @@ export const ru: RuCatalog = {
   "subscription.price.value": "{amount} в месяц",
   "subscription.card": "Карта для оплаты",
   "subscription.card.none": "Реквизиты для оплаты пока не указаны.",
+  "subscription.card.primary": "Основная карта",
+  "subscription.card.others": "Другая карта ({count})",
+  "subscription.card.choose": "Плачу на эту карту",
   "subscription.receipt": "После оплаты отправьте чек боту магазина в Telegram командой /obuna.",
   "subscription.limited.title": "Ограниченный режим",
   "subscription.limited.body":
