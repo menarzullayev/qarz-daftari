@@ -87,6 +87,8 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
         "SUPPLIER_NAME_TAKEN",
         "SUPPLIER_ARCHIVED",
         "SUPPLIER_HAS_BALANCE",
+        "USD_SUPPLIER_BALANCE_OPEN",  # dollars are turned off in the shop's settings screen, never in the chat
+        "USD_STOCK_OPEN",
         "CASH_ENTRY_OF_LEDGER",  # the cash book is written in the Mini App and the panel; the chat reads it
         "CASH_ENTRY_OF_STOCK",  # cancelled in the cash book's own screens, never from the chat
         "CASH_ENTRY_CANCELLED",

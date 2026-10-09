@@ -31,6 +31,8 @@ _STATUS = {
     "CUSTOMER_ARCHIVED": 409,
     "CUSTOMER_HAS_BALANCE": 409,
     "USD_BALANCE_OPEN": 409,
+    "USD_SUPPLIER_BALANCE_OPEN": 409,
+    "USD_STOCK_OPEN": 409,
     "EXCEEDS_BALANCE": 409,
     "ALREADY_REVERSED": 409,
     "CANNOT_REVERSE_REVERSAL": 409,
@@ -117,6 +119,14 @@ _MESSAGES = {
         "CUSTOMER_HAS_BALANCE": "Qarzi bor mijozni arxivlab bo'lmaydi.",
         "USD_BALANCE_OPEN": (
             "Dollarni o'chirib bo'lmaydi: mijozlarda dollarda qarz bor. Avval dollardagi barcha qarzlar yopilsin."
+        ),
+        "USD_SUPPLIER_BALANCE_OPEN": (
+            "Dollarni o'chirib bo'lmaydi: ta'minotchilar bilan dollarda hisob-kitob yopilmagan. "
+            "Avval ta'minotchilar bilan dollardagi hisob nolga keltirilsin."
+        ),
+        "USD_STOCK_OPEN": (
+            "Dollarni o'chirib bo'lmaydi: omborda tannarxi dollarda yuritilgan tovar bor. "
+            "Avval bu tovarlar sotilsin, qaytarilsin yoki hisobdan chiqarilsin."
         ),
         "EXCEEDS_BALANCE": "To'lov mijozning qarzidan katta bo'lishi mumkin emas.",
         "ALREADY_REVERSED": "Bu yozuv allaqachon bekor qilingan.",
@@ -217,6 +227,14 @@ _MESSAGES = {
         "CUSTOMER_HAS_BALANCE": "Клиента с долгом нельзя отправить в архив.",
         "USD_BALANCE_OPEN": (
             "Доллары нельзя выключить: у клиентов есть долг в долларах. Сначала закройте все долги в долларах."
+        ),
+        "USD_SUPPLIER_BALANCE_OPEN": (
+            "Доллары нельзя выключить: расчёты с поставщиками в долларах не закрыты. "
+            "Сначала сведите счёт с поставщиками в долларах к нулю."
+        ),
+        "USD_STOCK_OPEN": (
+            "Доллары нельзя выключить: на складе есть товар, себестоимость которого ведётся в долларах. "
+            "Сначала продайте, верните или спишите эти товары."
         ),
         "EXCEEDS_BALANCE": "Оплата не может быть больше долга клиента.",
         "ALREADY_REVERSED": "Эта запись уже отменена.",

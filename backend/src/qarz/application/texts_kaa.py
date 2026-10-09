@@ -654,6 +654,14 @@ ERRORS: dict[str, str] = {
     "USD_BALANCE_OPEN": (
         "Dollardı óshirip bolmaydı: qarıydarlarda dollarda qarız bar. Aldın dollardaǵı barlıq qarızlar jabılsın."
     ),
+    "USD_SUPPLIER_BALANCE_OPEN": (
+        "Dollardı óshirip bolmaydı: támiyinlewshiler menen dollarda esap-kitap jabılmaǵan. "
+        "Aldın támiyinlewshiler menen dollardaǵı esap nolge keltirilsin."
+    ),
+    "USD_STOCK_OPEN": (
+        "Dollardı óshirip bolmaydı: skladta ózine túser bahası dollarda júrgizilgen tovar bar. "
+        "Aldın bul tovarlar satılsın, qaytarılsın yamasa esaptan shıǵarılsın."
+    ),
     "EXCEEDS_BALANCE": "Tólem qarıydardıń qarızınan úlken bolıwı múmkin emes.",
     "ALREADY_REVERSED": "Bul jazba álleqashan biykarlanǵan.",
     "CANNOT_REVERSE_REVERSAL": "Biykarlaw jazbasın biykarlap bolmaydı.",

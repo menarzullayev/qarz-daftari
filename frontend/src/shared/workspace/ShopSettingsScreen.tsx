@@ -43,6 +43,13 @@ const ShareContactSection = onDemand(() => withMessages(import("../share/ShareCo
 
 type FieldErrors = { name: string | null; days: string | null };
 const NO_ERRORS: FieldErrors = { name: null, days: null };
+// The server's refusals of turning the shop's dollars off: customers who owe dollars, an account with a
+// supplier open in dollars, goods on hand whose cost is kept in dollars.
+const DOLLARS_HELD: ReadonlySet<string> = new Set([
+  "USD_BALANCE_OPEN",
+  "USD_SUPPLIER_BALANCE_OPEN",
+  "USD_STOCK_OPEN",
+]);
 
 function nameMessage(t: Translate): string {
   return t("settings.name.invalid", { max: MAX_SHOP_NAME });
@@ -108,9 +115,10 @@ function SettingsForm({ settings }: { settings: ShopSettings }) {
         setUsdOn(updated.usdOn === true);
       },
       (error: ApiError) => {
-        // Dollars stay on while a customer owes dollars: the switch goes back to what the server holds,
-        // and the server's own words say why.
-        if (error.code === "USD_BALANCE_OPEN") {
+        // Dollars stay on while a customer owes dollars, an account with a supplier is open in dollars
+        // or goods costed in dollars are on hand: the switch goes back to what the server holds, and
+        // the server's own words say which it is.
+        if (DOLLARS_HELD.has(error.code)) {
           setUsdOn(true);
         }
         throw error;

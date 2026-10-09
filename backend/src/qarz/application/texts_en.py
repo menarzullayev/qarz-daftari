@@ -652,6 +652,14 @@ ERRORS: dict[str, str] = {
     "USD_BALANCE_OPEN": (
         "Dollars cannot be turned off: customers have debts in dollars. All debts in dollars must be closed first."
     ),
+    "USD_SUPPLIER_BALANCE_OPEN": (
+        "Dollars cannot be turned off: an account with a supplier is not settled in dollars. "
+        "Bring the accounts with suppliers in dollars to zero first."
+    ),
+    "USD_STOCK_OPEN": (
+        "Dollars cannot be turned off: there are goods in stock whose cost is kept in dollars. "
+        "Sell, return or write off these goods first."
+    ),
     "EXCEEDS_BALANCE": "A payment cannot be larger than the customer's debt.",
     "ALREADY_REVERSED": "This entry is already reversed.",
     "CANNOT_REVERSE_REVERSAL": "A reversal entry cannot be reversed.",

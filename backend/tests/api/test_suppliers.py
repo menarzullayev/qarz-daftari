@@ -11,11 +11,14 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
+from qarz.domain.languages import LANGUAGES
+from qarz.interface.errors import message_text
+
 from .conftest import World, as_user, set_overrides, switch_permissions_on
 from .test_customers_ledger import key, read, shop, write
 from .test_stock import actions, counted_item, document, item_of, line, mismatches, on, receive, stock
 from .test_stock_documents import cancel, owed, supplier
-from .test_usd import dollars, platform_on
+from .test_usd import dollars, platform_on, record
 
 pytestmark = pytest.mark.db
 
@@ -339,3 +342,124 @@ def test_the_report_keeps_the_cost_of_each_currency_apart(
     ]
     assert totals["selling"] == 150_000 + 1_200_000
     assert totals["margin"] == {"selling": 150_000, "cost": 100_000, "margin": 50_000}, "of the so'm-costed goods only"
+
+
+# --- turning the shop's dollars off ----------------------------------------------------------------------
+
+
+def turn_dollars(client: TestClient, world: World, on: bool) -> Any:
+    return write(client, world.owner_a, "PATCH", shop(world), {"usd_on": on})
+
+
+def refused_with(response: Any, code: str) -> str:
+    assert (response.status_code, response.json()["error"]["code"]) == (409, code), response.text
+    return str(response.json()["error"]["message"])
+
+
+def test_dollars_cannot_be_turned_off_while_a_supplier_account_is_open_in_dollars(
+    client: TestClient, world: World, on: None, dollars: None, owner: psycopg.Connection
+) -> None:
+    """The customers' rule (USD_BALANCE_OPEN) for suppliers: a dollar account that is not at zero would
+    stay, unseen and unpayable. The refusal says it is the suppliers', not the customers'."""
+    who = supplier(client, world)
+    assert entry(client, world, who, "opening", 4_000, user=world.owner_a, currency="USD").status_code == 201
+    said = refused_with(turn_dollars(client, world, False), "USD_SUPPLIER_BALANCE_OPEN")
+    assert "ta'minotchi" in said and "mijoz" not in said
+    assert owner.execute("SELECT usd_on FROM shop WHERE id = %s", (world.shop_a,)).fetchone() == (True,)
+    # A change sent with it is not half applied.
+    assert write(client, world.owner_a, "PATCH", shop(world), {"usd_on": False, "name": "Boshqa"}).status_code == 409
+    assert owner.execute("SELECT name FROM shop WHERE id = %s", (world.shop_a,)).fetchone() == ("Shop A",)
+
+    # Paid ahead is open as well: the supplier owes the shop dollars.
+    assert entry(client, world, who, "payment", 5_000, currency="USD").status_code == 201
+    assert owed(client, world, who) == [{"currency": "USD", "balance": -1_000}]
+    refused_with(turn_dollars(client, world, False), "USD_SUPPLIER_BALANCE_OPEN")
+
+    # At zero it can be turned off; what is owed in so'm is no obstacle.
+    assert entry(client, world, who, "opening", 1_000, user=world.owner_a, currency="USD").status_code == 201
+    assert entry(client, world, who, "opening", 70_000, user=world.owner_a).status_code == 201
+    turned = turn_dollars(client, world, False)
+    assert (turned.status_code, turned.json()["usd_on"]) == (200, False)
+    assert mismatches(owner, world) == []
+
+
+def test_dollars_cannot_be_turned_off_while_goods_costed_in_dollars_are_on_hand(
+    client: TestClient, world: World, on: None, dollars: None, owner: psycopg.Connection
+) -> None:
+    phone = counted_item(client, world, "Telefon g'ilofi", 60_000)
+    rice = counted_item(client, world, "Guruch", 15_000, "kg")
+    receive(client, world, [line(rice, "10", 10_000)])
+    receive(client, world, [line(phone, "20", 350)], currency="USD")  # paid at once: no supplier is owed
+    said = refused_with(turn_dollars(client, world, False), "USD_STOCK_OPEN")
+    assert "ombor" in said and "ta'minotchi" not in said and "mijoz" not in said
+    assert owner.execute("SELECT usd_on FROM shop WHERE id = %s", (world.shop_a,)).fetchone() == (True,)
+
+    # Part of it gone is not enough; all of it gone is, and the so'm goods on hand are no obstacle.
+    part = document(client, world, kind="write_off", reason="lost", post=True, lines=[line(phone, "19")])
+    assert part.status_code == 201
+    refused_with(turn_dollars(client, world, False), "USD_STOCK_OPEN")
+    rest = document(client, world, kind="write_off", reason="lost", post=True, lines=[line(phone, "1")])
+    assert rest.status_code == 201
+    assert item_of(client, world, rice)["on_hand"] == "10"
+    turned = turn_dollars(client, world, False)
+    assert (turned.status_code, turned.json()["usd_on"]) == (200, False)
+
+
+def test_the_refusals_come_in_a_fixed_order_customers_then_suppliers_then_goods(
+    client: TestClient, world: World, on: None, dollars: None
+) -> None:
+    who = supplier(client, world)
+    phone = counted_item(client, world, "Telefon g'ilofi", 60_000)
+    receive(client, world, [line(phone, "20", 350)], supplier_id=who, currency="USD")  # owed, and on hand
+    assert record(client, world, "credit", 500).status_code == 201
+
+    refused_with(turn_dollars(client, world, False), "USD_BALANCE_OPEN")
+    assert record(client, world, "payment", 500).status_code == 201
+    refused_with(turn_dollars(client, world, False), "USD_SUPPLIER_BALANCE_OPEN")
+    assert entry(client, world, who, "payment", 7_000, currency="USD").status_code == 201
+    refused_with(turn_dollars(client, world, False), "USD_STOCK_OPEN")
+
+
+def test_another_shops_dollars_in_the_stock_do_not_hold_this_shops_setting(
+    client: TestClient, world: World, on: None, dollars: None, owner: psycopg.Connection
+) -> None:
+    """The counterpart of the two rules: they read this shop's rows only."""
+    theirs = uuid.uuid4()
+    owner.execute(
+        "INSERT INTO supplier (id, shop_id, name, name_norm) VALUES (%s, %s, 'Boshqa', 'boshqa')",
+        (theirs, world.shop_b),
+    )
+    owner.execute(
+        "INSERT INTO supplier_balance (shop_id, supplier_id, currency, balance) VALUES (%s, %s, 'USD', 900)",
+        (world.shop_b, theirs),
+    )
+    try:
+        turned = turn_dollars(client, world, False)
+        assert (turned.status_code, turned.json()["usd_on"]) == (200, False)
+    finally:
+        owner.execute("DELETE FROM supplier_balance WHERE supplier_id = %s", (theirs,))
+        owner.execute("DELETE FROM supplier WHERE id = %s", (theirs,))
+
+
+def test_with_the_stock_switched_off_its_dollars_are_not_asked_about(
+    client: TestClient, world: World, on: None, dollars: None, owner: psycopg.Connection
+) -> None:
+    """Switch off, behaviour as before the stock existed: turning dollars off asks about customers
+    alone, and nothing reads the stock's tables. What the stock holds in dollars waits, as every
+    dollar figure does while dollars are off."""
+    who = supplier(client, world)
+    phone = counted_item(client, world, "Telefon g'ilofi", 60_000)
+    receive(client, world, [line(phone, "20", 350)], supplier_id=who, currency="USD")
+    refused_with(turn_dollars(client, world, False), "USD_SUPPLIER_BALANCE_OPEN")
+    owner.execute("UPDATE platform_setting SET value = 'false' WHERE key = 'stock_on'")
+    turned = turn_dollars(client, world, False)
+    assert (turned.status_code, turned.json()["usd_on"]) == (200, False)
+    kept = owner.execute("SELECT balance FROM supplier_balance WHERE supplier_id = %s AND currency = 'USD'", (who,))
+    assert kept.fetchone() == (7_000,)
+
+
+@pytest.mark.parametrize("code", ["USD_SUPPLIER_BALANCE_OPEN", "USD_STOCK_OPEN"])
+def test_each_refusal_of_turning_dollars_off_has_its_own_words_in_every_language(code: str) -> None:
+    said = {lang: message_text(lang, code) for lang in LANGUAGES}
+    assert len(set(said.values())) == len(LANGUAGES), "no language reads another's text"
+    assert all(text != message_text(lang, "USD_BALANCE_OPEN") for lang, text in said.items())

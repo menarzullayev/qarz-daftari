@@ -39,6 +39,18 @@ class DollarBalanceOpen(AppError):
     code = "USD_BALANCE_OPEN"
 
 
+class DollarSupplierBalanceOpen(AppError):
+    """Nor while the shop's account with any supplier is open in dollars, either way."""
+
+    code = "USD_SUPPLIER_BALANCE_OPEN"
+
+
+class DollarStockOpen(AppError):
+    """Nor while goods bought for dollars are still on hand: their cost is kept in dollars."""
+
+    code = "USD_STOCK_OPEN"
+
+
 class _Settings(Protocol):
     async def platform_setting(self, key: str) -> Any | None: ...
 

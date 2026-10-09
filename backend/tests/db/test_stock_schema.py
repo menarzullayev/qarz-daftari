@@ -509,6 +509,9 @@ _STATEMENTS: dict[str, tuple[str, dict[str, Any]]] = {
         "ORDER BY m.created_at DESC, m.id DESC LIMIT 51",
         {"shop_id": uuid.uuid4()},
     ),
+    # What is asked before a shop's dollars are turned off (qarz.application.shops.set_dollars_in).
+    "a supplier account open in dollars": (db_stock._SUPPLIER_DOLLARS_OPEN, {"shop_id": uuid.uuid4()}),
+    "goods on hand costed in dollars": (db_stock._STOCK_DOLLARS_ON_HAND, {"shop_id": uuid.uuid4()}),
 }
 
 
@@ -535,6 +538,10 @@ _INDEX_OF: dict[str, tuple[str, ...]] = {
     "a supplier's account": ("supplier_entry_supplier_id_seq_key",),
     "not sold since": ("stock_level_idle",),
     "sold below cost": ("stock_movement_below_cost",),
+    "a supplier account open in dollars": ("supplier_balance_shop",),
+    # The shop's items that are on hand, which is what the partial index holds; the dollar ones are
+    # picked out of them.
+    "goods on hand costed in dollars": ("stock_level_idle",),
 }
 
 

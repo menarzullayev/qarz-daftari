@@ -195,6 +195,20 @@ def _entry(row: Any) -> SupplierEntryRecord:
     )
 
 
+# What stands in the way of turning a shop's dollars off. The shop is named so that each is asked through
+# an index that leads with it: the balances of one shop in one currency (`supplier_balance_shop`), and
+# the shop's items that are on hand (`stock_level_idle`, which holds exactly those), of which the dollar
+# ones are picked. A rare question of the owner's, and its cost is the shop's own stock.
+_SUPPLIER_DOLLARS_OPEN = (
+    "SELECT EXISTS (SELECT 1 FROM supplier_balance b "
+    "WHERE b.shop_id = :shop_id AND b.currency = 'USD' AND b.balance <> 0) AS open"
+)
+_STOCK_DOLLARS_ON_HAND = (
+    "SELECT EXISTS (SELECT 1 FROM stock_level l "
+    "WHERE l.shop_id = :shop_id AND l.on_hand > 0 AND l.cost_currency = 'USD') AS held"
+)
+
+
 class StockQueries:
     _conn: AsyncConnection
     _shop_id: UUID
@@ -840,6 +854,16 @@ class StockQueries:
             },
         )
         return int(result.rowcount)
+
+    # --- turning the shop's dollars off -------------------------------------------------------------
+
+    async def supplier_dollars_open(self) -> bool:
+        row = (await self._conn.execute(text(_SUPPLIER_DOLLARS_OPEN), {"shop_id": self._shop_id})).one()
+        return bool(row.open)
+
+    async def stock_dollars_on_hand(self) -> bool:
+        row = (await self._conn.execute(text(_STOCK_DOLLARS_ON_HAND), {"shop_id": self._shop_id})).one()
+        return bool(row.held)
 
     # --- the owner's export -----------------------------------------------------------------------
 

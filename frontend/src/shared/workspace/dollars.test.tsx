@@ -138,6 +138,33 @@ describe("the shop's dollar switch (shop settings)", () => {
     expect(server.writes()).toHaveLength(1);
   });
 
+  it.each([
+    [
+      "USD_SUPPLIER_BALANCE_OPEN",
+      "Dollarni o'chirib bo'lmaydi: ta'minotchilar bilan dollarda hisob-kitob yopilmagan. Avval ta'minotchilar bilan dollardagi hisob nolga keltirilsin.",
+    ],
+    [
+      "USD_STOCK_OPEN",
+      "Dollarni o'chirib bo'lmaydi: omborda tannarxi dollarda yuritilgan tovar bor. Avval bu tovarlar sotilsin, qaytarilsin yoki hisobdan chiqarilsin.",
+    ],
+  ])("says which of the stock's dollars holds the switch (%s), and leaves it on", async (code, refused) => {
+    const server = shop(settingsBody({ usd_on: true }), () => refusal(409, code, refused));
+    await open(server);
+    fireEvent.click(toggle());
+    save();
+    expect((await screen.findByRole("alert")).textContent).toBe(refused);
+    expect(toggle().checked).toBe(true);
+  });
+
+  it("does not put the switch back on for a refusal that is not about dollars", async () => {
+    const server = shop(settingsBody({ usd_on: true }), () => refusal(409, "SHOP_SUSPENDED", "Do'kon to'xtatilgan."));
+    await open(server);
+    fireEvent.click(toggle());
+    save();
+    await screen.findByRole("alert");
+    expect(toggle().checked).toBe(false);
+  });
+
   it("has the switch in Russian", async () => {
     await open(shop(settingsBody({ usd_on: false })), "owner", "ru");
     expect(screen.getByRole("checkbox", { name: "Магазин работает и в долларах" })).toBeTruthy();
