@@ -200,6 +200,12 @@ test("the network: two shops link by a code, an order is delivered and confirmed
 
   await test.step("a third shop sees nothing of it, on its screens or through the API", async () => {
     const orderId = sqlValue(`SELECT id::text FROM network_order WHERE shop_id = ${lit(buyerShop)}`);
+    // The second browser forgets the supplier: no session, and nothing kept of its shop.
+    await other.evaluate(() => {
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+    });
+    await secondContext.clearCookies();
     await signInOnWeb(other, stranger, "/panel/");
     await nav(other).getByRole("link", { name: "Hamkorlar", exact: true }).click();
     await expect(other.getByText("Hali hech bir do'kon bilan ulanmagansiz.", { exact: false })).toBeVisible();
