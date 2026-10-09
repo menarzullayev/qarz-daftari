@@ -1,4 +1,5 @@
 import { reading, type ShopApi } from "../api";
+import type { Currency } from "../money";
 
 /**
  * Import of customers with opening balances (REQ-062, REQ-063), for managers and owners. Built on the
@@ -51,15 +52,18 @@ export const ROW_PROBLEMS = [
   "date_too_old",
   "date_too_far",
   "note_too_long",
+  "currency_unknown",
+  "amount_too_precise",
   "ambiguous_customer",
   "customer_archived",
 ] as const;
 export type RowProblem = (typeof ROW_PROBLEMS)[number];
 
-export const IMPORT_COLUMNS = ["name", "phone", "amount", "promised_date", "note"] as const;
+/** "currency" is a column only in a file of a shop that works in dollars. */
+export const IMPORT_COLUMNS = ["name", "phone", "amount", "currency", "promised_date", "note"] as const;
 
 /** Why a step the worker was asked for was not done, besides a file problem. */
-export const STEP_REFUSALS = ["interrupted", "timeout", "file_store", "internal", "stale", "errors", "free_plan_full", "balance_used"] as const;
+export const STEP_REFUSALS = ["interrupted", "timeout", "file_store", "internal", "stale", "errors", "free_plan_full", "usd_off", "balance_used"] as const;
 export type StepRefusal = (typeof STEP_REFUSALS)[number];
 
 /** Why an undo is refused at once (`UndoRefusal`) or by the worker ("balance_used"). */
@@ -67,7 +71,11 @@ export const UNDO_REFUSALS = ["not_applied", "too_late", "balance_used"] as cons
 export type UndoRefusal = (typeof UNDO_REFUSALS)[number];
 
 export type RowError = { row: number; column: string; code: string };
-export type ImportCounts = { newCustomers: number; existingCustomers: number; entries: number; amount: number };
+/**
+ * `amount` is the so'm of the so'm rows. `usd` is the cents of the dollar rows, there only for a shop that
+ * works in dollars. The two are never one figure.
+ */
+export type ImportCounts = { newCustomers: number; existingCustomers: number; entries: number; amount: number; usd?: number };
 
 export type ImportBatch = {
   id: string;
@@ -95,7 +103,10 @@ export type PreviewRow = {
   row: number;
   name: string;
   phone: string | null;
+  /** Whole so'm, or cents when `currency` is "USD". */
   amount: number;
+  /** There only on a dollar row: so'm is the absence of it. */
+  currency?: Currency;
   promisedDate: string | null;
   note: string | null;
   /** "create", "existing" or "same_as_row". */
@@ -105,7 +116,7 @@ export type PreviewRow = {
   /** For "same_as_row": the earlier row whose new customer this row is added to. */
   sameAsRow: number | null;
   /** The customer of the shop the row is added to, for "existing". */
-  customer: { id: string; displayName: string; phone: string | null; balance: number } | null;
+  customer: { id: string; displayName: string; phone: string | null; balance: number; usd?: number } | null;
 };
 
 export type ImportPreview = {
@@ -140,7 +151,13 @@ function counts(value: unknown): ImportCounts {
     existingCustomers: whole(body["existing_customers"]),
     entries: whole(body["entries"]),
     amount: whole(body["amount"]),
+    ...dollars(body["usd"], "amount"),
   };
+}
+
+/** The dollar figure of a `usd` object beside a so'm one; nothing when the answer has no such object. */
+function dollars(value: unknown, name: string): { usd?: number } {
+  return value === null || value === undefined ? {} : { usd: whole(record(value)[name]) };
 }
 
 const orNull = <T>(value: unknown, read: (value: unknown) => T): T | null => (value === null || value === undefined ? null : read(value));
@@ -177,6 +194,7 @@ function previewRow(value: unknown): PreviewRow {
     name: text(body["name"]),
     phone: textOrNull(body["phone"]),
     amount: whole(body["amount"]),
+    ...(body["currency"] === "USD" ? { currency: "USD" as const } : {}),
     promisedDate: textOrNull(body["promised_date"]),
     note: textOrNull(body["note"]),
     action: text(body["action"]),
@@ -189,6 +207,7 @@ function previewRow(value: unknown): PreviewRow {
         displayName: text(customer["display_name"]),
         phone: textOrNull(customer["phone"]),
         balance: whole(customer["balance"]),
+        ...dollars(customer["usd"], "balance"),
       };
     }),
   };
@@ -233,6 +252,19 @@ export function importsOf(api: ShopApi) {
     /** The shop's newest imports, newest first. */
     list(signal?: AbortSignal): Promise<ImportBatch[]> {
       return api.send({ method: "GET", path, signal, read: reading.items(batch) });
+    },
+
+    /**
+     * The same list, and whether a file of this shop may have the currency column: the server says so
+     * only for a shop that works in dollars.
+     */
+    listed(signal?: AbortSignal): Promise<{ items: ImportBatch[]; currencyColumn: boolean }> {
+      return api.send({
+        method: "GET",
+        path,
+        signal,
+        read: (value) => ({ items: reading.items(batch)(value), currencyColumn: record(value)["currency_column"] === true }),
+      });
     },
 
     /** One import with what applying it would do, once it has been checked. */

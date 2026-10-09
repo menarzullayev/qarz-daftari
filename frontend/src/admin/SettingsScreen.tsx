@@ -1,9 +1,9 @@
 import { type FormEvent, useRef, useState } from "react";
 
 import { useI18n, type Translate } from "../i18n/I18nProvider";
-import type { ApiError } from "../shared/api";
+import { type ApiError, toApiError } from "../shared/api";
 import { useLoad, useSubmit } from "../shared/hooks";
-import { errorText, Failure, FieldError, formatInstant, Loading } from "../shared/workspace/parts";
+import { Confirm, errorText, Failure, FieldError, formatInstant, Loading } from "../shared/workspace/parts";
 import type { AdminApi, PaymentCard, PlatformSettings, SettingValue } from "./adminApi";
 import "./messages";
 import {
@@ -14,6 +14,7 @@ import {
   cardTag,
   cleanReason,
   isCode,
+  loweredPlan,
   parseSetting,
   REASON_MAX,
   REASON_MIN,
@@ -158,6 +159,9 @@ function without(problems: Readonly<Record<string, string>>, ...keys: string[]):
 }
 
 type Change = { key: string; before: SettingValue; after: SettingValue };
+type Payload = { changes: Record<string, SettingValue>; reason: string | null };
+/** A change that lowers the free plan and would limit `shops` shops: asked about before it is sent. */
+type Lowering = { payload: Payload; from: number; to: number; shops: number };
 
 function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings }) {
   const { t, language } = useI18n();
@@ -170,12 +174,20 @@ function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings
   const [reason, setReason] = useState("");
   const [problems, setProblems] = useState<Record<string, string>>({});
   const [changed, setChanged] = useState<Change[] | null>(null);
+  // The free plan lowered: the question before the change is sent, and what the server said after it.
+  const [lowering, setLowering] = useState<Lowering | null>(null);
+  const [asking, setAsking] = useState<{ status: "idle" | "pending" } | { status: "error"; error: ApiError }>({ status: "idle" });
+  const [limited, setLimited] = useState<number | null>(null);
+  // Which question is the current one: an answer to an earlier one, asked before a field changed, is dropped.
+  const question = useRef(0);
   // The code is not part of what is asked for: the same change sent again with a newer code is the same
   // request to the server, so it is read when the request is made and never compared.
   const codeNow = useRef<string | null>(null);
-  const { state, submit, reset } = useSubmit((payload: { changes: Record<string, SettingValue>; reason: string | null }, key) =>
+  const { state, submit, reset } = useSubmit((payload: Payload, key) =>
     api.updateSettings(payload.changes, codeNow.current, payload.reason, key).then((answer) => {
       setChanged(Object.entries(payload.changes).map(([name, after]) => ({ key: name, before: saved.values[name] ?? null, after })));
+      setLowering(null);
+      setLimited(answer.planLimited);
       setSaved(answer);
       setTexts(Object.fromEntries(Object.entries(answer.values).map(([name, value]) => [name, settingText(value)])));
       setCode("");
@@ -183,7 +195,7 @@ function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings
     }),
   );
   const pending = state.status === "pending";
-  const failure: ApiError | null = state.status === "error" ? state.error : null;
+  const failure: ApiError | null = state.status === "error" ? state.error : asking.status === "error" ? asking.error : null;
 
   // What differs from the server, and which fields do not hold a value of their setting's type and range.
   const changes: Record<string, SettingValue> = {};
@@ -206,7 +218,15 @@ function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings
     setTexts((current) => ({ ...current, [key]: value }));
     setProblems((current) => without(current, key, "_"));
     setChanged(null);
+    setLowering(null);
+    question.current += 1;
+    setAsking({ status: "idle" });
     reset();
+  };
+
+  const send = (payload: Payload) => {
+    codeNow.current = codeNeeded ? code.trim() : null;
+    submit(payload);
   };
 
   const onSubmit = (event: FormEvent) => {
@@ -231,9 +251,39 @@ function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings
     if (Object.keys(found).length > 0) {
       return;
     }
-    codeNow.current = codeNeeded ? code.trim() : null;
     setChanged(null);
-    submit({ changes, reason: cleanedReason });
+    const payload = { changes, reason: cleanedReason };
+    const lowered = loweredPlan(saved.values, changes);
+    if (lowered === null) {
+      send(payload);
+      return;
+    }
+    if (asking.status === "pending") {
+      return;
+    }
+    // A lower number limits the shops that are over it. How many is asked first, and nothing is sent
+    // until the administrator has seen the number and said yes.
+    reset();
+    setAsking({ status: "pending" });
+    const asked = ++question.current;
+    api.previewFreePlan(lowered.to).then(
+      (shops) => {
+        if (asked !== question.current) {
+          return;
+        }
+        setAsking({ status: "idle" });
+        if (shops === null || shops === 0) {
+          send(payload);
+        } else {
+          setLowering({ payload, ...lowered, shops });
+        }
+      },
+      (error: unknown) => {
+        if (asked === question.current) {
+          setAsking({ status: "error", error: toApiError(error) });
+        }
+      },
+    );
   };
 
   /** A server refusal of one field, next to that field: its name there is `changes.<key>`. */
@@ -274,6 +324,7 @@ function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings
               </li>
             ))}
           </ul>
+          {limited !== null && limited > 0 ? <p>{t("admin.settings.plan.limited", { count: limited })}</p> : null}
         </div>
       ) : null}
 
@@ -392,11 +443,31 @@ function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings
       ) : null}
 
       <FieldError id="settings-nothing" message={problems["_"] ?? null} />
-      <p className="actions">
-        <button type="submit" className="button button--primary" disabled={pending}>
-          {pending ? t("state.saving") : t("action.save")}
-        </button>
-      </p>
+      {lowering !== null ? (
+        <Confirm
+          question={
+            <>
+              <p>{t("admin.settings.plan.confirm", { from: lowering.from, to: lowering.to })}</p>
+              <p>{t("admin.settings.plan.shops", { count: lowering.shops })}</p>
+              <p>{t("admin.settings.plan.ownersTold")}</p>
+            </>
+          }
+          yes={t("admin.settings.plan.yes")}
+          no={t("action.back")}
+          pending={pending}
+          onYes={() => send(lowering.payload)}
+          onNo={() => {
+            setLowering(null);
+            reset();
+          }}
+        />
+      ) : (
+        <p className="actions">
+          <button type="submit" className="button button--primary" disabled={pending || asking.status === "pending"}>
+            {pending ? t("state.saving") : t("action.save")}
+          </button>
+        </p>
+      )}
     </form>
   );
 }

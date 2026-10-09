@@ -516,6 +516,27 @@
         "title": "CashEntryCustomer",
         "type": "object"
       },
+      "CashExportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "maxLength": 32,
+            "title": "From",
+            "type": "string"
+          },
+          "to": {
+            "maxLength": 32,
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "CashExportRequest",
+        "type": "object"
+      },
       "CashLine": {
         "additionalProperties": false,
         "description": "One method of one currency: `opening + income - expense = closing`.",
@@ -3850,6 +3871,18 @@
               }
             ],
             "title": "Amount"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
           }
         },
         "title": "Accept",
@@ -4319,6 +4352,24 @@
     "/api/admin/v1/settings": {
       "get": {
         "operationId": "admin_settings_read_api_admin_v1_settings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "free_plan_customers",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Free Plan Customers"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -4331,6 +4382,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Admin.Settings.Read"
@@ -6694,6 +6755,74 @@
           }
         },
         "summary": "Cash.Entry.Cancel"
+      }
+    },
+    "/api/v1/shops/{shop_id}/cash/export": {
+      "post": {
+        "operationId": "cash_export_api_v1_shops__shop_id__cash_export_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Shop Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CashExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cash Export Api V1 Shops  Shop Id  Cash Export Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cash.Export"
       }
     },
     "/api/v1/shops/{shop_id}/cash/summary": {

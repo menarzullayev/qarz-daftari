@@ -825,6 +825,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shops/{shop_id}/cash/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cash.Export */
+        post: operations["cash_export_api_v1_shops__shop_id__cash_export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/shops/{shop_id}/cash/summary": {
         parameters: {
             query?: never;
@@ -2904,6 +2921,13 @@ export interface components {
             /** Id */
             id: string;
         };
+        /** CashExportRequest */
+        CashExportRequest: {
+            /** From */
+            from: string;
+            /** To */
+            to: string;
+        };
         /**
          * CashLine
          * @description One method of one currency: `opening + income - expense = closing`.
@@ -3863,6 +3887,8 @@ export interface components {
         qarz__interface__payment_notices_api__Accept: {
             /** Amount */
             amount?: number | null;
+            /** Method */
+            method?: string | null;
         };
         /** Accept */
         qarz__interface__staff_api__Accept: {
@@ -4150,7 +4176,9 @@ export interface operations {
     };
     admin_settings_read_api_admin_v1_settings_get: {
         parameters: {
-            query?: never;
+            query?: {
+                free_plan_customers?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4166,6 +4194,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -5617,6 +5654,45 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CashCancellationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cash_export_api_v1_shops__shop_id__cash_export_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CashExportRequest"];
             };
         };
         responses: {

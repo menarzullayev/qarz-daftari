@@ -13,6 +13,11 @@ import "./messages";
 
 /** The subscription states a shop can be filtered by (application/admin.py, `STATES`). */
 export const STATES = ["trial", "active", "limited", "suspended"] as const;
+/**
+ * With the free plan switched on a shop without a period that the plan holds is "free", and the list
+ * can be filtered by it; "limited" then leaves those shops out. The server knows neither while it is off.
+ */
+export const STATES_WITH_PLAN = ["trial", "active", "free", "limited", "suspended"] as const;
 const MAX_QUERY_LENGTH = 80;
 export const NONE = "—";
 
@@ -26,6 +31,15 @@ export function stateText(state: string, t: Translate): string {
   return known("admin.state", state, t);
 }
 
+/** How much of the free plan a shop uses, "12 / 30"; nothing for a shop the server sent without it. */
+export function planText(shop: AdminShop, t: Translate): string {
+  return shop.plan === null ? NONE : t("admin.shops.plan.value", { used: shop.plan.customers, limit: shop.plan.freeCustomers });
+}
+
+function planColumn(t: Translate): Column<AdminShop> {
+  return { id: "plan", header: t("admin.shops.plan"), numeric: true, cell: (shop) => planText(shop, t) };
+}
+
 /**
  * Every shop on the platform, newest first: its name, its subscription, and how many staff and
  * customers it has. Nothing of what a shop sells or is owed is here, because the server gives none of it.
@@ -35,7 +49,18 @@ export function ShopsScreen({ api }: { api: AdminApi }) {
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
   const [state, setState] = useState("");
-  const list = usePagedList((cursor, signal) => api.listShops({ q: query, state, cursor }, signal), [api, query, state]);
+  // Whether the free plan is on: the server says so by sending each shop's use of it, and not otherwise.
+  const [planOn, setPlanOn] = useState(false);
+  const list = usePagedList(
+    (cursor, signal) =>
+      api.listShops({ q: query, state, cursor }, signal).then((page) => {
+        if (page.items.some((shop) => shop.plan !== null)) {
+          setPlanOn(true);
+        }
+        return page;
+      }),
+    [api, query, state],
+  );
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -57,6 +82,7 @@ export function ShopsScreen({ api }: { api: AdminApi }) {
     },
     { id: "staff", header: t("admin.shops.staff"), numeric: true, cell: (shop) => shop.staffCount },
     { id: "customers", header: t("admin.shops.customers"), numeric: true, cell: (shop) => shop.customerCount },
+    ...(planOn ? [planColumn(t)] : []),
     { id: "created", header: t("admin.shops.created"), cell: (shop) => formatInstant(shop.createdAt, language) },
   ];
 
@@ -96,7 +122,7 @@ export function ShopsScreen({ api }: { api: AdminApi }) {
           <label htmlFor="shops-state">{t("admin.shops.state")}</label>
           <select id="shops-state" className="input" value={state} onChange={(event) => setState(event.target.value)}>
             <option value="">{t("admin.shops.state.all")}</option>
-            {STATES.map((option) => (
+            {(planOn ? STATES_WITH_PLAN : STATES).map((option) => (
               <option key={option} value={option}>
                 {stateText(option, t)}
               </option>

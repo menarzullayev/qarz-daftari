@@ -58,6 +58,12 @@ def _due(record: StoredFileRecord, now: datetime) -> bool:
     return record.delete_after is not None and record.delete_after <= now
 
 
+def _file_name(record: StoredFileRecord) -> str:
+    # The name says what kind of file it is and carries part of its identifier: nothing about a person.
+    kind = "export" if record.purpose == "export" else "receipt"
+    return f"{kind}-{record.file_id.hex[:8]}.{EXTENSIONS[record.mime]}"
+
+
 class FileService:
     def __init__(
         self,
@@ -163,9 +169,19 @@ class FileService:
             record = await session.get_stored_file(file_id)
         if record is None or _due(record, now):
             raise NotFound()
-        # The name says what kind of file it is and carries part of its identifier: nothing about a person.
-        kind = "export" if record.purpose == "export" else "receipt"
-        return record.mime, f"{kind}-{file_id.hex[:8]}.{EXTENSIONS[record.mime]}", await self.content(record)
+        return record.mime, _file_name(record), await self.content(record)
+
+    async def read(self, shop_id: UUID, file_id: UUID, *, purpose: str, now: datetime) -> tuple[str, str, bytes]:
+        """Type, file name and content of a file the shop keeps for `purpose`, for the service's own use:
+        the worker attaching a receipt to its announcement. No link is made and nothing is served.
+
+        Not found: another shop's file, a file kept for something else, one deleted or due for deletion.
+        """
+        async with self._storage.tenant(shop_id) as session:
+            record = await session.get_stored_file(file_id)
+        if record is None or record.purpose != purpose or _due(record, now):
+            raise NotFound()
+        return record.mime, _file_name(record), await self.content(record)
 
     async def content(self, record: StoredFileRecord) -> bytes:
         """The content of a file whose record was read in its shop's transaction.

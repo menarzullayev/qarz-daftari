@@ -44,6 +44,9 @@ BACKDATE_DAYS = 31
 MAX_PERIOD_DAYS = 366
 PAGE = 50
 MAX_PAGE = 100
+# The most entries one export of a period holds. It is written while the member waits, by the service
+# that answers everyone else, so its size is bounded; a busier period is exported in shorter stretches.
+MAX_EXPORT_ENTRIES = 50_000
 
 # The category a customer's payment lands in, whatever the shop has renamed it to.
 DEBT_REPAID = "debt_repaid"

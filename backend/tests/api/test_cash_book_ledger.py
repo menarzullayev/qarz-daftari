@@ -18,6 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from qarz.application.chat_texts import money, say
+from qarz.application.idempotency import fingerprint
 from qarz.domain.money import Currency
 
 from .. import xlsx_reader
@@ -274,6 +275,157 @@ def test_an_accepted_payment_notice_is_money_received_too(
     notice = seed_notice(owner, world, 20_000)
     assert accept(client, world, world.manager_a, notice).status_code == 200
     assert [row[:4] for row in cash(owner, world)] == [("income", "cash", "UZS", 20_000)]
+
+
+# --- how an accepted notice was paid -----------------------------------------------------------------------
+
+
+def with_receipt(owner: psycopg.Connection, world: World, amount: int = 20_000) -> uuid.UUID:
+    """A waiting notice of Ali's that came with a receipt."""
+    file_id = uuid.uuid4()
+    owner.execute(
+        "INSERT INTO stored_file (id, shop_id, purpose, object_key, sha256, size_bytes, mime, delete_after) "
+        "VALUES (%s, %s, 'payment_notice', %s, %s, 3, 'image/png', now() + interval '80 days')",
+        (file_id, world.shop_a, f"ab/{file_id.hex}", b"\x00" * 32),
+    )
+    return seed_notice(owner, world, amount, file_id=file_id)
+
+
+def accept_with(client: TestClient, world: World, notice: uuid.UUID, body: Any, user: uuid.UUID | None = None) -> Any:
+    return client.post(
+        f"{shop(world)}/payment-notices/{notice}/accept",
+        json=body,
+        headers={**as_user(user or world.seller_a), **key()},
+    )
+
+
+@pytest.mark.parametrize("receipt", [False, True])
+@pytest.mark.parametrize("named", [None, "cash", "card", "transfer"])
+def test_an_accepted_notice_goes_to_the_balance_of_the_method_named_or_of_the_default(
+    client: TestClient, world: World, owner: psycopg.Connection, on: None, receipt: bool, named: str | None
+) -> None:
+    """Left out, a notice with a receipt is taken as paid by card and one without as cash. A seller says
+    so too: accepting asks for no permission of the cash book."""
+    notice = with_receipt(owner, world) if receipt else seed_notice(owner, world, 20_000)
+    accepted = accept_with(client, world, notice, {} if named is None else {"method": named})
+    assert accepted.status_code == 200, accepted.text
+    expected = named or ("card" if receipt else "cash")
+    assert accepted.json()["entry"]["method"] == expected
+    assert [row[:4] for row in cash(owner, world)] == [("income", expected, "UZS", 20_000)]
+    assert [row[7] for row in cash(owner, world)] == [world.seller_a_membership]
+    assert figures(line(day(client, world), expected)) == (0, 20_000, 0, 20_000)
+
+
+def test_a_method_that_is_null_or_absent_is_the_default_and_a_body_may_be_left_out(
+    client: TestClient, world: World, owner: psycopg.Connection, on: None
+) -> None:
+    for body in (None, {}, {"method": None}, {"amount": None, "method": None}):
+        notice = with_receipt(owner, world, 1_000)
+        assert accept_with(client, world, notice, body).json()["entry"]["method"] == "card", body
+    assert {row[1] for row in cash(owner, world)} == {"card"}
+
+
+@pytest.mark.parametrize("value", ["cheque", "", "CARD", " card", 5, True, ["card"], {"a": 1}, "x" * 40])
+def test_a_method_the_cash_book_does_not_know_is_refused_and_the_notice_stays_open(
+    client: TestClient, world: World, owner: psycopg.Connection, on: None, value: Any
+) -> None:
+    notice = seed_notice(owner, world, 20_000)
+    refused_ = accept_with(client, world, notice, {"method": value})
+    assert refused_.status_code == 422, refused_.text
+    assert refused_.json()["error"]["code"] == "VALIDATION"
+    assert refused_.json()["error"]["fields"] == {"method": "must be cash, card or transfer"}
+    assert cash(owner, world) == []
+    assert owner.execute("SELECT status FROM payment_notice WHERE id = %s", (notice,)).fetchone() == ("sent",)
+    # The same notice is still there to be accepted properly.
+    assert accept_with(client, world, notice, {"method": "transfer"}).status_code == 200
+
+
+def test_naming_a_method_does_not_let_a_stranger_in(
+    client: TestClient, world: World, owner: psycopg.Connection, on: None
+) -> None:
+    notice = seed_notice(owner, world, 20_000)
+    for body in ({"method": "card"}, {"method": "cheque"}):
+        outside = accept_with(client, world, notice, body, user=world.owner_b)
+        assert (outside.status_code, outside.json()["error"]["code"]) == (404, "NOT_FOUND")
+    assert cash(owner, world) == []
+
+
+@pytest.mark.parametrize("value", ["card", "cash", None, "cheque", 5, ["card"], "x" * 40])
+def test_with_the_cash_book_off_accepting_knows_no_method(
+    client: TestClient, world: World, owner: psycopg.Connection, value: Any
+) -> None:
+    """Exactly the answer the same request got before the field existed: that of any unknown field,
+    whatever the value. Nothing is recorded and the notice waits."""
+    notice = seed_notice(owner, world, 20_000)
+    named = accept_with(client, world, notice, {"method": value})
+    unknown = accept_with(client, world, notice, {"metod": value})
+    assert named.status_code == unknown.status_code == 422
+    assert named.json()["error"]["code"] == unknown.json()["error"]["code"] == "VALIDATION"
+    assert named.json()["error"]["fields"] == {"method": unknown.json()["error"]["fields"]["metod"]}
+    assert {**named.json()["error"], "fields": None} == {**unknown.json()["error"], "fields": None}
+    assert owner.execute("SELECT status FROM payment_notice WHERE id = %s", (notice,)).fetchone() == ("sent",)
+    assert owner.execute(
+        "SELECT count(*) FROM ledger_entry WHERE shop_id = %s AND kind = 'payment'", (world.shop_a,)
+    ).fetchone() == (0,)
+    # With the book on the very same request is a payment by card.
+    if value == "card":
+        switch(owner)
+        assert accept_with(client, world, notice, {"method": value}).json()["entry"]["method"] == "card"
+
+
+def test_with_the_cash_book_off_an_accepted_notice_is_answered_as_before_and_writes_nothing_here(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    off = accept_with(client, world, with_receipt(owner, world), None)
+    assert off.status_code == 200, off.text
+    assert "method" not in off.json()["entry"]
+    assert cash_rows_of_the_world(owner, world) == (0, 0)
+    # With the book on the answer differs in one thing: it says which balance the money went to.
+    switch(owner)
+    with_book = accept_with(client, world, with_receipt(owner, world), None)
+    assert set(with_book.json()) == set(off.json())
+    assert set(with_book.json()["entry"]) == {*off.json()["entry"], "method"}
+    assert set(with_book.json()["notice"]) == set(off.json()["notice"])
+
+
+def test_an_acceptance_that_names_no_method_keeps_the_fingerprint_it_had(
+    client: TestClient, world: World, owner: psycopg.Connection, on: None
+) -> None:
+    def stored(request_key: str) -> Any:
+        row = owner.execute(
+            "SELECT response FROM request_key WHERE shop_id = %s AND key = %s", (world.shop_a, request_key)
+        ).fetchone()
+        assert row is not None
+        return row[0]["request"]
+
+    plain, named = seed_notice(owner, world, 1_000), seed_notice(owner, world, 2_000)
+    path = f"{shop(world)}/payment-notices"
+    first, second = key(), key()
+    assert client.post(f"{path}/{plain}/accept", headers={**as_user(world.seller_a), **first}).status_code == 200
+    assert stored(first["Idempotency-Key"]) == fingerprint({"notice": str(plain), "amount": None})
+    sent = {**as_user(world.seller_a), **second}
+    assert client.post(f"{path}/{named}/accept", json={"method": "card"}, headers=sent).status_code == 200
+    assert stored(second["Idempotency-Key"]) == fingerprint({"notice": str(named), "amount": None, "method": "card"})
+    # The same key with another method is another request.
+    reused = client.post(f"{path}/{named}/accept", json={"method": "cash"}, headers=sent)
+    assert (reused.status_code, reused.json()["error"]["code"]) == (409, "IDEMPOTENCY_KEY_REUSED")
+    # And a repeat of the same one records nothing new.
+    assert client.post(f"{path}/{named}/accept", json={"method": "card"}, headers=sent).status_code == 200
+    assert [row[1] for row in cash(owner, world)] == ["cash", "card"]
+
+
+def test_the_bot_accepts_with_one_tap_and_the_default_rule(
+    client: TestClient, world: World, owner: psycopg.Connection, on: None
+) -> None:
+    """The bot asks nothing more than it did: a notice with a receipt is card, one without is cash."""
+    seller = chat_of(client, owner, world.seller_a)
+    bare, receipted = seed_notice(owner, world, 1_000), with_receipt(owner, world, 2_000)
+    for notice in (bare, receipted):
+        assert seller.press(f"v2:pna:{notice.hex}").payloads[0]["method"] == "editMessageText"
+    assert [row[:4] for row in cash(owner, world)] == [
+        ("income", "cash", "UZS", 1_000),
+        ("income", "card", "UZS", 2_000),
+    ]
 
 
 def test_whose_payment_it_is_is_shown_only_to_someone_who_may_see_the_customers(

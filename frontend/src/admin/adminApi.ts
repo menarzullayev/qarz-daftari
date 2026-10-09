@@ -53,6 +53,12 @@ export type AdminShop = {
   ownerTgId: number | null;
   staffCount: number;
   customerCount: number;
+  /**
+   * With the free plan switched on: how many customers the plan holds and how many of the shop's count
+   * for it (the archived do not). Null while the plan is off: the server then sends no such field, and
+   * no state is "free".
+   */
+  plan: { freeCustomers: number; customers: number } | null;
 };
 
 export type SubscriptionReceipt = {
@@ -142,6 +148,11 @@ export type PlatformSettings = {
   needsCode: readonly string[];
   /** Who last changed a setting and when, for the ones that were ever changed. */
   changed: Readonly<Record<string, { by: string; at: string }>>;
+  /**
+   * In the answer to a change that lowered how many customers the free plan holds: how many shops became
+   * limited by it. Their owners were told. Null in every other answer.
+   */
+  planLimited: number | null;
 };
 
 /**
@@ -178,6 +189,11 @@ function authStatus(value: unknown): AuthStatus {
   };
 }
 
+function shopPlan(value: unknown): { freeCustomers: number; customers: number } {
+  const plan = record(value);
+  return { freeCustomers: whole(plan["free_customers"]), customers: whole(plan["customers"]) };
+}
+
 function adminShop(value: unknown): AdminShop {
   const body = record(value);
   const subscription = record(body["subscription"]);
@@ -200,6 +216,7 @@ function adminShop(value: unknown): AdminShop {
     ownerTgId: owner ?? null,
     staffCount: whole(body["staff_count"]),
     customerCount: whole(body["customer_count"]),
+    plan: body["plan"] === undefined || body["plan"] === null ? null : shopPlan(body["plan"]),
   };
 }
 
@@ -343,7 +360,12 @@ function platformSettings(value: unknown): PlatformSettings {
     const who = record(entry);
     changed[key] = { by: text(who["by"]), at: text(who["at"]) };
   }
-  return { values, needsCode: list(body["needs_code"], text), changed };
+  return { values, needsCode: list(body["needs_code"], text), changed, planLimited: shopsLimited(body["free_plan_lowered"]) };
+}
+
+/** `shops_limited` of the server's word on a lowered free plan; null where it says nothing of one. */
+function shopsLimited(value: unknown): number | null {
+  return value === undefined || value === null ? null : whole(record(value)["shops_limited"]);
 }
 
 const ACTION_PATHS: Readonly<Record<SubscriptionAction, string>> = {
@@ -490,6 +512,20 @@ export function createAdminApi(options: {
 
     readSettings(signal?: AbortSignal): Promise<PlatformSettings> {
       return call(transport, { method: "GET", path: `${BASE}/settings`, signal, read: platformSettings });
+    },
+
+    /**
+     * How many of the shops the free plan holds today would become limited if it held `customers`.
+     * Nothing is changed by asking. Null when the server says nothing: the plan is switched off.
+     */
+    previewFreePlan(customers: number, signal?: AbortSignal): Promise<number | null> {
+      return call(transport, {
+        method: "GET",
+        path: `${BASE}/settings`,
+        query: { free_plan_customers: String(customers) },
+        signal,
+        read: (value) => shopsLimited(record(value)["free_plan_preview"]),
+      });
     },
 
     /**

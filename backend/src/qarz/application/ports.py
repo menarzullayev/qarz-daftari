@@ -1522,7 +1522,8 @@ class PlatformSession(Protocol):
     async def delete_ops_alert(self, key: str) -> None: ...
 
     async def ops_database_figures(self, now: datetime) -> DatabaseFigures:
-        """Ages and counts of the outbox, the scheduled jobs, SMS, receipts and the ledger check."""
+        """Ages and counts of the outbox, the scheduled jobs, SMS, receipts, the ledger check and the
+        stock check."""
         ...
 
     async def add_ops_samples(self, taken_at: datetime, values: Mapping[str, float]) -> None: ...
@@ -1535,6 +1536,12 @@ class PlatformSession(Protocol):
 
     async def ledger_mismatch_count(self) -> int:
         """In how many places the stored open debts differ from the ledger, over every shop."""
+        ...
+
+    async def stock_mismatch_counts(self) -> dict[str, int]:
+        """In how many places what is kept on hand (`stock_level`) and what suppliers are owed
+        (`supplier_balance`) differ from their ledgers, over every shop: a count for each label of
+        `qarz.domain.ops_alerts.STOCK_SERIES`."""
         ...
 
     async def use_signed_data(self, payload_hash: bytes, expires_at: datetime) -> bool:
@@ -1685,6 +1692,12 @@ class PlatformSession(Protocol):
         after: tuple[datetime, UUID] | None,
         limit: int,
     ) -> list[AdminShopRow]: ...
+
+    async def admin_active_customers(self, shop_ids: Sequence[UUID]) -> dict[UUID, int]:
+        """How many customers of each of these shops have the status active: what the free plan counts
+        (BR-33). A number and nothing else of a shop's customers (REQ-059), from one function of the
+        administrators' (migration 0046); the transaction has no tenant before or after it."""
+        ...
 
     async def admin_shop_receipts(self, admin_id: UUID, shop_id: UUID) -> list[AdminReceiptRow]: ...
 

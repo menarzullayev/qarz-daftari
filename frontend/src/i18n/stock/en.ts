@@ -113,6 +113,12 @@ export const enStock: PartialCatalog<typeof uzStock, EnPlural> = {
   "stock.docs.kind.all": "All kinds",
   "stock.docs.status.all": "All statuses",
   "stock.docs.none": "No such documents.",
+  "stock.docs.supplier.all": "All suppliers",
+  "stock.docs.show": "Which documents",
+  "stock.docs.open": "Documents and drafts",
+  "stock.docs.continue": "Continue",
+  "stock.docs.dropped": "The draft was deleted.",
+  "stock.docs.drafts.none": "No drafts. A goods receipt saved for later is kept here.",
 
   "stock.doc.ref": "{kind} No. {number}",
   "stock.doc.date": "Date",

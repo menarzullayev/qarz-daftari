@@ -64,10 +64,11 @@ from qarz.application.payment_notices import ACCEPT_NOTICE, DECLINE_NOTICE, Paym
 from qarz.application.payment_notices import accept_in as accept_notice_in
 from qarz.application.payment_notices import decline_in as decline_notice_in
 from qarz.application.ports import CustomerAccount, Membership, MyShop, PlatformSession, Storage, TenantSession
+from qarz.application.receipt_attachment import REVIEW_GROUP, caption_fits
 from qarz.application.shops import ShopService, require_member
 from qarz.application.staff import StaffService, token_hash
 from qarz.application.subscription import SubscriptionService
-from qarz.application.subscription_receipts import REVIEW_GROUP, SubscriptionReceiptService
+from qarz.application.subscription_receipts import SubscriptionReceiptService
 from qarz.domain import cash, permissions, platform_settings, stock
 from qarz.domain.chat_entry import ParsedEntry, ParseError, ParseErrorCode, parse_entry, parse_money
 from qarz.domain.disputes import clean_reason
@@ -158,6 +159,36 @@ def _uuid(hex_text: str) -> UUID | None:
         return None
 
 
+def _replacing(message_id: int, text: str, keyboard: Keyboard | None, *, media: bool) -> list[dict[str, Any]]:
+    """What replaces a message's words and buttons.
+
+    A message that is a photo or a document (the announcement of a receipt sent with its file) has a
+    caption, not text: Telegram edits it with another method and takes at most 1024 characters there.
+    Words that do not fit a caption are not cut: the buttons are taken off the file and the words follow
+    as a new message in reply to it.
+    """
+    if not media:
+        return [
+            {"method": "editMessageText", "message_id": message_id, "text": text, "reply_markup": _markup(keyboard)}
+        ]
+    if caption_fits(text):
+        return [
+            {
+                "method": "editMessageCaption",
+                "message_id": message_id,
+                "caption": text,
+                "reply_markup": _markup(keyboard),
+            }
+        ]
+    said: dict[str, Any] = {
+        "text": text,
+        "reply_parameters": {"message_id": message_id, "allow_sending_without_reply": True},
+    }
+    if keyboard:
+        said["reply_markup"] = _markup(keyboard)
+    return [{"method": "editMessageReplyMarkup", "message_id": message_id, "reply_markup": _markup(None)}, said]
+
+
 GROUP_LANG = "uz"  # the review group is answered in the language its announcement was written in
 CALLBACK_NOTICE_MAX = 200  # Bot API: the text of answerCallbackQuery
 
@@ -178,6 +209,8 @@ class Incoming:
     # The chat of which Telegram said, while this update was being handled, that the person is its
     # creator or one of its administrators. Only ever asked about the review group (DEC-064).
     administers: int | None = None
+    # The message whose button was pressed is a photo or a document: its words are a caption.
+    media: bool = False
 
     @property
     def key(self) -> str:
@@ -223,14 +256,8 @@ class Replies:
         if self._incoming.message_id is None:
             await self.send(text, keyboard)
             return
-        await self._queue(
-            {
-                "method": "editMessageText",
-                "message_id": self._incoming.message_id,
-                "text": text,
-                "reply_markup": _markup(keyboard),
-            }
-        )
+        for payload in _replacing(self._incoming.message_id, text, keyboard, media=self._incoming.media):
+            await self._queue(payload)
 
     def alert(self, text: str) -> None:
         """Say it over the pressed button. Telegram shows at most 200 characters there."""
@@ -240,19 +267,18 @@ class Replies:
         """Take the buttons off an earlier message of this chat."""
         await self._queue({"method": "editMessageReplyMarkup", "message_id": message_id, "reply_markup": _markup(None)})
 
-    async def close_in_group(self, chat_id: int, message_id: int, text: str) -> None:
-        """Replace the announcement in the review group: it says what was decided and has no buttons."""
-        await self._session.enqueue(
-            channel="telegram",
-            recipient=str(chat_id),
-            payload={
-                "method": "editMessageText",
-                "message_id": message_id,
-                "text": text,
-                "reply_markup": _markup(None),
-            },
-            dedupe_key=f"update:{self._incoming.update_id}:group",
-        )
+    async def close_in_group(self, chat_id: int, message_id: int, text: str, *, media: bool = False) -> None:
+        """Replace the announcement in the review group: it says what was decided and has no buttons.
+
+        `media`: the announcement was sent with the receipt's file, which stays where it is.
+        """
+        for place, payload in enumerate(_replacing(message_id, text, None, media=media)):
+            await self._session.enqueue(
+                channel="telegram",
+                recipient=str(chat_id),
+                payload=payload,
+                dedupe_key=f"update:{self._incoming.update_id}:group" + ("" if place == 0 else f":{place + 1}"),
+            )
 
     async def buttons(self, keyboard: Keyboard | None) -> None:
         if self._incoming.message_id is not None:
@@ -1346,6 +1372,8 @@ class ChatService:
                         "receipt": receipt_id.hex,
                         "message": incoming.message_id,
                         "group": None if incoming.group is None else list(incoming.group),
+                        # Kept for the reason, which arrives as another update: how to edit the group's copy.
+                        **({"media": True} if incoming.media else {}),
                     },
                     now=self._now(),
                     expires_at=self._now() + PENDING_LIFETIME,
@@ -1359,7 +1387,9 @@ class ChatService:
         except ReceiptAlreadyDecided:
             await replies.show(say(lang, "a_receipt_decided"))
             if incoming.group is not None:
-                await replies.close_in_group(*incoming.group, say(GROUP_LANG, "a_receipt_decided"))
+                await replies.close_in_group(
+                    *incoming.group, say(GROUP_LANG, "a_receipt_decided"), media=incoming.media
+                )
             return
         except ValidationFailed:
             await replies.send(say(lang, "a_receipt_use_panel"))
@@ -1376,6 +1406,7 @@ class ChatService:
             await replies.close_in_group(
                 *incoming.group,
                 say(GROUP_LANG, "a_receipt_approved", shop=body["shop_name"], months=body["months"], date=paid_through),
+                media=incoming.media,
             )
 
     async def _group_receipt_pressed(
@@ -1398,7 +1429,12 @@ class ChatService:
                     pending_id=self._pending_id(incoming),
                     user_id=incoming.user_id,
                     kind="receipt_reject",
-                    payload={"receipt": receipt_id.hex, "message": None, "group": [group_id, announcement]},
+                    payload={
+                        "receipt": receipt_id.hex,
+                        "message": None,
+                        "group": [group_id, announcement],
+                        **({"media": True} if incoming.media else {}),
+                    },
                     now=self._now(),
                     expires_at=self._now() + PENDING_LIFETIME,
                 )
@@ -1410,7 +1446,9 @@ class ChatService:
             )
         except ReceiptAlreadyDecided:
             replies.alert(say(lang, "a_receipt_decided"))
-            await replies.close_in_group(group_id, announcement, say(GROUP_LANG, "a_receipt_decided"))
+            await replies.close_in_group(
+                group_id, announcement, say(GROUP_LANG, "a_receipt_decided"), media=incoming.media
+            )
             return
         except ValidationFailed:
             # The owner stated no months, and they cannot be entered from the group.
@@ -1424,6 +1462,7 @@ class ChatService:
             group_id,
             announcement,
             say(GROUP_LANG, "a_receipt_approved", shop=body["shop_name"], months=body["months"], date=paid_through),
+            media=incoming.media,
         )
 
     async def _receipt_reject_reason(
@@ -1440,7 +1479,9 @@ class ChatService:
             and pressed_in is not None
             and await self._group_administrator(session, incoming, pressed_in[0])
         ):
-            await self._group_reject_reason(session, incoming, replies, receipt_id, pressed_in, text)
+            await self._group_reject_reason(
+                session, incoming, replies, receipt_id, pressed_in, text, media=payload.get("media") is True
+            )
             return
         if receipt_id is None or allowed is None:
             await session.drop_pending(incoming.user_id, "receipt_reject")
@@ -1469,7 +1510,10 @@ class ChatService:
         group = payload.get("group")
         if isinstance(group, list) and len(group) == 2 and all(isinstance(part, int) for part in group):
             await replies.close_in_group(
-                group[0], group[1], say(GROUP_LANG, "a_receipt_rejected", shop=body["shop_name"], reason=reason)
+                group[0],
+                group[1],
+                say(GROUP_LANG, "a_receipt_rejected", shop=body["shop_name"], reason=reason),
+                media=payload.get("media") is True,
             )
         announced = payload.get("message")
         if isinstance(announced, int) and not isinstance(announced, bool):
@@ -1483,6 +1527,8 @@ class ChatService:
         receipt_id: UUID,
         pressed_in: tuple[int, int],
         text: str,
+        *,
+        media: bool = False,
     ) -> None:
         """The reason a Telegram administrator of the review group writes after pressing "reject" there.
 
@@ -1507,7 +1553,10 @@ class ChatService:
             return
         await replies.send(say(lang, "a_receipt_rejected", shop=body["shop_name"], reason=reason))
         await replies.close_in_group(
-            group_id, announcement, say(GROUP_LANG, "a_receipt_rejected", shop=body["shop_name"], reason=reason)
+            group_id,
+            announcement,
+            say(GROUP_LANG, "a_receipt_rejected", shop=body["shop_name"], reason=reason),
+            media=media,
         )
 
     async def _shop_of_notice(self, shops: list[MyShop], notice_id: UUID) -> MyShop | None:

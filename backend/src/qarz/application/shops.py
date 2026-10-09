@@ -9,12 +9,18 @@ from zoneinfo import ZoneInfo
 
 from qarz.application import idempotency
 from qarz.application.authorization import require_operation
-from qarz.application.currencies import DollarBalanceOpen, platform_dollars
+from qarz.application.currencies import (
+    DollarBalanceOpen,
+    DollarStockOpen,
+    DollarSupplierBalanceOpen,
+    platform_dollars,
+)
 from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import Operation, operation, self_operation
 from qarz.application.ports import Membership, ShopSettings, Storage, TenantSession
 from qarz.domain import languages, platform_settings
 from qarz.domain.access import Capability, Role
+from qarz.domain.stock import SWITCH as STOCK_SWITCH
 
 READ_SHOP = operation("shop.read", Capability.READ_SHOP)
 UPDATE_SHOP = operation("shop.update", Capability.ADMINISTER_SHOP)
@@ -96,10 +102,23 @@ async def set_dollars_in(session: TenantSession, on: bool) -> None:
     Off is refused while any customer owes dollars: the debts would stay, unseen and unpayable. The
     setting is written first, which waits for everyone who is recording a dollar amount, and what is
     owed is read after it; a refusal undoes the write with the transaction.
+
+    The same holds for what the stock keeps in dollars, while the stock is switched on (`stock_on`): an
+    account with a supplier that is not settled in dollars, in either direction, and goods on hand whose
+    cost is kept in dollars. Each has a refusal of its own, so that the owner is told what to settle;
+    customers first, then suppliers, then goods. While the stock is off its tables are read by nothing,
+    this rule included, and what it holds in dollars waits as every dollar figure does while dollars are off.
     """
     await session.set_dollars_setting(on)
-    if not on and await session.dollars_owed():
+    if on:
+        return
+    if await session.dollars_owed():
         raise DollarBalanceOpen()
+    if await session.platform_setting(STOCK_SWITCH) is True:
+        if await session.supplier_dollars_open():
+            raise DollarSupplierBalanceOpen()
+        if await session.stock_dollars_on_hand():
+            raise DollarStockOpen()
 
 
 class ShopService:

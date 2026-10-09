@@ -234,8 +234,10 @@ describe("the administrator's API", () => {
     const { api } = adminApi(() => ok(shopDetailBody()));
     const shop = await api.readShop(SHOP_ID);
     expect(Object.keys(shop).sort()).toEqual(
-      ["changes", "createdAt", "customerCount", "deletionDue", "id", "lang", "name", "ownerTgId", "receipts", "staffCount", "status", "subscription"].sort(),
+      ["changes", "createdAt", "customerCount", "deletionDue", "id", "lang", "name", "ownerTgId", "plan", "receipts", "staffCount", "status", "subscription"].sort(),
     );
+    // The free plan is off unless the server says how much of it the shop uses.
+    expect(shop.plan).toBeNull();
     expect(shop.subscription).toEqual({ state: "trial", storedState: "trial", trialEnds: "2026-10-20", paidThrough: null, priorState: null });
     expect(shop.receipts[0]).toMatchObject({ statedAmount: 100000, status: "approved", months: 1 });
     expect(shop.changes[0]).toMatchObject({ action: "subscription.trial_set", reason: "Egasi so'radi" });

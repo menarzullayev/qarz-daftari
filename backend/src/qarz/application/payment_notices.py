@@ -11,7 +11,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from qarz.application import idempotency
+from qarz.application import cash_feed, idempotency
 from qarz.application.authorization import holders
 from qarz.application.chat_texts import money, say
 from qarz.application.currencies import USD, UZS, amount_hint, dollars_on, require_currency, tag
@@ -24,7 +24,7 @@ from qarz.application.notice_view import notice_body, staff_notice_body
 from qarz.application.operations import operation, self_operation
 from qarz.application.ports import CustomerRecord, Membership, PaymentNoticeRecord, Storage, TenantSession
 from qarz.application.shops import require_member
-from qarz.domain import ledger, permissions
+from qarz.domain import cash, ledger, permissions
 from qarz.domain.access import Capability
 from qarz.domain.disputes import clean_reason
 from qarz.domain.files import receipt_delete_after
@@ -129,14 +129,31 @@ async def _locked_open_notice(session: TenantSession, notice_id: UUID, now: date
     return record
 
 
+def default_method(record: PaymentNoticeRecord) -> cash.Method:
+    """How an accepted notice is taken to have been paid when whoever accepts it does not say (BR-49).
+
+    A receipt is what a payment by card or a transfer leaves behind, so a notice with one is taken as a
+    payment by card; a notice without one is money handed over. Either way the member may say otherwise.
+    """
+    return cash.Method.CARD if record.file_id is not None else cash.DEFAULT_METHOD
+
+
 async def accept_in(
-    session: TenantSession, actor: Membership, notice_id: UUID, amount: int | None, now: datetime
+    session: TenantSession,
+    actor: Membership,
+    notice_id: UUID,
+    amount: int | None,
+    now: datetime,
+    method: cash.Method | None = None,
 ) -> dict[str, Any]:
     """Accept an open notice inside a tenant transaction the caller has opened and authorized (BR-14).
 
     The payment is recorded for the stated amount, or for `amount` when the staff member corrects it.
     Whatever the ledger refuses (a payment above the balance, an archived customer) is raised unchanged,
     and the transaction's rollback leaves the notice open.
+
+    `method` is how the money came, for the cash book: left out, it is `default_method`. While the cash
+    book is off nothing is written there and the method is not looked at.
     """
     record = await _locked_open_notice(session, notice_id, now)
     if amount is not None:
@@ -156,6 +173,7 @@ async def accept_in(
         promised_date=None,
         now=now,
         currency=record.currency,
+        method=method or default_method(record),
     )
     closed = await session.close_payment_notice(
         notice_id,
@@ -432,12 +450,29 @@ class PaymentNoticeService:
                 ]
             }
 
+    async def cash_book_on(self) -> bool:
+        """Whether the cash book is on: only then does accepting a notice take a method."""
+        async with self._storage.platform() as session:
+            return await session.platform_setting(cash.SWITCH) is True
+
     async def accept(
-        self, user_id: UUID, shop_id: UUID, notice_id: UUID, amount: int | None, request_key: str | None
+        self,
+        user_id: UUID,
+        shop_id: UUID,
+        notice_id: UUID,
+        amount: int | None,
+        request_key: str | None,
+        method: object = None,
     ) -> dict[str, Any]:
+        """`method` is how the money came (cash, card or transfer), named only while the cash book is on.
+
+        It asks for no permission of the cash book: whoever may accept the payment says how it was paid,
+        as whoever records a payment does.
+        """
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, ACCEPT_NOTICE)
             key = idempotency.validate_key(request_key)
+            paid_by = cash_feed.clean_method(EntryKind.PAYMENT.value, method)
             if amount is not None and not (await dollars_on(session) and valid_amount(amount, USD)):
                 # Checked before the notice is read, as it always was. In a shop with dollars an amount
                 # that only a dollar notice may carry is checked once the notice's currency is known.
@@ -445,15 +480,15 @@ class PaymentNoticeService:
             await require_writable(session, self._today(), new_credit=False)
 
             async def apply() -> dict[str, Any]:
-                return await accept_in(session, actor, notice_id, amount, self._now())
+                return await accept_in(session, actor, notice_id, amount, self._now(), paid_by)
 
+            request: dict[str, Any] = {"notice": str(notice_id), "amount": amount}
+            if paid_by is not None:
+                # Only an acceptance that names its method carries it: one that names none keeps its
+                # fingerprint.
+                request["method"] = paid_by.value
             return await idempotency.run_once(
-                session,
-                key=key,
-                operation=ACCEPT_NOTICE.name,
-                user_id=user_id,
-                request={"notice": str(notice_id), "amount": amount},
-                action=apply,
+                session, key=key, operation=ACCEPT_NOTICE.name, user_id=user_id, request=request, action=apply
             )
 
     async def decline(

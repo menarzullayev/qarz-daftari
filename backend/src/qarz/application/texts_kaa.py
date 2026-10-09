@@ -263,6 +263,7 @@ CHAT: dict[str, str] = {
     "sub_receipt_rejected": "«{shop}»: {amount} tólem chegi ret etildi. Sebep: {reason}",
     "a_receipt_new": "Jańa jazılıw chegi: «{shop}», {amount}, {months} ay. Admin panelde kórip shıǵıń.",
     "a_receipt_copies": "⚠️ Tap usı fayl aldın da jiberilgen: {count} chekte.",
+    "a_receipt_no_file": "⚠️ Chek faylın xabarǵa qosıp bolmadı. Onı admin panelde kóriń.",
     "receipt_approve_button": "✅ Tastıyıqlaw",
     "receipt_reject_button": "Ret etiw",
     "a_sign_in_first": ("Aldın admin panelge kirip, kodıńızdı tastıyıqlań. Sonnan keyin bul túymeler isleydi."),
@@ -287,6 +288,11 @@ CHAT: dict[str, str] = {
     "sub_free_now": (
         "«{shop}»: múddet tamamlandı. Dúkan biypul tarifke ótti hám tolıq isley beredi: {limit} "
         "qarıydarǵa shekem. Kóbirek qarıydar kerek bolsa: /obuna"
+    ),
+    "free_plan_lowered": (
+        "«{shop}»: biypul tarif endi {limit} qarıydarǵa shekem, al sizde {used} qarıydar bar. Endi jańa "
+        "nesiye jazılmaydı; tólem qabıllaw, kóriw hám qarıydarlarǵa xabarlar isley beredi, maǵlıwmatlarıńız "
+        "saqlanadı. Tolıq islew ushın: /obuna"
     ),
     "move_date_button": "📅 Múddetti kóshiriw",
     "ask_move_date": "Tólew múddeti qaysı sánege kóshirilsin? kún.ay kórinisinde jazıń, mısalı 25.10",
@@ -441,6 +447,7 @@ CHAT: dict[str, str] = {
     "ops_rule_DiskAlmostFull": "disk 80% ten kóp tolǵan",
     "ops_rule_JobNotRunning": "rejeli jumıs óz dáwirin tamamlamaǵan",
     "ops_rule_LedgerMismatch": "saqlanǵan ashıq qarızlar dápter jazbalarınan parıq qılmaqta",
+    "ops_rule_StockMismatch": "skladtaǵı saqlanǵan qaldıq yamasa támiyinlewshige qarız óz jazbalarınan parıq qılmaqta",
     "ops_rule_ApiDown": "API /healthz sorawına juwap bermey atır",
     "ops_rule_TelegramRefusesBot": "Telegram bot tokenin ret etpekte",
     "ops_rule_TelegramUnreachable": "Telegram menen baylanıs joq",
@@ -500,6 +507,53 @@ EXPORT: dict[str, str | tuple[str, ...]] = {
     "cash_cash": "Naq",
     "cash_card": "Karta",
     "cash_transfer": "Ótkerme",
+    # An export of one period of the cash book (`qarz.application.cash_export`).
+    "cash_period": (
+        "Kún",
+        "Jazılǵan waqıt",
+        "Baǵıt",
+        "Tólem usılı",
+        "Valyuta",
+        "Summa",
+        "Kategoriya",
+        "Túsindirme",
+        "Derek",
+        "Biykarlanǵan ba",
+        "Biykarlaw sebebi",
+        "Biykarlanǵan waqıt",
+        "Xızmetker ID",
+        "Jazba ID",
+    ),
+    "cash_customer": "Qarıydar",
+    "cash_source_manual": "Qolda jazılǵan",
+    "cash_source_ledger": "Qarıydar tólemi",
+    "cash_source_stock": "Sklad",
+    "cash_reversed": "Qarıydardıń tólemi biykarlandı",
+    "cash_period_from": "Dáwir bası",
+    "cash_period_to": "Dáwir aqırı",
+    "cash_entries_count": "Jazbalar sanı (biykarlanǵanları menen)",
+    "cash_balances_title": "Qaldıqlar",
+    "cash_balances": (
+        "Valyuta",
+        "Tólem usılı",
+        "Dáwir basında",
+        "Kiris",
+        "Shıǵıs",
+        "Dáwir aqırında",
+        "Jazbalar",
+    ),
+    "cash_all_methods": "Jámi",
+    "cash_categories_title": "Kategoriyalar boyınsha",
+    "cash_categories": (
+        "Valyuta",
+        "Baǵıt",
+        "Kategoriya",
+        "Summa",
+        "Jazbalar",
+    ),
+    "cash_summary_note": (
+        "Biykarlanǵan jazbalar esapqa kirmeydi. Swm hám dollar bólek esaplanadı: olar hesh qashan qosılmaydı."
+    ),
     "customers": ("Qarıydar", "Telefon", "Jaǵdayı", "Nesiye limiti", "Qarızı", "Qosılǵan sáne", "Qarıydar ID"),
     "ledger": (
         "Sáne hám waqıt",
@@ -747,6 +801,14 @@ ERRORS: dict[str, str] = {
     "USD_BALANCE_OPEN": (
         "Dollardı óshirip bolmaydı: qarıydarlarda dollarda qarız bar. Aldın dollardaǵı barlıq qarızlar jabılsın."
     ),
+    "USD_SUPPLIER_BALANCE_OPEN": (
+        "Dollardı óshirip bolmaydı: támiyinlewshiler menen dollarda esap-kitap jabılmaǵan. "
+        "Aldın támiyinlewshiler menen dollardaǵı esap nolge keltirilsin."
+    ),
+    "USD_STOCK_OPEN": (
+        "Dollardı óshirip bolmaydı: skladta ózine túser bahası dollarda júrgizilgen tovar bar. "
+        "Aldın bul tovarlar satılsın, qaytarılsın yamasa esaptan shıǵarılsın."
+    ),
     "EXCEEDS_BALANCE": "Tólem qarıydardıń qarızınan úlken bolıwı múmkin emes.",
     "ALREADY_REVERSED": "Bul jazba álleqashan biykarlanǵan.",
     "CANNOT_REVERSE_REVERSAL": "Biykarlaw jazbasın biykarlap bolmaydı.",
@@ -763,11 +825,19 @@ ERRORS: dict[str, str] = {
     "LINES_ALREADY_ADDED": "Bul jazbaǵa ónimler álleqashan qosılǵan.",
     "LINES_SUM_MISMATCH": "Ónimler jıyındısı jazba summasına teń emes.",
     "LINES_WINDOW_CLOSED": ("Ónim qosıw múddeti ótken: bul tek sawdadan keyingi kúnniń aqırına shekem múmkin."),
+    "GOODS_NOT_IN_DOLLARS": (
+        "Dollardaǵı nesiyege ónimler dizimi qosılmaydı: ónim bahaları swmda júrgiziledi. "
+        "Dollardaǵı sawdanı summası menen jazıń."
+    ),
     "REMINDERS_OFF": "Eskertiwler dúkan yamasa usı qarıydar ushın óshirilgen.",
     "REMINDER_NOT_DUE": "Bul qarıydarda múddeti ótken yamasa búgin tólenetuǵın qarız joq.",
     "REMINDER_LIMIT_REACHED": "Bul qarıydarǵa búgin eskertiw álleqashan jiberilgen. Kúnine birew múmkin.",
     "CUSTOMER_UNREACHABLE": (
         "Bul qarıydarǵa xabar jetpeydi: Telegram jalǵanbaǵan, al SMS óshirilgen yamasa nomer joq."
+    ),
+    "CUSTOMER_UNREACHABLE_USD": (
+        "Bul qarıydardıń tólew múddeti kelgen qarızı tek dollarda, al SMS tek swmdaǵı qarızdı aytadı. "
+        "Eskertiw jiberiw ushın qarıydardı Telegramǵa jalǵań."
     ),
     "LIMIT_REACHED": "Bul sawda qarıydardıń nesiye limitinen asadı. Menedjer yamasa dúkan iyesi jaza aladı.",
     "DELETION_ALREADY_REQUESTED": "Dúkandı óshiriw álleqashan soralǵan.",

@@ -14,6 +14,7 @@ type Panel = { kind: "reverse" | "decline"; id: string } | null;
 
 function OpenDisputes() {
   const { api } = useWorkspace();
+  const can = useMay();
   const { t, language } = useI18n();
   const { state, reload } = useLoad((signal) => api.listDisputes(signal), [api]);
   const [panel, setPanel] = useState<Panel>(null);
@@ -107,11 +108,13 @@ function OpenDisputes() {
 
   return (
     <>
-      <nav className="actions" aria-label={t("nav.disputes")}>
-        <Link to="/date-requests" className="button">
-          {t("dates.title")}
-        </Link>
-      </nav>
+      {can("promises.change") ? (
+        <nav className="actions" aria-label={t("nav.disputes")}>
+          <Link to="/date-requests" className="button">
+            {t("dates.title")}
+          </Link>
+        </nav>
+      ) : null}
       <p className="hint">{t("disputes.hint")}</p>
       {done !== null ? (
         <p className="notice notice--done" role="status">

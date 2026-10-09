@@ -1,6 +1,6 @@
 import { useI18n } from "../../i18n/I18nProvider";
 import { useLoad, useSubmit } from "../hooks";
-import { useWorkspace } from "./context";
+import { useMay, useWorkspace } from "./context";
 import { errorText, Failure, formatInstant, Loading } from "./parts";
 import { StartCode } from "./StartCode";
 
@@ -11,6 +11,7 @@ import { StartCode } from "./StartCode";
  */
 export function LinkSection({ customerId, archived }: { customerId: string; archived: boolean }) {
   const { api } = useWorkspace();
+  const can = useMay();
   const { t, language } = useI18n();
   const { state, reload } = useLoad((signal) => api.readLink(customerId, signal), [api, customerId]);
   const issue = useSubmit((id: string, key) => api.createLink(id, key));
@@ -46,7 +47,7 @@ export function LinkSection({ customerId, archived }: { customerId: string; arch
         ) : null}
         {archived ? (
           <p className="hint">{t("link.archived")}</p>
-        ) : issued === null ? (
+        ) : !can("customers.create") ? null : issued === null ? (
           <p className="actions">{create}</p>
         ) : issued.start === null ? (
           // A repeated request is answered from the server's record, which no longer holds the code.

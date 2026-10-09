@@ -118,6 +118,24 @@ describe("the stock list", () => {
     }
     expect(screen.queryByRole("link", { name: "Ombor hisoboti" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Tez kirim" })).toBeNull();
+    // Nor the documents: a seller writes none, and the server would not list them.
+    expect(screen.queryByRole("link", { name: "Hujjatlar va qoralamalar" })).toBeNull();
+  });
+
+  it("leads those who write documents to them, where a draft is found again; the web panel has its own section", async () => {
+    const server = backend({ costs: false });
+    renderScreen(<StockScreen host={{}} />, { fetch: server.fetch, role: "seller", permissions: ["stock.view", "stock.adjust"] });
+    await screen.findByText("Shakar");
+    expect(screen.getByRole("link", { name: "Hujjatlar va qoralamalar" }).getAttribute("href")).toBe("#/stock/documents");
+    cleanup();
+    renderScreen(<StockScreen host={{}} office />, { fetch: server.fetch, role: "manager" });
+    await screen.findByText("Shakar");
+    expect(screen.queryByRole("link", { name: "Hujjatlar va qoralamalar" })).toBeNull();
+    cleanup();
+    // By permission, not by role: a manager from whom both were taken is offered nothing.
+    renderScreen(<StockScreen host={{}} />, { fetch: server.fetch, role: "manager", permissions: ["stock.view", "stock.costs.view"] });
+    await screen.findByText("Shakar");
+    expect(screen.queryByRole("link", { name: "Hujjatlar va qoralamalar" })).toBeNull();
   });
 
   it("shows a manager the cost the server sent, and offers the receipt and the report", async () => {

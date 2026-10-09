@@ -111,6 +111,12 @@ export const uzStock = {
   "stock.docs.kind.all": "Barcha turlar",
   "stock.docs.status.all": "Barcha holatlar",
   "stock.docs.none": "Bunday hujjat yo'q.",
+  "stock.docs.supplier.all": "Barcha ta'minotchilar",
+  "stock.docs.show": "Qaysi hujjatlar",
+  "stock.docs.open": "Hujjatlar va qoralamalar",
+  "stock.docs.continue": "Davom ettirish",
+  "stock.docs.dropped": "Qoralama o'chirildi.",
+  "stock.docs.drafts.none": "Qoralama yo'q. Saqlab qo'yilgan kirim shu yerda turadi.",
 
   "stock.doc.ref": "{kind} № {number}",
   "stock.doc.date": "Sana",

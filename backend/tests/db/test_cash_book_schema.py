@@ -353,6 +353,16 @@ READS = {
         "AND (e.created_at, e.id) < (now(), %(shop)s) ORDER BY e.created_at DESC, e.id DESC LIMIT 51",
         "cash_entry_day",
     ),
+    "a page of a period for its export": (
+        "SELECT id FROM cash_entry e WHERE e.shop_id = %(shop)s AND e.day >= %(first)s AND e.day < %(before)s "
+        "AND (e.day, e.created_at, e.id) > (%(first)s, now(), %(shop)s) AND e.created_at <= now() "
+        "ORDER BY e.day, e.created_at, e.id LIMIT 1000",
+        "cash_entry_day",
+    ),
+    "how many entries a period holds": (
+        "SELECT count(*) FROM cash_entry WHERE shop_id = %(shop)s AND day >= %(first)s AND day < %(before)s",
+        "cash_entry_",
+    ),
     "the entry of a payment": (
         "UPDATE cash_entry SET cancelled_at = now(), cancelled_by = %(shop)s "
         "WHERE ledger_entry_id = %(shop)s AND shop_id = %(shop)s AND cancelled_at IS NULL",

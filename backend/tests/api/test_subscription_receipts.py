@@ -275,15 +275,16 @@ def test_administrators_on_the_allow_list_and_the_review_group_are_told_without_
     assert uzbek == "Yangi obuna cheki: «Shop A», 300\xa0000\xa0so'm, 3 oy. Admin panelda ko'rib chiqing."
     for text in told.values():
         assert CARD not in text and CARD[-4:] not in text
-    # Text and the two buttons for everyone told: the image is not forwarded anywhere. Whose press counts
-    # is in tests/api/test_subscription_receipts_admin_chat.py.
+    # Text and the two buttons for everyone told, and a reference to the file that the worker turns into
+    # the file itself for that chat alone (tests/api/test_subscription_receipts_file.py). Whose press
+    # counts is in tests/api/test_subscription_receipts_admin_chat.py.
     payloads = owner.execute(
         "SELECT recipient, payload FROM outbox_message WHERE dedupe_key LIKE %s", (f"subreceipt:{receipt}:new:%",)
     ).fetchall()
     assert {recipient: set(payload) for recipient, payload in payloads} == {
-        tg(owner, world.admin): {"text", "reply_markup"},
-        tg(owner, russian): {"text", "reply_markup"},
-        str(group): {"text", "reply_markup"},
+        tg(owner, world.admin): {"text", "reply_markup", "receipt_file"},
+        tg(owner, russian): {"text", "reply_markup", "receipt_file"},
+        str(group): {"text", "reply_markup", "receipt_file"},
     }
     # The shop's own people are told nothing new by this.
     assert tg(owner, world.owner_a) not in told

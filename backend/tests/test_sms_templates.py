@@ -114,6 +114,34 @@ def test_a_reader_of_another_language_gets_the_uzbek_sms_whole(lang: str, kind: 
         )
 
 
+@pytest.mark.parametrize(
+    "plan",
+    [
+        ReminderPlan(ReminderKind.OVERDUE, 70_000, 1_250),  # both are due
+        ReminderPlan(ReminderKind.DUE_TODAY, 0, 1_250),  # only dollars are due
+        ReminderPlan(ReminderKind.DUE_TODAY, 0),
+    ],
+)
+def test_no_sms_text_is_ever_made_for_a_reminder_that_has_dollars_or_no_sum(plan: ReminderPlan) -> None:
+    """The registered wordings state one so'm amount. A text with a dollar amount in it, or with both, is
+    not registered and so is never made: the code that would make it fails instead. By Telegram the same
+    reminder is worded."""
+    for lang in (*LANGUAGES, "kk"):
+        with pytest.raises(ValueError, match="so'm amount and nothing else"):
+            reminder_text(lang, 1, plan, Channel.SMS, shop="Baraka", name="Ali")
+    if plan.amount_usd:
+        assert "$" in reminder_text("uz", 1, plan, Channel.TELEGRAM, shop="Baraka", name="Ali")
+
+
+def test_no_sms_wording_can_carry_a_second_amount_or_a_dollar_sign() -> None:
+    """What is registered has one `{amount}`, which the code fills with so'm: the texts themselves have no
+    place for dollars."""
+    for _, lang, text in in_the_code():
+        assert text.count("{amount}") == 1 and "$" not in text and "usd" not in text.lower(), lang
+    for sent in sendable():
+        assert "$" not in sent and sent.count("70 000") == 1
+
+
 def test_a_new_sms_text_in_the_code_must_be_documented() -> None:
     """Any catalog key that names SMS belongs in the table: a third text cannot be added quietly."""
     keys = {key for catalog in CATALOGS.values() for key in catalog if "sms" in key}

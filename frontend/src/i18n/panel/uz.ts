@@ -184,6 +184,7 @@ export const uzPanel = {
   "activity.action.cash.category_changed": "Kassa toifasi o'zgartirildi",
   "activity.action.cash.category_deleted": "Kassa toifasi o'chirildi",
   "activity.action.cash.backfilled": "Avvalgi to'lovlar kassaga ko'chirildi",
+  "activity.action.cash.exported": "Kassa davri faylga chiqarildi",
   "activity.action.customer.removal_requested": "Mijoz ma'lumotlarini o'chirishni so'radi",
   "activity.action.customer.updated": "Mijoz o'zgartirildi",
   "activity.action.dispute.declined": "E'tiroz rad etildi",

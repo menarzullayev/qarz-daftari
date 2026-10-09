@@ -24,7 +24,7 @@ from qarz.domain import languages, permissions
 from qarz.domain.languages import LANGUAGES, from_telegram, is_language, sms_language
 from qarz.domain.money import Currency, format_money
 from qarz.domain.uz_cyrillic import to_cyrillic
-from qarz.interface.errors import _MESSAGES, error_response, message_text
+from qarz.interface.errors import _MESSAGES, _STATUS, _WORDINGS, error_response, message_text
 
 TRAILING = {"tg": texts_tg, "kaa": texts_kaa, "en": texts_en}
 CYRILLIC = languages.UZ_CYRILLIC
@@ -340,6 +340,25 @@ def test_a_refusal_is_worded_in_the_callers_language() -> None:
         assert _message(lang, "NO_SUCH_CODE") == message_text(lang, "ERROR")
         assert "30" in _message(lang, "FREE_PLAN_FULL", {"limit": "30"})
         assert "{" not in _message(lang, "FREE_PLAN_FULL", {"limit": "30"})
+
+
+def test_a_more_exact_wording_is_said_under_its_own_code_only() -> None:
+    """`AppError.wording`: the same code, status and fields, with words that explain."""
+    import json
+
+    for lang in (*LANGUAGES, "kk"):
+        said = error_response("VALIDATION", lang, {"lines": "x"}, "GOODS_NOT_IN_DOLLARS")
+        body = json.loads(bytes(said.body))["error"]
+        assert (said.status_code, body["code"], body["fields"]) == (422, "VALIDATION", {"lines": "x"})
+        assert body["message"] == message_text(lang, "GOODS_NOT_IN_DOLLARS") != message_text(lang, "VALIDATION")
+        # A wording of another code, or one nobody wrote, changes nothing: the code's own words are said.
+        for code, wording in (("NOT_FOUND", "GOODS_NOT_IN_DOLLARS"), ("VALIDATION", "NO_SUCH"), ("VALIDATION", None)):
+            plain = error_response(code, lang, None, wording)
+            assert json.loads(bytes(plain.body)) == json.loads(bytes(error_response(code, lang).body))
+    for lang in ("tg", "kaa", "en"):
+        assert message_text(lang, "GOODS_NOT_IN_DOLLARS") != message_text("uz", "GOODS_NOT_IN_DOLLARS"), lang
+    assert set(_WORDINGS.values()) <= set(_STATUS), "a wording belongs to a code that exists"
+    assert not set(_WORDINGS) & set(_STATUS), "and is not itself a code a client could be sent"
 
 
 def test_a_refusal_the_language_does_not_have_is_worded_in_uzbek(monkeypatch: pytest.MonkeyPatch) -> None:

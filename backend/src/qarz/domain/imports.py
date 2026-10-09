@@ -21,6 +21,7 @@ from uuid import UUID
 from xml.parsers import expat
 
 from qarz.domain.files import MAX_FILE_BYTES
+from qarz.domain.money import RULES, Currency, parse_code, to_minor
 from qarz.domain.names import normalize_name, unify_apostrophes
 from qarz.domain.phones import normalize_phone
 from qarz.domain.uz_cyrillic import to_cyrillic
@@ -55,6 +56,9 @@ MIMES = {XLSX: XLSX_MIME, CSV: CSV_MIME}
 NAME, PHONE, AMOUNT, PROMISED, NOTE = "name", "phone", "amount", "promised_date", "note"
 COLUMNS = (NAME, PHONE, AMOUNT, PROMISED, NOTE)
 REQUIRED_COLUMNS = (NAME, AMOUNT)
+# The column a shop that works in dollars may add: "UZS" or "USD" for each row, so'm when the cell is
+# empty. For every other shop it does not exist: such a title is an unknown column, as it always was.
+CURRENCY = "currency"
 
 # Header names a column is recognised by, in Uzbek (Latin and Cyrillic), Russian and English.
 _HEADERS = {
@@ -87,6 +91,31 @@ TEMPLATE_HEADERS = {
     "en": ("Name", "Phone", "Debt amount", "Due date", "Note"),
 }
 
+# The title of the currency column, which only the template of a shop that works in dollars has, right
+# after the amount it says the currency of.
+_UZ_CURRENCY_TITLE = "Valyuta"
+CURRENCY_TITLES = {
+    "uz": _UZ_CURRENCY_TITLE,
+    "uz-Cyrl": to_cyrillic(_UZ_CURRENCY_TITLE),
+    "ru": "Валюта",
+    "tg": "Асъор",
+    "kaa": "Valyuta",
+    "en": "Currency",
+}
+
+
+def template_headers(lang: str, *, dollars: bool = False) -> tuple[str, ...]:
+    """The titles of the published template in a language; Uzbek for a language the product does not have.
+
+    With `dollars` the currency column stands after the amount. Without, the titles are the five they
+    always were.
+    """
+    titles = TEMPLATE_HEADERS.get(lang, TEMPLATE_HEADERS["uz"])
+    if not dollars:
+        return titles
+    at = COLUMNS.index(AMOUNT) + 1
+    return (*titles[:at], CURRENCY_TITLES.get(lang, CURRENCY_TITLES["uz"]), *titles[at:])
+
 
 def header_form(title: str) -> str:
     """A column title as it is compared: lower case, one kind of apostrophe, no "*" or ":", single spaces."""
@@ -99,6 +128,9 @@ _COLUMN_OF = {header: column for column, headers in _HEADERS.items() for header 
     for titles in TEMPLATE_HEADERS.values()
     for column, title in zip(COLUMNS, titles, strict=True)
 }
+
+# The titles the currency column is recognised by, in a file of a shop that works in dollars.
+_CURRENCY_HEADERS = frozenset({header_form(title) for title in CURRENCY_TITLES.values()})
 
 
 class FileProblem(StrEnum):
@@ -131,6 +163,9 @@ class RowProblem(StrEnum):
     DATE_TOO_OLD = "date_too_old"
     DATE_TOO_FAR = "date_too_far"
     NOTE_TOO_LONG = "note_too_long"
+    # Only in a file with a currency column, that is, of a shop that works in dollars:
+    CURRENCY_UNKNOWN = "currency_unknown"  # neither UZS nor USD
+    AMOUNT_TOO_PRECISE = "amount_too_precise"  # a dollar amount that is not a whole number of cents
     # Found when the rows are set against the shop's customers:
     AMBIGUOUS_CUSTOMER = "ambiguous_customer"  # more than one customer it could mean
     CUSTOMER_ARCHIVED = "customer_archived"
@@ -152,6 +187,8 @@ class ImportRow:
     amount: int
     promised: date | None  # None: the shop's default applies (BR-1)
     note: str | None
+    # `amount` is in this currency's minor unit: whole so'm, or cents.
+    currency: Currency = Currency.UZS
 
 
 @dataclass(frozen=True)
@@ -393,7 +430,7 @@ _SERIAL_EPOCH = date(1899, 12, 30)
 _SERIAL_MIN, _SERIAL_MAX = 20_000, 80_000
 
 
-def _header(table: Table) -> dict[str, int]:
+def _header(table: Table, dollars: bool = False) -> dict[str, int]:
     if not table:
         raise _Refused(FileProblem.NO_HEADER)
     found: dict[str, int] = {}
@@ -402,6 +439,8 @@ def _header(table: Table) -> dict[str, int]:
         if not title:
             continue  # a column without a title carries nothing that is imported
         column = _COLUMN_OF.get(title)
+        if column is None and dollars and title in _CURRENCY_HEADERS:
+            column = CURRENCY
         if column is None:
             raise _Refused(FileProblem.UNKNOWN_COLUMN)
         if column in found:
@@ -428,6 +467,40 @@ def parse_amount(raw: str) -> int | RowProblem:
     if value > MAX_AMOUNT:
         return RowProblem.AMOUNT_TOO_LARGE
     return int(value)
+
+
+_DOLLAR_AMOUNT = re.compile(r"[0-9]{1,15}(?:[.,][0-9]{1,6})?")
+
+
+def parse_currency(raw: str) -> Currency | RowProblem:
+    """The currency a cell names: "UZS" or "USD", in capitals or not; so'm when the cell is empty."""
+    text = raw.strip().upper()
+    if not text:
+        return Currency.UZS
+    return parse_code(text) or RowProblem.CURRENCY_UNKNOWN
+
+
+def parse_amount_in(currency: Currency, raw: str) -> int | RowProblem:
+    """The amount of one entry in the currency's minor unit, within the currency's own range (`RULES`).
+
+    So'm is read as it always was (`parse_amount`). Dollars are read by `money.to_minor`: "12.5" and
+    "12,50" are 1250 cents, and what is not a whole number of cents is refused, never rounded.
+    """
+    if currency is Currency.UZS:
+        return parse_amount(raw)
+    text = raw.translate(_SPACES)
+    if not text:
+        return RowProblem.AMOUNT_MISSING
+    if not _DOLLAR_AMOUNT.fullmatch(text):
+        return RowProblem.AMOUNT_INVALID
+    value = to_minor(currency, text)
+    if value is None:
+        return RowProblem.AMOUNT_TOO_PRECISE
+    if value < RULES[currency].min_entry:
+        return RowProblem.AMOUNT_TOO_SMALL
+    if value > RULES[currency].max_entry:
+        return RowProblem.AMOUNT_TOO_LARGE
+    return value
 
 
 def parse_date(raw: str, today: date) -> date | RowProblem | None:
@@ -477,9 +550,15 @@ def _row(number: int, cells: Sequence[str], header: dict[str, int], today: date)
         if phone is None:
             errors.append(RowError(number, PHONE, RowProblem.PHONE_INVALID))
 
-    amount = parse_amount(cell(AMOUNT))
-    if isinstance(amount, RowProblem):
-        errors.append(RowError(number, AMOUNT, amount))
+    # Without a currency column every row is so'm. An amount is not judged in a currency nobody knows.
+    currency = parse_currency(cell(CURRENCY))
+    amount: int | RowProblem | None = None
+    if isinstance(currency, RowProblem):
+        errors.append(RowError(number, CURRENCY, currency))
+    else:
+        amount = parse_amount_in(currency, cell(AMOUNT))
+        if isinstance(amount, RowProblem):
+            errors.append(RowError(number, AMOUNT, amount))
 
     promised = parse_date(cell(PROMISED), today)
     if isinstance(promised, RowProblem):
@@ -489,9 +568,9 @@ def _row(number: int, cells: Sequence[str], header: dict[str, int], today: date)
     if note is not None and len(note) > NOTE_MAX:
         errors.append(RowError(number, NOTE, RowProblem.NOTE_TOO_LONG))
 
-    if errors or isinstance(amount, RowProblem) or isinstance(promised, RowProblem):
+    if errors or isinstance(currency, RowProblem) or not isinstance(amount, int) or isinstance(promised, RowProblem):
         return errors
-    return ImportRow(number, name, normalize_name(name), phone, amount, promised, note)
+    return ImportRow(number, name, normalize_name(name), phone, amount, promised, note, currency)
 
 
 def sniff(data: bytes) -> str | FileProblem:
@@ -508,8 +587,11 @@ def sniff(data: bytes) -> str | FileProblem:
     return FileProblem.TYPE if b"\x00" in data else CSV
 
 
-def parse(data: bytes, today: date) -> ParsedFile | FileProblem:
+def parse(data: bytes, today: date, *, dollars: bool = False) -> ParsedFile | FileProblem:
     """Read an uploaded file. `today` is the Tashkent calendar date, against which promised dates are bound.
+
+    `dollars` says that the shop works in dollars: only then is a currency column read, and may a row be
+    in dollars. Without it such a column is an unknown column and every row is so'm, as before dollars.
 
     A file that cannot be read as an import at all gives a `FileProblem`. Otherwise every data row is
     either among the rows or has at least one error, so nothing is dropped without being reported.
@@ -519,7 +601,7 @@ def parse(data: bytes, today: date) -> ParsedFile | FileProblem:
         return kind
     try:
         table = read_xlsx(data) if kind == XLSX else read_csv(data)
-        header = _header(table)
+        header = _header(table, dollars)
     except _Refused as refused:
         return refused.problem
     body = table[1:]
@@ -629,6 +711,9 @@ def plan_token(planned: Sequence[PlannedRow]) -> str:
             item.row.note,
             item.action,
             None if item.customer_id is None else str(item.customer_id),
+            # So'm is the absence of a currency, here as everywhere: a plan of so'm rows keeps the
+            # fingerprint it had before dollars.
+            *([] if item.row.currency is Currency.UZS else [item.row.currency.value]),
         ]
         for item in planned
     ]

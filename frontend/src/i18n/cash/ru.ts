@@ -90,6 +90,15 @@ export const ruCash: RuCashCatalog = {
   "cash.summary.day": "День",
   "cash.summary.dayRow": "Приход: {income} · Расход: {expense}",
 
+  "cash.export": "Файл Excel",
+  "cash.export.hint": "Все записи этого периода (отменённые тоже, с пометкой) и итоги в одном файле .xlsx.",
+  "cash.export.make": "Выгрузить период в файл",
+  "cash.export.open": "Скачать файл",
+  "cash.export.valid": "Ссылка действует 5 минут, до {date}. Если не открывается, получите новую.",
+  "cash.export.again": "Получить новую ссылку",
+  "cash.export.tooMany":
+    "В этом периоде слишком много записей: в один файл они не поместятся. Выберите период короче.",
+
   "cash.categories.income": "Статьи прихода",
   "cash.categories.expense": "Статьи расхода",
   "cash.categories.archived": "в архиве",

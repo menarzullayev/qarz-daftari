@@ -76,7 +76,7 @@ from qarz.application.ports import (
 from qarz.domain.access import Role
 from qarz.domain.ledger import Entry, EntryKind
 from qarz.domain.money import Currency
-from qarz.domain.ops_alerts import LEDGER_SERIES, Alert, DatabaseFigures
+from qarz.domain.ops_alerts import LEDGER_SERIES, STOCK_SERIES, Alert, DatabaseFigures
 from qarz.infrastructure.db_cash import CashStatements
 from qarz.infrastructure.db_network import NetworkQueries
 from qarz.infrastructure.db_stock import StockQueries
@@ -3278,7 +3278,23 @@ class PgPlatformSession:
             sms_failed_last_hour=int(sms.failed),
             receipt_waiting=None if receipt.seconds is None else max(0.0, float(receipt.seconds)),
             ledger_mismatches=None if ledger is None else float(ledger.value),
+            stock_mismatches=await self._newest_samples(STOCK_SERIES),
         )
+
+    async def _newest_samples(self, series_of: Mapping[str, str]) -> dict[str, float]:
+        # The newest sample of each series, by the primary key (series, taken_at); a series never
+        # sampled is left out.
+        newest = (
+            await self._conn.execute(
+                text(
+                    "SELECT DISTINCT ON (series) series, value FROM ops_sample "
+                    "WHERE series = ANY(:series) ORDER BY series, taken_at DESC"
+                ),
+                {"series": list(series_of.values())},
+            )
+        ).all()
+        found = {str(row.series): float(row.value) for row in newest}
+        return {label: found[series] for label, series in series_of.items() if series in found}
 
     async def add_ops_samples(self, taken_at: datetime, values: Mapping[str, float]) -> None:
         for series, value in values.items():
@@ -3315,6 +3331,15 @@ class PgPlatformSession:
     async def ledger_mismatch_count(self) -> int:
         row = (await self._conn.execute(text("SELECT open_debt_mismatch_count() AS n"))).one()
         return int(row.n)
+
+    async def stock_mismatch_counts(self) -> dict[str, int]:
+        # Two counts and nothing else (migration 0046); the comparisons themselves are closed to the worker.
+        row = (
+            await self._conn.execute(
+                text("SELECT stock_level_mismatch_count() AS stock_level, supplier_balance_mismatch_count() AS owed")
+            )
+        ).one()
+        return {"stock_level": int(row.stock_level), "supplier_balance": int(row.owed)}
 
     async def use_signed_data(self, payload_hash: bytes, expires_at: datetime) -> bool:
         # Two requests with one payload: the second waits for the first's transaction and then conflicts.
@@ -3690,6 +3715,21 @@ class PgPlatformSession:
             )
             for row in rows
         ]
+
+    async def admin_active_customers(self, shop_ids: Sequence[UUID]) -> dict[UUID, int]:
+        counts: dict[UUID, int] = dict.fromkeys(shop_ids, 0)
+        if not shop_ids:
+            return counts
+        # One function for the page (migration 0046): numbers only, and no tenant is set here.
+        rows = (
+            await self._conn.execute(
+                text("SELECT shop_id, customers FROM admin_active_customer_counts(:shops)"),
+                {"shops": list(shop_ids)},
+            )
+        ).all()
+        for row in rows:
+            counts[row.shop_id] = int(row.customers)
+        return counts
 
     async def admin_open_shop(self, admin_id: UUID, shop_id: UUID, now: datetime) -> tuple[UUID, datetime] | None:
         row = (

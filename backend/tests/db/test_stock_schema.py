@@ -479,6 +479,15 @@ _STATEMENTS: dict[str, tuple[str, dict[str, Any]]] = {
         "SELECT d.id FROM stock_document d WHERE d.kind = :kind ORDER BY d.created_at DESC, d.id DESC LIMIT :limit",
         {"kind": "receipt", "limit": 51},
     ),
+    "the documents of a supplier": (
+        "SELECT d.id FROM stock_document d WHERE d.supplier_id = :supplier "
+        "ORDER BY d.created_at DESC, d.id DESC LIMIT :limit",
+        {"supplier": uuid.uuid4(), "limit": 51},
+    ),
+    "the documents in a state": (
+        "SELECT d.id FROM stock_document d WHERE d.status = :status ORDER BY d.created_at DESC, d.id DESC LIMIT :limit",
+        {"status": "draft", "limit": 51},
+    ),
     "the lines of a document": (
         "SELECT n.line_no FROM stock_document_line n WHERE n.document_id = :id ORDER BY n.line_no",
         {"id": uuid.uuid4()},
@@ -509,6 +518,9 @@ _STATEMENTS: dict[str, tuple[str, dict[str, Any]]] = {
         "ORDER BY m.created_at DESC, m.id DESC LIMIT 51",
         {"shop_id": uuid.uuid4()},
     ),
+    # What is asked before a shop's dollars are turned off (qarz.application.shops.set_dollars_in).
+    "a supplier account open in dollars": (db_stock._SUPPLIER_DOLLARS_OPEN, {"shop_id": uuid.uuid4()}),
+    "goods on hand costed in dollars": (db_stock._STOCK_DOLLARS_ON_HAND, {"shop_id": uuid.uuid4()}),
 }
 
 
@@ -528,6 +540,11 @@ _INDEX_OF: dict[str, tuple[str, ...]] = {
     "the documents, newest first": ("stock_document_recent",),
     # Likewise: the newest documents filtered by kind, or the documents of the kind, newest first.
     "the documents of a kind": ("stock_document_by_kind", "stock_document_recent"),
+    # Narrowed to one supplier: that supplier's documents, or the shop's newest read until the page is full.
+    "the documents of a supplier": ("stock_document_supplier", "stock_document_recent"),
+    # A state has no index of its own, by design: the shop's documents are walked newest first and the page
+    # stops when it is full. Drafts and cancellations are few and recent; the walk is the shop's, never more.
+    "the documents in a state": ("stock_document_recent",),
     "the lines of a document": ("stock_document_line_pkey",),
     "the suppliers by name": ("supplier_shop_id_name_norm_key",),
     # By supplier, or the shop's few balances by currency: both are read by key.
@@ -535,6 +552,10 @@ _INDEX_OF: dict[str, tuple[str, ...]] = {
     "a supplier's account": ("supplier_entry_supplier_id_seq_key",),
     "not sold since": ("stock_level_idle",),
     "sold below cost": ("stock_movement_below_cost",),
+    "a supplier account open in dollars": ("supplier_balance_shop",),
+    # The shop's items that are on hand, which is what the partial index holds; the dollar ones are
+    # picked out of them.
+    "goods on hand costed in dollars": ("stock_level_idle",),
 }
 
 

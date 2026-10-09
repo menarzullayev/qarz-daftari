@@ -64,6 +64,14 @@ _ENTRIES_OF_DAY = (
 )
 
 
+# A page of a period for its export, by the index `cash_entry_day (shop_id, day, created_at, id)`.
+_ENTRIES_OF_PERIOD = (
+    _ENTRY_SELECT + "WHERE e.shop_id = :shop_id AND e.day >= :first AND e.day < :before "
+    "AND (e.day, e.created_at, e.id) > (:after_day, :after_at, :after_id) AND e.created_at <= :until "
+    "ORDER BY e.day, e.created_at, e.id LIMIT :limit"
+)
+
+
 def _category(row: Any) -> CashCategoryRecord:
     return CashCategoryRecord(row.id, str(row.direction), str(row.name), row.system_key, row.archived_at)
 
@@ -343,6 +351,39 @@ class CashStatements:
             )
         ).one()
         return bool(row.found)
+
+    async def count_cash_entries(self, *, first: date, before: date) -> int:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT count(*) AS entries FROM cash_entry "
+                    "WHERE shop_id = :shop_id AND day >= :first AND day < :before"
+                ),
+                {"shop_id": self._shop_id, "first": first, "before": before},
+            )
+        ).one()
+        return int(row.entries)
+
+    async def cash_entries_of_period(
+        self, *, first: date, before: date, until: datetime, after: tuple[date, datetime, UUID] | None, limit: int
+    ) -> list[CashEntryRecord]:
+        after_day, after_at, after_id = after or (_FIRST_DAY, _BEFORE_EVERYTHING, _FIRST_UUID)
+        rows = (
+            await self._conn.execute(
+                text(_ENTRIES_OF_PERIOD),
+                {
+                    "shop_id": self._shop_id,
+                    "first": first,
+                    "before": before,
+                    "until": until,
+                    "after_day": after_day,
+                    "after_at": after_at,
+                    "after_id": after_id,
+                    "limit": limit,
+                },
+            )
+        ).all()
+        return [_entry(row) for row in rows]
 
     async def export_cash_entries(
         self, *, until: datetime, after: tuple[date, datetime, UUID] | None, limit: int

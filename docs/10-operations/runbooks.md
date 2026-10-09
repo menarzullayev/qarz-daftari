@@ -646,6 +646,23 @@ the language to `qarz.domain.languages.SMS_LANGUAGES`.
 
 The wordings themselves are agent drafts awaiting the founder's review (DEC-035).
 
+**Dollars.** A shop that works in dollars is reminded of dollars by Telegram only. The four registered
+texts state one amount in so'm, so an SMS is the reminder of the so'm debt alone: it is planned from the
+so'm debt as if the shop had no dollars, it states the so'm amount and nothing else, and none goes out
+when only dollars are due. The code refuses to make an SMS text with a dollar amount in it, and a test
+holds it to that. The staff are told what an SMS leaves out: under the SMS switch on the reminders
+screen, after a reminder sent by hand ("the SMS stated so'm only; 12.50 $ was not mentioned"), and in
+the list of customers who cannot be reached, which names every customer without Telegram whose dollar
+debt is due.
+
+To let an SMS carry dollars, the founder asks Eskiz one question when registering: may the variable
+part `{amount}` of the approved templates also be `12.50 $`, or `70 000 so'm va 12.50 $` (Russian:
+`70 000 сум и 12.50 $`)? If Eskiz says yes, no new template is needed and the change is in
+`qarz.application.reminders` only (the SMS takes the whole plan and `both()` writes the amount). If
+Eskiz wants the unit to be part of the fixed text, eight more templates are registered first (dollars
+only, and both amounts; due today and overdue; Uzbek and Russian), added to the table above and to the
+catalog, and only then sent. Until one of the two is done, nothing changes here.
+
 ## 13. Onboard a shop, including its paper ledger
 
 1. The owner starts the bot, opens a shop and gets the trial (if `trial_on`). While the free plan is on
@@ -815,8 +832,9 @@ worker` shows the watch's own lines (`ops_alert_firing`, `ops_alert_resolved`, `
 | `DiskAlmostFull` | `docker system df`; `single-host.sh status` | Free space before the database stops: old images of earlier releases (`docker image ls`), never a volume. Runbook 14 has what else lives on that disk |
 | `OutboxOld`, `DispatcherFailing` | `single-host.sh logs worker` | Messages are not going out. With `TelegramUnreachable` beside it: the link, or Telegram. With `TelegramRefusesBot`: the token (runbook 4). Otherwise restart the worker (`docker compose -p qarz restart worker`) and read why it stopped. Nothing is lost: messages wait up to 24 hours |
 | `TelegramRefusesBot`, `TelegramUnreachable` | These reach you only after they stopped (the alert could not be sent while they held) | Read the period in the 🟢 line and check what did not go out meanwhile; runbook 5 |
-| `RemindersNotRunning`, `JobNotRunning:<job>` | `single-host.sh logs worker`, lines `schedule_failed` | A scheduled job fails every time it is tried. The error names the place. `ledger_check` failing alone on a large database means its one statement takes longer than the worker's 60 seconds: tell the developer |
+| `RemindersNotRunning`, `JobNotRunning:<job>` | `single-host.sh logs worker`, lines `schedule_failed` | A scheduled job fails every time it is tried. The error names the place. `ledger_check` or `stock_check` failing alone on a large database means its one statement takes longer than the worker's 60 seconds: tell the developer |
 | `LedgerMismatch` | Nothing in the panel shows it; the figure in the message is in how many places | The stored open debts differ from the ledger somewhere. The ledger is the truth and the stored figures can be rebuilt from it (`refresh_open_debts`, as the owner). **Do not edit anything by hand**: this should never happen and means a defect, so tell the developer first |
+| `StockMismatch:stock_level`, `StockMismatch:supplier_balance` | Nothing in the panel shows it; the figure in the message is in how many places (items, or suppliers and currencies). Checked once a day, just after midnight, while `stock_on` is on. As the owner of the database, `SELECT * FROM stock_level_mismatches(NULL)` or `SELECT * FROM supplier_balance_mismatches(NULL)` lists them: the stored figure beside what the movements or the entries add up to | What the stock keeps on hand (`stock_level`), or what a shop owes a supplier (`supplier_balance`), differs from the movements or the entries it is the sum of. Both are written by triggers alone, so this means a defect or a hand in the database. The movements and the entries are the truth; the affected shops see a wrong quantity, value or debt until it is repaired. **Do not edit anything by hand** and do not cancel documents to "fix" it: keep the output of the two statements and tell the developer, who repairs the kept row from its ledger in one transaction. The alert clears at the next daily check. Turning `stock_on` off does not clear it: the last count stays |
 | `ReceiptsWaiting` | The panel, receipts | Runbook 8 |
 | `SmsRefused`, `SmsNotGoingOut` | Runbook 12, "When SMS fail" | |
 | `ApiDown`, `MetricsMissing`, `ErrorRateHigh` | `single-host.sh logs api`; `single-host.sh status` | Runbook 5. `ErrorRateHigh` right after a release: runbook 1, roll back |

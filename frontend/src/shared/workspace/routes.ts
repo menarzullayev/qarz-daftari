@@ -44,6 +44,9 @@ export type StockView =
   | { name: "documents" }
   | { name: "newDocument"; kind: StockDocumentKind }
   | { name: "document"; documentId: string }
+  // The same documents at the counter: a list a phone can read, and one of them opened from it.
+  | { name: "counterDocuments" }
+  | { name: "counterDocument"; documentId: string }
   | { name: "suppliers" }
   | { name: "supplier"; supplierId: string };
 
@@ -63,6 +66,7 @@ const CUSTOMER = new RegExp(`^/customers/(${ID})$`, "i");
 const ENTRY = new RegExp(`^/customers/(${ID})/(credit|payment)$`, "i");
 const STOCK_ITEM = new RegExp(`^/stock/items/(${ID})$`, "i");
 const STOCK_DOCUMENT = new RegExp(`^/stock-documents/(${ID})$`, "i");
+const COUNTER_DOCUMENT = new RegExp(`^/stock/documents/(${ID})$`, "i");
 const NEW_STOCK_DOCUMENT = /^\/stock-documents\/new\/([a-z_]+)$/;
 const SUPPLIER = new RegExp(`^/suppliers/(${ID})$`, "i");
 const NETWORK_LINK = new RegExp(`^/network/links/(${ID})$`, "i");
@@ -164,6 +168,10 @@ function matchStockRoute(path: string): WorkspaceMatch | null {
       return stock({ name: "receipt" }, "/stock", "nav.stock");
     case "/stock/report":
       return stock({ name: "report" }, "/stock", "nav.stock");
+    // The documents as the counter reads them belong to the stock's own section: the Mini App has no
+    // documents section, and the quick receipt that leaves a draft is written under the stock too.
+    case "/stock/documents":
+      return stock({ name: "counterDocuments" }, "/stock", "nav.stockDocuments");
     case "/stock-documents":
       return stock({ name: "documents" }, "/stock-documents", "nav.stockDocuments");
     case "/suppliers":
@@ -176,6 +184,10 @@ function matchStockRoute(path: string): WorkspaceMatch | null {
   const document = STOCK_DOCUMENT.exec(path);
   if (document?.[1]) {
     return stock({ name: "document", documentId: document[1] }, "/stock-documents", "nav.stockDocuments");
+  }
+  const atCounter = COUNTER_DOCUMENT.exec(path);
+  if (atCounter?.[1]) {
+    return stock({ name: "counterDocument", documentId: atCounter[1] }, "/stock", "nav.stockDocuments");
   }
   const kind = STOCK_DOCUMENT_KINDS.find((known) => known === NEW_STOCK_DOCUMENT.exec(path)?.[1]);
   if (kind) {

@@ -5,7 +5,7 @@ import type { ApiError, Customer, WaitingPerson } from "../api";
 import { formatMoney } from "../format";
 import { useLoad, usePagedList, useSubmit } from "../hooks";
 import { Link } from "../router";
-import { useWorkspace } from "./context";
+import { useMay, useWorkspace } from "./context";
 import { SEARCH_DELAY_MS } from "./CustomersScreen";
 import { Confirm, Empty, errorText, Failure, formatInstant, Loading, LoadMore } from "./parts";
 
@@ -99,11 +99,14 @@ function AttachPanel({
 }
 
 /**
- * People who scanned the counter code and agreed to be connected (REQ-013). Any member of staff
- * attaches one to the customer record that is theirs, or dismisses the request.
+ * People who scanned the counter code and agreed to be connected (REQ-013). A member who may add
+ * customers attaches one to the customer record that is theirs, or dismisses the request; one who only
+ * reads the book sees who is waiting.
  */
 export function WaitingScreen() {
   const { api } = useWorkspace();
+  const can = useMay();
+  const mayDecide = can("customers.create");
   const { t, language } = useI18n();
   const { state, reload } = useLoad((signal) => api.listWaiting(signal), [api]);
   const [attaching, setAttaching] = useState<string | null>(null);
@@ -154,7 +157,7 @@ export function WaitingScreen() {
                   attach.reset();
                 }}
               />
-            ) : (
+            ) : !mayDecide ? null : (
               <p className="actions">
                 <button
                   type="button"

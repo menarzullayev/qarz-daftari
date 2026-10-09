@@ -42,6 +42,8 @@ FUNCTIONS = [
     "admin_set_platform_setting(uuid, text, jsonb, text, jsonb, timestamptz)",
     # Reassigning a shop's owner (migration 0028).
     "admin_reassign_owner(uuid, uuid, bigint, text, timestamptz)",
+    # Active customers per shop, for the free plan in the list of shops (migration 0046): numbers alone.
+    "admin_active_customer_counts(uuid[])",
 ]
 SEARCH = "SELECT * FROM admin_shop_search(%s, %s, %s, %s, %s, %s, %s, %s)"
 SEARCH_COLUMNS = [

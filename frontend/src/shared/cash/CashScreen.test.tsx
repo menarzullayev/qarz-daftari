@@ -114,6 +114,19 @@ describe("the day's book", () => {
     expect(row.textContent).toContain("mijoz sahifasida o'sha to'lovni bekor qiling");
   });
 
+  it("shows money the stock paid out under its category, with no way to cancel it here", async () => {
+    const paid = entry({
+      source: "stock",
+      direction: "expense",
+      category: { id: "cat-stock", name: "Ombor: tovar xaridi" },
+    });
+    open(book({ day: () => ok(dayBody({ entries: [paid, entry({ id: "e-9" })] })) }));
+    const row = (await screen.findByText("Ombor: tovar xaridi")).closest("li") as HTMLElement;
+    expect(within(row).queryByRole("button", { name: "Bekor qilish" })).toBeNull();
+    // The entry written by hand beside it still can be.
+    expect(screen.getAllByRole("button", { name: "Bekor qilish" })).toHaveLength(1);
+  });
+
   it("says only that it is a customer's payment to a reader who was not told whose", async () => {
     open(book({ day: () => ok(dayBody({ entries: [entry({ source: "ledger", customer: null })] })) }));
     expect(await screen.findByText("Mijoz to'lovi")).toBeTruthy();
@@ -395,6 +408,68 @@ describe("a period", () => {
     const archived = { category: category("expense", "Ijara", { archived: true }), currency: "UZS", amount: 300000, count: 1 };
     await summaryView(book({ summary: () => ok(summaryBody({ categories: [archived] })) }));
     expect(screen.getByText("Ijara (arxivda)")).toBeTruthy();
+  });
+
+  const LINK = { from: "2026-10-01", to: "2026-10-06", entries: 3, url: "/files/abc.def", expires_at: "2026-10-06T07:05:00+00:00" };
+  const exports = (server: ReturnType<typeof fakeServer>) => server.sent.filter((sent) => sent.path === `${CASH}/export`);
+
+  it("writes the period on the screen to a file and offers the link, asking for nothing until told to", async () => {
+    const server = await summaryView(book({ write: () => ok(LINK, 201) }));
+    expect(exports(server)).toHaveLength(0);
+    fireEvent.click(button("Davrni faylga chiqarish"));
+    const link = await screen.findByRole("link", { name: "Faylni yuklab olish" });
+    expect(link.getAttribute("href")).toBe("/files/abc.def");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(exports(server)).toHaveLength(1);
+    expect(exports(server)[0]).toMatchObject({ method: "POST", body: { from: "2026-10-01", to: "2026-10-06" } });
+    expect(exports(server)[0]?.headers["Idempotency-Key"]).toMatch(/^[A-Za-z0-9_-]{8,128}$/);
+    // The link is a credential: it is in neither the address nor the browser's storage.
+    expect(window.location.href).not.toContain("abc.def");
+    expect(JSON.stringify({ ...window.localStorage, ...window.sessionStorage })).not.toContain("abc.def");
+    expect(button("Yangi havola olish")).toBeTruthy();
+  });
+
+  it("exports the period that was chosen, and forgets the link of the one before", async () => {
+    const server = await summaryView(book({ write: () => ok(LINK, 201) }));
+    fireEvent.click(button("Davrni faylga chiqarish"));
+    await screen.findByRole("link", { name: "Faylni yuklab olish" });
+    fireEvent.click(button("Bugun"));
+    await waitFor(() => expect(screen.queryByRole("link", { name: "Faylni yuklab olish" })).toBeNull());
+    fireEvent.click(button("Davrni faylga chiqarish"));
+    await screen.findByRole("link", { name: "Faylni yuklab olish" });
+    expect(exports(server).map((sent) => sent.body)).toEqual([
+      { from: "2026-10-01", to: "2026-10-06" },
+      { from: "2026-10-06", to: "2026-10-06" },
+    ]);
+  });
+
+  it("says that a period holds too many entries for one file, and shows any other refusal as it is", async () => {
+    let reply: Reply = refusal(422, "VALIDATION", "Ma'lumot noto'g'ri.", { to: "TOO_MANY_ENTRIES" });
+    await summaryView(book({ write: () => reply }));
+    fireEvent.click(button("Davrni faylga chiqarish"));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Bu davrda yozuvlar juda ko'p: bitta faylga sig'maydi. Qisqaroq davrni tanlang.",
+    );
+    expect(screen.queryByRole("link", { name: "Faylni yuklab olish" })).toBeNull();
+    reply = refusal(503, "FILE_STORE_UNAVAILABLE", "Fayllarni saqlash hozir ishlamayapti.");
+    fireEvent.click(button("Davrni faylga chiqarish"));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Fayllarni saqlash hozir ishlamayapti."));
+  });
+
+  it("is offered by the permission to read the book, whatever the role", async () => {
+    // A seller who was given the right to read the book is offered its file too.
+    const granted = book({ write: () => ok(LINK, 201) });
+    open(granted, { role: "seller", permissions: ["cash.view"] });
+    fireEvent.click(await screen.findByRole("button", { name: "Davr hisoboti" }));
+    expect(await screen.findByRole("button", { name: "Davrni faylga chiqarish" })).toBeTruthy();
+    cleanup();
+    // A manager from whom it was taken has no period report at all, so nothing to export.
+    const denied = book();
+    open(denied, { role: "manager", permissions: ["cash.record_income"] });
+    await screen.findByRole("button", { name: "Kirim yozish" });
+    expect(screen.queryByRole("button", { name: "Davr hisoboti" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Davrni faylga chiqarish" })).toBeNull();
+    expect(exports(denied)).toHaveLength(0);
   });
 
   it("keeps the categories of each currency apart, each with its own total", async () => {

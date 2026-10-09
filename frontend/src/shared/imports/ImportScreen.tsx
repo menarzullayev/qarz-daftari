@@ -1,7 +1,7 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { useI18n, type Translate } from "../../i18n/I18nProvider";
-import type { MessageKey } from "../../i18n/types";
+import type { Language, MessageKey } from "../../i18n/types";
 import { type ApiError, isAbort, toApiError } from "../api";
 import { formatCalendarDay, formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
@@ -19,6 +19,7 @@ import {
   IMPORT_MAX_ROWS,
   IMPORT_STATES,
   type ImportBatch,
+  type ImportCounts,
   type ImportPreview,
   type ImportsApi,
   importsOf,
@@ -110,7 +111,7 @@ type Batches =
   | { status: "loading" }
   | { status: "error"; error: ApiError }
   /** `stale`: the list could not be read again; it is shown as it was, and no longer refreshes itself. */
-  | { status: "ready"; items: ImportBatch[]; stale: ApiError | null };
+  | { status: "ready"; items: ImportBatch[]; currencyColumn: boolean; stale: ApiError | null };
 
 /**
  * The shop's imports, read when the screen opens and again at a calm interval for as long as the worker
@@ -125,12 +126,12 @@ function useImports(client: ImportsApi, pollMs: number) {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const read = () => {
-      client.list(controller.signal).then(
-        (items) => {
+      client.listed(controller.signal).then(
+        ({ items, currencyColumn }) => {
           if (controller.signal.aborted) {
             return;
           }
-          setState({ status: "ready", items, stale: null });
+          setState({ status: "ready", items, currencyColumn, stale: null });
           if (items.some(isUnfinished)) {
             timer = setTimeout(read, pollMs);
           }
@@ -390,12 +391,28 @@ function RowErrors({ errors }: { errors: readonly RowError[] }) {
   );
 }
 
+/** The totals of an import, each currency's by itself: "320 000 so'm", or that and "12.50 $" side by side. */
+function totalText(counts: ImportCounts, language: Language, t: Translate): string {
+  const uzs = formatMoney(counts.amount, language);
+  if (counts.usd === undefined || counts.usd === 0) {
+    return uzs;
+  }
+  const usd = formatMoney(counts.usd, language, "USD");
+  return counts.amount === 0 ? usd : t("imports.total.both", { uzs, usd });
+}
+
 function Preview({ preview, total }: { preview: ImportPreview; total: number }) {
   const { t, language } = useI18n();
   const desktop = useDesktop();
   const [all, setAll] = useState(false);
   const rows = all ? preview.rows : preview.rows.slice(0, PREVIEW_ROWS);
   const money = (amount: number) => formatMoney(amount, language);
+  // A row's amount in the row's own currency: a dollar row is cents and reads "12.50 $".
+  const rowMoney = (row: PreviewRow) => formatMoney(row.amount, language, row.currency ?? "UZS");
+  // What a matched customer owes now: in so'm and, in a shop that works in dollars, in dollars beside it.
+  const owes = (customer: NonNullable<PreviewRow["customer"]>) =>
+    customer.usd === undefined ? money(customer.balance) : `${money(customer.balance)} · ${formatMoney(customer.usd, language, "USD")}`;
+  const usdTotal = preview.counts.usd;
   const day = (iso: string | null) => {
     const parsed = iso === null ? null : parseIsoDate(iso);
     return parsed ? formatCalendarDay(parsed, language) : (iso ?? NONE);
@@ -409,7 +426,7 @@ function Preview({ preview, total }: { preview: ImportPreview; total: number }) 
     }
     if (row.action === "existing" && row.customer !== null) {
       const how = row.matchedBy === "phone" || row.matchedBy === "name" ? row.matchedBy : "other";
-      return t(`imports.action.existing.${how}`, { name: row.customer.displayName, balance: money(row.customer.balance) });
+      return t(`imports.action.existing.${how}`, { name: row.customer.displayName, balance: owes(row.customer) });
     }
     return row.action;
   };
@@ -417,7 +434,7 @@ function Preview({ preview, total }: { preview: ImportPreview; total: number }) 
     { id: "row", header: t("imports.errors.col.row"), numeric: true, rowHeader: true, cell: (row) => row.row },
     { id: "name", header: t("imports.column.name"), cell: (row) => row.name },
     { id: "phone", header: t("imports.column.phone"), cell: (row) => row.phone ?? NONE },
-    { id: "amount", header: t("imports.column.amount"), numeric: true, cell: (row) => money(row.amount) },
+    { id: "amount", header: t("imports.column.amount"), numeric: true, cell: rowMoney },
     { id: "promised", header: t("imports.column.promised_date"), cell: (row) => day(row.promisedDate) },
     { id: "note", header: t("imports.column.note"), cell: (row) => row.note ?? NONE },
     { id: "action", header: t("imports.preview.col.action"), cell: action },
@@ -434,6 +451,13 @@ function Preview({ preview, total }: { preview: ImportPreview; total: number }) 
         <dd>{preview.counts.entries}</dd>
         <dt>{t("imports.counts.amount")}</dt>
         <dd>{money(preview.counts.amount)}</dd>
+        {/* The dollar rows have a total of their own, never added to the so'm one. */}
+        {usdTotal === undefined ? null : (
+          <>
+            <dt>{t("imports.counts.amount.usd")}</dt>
+            <dd>{formatMoney(usdTotal, language, "USD")}</dd>
+          </>
+        )}
       </dl>
       {desktop ? (
         <desktop.Table caption={t("imports.preview.rows")} columns={columns} items={rows} rowKey={(row) => String(row.row)} />
@@ -443,7 +467,7 @@ function Preview({ preview, total }: { preview: ImportPreview; total: number }) 
             <li key={row.row} className="row">
               <p className="row__link">
                 <span className="row__name">{`${row.row}. ${row.name}`}</span>
-                <span className="row__amount">{money(row.amount)}</span>
+                <span className="row__amount">{rowMoney(row)}</span>
               </p>
               <p className="row__meta">{[row.phone, row.promisedDate === null ? null : day(row.promisedDate), row.note].filter((part) => part !== null).join(" · ")}</p>
               <p className="row__meta">{action(row)}</p>
@@ -506,7 +530,7 @@ function Validated({ client, batch, refresh }: { client: ImportsApi; batch: Impo
         label={t("imports.apply")}
         question={t("imports.apply.confirm", {
           entries: preview.counts.entries,
-          amount: formatMoney(preview.counts.amount, language),
+          amount: totalText(preview.counts, language, t),
           customers: preview.counts.newCustomers,
         })}
         yes={t("imports.apply.yes")}
@@ -570,7 +594,7 @@ function Batch({ client, batch, refresh }: { client: ImportsApi; batch: ImportBa
           <p className="notice notice--done">
             {t("imports.result.applied", {
               entries: batch.applied.entries,
-              amount: formatMoney(batch.applied.amount, language),
+              amount: totalText(batch.applied, language, t),
               created: batch.applied.newCustomers,
               existing: batch.applied.existingCustomers,
             })}
@@ -690,6 +714,8 @@ function Imports({ pollMs }: { pollMs: number }) {
         <h2 id="import-title">{t("imports.title")}</h2>
         <p>{t("imports.explain")}</p>
         <p>{t("imports.columns")}</p>
+        {/* Only a shop that works in dollars has the currency column, and only it is told of it. */}
+        {state.status === "ready" && state.currencyColumn ? <p>{t("imports.columns.currency")}</p> : null}
         <p>{t("imports.steps")}</p>
         <p className="hint">{t("imports.limits", { size: MAX_MB, rows: IMPORT_MAX_ROWS })}</p>
         {shopMode === null ? <p className="hint">{t("imports.limited")}</p> : <p className="notice notice--error">{t(`imports.mode.${shopMode}`)}</p>}

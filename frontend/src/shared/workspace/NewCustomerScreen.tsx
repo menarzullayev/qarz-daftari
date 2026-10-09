@@ -4,7 +4,8 @@ import { useI18n, type Translate } from "../../i18n/I18nProvider";
 import type { ApiError } from "../api";
 import { useSubmit } from "../hooks";
 import { Link, navigate } from "../router";
-import { useWorkspace } from "./context";
+import { NotFoundScreen } from "../screens";
+import { useMay, useWorkspace } from "./context";
 import { errorText, FieldError } from "./parts";
 
 export const MAX_NAME_LENGTH = 80;
@@ -37,8 +38,7 @@ export function customerFieldErrors(error: ApiError | null, t: Translate): { nam
   };
 }
 
-/** Adds a customer to the book and opens their page, where a sale or a payment can be recorded. */
-export function NewCustomerScreen() {
+function NewCustomer() {
   const { api } = useWorkspace();
   const { t } = useI18n();
   const [name, setName] = useState("");
@@ -119,4 +119,13 @@ export function NewCustomerScreen() {
       </p>
     </form>
   );
+}
+
+/**
+ * Adds a customer to the book and opens their page, where a sale or a payment can be recorded. A member
+ * who may not add customers is shown no form and sends nothing.
+ */
+export function NewCustomerScreen() {
+  const can = useMay();
+  return can("customers.create") ? <NewCustomer /> : <NotFoundScreen />;
 }

@@ -263,6 +263,7 @@ CHAT: dict[str, str] = {
     "sub_receipt_rejected": "“{shop}”: the payment receipt for {amount} was rejected. Reason: {reason}",
     "a_receipt_new": "New subscription receipt: “{shop}”, {amount}, months: {months}. Review it in the admin panel.",
     "a_receipt_copies": "⚠️ This exact file was sent before. Receipts with it: {count}.",
+    "a_receipt_no_file": "⚠️ The receipt file could not be attached to this message. See it in the admin panel.",
     "receipt_approve_button": "✅ Approve",
     "receipt_reject_button": "Reject",
     "a_sign_in_first": "First sign in to the admin panel and confirm your code. After that these buttons will work.",
@@ -289,6 +290,11 @@ CHAT: dict[str, str] = {
     "sub_free_now": (
         "“{shop}”: the paid period has ended. The shop moved to the free plan and keeps working in full: up to "
         "{limit} customers. If you need more customers: /obuna"
+    ),
+    "free_plan_lowered": (
+        "“{shop}”: the free plan now covers up to {limit} customers, and you have {used}. No new credit sales "
+        "can be recorded now; taking payments, viewing and messages to customers keep working, and your data "
+        "is kept. To work in full: /obuna"
     ),
     "move_date_button": "📅 Move due date",
     "ask_move_date": "What date should the due date be moved to? Write it as day.month, for example 25.10",
@@ -445,6 +451,7 @@ CHAT: dict[str, str] = {
     "ops_rule_DiskAlmostFull": "the disk is more than 80% full",
     "ops_rule_JobNotRunning": "a scheduled job has not finished its cycle",
     "ops_rule_LedgerMismatch": "the stored open debts differ from the ledger entries",
+    "ops_rule_StockMismatch": "the stored stock on hand or the debt to a supplier differs from its own entries",
     "ops_rule_ApiDown": "the API does not answer the /healthz request",
     "ops_rule_TelegramRefusesBot": "Telegram refuses the bot token",
     "ops_rule_TelegramUnreachable": "no connection to Telegram",
@@ -506,6 +513,53 @@ EXPORT: dict[str, str | tuple[str, ...]] = {
     "cash_cash": "Cash",
     "cash_card": "Card",
     "cash_transfer": "Transfer",
+    # An export of one period of the cash book (`qarz.application.cash_export`).
+    "cash_period": (
+        "Day",
+        "Recorded at",
+        "Direction",
+        "Payment method",
+        "Currency",
+        "Amount",
+        "Category",
+        "Note",
+        "Source",
+        "Cancelled",
+        "Reason for cancelling",
+        "Cancelled at",
+        "Staff ID",
+        "Entry ID",
+    ),
+    "cash_customer": "Customer",
+    "cash_source_manual": "Recorded by hand",
+    "cash_source_ledger": "Customer payment",
+    "cash_source_stock": "Stock",
+    "cash_reversed": "The customer's payment was reversed",
+    "cash_period_from": "Start of the period",
+    "cash_period_to": "End of the period",
+    "cash_entries_count": "Number of entries (cancelled ones included)",
+    "cash_balances_title": "Balances",
+    "cash_balances": (
+        "Currency",
+        "Payment method",
+        "At the start of the period",
+        "Income",
+        "Expense",
+        "At the end of the period",
+        "Entries",
+    ),
+    "cash_all_methods": "Total",
+    "cash_categories_title": "By category",
+    "cash_categories": (
+        "Currency",
+        "Direction",
+        "Category",
+        "Amount",
+        "Entries",
+    ),
+    "cash_summary_note": (
+        "Cancelled entries are not counted. Soum and dollars are counted apart: they are never added together."
+    ),
     "customers": ("Customer", "Phone", "Status", "Credit limit", "Debt", "Date added", "Customer ID"),
     "ledger": (
         "Date and time",
@@ -747,6 +801,14 @@ ERRORS: dict[str, str] = {
     "USD_BALANCE_OPEN": (
         "Dollars cannot be turned off: customers have debts in dollars. All debts in dollars must be closed first."
     ),
+    "USD_SUPPLIER_BALANCE_OPEN": (
+        "Dollars cannot be turned off: an account with a supplier is not settled in dollars. "
+        "Bring the accounts with suppliers in dollars to zero first."
+    ),
+    "USD_STOCK_OPEN": (
+        "Dollars cannot be turned off: there are goods in stock whose cost is kept in dollars. "
+        "Sell, return or write off these goods first."
+    ),
     "EXCEEDS_BALANCE": "A payment cannot be larger than the customer's debt.",
     "ALREADY_REVERSED": "This entry is already reversed.",
     "CANNOT_REVERSE_REVERSAL": "A reversal entry cannot be reversed.",
@@ -762,6 +824,10 @@ ERRORS: dict[str, str] = {
     "PROMISE_NOT_CHANGEABLE": "This entry has no due date, or the entry was reversed.",
     "LINES_ALREADY_ADDED": "Items were already added to this entry.",
     "LINES_SUM_MISMATCH": "The items do not add up to the entry amount.",
+    "GOODS_NOT_IN_DOLLARS": (
+        "A credit sale in dollars cannot have a list of items: item prices are kept in soum. "
+        "Record a sale in dollars by its amount."
+    ),
     "LINES_WINDOW_CLOSED": (
         "The time to add items has passed: it is possible only until the end of the day after the sale."
     ),
@@ -770,6 +836,10 @@ ERRORS: dict[str, str] = {
     "REMINDER_LIMIT_REACHED": "A reminder was already sent to this customer today. One a day is allowed.",
     "CUSTOMER_UNREACHABLE": (
         "This customer cannot be reached: Telegram is not connected, and SMS is off or there is no number."
+    ),
+    "CUSTOMER_UNREACHABLE_USD": (
+        "What this customer owes now is in dollars only, and an SMS states a debt in soum only. "
+        "To send a reminder, connect the customer to Telegram."
     ),
     "LIMIT_REACHED": "This sale goes over the customer's credit limit. A manager or the shop owner can record it.",
     "DELETION_ALREADY_REQUESTED": "Shop deletion was already requested.",

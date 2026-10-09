@@ -60,6 +60,23 @@ export const SETTING_RULES: Readonly<Record<string, SettingRule>> = {
   network_on: { kind: "switch" },
 };
 
+/**
+ * The number the free plan would hold after `changes`, when that is fewer customers than it holds now and
+ * the plan is on and stays on; null otherwise. Only such a change can limit a shop the plan holds today
+ * (BR-33): the server is asked how many before it is sent (application/admin.py, `read_settings`).
+ */
+export function loweredPlan(
+  values: Readonly<Record<string, SettingValue>>,
+  changes: Readonly<Record<string, SettingValue>>,
+): { from: number; to: number } | null {
+  const from = values["free_plan_customers"];
+  const to = changes["free_plan_customers"];
+  if (values["free_plan_on"] !== true || changes["free_plan_on"] === false || typeof from !== "number" || typeof to !== "number") {
+    return null;
+  }
+  return to < from ? { from, to } : null;
+}
+
 export type Parsed = { ok: true; value: SettingValue } | { ok: false };
 
 /**

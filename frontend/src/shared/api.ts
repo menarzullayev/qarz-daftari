@@ -342,11 +342,20 @@ export type ReminderSettings = {
   /** The first and the last hour a shop may choose. */
   hours: { first: number; last: number };
   templates: ReminderTemplate[];
+  /**
+   * There only for a shop that works in dollars: whether an SMS states a dollar debt. It does not (the
+   * registered wordings state so'm), and the screen says so.
+   */
+  usdBySms?: boolean;
 };
 export type ReminderSettingsPatch = { on?: boolean; hour?: number; template?: number; smsOn?: boolean };
 
 /** A reminder that was sent by hand: through which channel ("telegram" or "sms") and for what amount. */
-export type SentReminder = { channel: string; amount: number; usdAmount?: number };
+/**
+ * `usdAmount` is what the message stated in dollars. `usdUnstated` is what is due in dollars and the
+ * message did not state: an SMS states so'm only.
+ */
+export type SentReminder = { channel: string; amount: number; usdAmount?: number; usdUnstated?: number };
 
 /** A customer with something due and no channel to be reminded through (REQ-043). */
 export type UnreachableCustomer = {
@@ -356,6 +365,11 @@ export type UnreachableCustomer = {
   amount: number;
   /** What is due in dollars, in cents; absent when the shop has no dollars. */
   usdAmount?: number;
+  /**
+   * Why, told only in a shop that works in dollars: "usd_needs_telegram" when a dollar debt is due,
+   * which no SMS states, or "no_channel".
+   */
+  reason?: string;
 };
 
 /**
@@ -950,12 +964,15 @@ function reminderSettings(value: unknown): ReminderSettings {
         overdue: wordings(template["overdue"]),
       };
     }),
+    ...(body["usd"] === undefined || body["usd"] === null ? {} : { usdBySms: flag(record(body["usd"])["sms"]) }),
   };
 }
 
 function sentReminder(value: unknown): SentReminder {
   const body = record(value);
-  return { channel: text(body["channel"]), amount: whole(body["amount"]), ...usdAmount(body["usd"]) };
+  const usd = body["usd"] === undefined || body["usd"] === null ? null : record(body["usd"]);
+  const unstated = usd === null || usd["unstated"] === undefined ? {} : { usdUnstated: whole(usd["unstated"]) };
+  return { channel: text(body["channel"]), amount: whole(body["amount"]), ...usdAmount(body["usd"]), ...unstated };
 }
 
 function unreachableCustomer(value: unknown): UnreachableCustomer {
@@ -966,6 +983,7 @@ function unreachableCustomer(value: unknown): UnreachableCustomer {
     phone: textOrNull(body["phone"]),
     amount: whole(body["amount"]),
     ...usdAmount(body["usd"]),
+    ...(typeof body["reason"] === "string" ? { reason: body["reason"] } : {}),
   };
 }
 
@@ -1635,16 +1653,22 @@ function shopApi(transport: Transport, shopId: string) {
 
     /**
      * Accepts a notice, which records a payment. `amount` corrects what the customer stated; null
-     * records the stated amount.
+     * records the stated amount. `method` says how the money came, and only while the cash book is on:
+     * otherwise the server does not know the field.
      */
-    acceptPaymentNotice(noticeId: string, amount: number | null, idempotencyKey: string): Promise<void> {
+    acceptPaymentNotice(
+      noticeId: string,
+      amount: number | null,
+      idempotencyKey: string,
+      method?: PaymentMethod,
+    ): Promise<void> {
       if (amount !== null && !Number.isSafeInteger(amount)) {
         throw new RangeError("amount must be a whole number of UZS");
       }
       return call(transport, {
         method: "POST",
         path: `${base}/payment-notices/${segment(noticeId)}/accept`,
-        body: amount === null ? {} : { amount },
+        body: { ...(amount === null ? {} : { amount }), ...(method === undefined ? {} : { method }) },
         idempotencyKey,
         read: () => undefined,
       });

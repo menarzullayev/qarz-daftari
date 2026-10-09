@@ -4,8 +4,9 @@ The owner transfers the money outside the system and sends the receipt with what
 many months. Nothing changes by that: the receipt waits for an administrator
 (`qarz.application.admin_receipts`). The administrators and the review group are told a receipt is
 waiting; the text names the shop, the amount, the months and the card the owner says they paid to, by
-its label and last four digits, never by its number, and the image itself is not forwarded: a reviewer
-opens it through a signed link from the administrator's side.
+its label and last four digits, never by its number. The announcement refers to the receipt's file and
+the worker sends that file with it, to those chats and to no other
+(`qarz.application.receipt_attachment`); no link to the file is ever put in a message.
 """
 
 import hashlib
@@ -20,6 +21,7 @@ from qarz.application.errors import AppError, ValidationFailed
 from qarz.application.files import FileService, StagedFile
 from qarz.application.operations import operation
 from qarz.application.ports import Storage, SubscriptionReceiptRecord, TenantSession
+from qarz.application.receipt_attachment import ATTACHMENT, FILE_PURPOSE, REVIEW_GROUP, reference
 from qarz.application.shops import require_member
 from qarz.domain import platform_settings
 from qarz.domain.access import Capability
@@ -35,8 +37,6 @@ from qarz.domain.subscription_receipts import (
 SUBMIT_RECEIPT = operation("shop.subscription.receipts.submit", Capability.ADMINISTER_SHOP)
 LIST_RECEIPTS = operation("shop.subscription.receipts.list", Capability.ADMINISTER_SHOP)
 
-FILE_PURPOSE = "subscription_receipt"
-REVIEW_GROUP = "review_group"
 CARDS = "payment_cards"
 MAX_PAID_TO = 60  # the column's limit: a label of forty characters, the mark and four digits fit
 HISTORY = 50
@@ -106,7 +106,9 @@ class SubscriptionReceiptService:
         if refusal is not None:
             raise SubscriptionReceiptNotAllowed({"reason": refusal.value})
 
-    async def _announce(self, session: TenantSession, record: SubscriptionReceiptRecord, copies: int) -> None:
+    async def _announce(
+        self, session: TenantSession, shop_id: UUID, record: SubscriptionReceiptRecord, copies: int
+    ) -> None:
         """Tell every administrator and the review group that a receipt waits (REQ-055)."""
         settings = await session.shop_settings()
         shop = "" if settings is None else settings.name
@@ -148,6 +150,9 @@ class SubscriptionReceiptService:
                 text += "\n" + say(lang, "receipt_card", card=record.paid_to_card)
             if copies > 0:
                 text += "\n" + say(lang, "a_receipt_copies", count=copies)
+            if record.file_id is not None:
+                # The file itself, for this chat alone: the worker attaches it, or adds the note.
+                payload[ATTACHMENT] = reference(shop_id, record.file_id, recipient, say(lang, "a_receipt_no_file"))
             await session.enqueue(
                 recipient=recipient,
                 payload={"text": text, **payload},
@@ -157,6 +162,7 @@ class SubscriptionReceiptService:
     async def _submit_in(
         self,
         session: TenantSession,
+        shop_id: UUID,
         user_id: UUID,
         amount: int,
         months: int,
@@ -186,7 +192,7 @@ class SubscriptionReceiptService:
         await session.record_measure(
             kind="subscription_receipt_sent", entry_ref=record.receipt_id, amount=amount, promised=None
         )
-        await self._announce(session, record, await session.subscription_receipt_copies(file_id))
+        await self._announce(session, shop_id, record, await session.subscription_receipt_copies(file_id))
         return receipt_body(record)
 
     async def submit(
@@ -237,7 +243,7 @@ class SubscriptionReceiptService:
 
                 async def apply() -> dict[str, Any]:
                     nonlocal recorded
-                    body = await self._submit_in(session, user_id, int(amount), int(months), staged, paid_to)
+                    body = await self._submit_in(session, shop_id, user_id, int(amount), int(months), staged, paid_to)
                     recorded = True
                     return body
 

@@ -6,7 +6,7 @@ import { usePagedList } from "../hooks";
 import { PlusIcon, SearchIcon, UsersIcon } from "../icons";
 import { useDesktop } from "../layout";
 import { Link } from "../router";
-import { useWorkspace } from "./context";
+import { useMay, useWorkspace } from "./context";
 import { Avatar, Empty, Failure, Loading, LoadMore, Money } from "./parts";
 
 /** How long typing must pause before the list is searched again. */
@@ -35,6 +35,7 @@ export function owesAnything(customer: Pick<Customer, "balance" | "usd">): boole
 
 function Row({ customer, pick, selectedId }: { customer: Customer; pick: boolean; selectedId: string | undefined }) {
   const { t } = useI18n();
+  const can = useMay();
   const owed = <Money uzs={customer.balance} usd={customer.usd?.balance} />;
   if (!pick) {
     return (
@@ -56,11 +57,13 @@ function Row({ customer, pick, selectedId }: { customer: Customer; pick: boolean
         <span className="row__amount">{owed}</span>
       </p>
       <p className="actions">
-        <Link to={`/customers/${customer.id}/credit`} className="button button--primary">
-          {t("entry.credit.short")}
-        </Link>
+        {can("credits.record") ? (
+          <Link to={`/customers/${customer.id}/credit`} className="button button--primary">
+            {t("entry.credit.short")}
+          </Link>
+        ) : null}
         {/* A payment cannot exceed the debt, so there is nothing to pay when nothing is owed. */}
-        {owesAnything(customer) ? (
+        {owesAnything(customer) && can("payments.record") ? (
           <Link to={`/customers/${customer.id}/payment`} className="button">
             {t("entry.payment.short")}
           </Link>
@@ -73,6 +76,7 @@ function Row({ customer, pick, selectedId }: { customer: Customer; pick: boolean
 /** The customer book with search by name or phone, used both for browsing and for picking a customer. */
 export function CustomersScreen({ pick = false, selectedId }: CustomersScreenProps) {
   const { api } = useWorkspace();
+  const can = useMay();
   const desktop = useDesktop();
   const { t } = useI18n();
   const [text, setText] = useState("");
@@ -164,23 +168,32 @@ export function CustomersScreen({ pick = false, selectedId }: CustomersScreenPro
             </button>
           </div>
         )}
-        <Link to="/customers/new" className="button">
-          <PlusIcon />
-          {t("customers.add")}
-        </Link>
+        {can("customers.create") ? (
+          <Link to="/customers/new" className="button">
+            <PlusIcon />
+            {t("customers.add")}
+          </Link>
+        ) : null}
       </div>
       {body}
       {pick ? null : (
         <nav className="actions" aria-label={t("link.nav")}>
-          <Link to="/payment-notices" className="button">
-            {t("notices.title")}
-          </Link>
-          <Link to="/customers/waiting" className="button">
-            {t("waiting.title")}
-          </Link>
-          <Link to="/customers/counter-code" className="button">
-            {t("counter.title")}
-          </Link>
+          {can("payment_notices.decide") ? (
+            <Link to="/payment-notices" className="button">
+              {t("notices.title")}
+            </Link>
+          ) : null}
+          {/* Reading the two below goes with reading the book; what each lets a member do is asked there. */}
+          {can("ledger.view") ? (
+            <Link to="/customers/waiting" className="button">
+              {t("waiting.title")}
+            </Link>
+          ) : null}
+          {can("ledger.view") ? (
+            <Link to="/customers/counter-code" className="button">
+              {t("counter.title")}
+            </Link>
+          ) : null}
         </nav>
       )}
     </>

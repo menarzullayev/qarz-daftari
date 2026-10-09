@@ -857,6 +857,14 @@ CALLS: dict[str, Call] = {
     # are told apart. With the switch off: tests/api/test_cash_book.py.
     "cash.day": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/cash/day", prepare=_cash_book),
     "cash.summary": Call("GET", lambda w, shop: _cash_today(shop), prepare=_cash_book),
+    "cash.export": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/cash/export",
+        {"from": "2026-01-01", "to": "2026-01-31"},
+        True,
+        201,
+        prepare=_cash_book,
+    ),
     "cash.entry.create": Call(
         "POST",
         lambda w, shop: f"/api/v1/shops/{shop}/cash/entries",
@@ -1158,6 +1166,7 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     # (qarz.application.cash_book). Copying the ledger's past into it is the owner's decision alone.
     "cash.day": {Role.MANAGER, Role.OWNER},
     "cash.summary": {Role.MANAGER, Role.OWNER},
+    "cash.export": {Role.MANAGER, Role.OWNER},
     "cash.entry.create": {Role.MANAGER, Role.OWNER},
     "cash.entry.cancel": {Role.MANAGER, Role.OWNER},
     "cash.categories.list": {Role.MANAGER, Role.OWNER},

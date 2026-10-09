@@ -28,7 +28,8 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from qarz.application import idempotency, notify, removal
-from qarz.application.chat_texts import money, say
+from qarz.application.chat_texts import both, say
+from qarz.application.currencies import USD, UZS, dollars_on, tag
 from qarz.application.customers import (
     FreePlanFull,
     customer_body,
@@ -81,12 +82,15 @@ _STEP = {UPLOADED: "check", APPLYING: "apply", UNDOING: "undo"}
 OWNERS = ("owner",)
 TEMPLATE_SHEET = "Import"
 TEMPLATE_WIDTHS = (28, 20, 18, 18, 36)
+CURRENCY_WIDTH = 12
 
 log = logging.getLogger("qarz.imports")
 
 
 # Why the worker did not apply a batch whose customers the free plan would not hold (BR-34).
 FREE_PLAN_FULL = "free_plan_full"
+# Why the worker did not apply a batch with dollar rows: the shop stopped working in dollars after the check.
+USD_OFF = "usd_off"
 
 
 class ImportNotApplicable(AppError):
@@ -106,10 +110,18 @@ class Plan:
     customers: dict[UUID, ImportCandidate]
 
 
-def template(lang: str) -> bytes:
-    """The published template (REQ-062): one sheet with the five column titles, in the caller's language."""
+def template(lang: str, *, dollars: bool = False) -> bytes:
+    """The published template (REQ-062): one sheet with the five column titles, in the caller's language.
+
+    For a shop that works in dollars it has a sixth, the currency of the row, after the amount. For
+    every other shop the file is what it always was.
+    """
+    widths: tuple[int, ...] = TEMPLATE_WIDTHS
+    if dollars:
+        at = imports.COLUMNS.index(imports.AMOUNT) + 1
+        widths = (*widths[:at], CURRENCY_WIDTH, *widths[at:])
     book = Workbook()
-    book.sheet(TEMPLATE_SHEET, imports.TEMPLATE_HEADERS.get(lang, imports.TEMPLATE_HEADERS["uz"]), TEMPLATE_WIDTHS)
+    book.sheet(TEMPLATE_SHEET, imports.template_headers(lang, dollars=dollars), widths)
     return book.finish()
 
 
@@ -118,13 +130,24 @@ def _errors(errors: list[RowError] | tuple[RowError, ...]) -> list[dict[str, Any
     return [{"row": error.row, "column": error.column, "code": error.code.value} for error in ordered]
 
 
-def _counts(planned: list[PlannedRow]) -> dict[str, int]:
-    return {
+def _counts(planned: list[PlannedRow], dollars: bool = False) -> dict[str, Any]:
+    """What applying would add. `amount` is the so'm of the so'm rows; the cents of the dollar rows are
+    in `usd`, which is there only for a shop that works in dollars. The two are never one figure."""
+    counts: dict[str, Any] = {
         "new_customers": sum(item.action == imports.CREATE for item in planned),
         "existing_customers": len({item.customer_id for item in planned if item.action == imports.EXISTING}),
         "entries": len(planned),
-        "amount": sum(item.row.amount for item in planned),
+        "amount": sum(item.row.amount for item in planned if item.row.currency is UZS),
     }
+    if dollars:
+        counts["usd"] = {"amount": sum(item.row.amount for item in planned if item.row.currency is USD)}
+    return counts
+
+
+def _dollars_of(counts: Any) -> int | None:
+    """The dollar total of stored counts; None when they are of a shop without dollars."""
+    usd = counts.get("usd") if isinstance(counts, dict) else None
+    return int(usd.get("amount", 0)) if isinstance(usd, dict) else None
 
 
 def batch_body(record: ImportBatchRecord) -> dict[str, Any]:
@@ -152,6 +175,10 @@ def batch_body(record: ImportBatchRecord) -> dict[str, Any]:
     }
 
 
+def _has_dollars(parsed: ParsedFile) -> bool:
+    return any(row.currency is USD for row in parsed.rows)
+
+
 async def _plan(session: TenantSession, parsed: ParsedFile) -> Plan:
     """Set the rows of the file against the shop's customers as they are now."""
     found = await session.import_candidates(
@@ -164,7 +191,14 @@ async def _plan(session: TenantSession, parsed: ParsedFile) -> Plan:
     return Plan(planned, [*parsed.errors, *errors], {c.customer_id: c for c in found})
 
 
-def _preview_row(item: PlannedRow, customers: dict[UUID, ImportCandidate], balances: dict[UUID, int]) -> dict[str, Any]:
+def _preview_row(
+    item: PlannedRow,
+    customers: dict[UUID, ImportCandidate],
+    balances: dict[UUID, int],
+    in_dollars: dict[UUID, int] | None = None,
+) -> dict[str, Any]:
+    """One row of the preview. `in_dollars` is given for a shop that works in dollars: a matched customer
+    then shows what they owe in dollars beside what they owe in so'm."""
     row = item.row
     customer = None if item.customer_id is None else customers[item.customer_id]
     return {
@@ -172,6 +206,8 @@ def _preview_row(item: PlannedRow, customers: dict[UUID, ImportCandidate], balan
         "name": row.name,
         "phone": row.phone,
         "amount": row.amount,
+        # Beside the amount of a dollar row, which is then cents. So'm is the absence of the key.
+        **({} if row.currency is UZS else {"currency": row.currency.value}),
         # Null: the shop's default number of days will apply (BR-1).
         "promised_date": None if row.promised is None else row.promised.isoformat(),
         "note": row.note,
@@ -185,6 +221,7 @@ def _preview_row(item: PlannedRow, customers: dict[UUID, ImportCandidate], balan
             "display_name": customer.display_name,
             "phone": customer.phone,
             "balance": balances.get(customer.customer_id, 0),
+            **({} if in_dollars is None else {"usd": {"balance": in_dollars.get(customer.customer_id, 0)}}),
         },
     }
 
@@ -203,6 +240,7 @@ async def _tell(
     settings = await session.shop_settings()
     shop = "" if settings is None else settings.name
     amount = values.pop("amount", None)
+    in_dollars = values.pop("amount_usd", None)
     people: dict[int, str] = {}
     if owners:
         people.update(dict(await session.staff_recipients(list(OWNERS))))
@@ -210,7 +248,8 @@ async def _tell(
     if asked is not None:
         people[asked[0]] = asked[1]
     for tg_id, lang in sorted(people.items()):
-        said = dict(values) if amount is None else {**values, "amount": money(lang, int(amount))}
+        # Each currency's total by itself ("45 000 so'm va 12.50 $"), never one figure of the two.
+        said = dict(values) if amount is None else {**values, "amount": both(lang, int(amount), in_dollars)}
         await session.enqueue(
             recipient=str(tg_id),
             payload={"text": say(lang, key, shop=shop, **said)},
@@ -233,13 +272,21 @@ class ImportService:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, IMPORT_TEMPLATE)
             await require_viewable(session, actor, self._today())
-        return template(await self._storage.user_language(user_id) or "uz")
+            dollars = await dollars_on(session)
+        return template(await self._storage.user_language(user_id) or "uz", dollars=dollars)
 
     async def list(self, user_id: UUID, shop_id: UUID) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, LIST_IMPORTS)
             await require_viewable(session, actor, self._today())
-            return {"items": [batch_body(record) for record in await session.list_import_batches(LIST_LIMIT)]}
+            body: dict[str, Any] = {
+                "items": [batch_body(record) for record in await session.list_import_batches(LIST_LIMIT)]
+            }
+            if await dollars_on(session):
+                # Only for a shop that works in dollars: its files may have the currency column, and the
+                # screen says so. For every other shop the answer is the list alone, as it always was.
+                body["currency_column"] = True
+            return body
 
     async def read(self, user_id: UUID, shop_id: UUID, batch_id: UUID) -> dict[str, Any]:
         """The batch and, once the worker has checked the file, what applying it would do."""
@@ -462,14 +509,20 @@ class ImportService:
             if record is None or record.status != step:
                 return
             stored = None if record.file_id is None else await session.get_stored_file(record.file_id)
-        parsed = await self._content(stored)
+            # Whether a currency column is read. Looked at again, and held, before a dollar row is written.
+            dollars = await dollars_on(session)
+        parsed = await self._content(stored, dollars)
+        if step == APPLYING and not dollars and parsed == FileProblem.UNKNOWN_COLUMN.value:
+            # The file was read when it was checked and has not changed: the column that is unknown now
+            # is the currency column of a shop that has stopped working in dollars since.
+            parsed = USD_OFF
         async with self._storage.tenant(shop_id) as session:
             if step == UPLOADED:
                 await check_in(session, batch_id, parsed, self._now())
             else:
                 await apply_in(session, batch_id, parsed, self._now())
 
-    async def _content(self, record: StoredFileRecord | None) -> ParsedFile | str:
+    async def _content(self, record: StoredFileRecord | None, dollars: bool = False) -> ParsedFile | str:
         """The rows of a batch, read from its file, or the code of why the file cannot be used.
 
         Called outside any transaction: the store is a network call, and reading a workbook is work for
@@ -481,7 +534,7 @@ class ImportService:
             data = await self._files.content(record)
         except NotFound:
             return imports.FILE_GONE
-        parsed = await asyncio.to_thread(imports.parse, data, self._today())
+        parsed = await asyncio.to_thread(imports.parse, data, self._today(), dollars=dollars)
         return parsed.value if isinstance(parsed, FileProblem) else parsed
 
     async def _give_up(self, shop_id: UUID, batch_id: UUID, step: str, reason: str) -> None:
@@ -508,6 +561,8 @@ async def _write_preview(session: TenantSession, record: ImportBatchRecord, plan
     """Store what applying would do as it is now. Returns the state that follows from it."""
     matched = sorted({item.customer_id for item in plan.rows if item.customer_id is not None})
     balances = await session.balances(matched)
+    dollars = await dollars_on(session)
+    in_dollars = await session.balances(matched, USD) if dollars else None
     token = None if plan.errors else imports.plan_token(plan.rows)
     await session.set_import_preview(
         record.batch_id,
@@ -515,8 +570,8 @@ async def _write_preview(session: TenantSession, record: ImportBatchRecord, plan
             # Named when applying. Null while a row has a problem: such a file cannot be applied.
             "plan": token,
             "errors": _errors(plan.errors),
-            "counts": _counts(plan.rows),
-            "rows": [_preview_row(item, plan.customers, balances) for item in plan.rows],
+            "counts": _counts(plan.rows, dollars),
+            "rows": [_preview_row(item, plan.customers, balances, in_dollars) for item in plan.rows],
         },
     )
     status = REJECTED if plan.errors else VALIDATED
@@ -569,6 +624,16 @@ async def apply_in(session: TenantSession, batch_id: UUID, parsed: ParsedFile | 
         return  # applied by another worker meanwhile
     if isinstance(parsed, str):
         await _refuse(session, record, VALIDATED, parsed, "import_refused")
+        return
+    # A dollar row is written only by a shop that works in dollars: looked at again here, in the
+    # transaction that writes. The setting is not held as a request's writer holds it (`dollars_on` with
+    # `lock`): the worker's role may only read the shop's row. An owner who turns dollars off in the very
+    # moment their own import is being applied can so be left with dollar debts in a shop without dollars,
+    # which is the state a platform switch turned off leaves too: kept, counted by INV-13, shown again
+    # when dollars are on.
+    dollars = await dollars_on(session)
+    if _has_dollars(parsed) and not dollars:
+        await _refuse(session, record, VALIDATED, USD_OFF, "import_refused")
         return
     # The customers a row is added to are found, locked, and only then is the plan made that is applied.
     first = await _plan(session, parsed)
@@ -631,6 +696,7 @@ async def apply_in(session: TenantSession, batch_id: UUID, parsed: ParsedFile | 
                 note=row.note,
                 promised_date=row.promised or default_date,
                 promise_actor=STAFF_ACTOR if row.promised is not None else DEFAULT_ACTOR,
+                currency=row.currency,
             )
         )
     await session.add_import_customers(new_customers)
@@ -640,7 +706,9 @@ async def apply_in(session: TenantSession, batch_id: UUID, parsed: ParsedFile | 
     )
 
     # OpeningBalanceImported: a customer who is linked is told, like about any other entry.
-    balances = await session.balances(existing)
+    balances = {UZS: await session.balances(existing)}
+    if _has_dollars(parsed):
+        balances[USD] = await session.balances(existing, USD)
     for entry in entries:
         if entry.customer_id in plan.customers:
             await notify.opening_imported(
@@ -649,16 +717,18 @@ async def apply_in(session: TenantSession, batch_id: UUID, parsed: ParsedFile | 
                 entry_id=entry.entry_id,
                 name=plan.customers[entry.customer_id].display_name,
                 amount=entry.amount,
-                balance=balances.get(entry.customer_id, 0),
+                balance=balances[entry.currency].get(entry.customer_id, 0),
                 promised=entry.promised_date,
+                currency=entry.currency,
             )
-    counts = _counts(plan.rows)
+    counts = _counts(plan.rows, dollars)
     await _tell(
         session,
         record,
         "s_import_applied",
         owners=True,
         amount=counts["amount"],
+        amount_usd=_dollars_of(counts),
         entries=counts["entries"],
         customers=counts["new_customers"],
     )
@@ -696,13 +766,15 @@ async def undo_in(session: TenantSession, batch_id: UUID, now: datetime) -> None
     customers = await session.customers_of_import(batch_id)
     await session.lock_customers(customers)
     standing = await session.standing_entries_of_import(batch_id)  # what was reversed by hand is left out
-    # An import records so'm only (a file with a currency column is refused as an unknown column), so
-    # what it took and what it gives back are compared in the so'm book alone.
-    before = await session.balances(customers)
-    taken: dict[UUID, int] = {}
-    for _, customer_id, amount, _ in standing:
-        taken[customer_id] = taken.get(customer_id, 0) + amount
-    if any(before.get(customer_id, 0) < amount for customer_id, amount in taken.items()):
+    # What the import gave and what is taken back are compared in each currency's book by itself: the
+    # import of a shop that works in dollars may have rows of both, for one customer too.
+    taken: dict[tuple[UUID, Currency], int] = {}
+    for _, customer_id, amount, currency in standing:
+        taken[customer_id, currency] = taken.get((customer_id, currency), 0) + amount
+    before = {UZS: await session.balances(customers)}
+    if any(currency is USD for _, currency in taken):
+        before[USD] = await session.balances(customers, USD)
+    if any(before[currency].get(customer_id, 0) < amount for (customer_id, currency), amount in taken.items()):
         # A reversal may not take a balance below zero (INV-3): the import's debt has been paid against.
         await _refuse(session, record, APPLIED, "balance_used", "import_undo_refused")
         return
@@ -715,21 +787,25 @@ async def undo_in(session: TenantSession, batch_id: UUID, now: datetime) -> None
     await session.add_reversals(author, now, reversals)
     await session.close_disputes_of([reversal.entry_id for reversal in reversals], author, now)
 
-    after = {customer_id: before.get(customer_id, 0) - amount for customer_id, amount in taken.items()}
-    for customer_id in await session.customers_with_open_date_requests(list(taken)):
+    def after(customer_id: UUID, currency: Currency) -> int:
+        return before[currency].get(customer_id, 0) - taken.get((customer_id, currency), 0)
+
+    touched = sorted({customer_id for customer_id, _ in taken})
+    for customer_id in await session.customers_with_open_date_requests(touched):
         account = [row.entry for row in await session.entries_of(customer_id)]
         await expire_settled_date_requests(session, customer_id, account, now)
-    linked = set(await session.linked_customers(list(taken)))
+    linked = set(await session.linked_customers(touched))
     for reversal in reversals:
         if reversal.customer_id in linked:
             customer = await session.get_customer(reversal.customer_id, for_update=False)
             assert customer is not None
+            in_dollars = after(reversal.customer_id, USD) if reversal.currency is USD else None
             body = {
-                "entry": {"id": str(reversal.reversal_id), "amount": reversal.amount},
-                "customer": customer_body(customer, after[reversal.customer_id]),
+                "entry": tag({"id": str(reversal.reversal_id), "amount": reversal.amount}, reversal.currency),
+                "customer": customer_body(customer, after(reversal.customer_id, UZS), in_dollars),
             }
             await notify.entry_reversed(session, reversal.customer_id, body, "opening")
-    for customer_id in await session.customers_waiting_removal(list(taken)):
+    for customer_id in await session.customers_waiting_removal(touched):
         await removal.complete_if_due(session, customer_id, await owes_anything(session, customer_id), now)
 
     # BR-24: customers the import created are archived if they now owe nothing, in any currency: one of
@@ -742,7 +818,13 @@ async def undo_in(session: TenantSession, batch_id: UUID, now: datetime) -> None
     )
     applied = record.summary.get("applied") or {}
     await _tell(
-        session, record, "s_import_undone", owners=True, amount=int(applied.get("amount", 0)), entries=len(reversals)
+        session,
+        record,
+        "s_import_undone",
+        owners=True,
+        amount=int(applied.get("amount", 0)),
+        amount_usd=_dollars_of(applied),
+        entries=len(reversals),
     )
     await session.set_import_batch(
         batch_id,

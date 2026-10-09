@@ -385,6 +385,17 @@ class StockSession(Protocol):
         """Whether the shop has anything of the stock or the suppliers to export."""
         ...
 
+    # --- turning the shop's dollars off (qarz.application.shops.set_dollars_in) ---------------------
+
+    async def supplier_dollars_open(self) -> bool:
+        """Whether the shop's account with any supplier is other than zero in dollars: what the shop
+        owes, or what it paid ahead."""
+        ...
+
+    async def stock_dollars_on_hand(self) -> bool:
+        """Whether anything is on hand whose cost is kept in dollars."""
+        ...
+
     async def export_movements(
         self, *, until: datetime, after: tuple[datetime, UUID, int] | None, limit: int
     ) -> list[ExportMovement]:

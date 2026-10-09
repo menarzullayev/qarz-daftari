@@ -42,7 +42,8 @@ when a rule is added here that the watch neither mirrors nor names as not watche
 
 Conditions the watch has and `alerts.yml` does not: `RestoreTestFailed`, `FilesCopyStale`,
 `DiskAlmostFull` (above 80%, the operations document's figure), `JobNotRunning` for every other
-scheduled job, `LedgerMismatch` (`open_debt_mismatch_count()`, once a day), `ApiDown` (`/healthz` inside
+scheduled job, `LedgerMismatch` (`open_debt_mismatch_count()`, once a day), `StockMismatch`
+(`stock_level_mismatch_count()` and `supplier_balance_mismatch_count()`, once a day while `stock_on` is on), `ApiDown` (`/healthz` inside
 the Compose network), `TelegramRefusesBot`, `TelegramUnreachable`, `DispatcherFailing`, and the database
 being out of the worker's reach.
 

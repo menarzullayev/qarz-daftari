@@ -21,6 +21,7 @@ from qarz.application.currencies import (
     NOT_IN_DOLLARS,
     USD,
     UZS,
+    GoodsNotInDollars,
     amount_hint,
     dollars_on,
     require_currency,
@@ -359,6 +360,8 @@ def clean_sale(
         fields = {**error.fields, **fields}
     if amount is None and lines is None and "lines" not in fields:
         fields["amount"] = "required when there are no goods lines"
+    if fields.get("lines") == NOT_IN_DOLLARS:
+        raise GoodsNotInDollars(fields)
     if fields or checked is None or total is None:
         raise ValidationFailed(fields)
     if cleaned is not None:

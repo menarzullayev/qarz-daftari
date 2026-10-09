@@ -15,7 +15,7 @@ from uuid import UUID
 
 from qarz.application.authorization import require_permission
 from qarz.application.catalog import register_learned
-from qarz.application.currencies import NOT_IN_DOLLARS, UZS
+from qarz.application.currencies import NOT_IN_DOLLARS, UZS, GoodsNotInDollars
 from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import operation
 from qarz.application.ports import CatalogItemRecord, GoodsLineRecord, Membership, TenantSession
@@ -257,7 +257,7 @@ async def add_lines_in(
         raise ValidationFailed({"entry": "only a credit sale has goods lines"})
     if entry.currency is not UZS:
         # Goods lines are priced in so'm (the catalog's prices, BR-7's rounding): a dollar sale has none.
-        raise ValidationFailed({"entry": NOT_IN_DOLLARS})
+        raise GoodsNotInDollars({"entry": NOT_IN_DOLLARS})
     if any(other.entry.reverses_id == entry_id for other in account):
         raise EntryReversed()
     if await session.goods_lines_of([entry_id]):

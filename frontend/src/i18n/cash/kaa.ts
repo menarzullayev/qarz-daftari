@@ -87,6 +87,15 @@ export const kaaCash: PartialCatalog<typeof uzCash> = {
   "cash.summary.day": "Kún",
   "cash.summary.dayRow": "Kiris: {income} · Shıǵıs: {expense}",
 
+  "cash.export": "Excel fayl",
+  "cash.export.hint":
+    "Usı dáwirdiń barlıq jazbaları (biykarlanǵanları da, belgilengen halda) hám juwmaqları bir .xlsx faylda.",
+  "cash.export.make": "Dáwirdi faylǵa shıǵarıw",
+  "cash.export.open": "Fayldı júklep alıw",
+  "cash.export.valid": "Silteme 5 minut, {date} kúnine shekem isleydi. Ashılmasa, jańasın alıń.",
+  "cash.export.again": "Jańa silteme alıw",
+  "cash.export.tooMany": "Bul dáwirde jazbalar júdá kóp: bir faylǵa sıymaydı. Qısqaraq dáwirdi tańlań.",
+
   "cash.categories.income": "Kiris kategoriyaları",
   "cash.categories.expense": "Shıǵıs kategoriyaları",
   "cash.categories.archived": "arxivte",

@@ -28,6 +28,7 @@ afterEach(() => {
 const FIND = "Tovar: shtrix-kodni skanerlang yoki nom yozing";
 const NOT_FOUND = refusal(404, "NOT_FOUND", "Topilmadi.");
 const MANAGER = { role: "manager" as const };
+const ARCHIVED_SUPPLIER = "77777777-7777-4777-8777-777777777772";
 
 function backend(write: (sent: Sent) => Reply = () => NOT_FOUND, document: () => unknown = () => documentBody(), settings = stockSettingsBody()) {
   return fakeServer((sent) => {
@@ -404,5 +405,68 @@ describe("the list of documents", () => {
     fireEvent.change(screen.getByLabelText("Hujjat turi"), { target: { value: "stocktake" } });
     fireEvent.change(screen.getByLabelText("Holati"), { target: { value: "draft" } });
     await waitFor(() => expect(asked().at(-1)).toEqual({ kind: "stocktake", status: "draft" }));
+    // This member may not read the suppliers: no filter by one is drawn, and their list is not asked for.
+    expect(screen.queryByLabelText("Ta'minotchi")).toBeNull();
+    expect(server.sent.filter((sent) => sent.path === SUPPLIERS)).toEqual([]);
+  });
+
+  it("narrows to one supplier, working or archived, together with the other filters", async () => {
+    const archived = supplierBody({ id: ARCHIVED_SUPPLIER, name: "Eski ulgurji", status: "archived" });
+    const server = fakeServer((sent) => {
+      if (sent.path === SUPPLIERS) {
+        return ok({ suppliers: [sent.query["status"] === "archived" ? archived : supplierBody()], totals: [], next_cursor: null });
+      }
+      return sent.path === `${STOCK}/documents` ? ok({ documents: [documentBody({ lines: undefined })], next_cursor: null }) : NOT_FOUND;
+    });
+    renderScreen(<DocumentsScreen />, { fetch: server.fetch, ...MANAGER });
+    const asked = () => server.sent.filter((sent) => sent.path === `${STOCK}/documents`).map((sent) => sent.query);
+    const choice = (await screen.findByLabelText("Ta'minotchi")) as HTMLSelectElement;
+    expect([...choice.options].map((option) => option.textContent)).toEqual(["Barcha ta'minotchilar", "Baraka ulgurji", "Eski ulgurji"]);
+    expect(within(screen.getByRole("group", { name: "Arxivda" })).getByRole("option", { name: "Eski ulgurji" })).toBeTruthy();
+    expect(server.sent.filter((sent) => sent.path === SUPPLIERS).map((sent) => sent.query)).toEqual([
+      { status: "active", limit: "100" },
+      { status: "archived", limit: "100" },
+    ]);
+    expect(asked()).toEqual([{}]);
+    fireEvent.change(choice, { target: { value: SUPPLIER_ID } });
+    await waitFor(() => expect(asked().at(-1)).toEqual({ supplier_id: SUPPLIER_ID }));
+    fireEvent.change(screen.getByLabelText("Hujjat turi"), { target: { value: "receipt" } });
+    fireEvent.change(screen.getByLabelText("Holati"), { target: { value: "posted" } });
+    await waitFor(() => expect(asked().at(-1)).toEqual({ kind: "receipt", status: "posted", supplier_id: SUPPLIER_ID }));
+    fireEvent.change(choice, { target: { value: ARCHIVED_SUPPLIER } });
+    await waitFor(() => expect(asked().at(-1)).toEqual({ kind: "receipt", status: "posted", supplier_id: ARCHIVED_SUPPLIER }));
+    fireEvent.change(choice, { target: { value: "" } });
+    await waitFor(() => expect(asked().at(-1)).toEqual({ kind: "receipt", status: "posted" }));
+  });
+
+  it("says that nothing matched, shows the server's refusal, and reads the next page with its cursor", async () => {
+    let answer: "none" | "fail" | "pages" = "none";
+    const server = fakeServer((sent) => {
+      if (sent.path !== `${STOCK}/documents`) {
+        return NOT_FOUND;
+      }
+      if (answer === "fail") {
+        return refusal(500, "INTERNAL", "Serverda xatolik.");
+      }
+      if (answer === "none") {
+        return ok({ documents: [], next_cursor: null });
+      }
+      return sent.query["cursor"] === "c2"
+        ? ok({ documents: [documentBody({ id: ARCHIVED_SUPPLIER, number: 6, lines: undefined })], next_cursor: null })
+        : ok({ documents: [documentBody({ lines: undefined })], next_cursor: "c2" });
+    });
+    renderScreen(<DocumentsScreen />, { fetch: server.fetch, role: "seller", permissions: ["stock.view", "stock.receive"] });
+    expect(await screen.findByText("Bunday hujjat yo'q.")).toBeTruthy();
+    answer = "fail";
+    fireEvent.change(screen.getByLabelText("Holati"), { target: { value: "draft" } });
+    expect((await screen.findByRole("alert")).textContent).toContain("Serverda xatolik.");
+    expect(screen.queryByText("Bunday hujjat yo'q.")).toBeNull();
+    answer = "pages";
+    fireEvent.click(screen.getByRole("button", { name: "Qayta urinish" }));
+    await screen.findByRole("link", { name: "Kirim № 7" });
+    fireEvent.click(screen.getByRole("button", { name: "Yana ko'rsatish" }));
+    await screen.findByRole("link", { name: "Kirim № 6" });
+    expect(server.sent.at(-1)?.query).toEqual({ status: "draft", cursor: "c2" });
+    expect(screen.queryByRole("button", { name: "Yana ko'rsatish" })).toBeNull();
   });
 });

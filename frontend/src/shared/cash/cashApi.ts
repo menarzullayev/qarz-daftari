@@ -46,8 +46,12 @@ export type CashEntry = {
   day: string;
   createdAt: string;
   authorId: string;
-  /** "ledger": a customer's payment, written by the ledger and cancelled only by reversing it there. */
-  source: "manual" | "ledger";
+  /**
+   * "ledger": a customer's payment, written by the ledger and cancelled only by reversing it there.
+   * "stock": money the stock paid out (a supplier's payment, a purchase, a refund), cancelled only by
+   * cancelling that payment or document there.
+   */
+  source: "manual" | "ledger" | "stock";
   customer: { id: string; displayName: string | null } | null;
   /** `reason` is null when the ledger cancelled the entry: the payment was reversed. */
   cancelled: { at: string; by: string | null; reason: string | null } | null;
@@ -84,6 +88,9 @@ export type CashSummary = {
   /** Only the days something stands on, oldest first. */
   days: { date: string; currency: CashCurrency; income: number; expense: number }[];
 };
+
+/** A period of the book as a workbook: a link that needs no session and works for five minutes. */
+export type CashExport = { from: string; to: string; entries: number; url: string; expiresAt: string };
 
 export type NewCashEntry = {
   direction: Direction;
@@ -145,7 +152,7 @@ function entry(value: unknown): CashEntry {
     day: text(body["day"]),
     createdAt: text(body["created_at"]),
     authorId: text(body["author_id"]),
-    source: oneOf(body["source"], ["manual", "ledger"] as const, "source"),
+    source: oneOf(body["source"], ["manual", "ledger", "stock"] as const, "source"),
     customer: customer === null ? null : { id: text(customer["id"]), displayName: textOrNull(customer["display_name"]) },
     cancelled:
       cancelled === null
@@ -217,6 +224,17 @@ function summary(value: unknown): CashSummary {
 
 const written = (value: unknown): CashEntry => entry(record(value)["entry"]);
 
+function exported(value: unknown): CashExport {
+  const body = record(value);
+  return {
+    from: text(body["from"]),
+    to: text(body["to"]),
+    entries: whole(body["entries"]),
+    url: text(body["url"]),
+    expiresAt: text(body["expires_at"]),
+  };
+}
+
 export function cashOf(api: ShopApi) {
   const base = `${api.base}/cash`;
   const categoryPath = (id: string) => `${base}/categories/${encodeURIComponent(id)}`;
@@ -228,6 +246,14 @@ export function cashOf(api: ShopApi) {
 
     summary(from: string, to: string, signal?: AbortSignal): Promise<CashSummary> {
       return api.send({ method: "GET", path: `${base}/summary`, query: { from, to }, signal, read: summary });
+    },
+
+    /**
+     * Writes the period ("YYYY-MM-DD" to "YYYY-MM-DD") as a workbook: every entry dated in it, cancelled
+     * ones marked, and what they come to. The link in the answer is a credential: keep it out of storage.
+     */
+    exportPeriod(from: string, to: string, idempotencyKey: string): Promise<CashExport> {
+      return api.send({ method: "POST", path: `${base}/export`, body: { from, to }, idempotencyKey, read: exported });
     },
 
     categories(signal?: AbortSignal): Promise<CashCategories> {

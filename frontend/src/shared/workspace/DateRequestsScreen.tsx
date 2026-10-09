@@ -97,6 +97,7 @@ function DeclineForm({
 
 function OpenRequests() {
   const { api } = useWorkspace();
+  const can = useMay();
   const { t, language } = useI18n();
   const { state, reload } = useLoad((signal) => api.listDateRequests(signal), [api]);
   const [panel, setPanel] = useState<Panel>(null);
@@ -211,11 +212,13 @@ function OpenRequests() {
 
   return (
     <>
-      <nav className="actions" aria-label={t("nav.disputes")}>
-        <Link to="/disputes" className="button">
-          {t("disputes.title")}
-        </Link>
-      </nav>
+      {can("disputes.decide") ? (
+        <nav className="actions" aria-label={t("nav.disputes")}>
+          <Link to="/disputes" className="button">
+            {t("disputes.title")}
+          </Link>
+        </nav>
+      ) : null}
       <p className="hint">{t("dates.hint")}</p>
       {done !== null ? (
         <p className="notice notice--done" role="status">

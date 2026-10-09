@@ -10,7 +10,7 @@ Every method here assumes the caller already passed `AdminAccess.require_admin`.
 
 import base64
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
@@ -32,7 +32,7 @@ from qarz.domain.admin_subscription import (
     unsuspend,
 )
 from qarz.domain.promise import tashkent_date
-from qarz.domain.subscription import ACTIVE, LIMITED, SUSPENDED, TRIAL
+from qarz.domain.subscription import ACTIVE, FREE, LIMITED, SUSPENDED, TRIAL, with_free_plan
 
 LIST_SHOPS = admin_operation("admin.shops.list")
 READ_SHOP = admin_operation("admin.shops.read")
@@ -46,6 +46,8 @@ UPDATE_SETTINGS = admin_operation("admin.settings.update")
 LIST_AUDIT = admin_operation("admin.audit.list")
 
 MAX_PAGE = 100
+# How many shops one call of the search gives at most (migration 0016).
+SEARCH_PAGE = MAX_PAGE + 1
 STATES = (TRIAL, ACTIVE, LIMITED, SUSPENDED)
 MIN_REASON, MAX_REASON = 3, 500
 # What the shop page shows as the subscription's history: these audit actions on that shop.
@@ -84,7 +86,42 @@ def _iso(value: date | datetime | None) -> str | None:
     return None if value is None else value.isoformat()
 
 
-def shop_body(row: AdminShopRow) -> dict[str, Any]:
+FREE_PLAN_ON = "free_plan_on"
+FREE_PLAN_CUSTOMERS = "free_plan_customers"
+
+
+async def free_plan_held(session: PlatformSession) -> int | None:
+    """How many customers the free plan holds; None while the platform switch is off (BR-33)."""
+    switch = await session.platform_setting(FREE_PLAN_ON)
+    if switch is not True:
+        return None
+    return platform_settings.free_plan_customers(switch, await session.platform_setting(FREE_PLAN_CUSTOMERS))
+
+
+def shop_body(row: AdminShopRow, held: int | None = None, customers: int = 0) -> dict[str, Any]:
+    """A shop as the administrator's side answers it. `held` is how many customers the free plan holds
+    (None while it is switched off) and `customers` how many active ones the shop has: with the plan on
+    the state is what applies to the shop itself, `free` included, and `plan` says how much of the plan
+    is used. With it off the answer is what it always was."""
+    body = _shop_body(row)
+    if held is not None:
+        body["subscription"]["state"] = with_free_plan(row.effective_state, held, customers)
+        body["plan"] = {"free_customers": held, "customers": customers}
+    return body
+
+
+async def shop_bodies(session: PlatformSession, rows: Sequence[AdminShopRow]) -> list[dict[str, Any]]:
+    """The answer for each of these shops, the free plan taken into account while it is on. The state
+    the search gave is computed in SQL from the stored row alone; whether a shop without a period is
+    free depends on its active customers, which are counted here. Nothing is counted with the plan off."""
+    held = await free_plan_held(session)
+    if held is None or not rows:
+        return [shop_body(row) for row in rows]
+    counts = await session.admin_active_customers([row.shop_id for row in rows])
+    return [shop_body(row, held, counts[row.shop_id]) for row in rows]
+
+
+def _shop_body(row: AdminShopRow) -> dict[str, Any]:
     return {
         "id": str(row.shop_id),
         "name": row.name,
@@ -154,25 +191,53 @@ class AdminService:
     async def list_shops(
         self, admin_id: UUID, *, query: str | None, state: str | None, cursor: str | None, limit: int
     ) -> dict[str, Any]:
-        fields: dict[str, str] = {}
-        if not 1 <= limit <= MAX_PAGE:
-            fields["limit"] = f"must be between 1 and {MAX_PAGE}"
-        if state is not None and state not in STATES:
-            fields["state"] = "must be trial, active, limited or suspended"
-        part = " ".join((query or "").split()) or None
-        if part is not None and len(part) > 80:
-            fields["q"] = "at most 80 characters"
-        if fields:
-            raise ValidationFailed(fields)
-        after = _decode_cursor(cursor) if cursor else None
+        """Shops, newest first. `state` filters by what applies today. With the free plan on that is
+        what the list shows: `limited` leaves out the shops the plan holds, and `free` lists them."""
+        today = self._today()
         async with self._storage.platform() as session:
-            rows = await session.admin_shop_search(
-                admin_id, today=self._today(), query=part, state=state, shop_id=None, after=after, limit=limit + 1
-            )
-        page, more = rows[:limit], len(rows) > limit
+            held = await free_plan_held(session)
+            fields: dict[str, str] = {}
+            if not 1 <= limit <= MAX_PAGE:
+                fields["limit"] = f"must be between 1 and {MAX_PAGE}"
+            if state is not None and state not in STATES and (held is None or state != FREE):
+                fields["state"] = (
+                    "must be trial, active, limited or suspended"
+                    if held is None
+                    else "must be trial, active, free, limited or suspended"
+                )
+            part = " ".join((query or "").split()) or None
+            if part is not None and len(part) > 80:
+                fields["q"] = "at most 80 characters"
+            if fields:
+                raise ValidationFailed(fields)
+            after = _decode_cursor(cursor) if cursor else None
+            # The search knows the stored row alone: to it a free shop is a limited one. With the plan
+            # on, those two filters read the limited shops page by page and keep the ones that match.
+            by_plan = held is not None and state in (LIMITED, FREE)
+            found: list[tuple[AdminShopRow, dict[str, Any]]] = []
+            while True:
+                rows = await session.admin_shop_search(
+                    admin_id,
+                    today=today,
+                    query=part,
+                    state=LIMITED if by_plan else state,
+                    shop_id=None,
+                    after=after,
+                    limit=limit + 1,
+                )
+                bodies = await shop_bodies(session, rows)
+                found += [
+                    (row, body)
+                    for row, body in zip(rows, bodies, strict=True)
+                    if not by_plan or body["subscription"]["state"] == state
+                ]
+                if not by_plan or len(found) > limit or len(rows) <= limit:
+                    break
+                after = (rows[-1].created_at, rows[-1].shop_id)
+        page, more = found[:limit], len(found) > limit
         return {
-            "items": [shop_body(row) for row in page],
-            "next_cursor": _encode_cursor(page[-1].created_at, page[-1].shop_id) if more else None,
+            "items": [body for _, body in page],
+            "next_cursor": _encode_cursor(page[-1][0].created_at, page[-1][0].shop_id) if more else None,
         }
 
     async def _shop(self, session: PlatformSession, admin_id: UUID, shop_id: UUID) -> AdminShopRow:
@@ -188,6 +253,7 @@ class AdminService:
         now = self._now()
         async with self._storage.platform() as session:
             row = await self._shop(session, admin_id, shop_id)
+            (body,) = await shop_bodies(session, [row])
             receipts = await session.admin_shop_receipts(admin_id, shop_id)
             changes = await session.list_admin_audit(
                 shop_id=shop_id, action_prefix=HISTORY_PREFIX, before=None, limit=MAX_PAGE
@@ -203,7 +269,7 @@ class AdminService:
                 now=now,
             )
         return {
-            **shop_body(row),
+            **body,
             "lang": row.lang,
             "deletion_due": _iso(row.deletion_due),
             "receipts": [
@@ -281,7 +347,8 @@ class AdminService:
                         dedupe_key=f"admin:{audit_id}",
                         shop_id=shop_id,
                     )
-                return shop_body(await self._shop(session, admin_id, shop_id))
+                (body,) = await shop_bodies(session, [await self._shop(session, admin_id, shop_id)])
+                return body
 
             return await idempotency.run_once(
                 # The stored answer shows the shop; it is kept under the shop and erased with it.
@@ -386,9 +453,71 @@ class AdminService:
             },
         }
 
-    async def read_settings(self, admin_id: UUID) -> dict[str, Any]:
+    async def _leaving_plan(
+        self, session: PlatformSession, admin_id: UUID, *, held: int, lowered_to: int
+    ) -> list[tuple[AdminShopRow, int]]:
+        """The shops the free plan holds today that it would not hold at `lowered_to` customers, each with
+        its active customers: without a period, and with more than `lowered_to` and no more than `held`.
+        A shop in a trial or paid period, and a suspended one, is not among them whatever it has."""
+        leaving: list[tuple[AdminShopRow, int]] = []
+        after: tuple[datetime, UUID] | None = None
+        while lowered_to < held:
+            rows = await session.admin_shop_search(
+                admin_id,
+                today=self._today(),
+                query=None,
+                state=LIMITED,
+                shop_id=None,
+                after=after,
+                limit=SEARCH_PAGE,
+            )
+            counts = await session.admin_active_customers([row.shop_id for row in rows])
+            leaving += [(row, counts[row.shop_id]) for row in rows if lowered_to < counts[row.shop_id] <= held]
+            if len(rows) < SEARCH_PAGE:
+                break
+            after = (rows[-1].created_at, rows[-1].shop_id)
+        return leaving
+
+    async def read_settings(self, admin_id: UUID, free_plan_customers: str | None = None) -> dict[str, Any]:
+        """The settings. With the free plan on, `free_plan_customers` asks what saving that number would
+        do: `free_plan_preview` then says how many shops the plan holds today would become limited.
+        Nothing is changed and nobody is told. With the plan off the question is not looked at."""
         async with self._storage.platform() as session:
-            return await self._settings_body(session)
+            body = await self._settings_body(session)
+            held = await free_plan_held(session)
+            if held is None or free_plan_customers is None:
+                return body
+            try:
+                if not (free_plan_customers.isascii() and free_plan_customers.isdigit()):
+                    raise platform_settings.InvalidSetting("must be a whole number")
+                asked = platform_settings.validate("free_plan_customers", int(free_plan_customers))
+            except platform_settings.InvalidSetting as invalid:
+                raise ValidationFailed({"free_plan_customers": str(invalid)}) from invalid
+            assert isinstance(asked, int)
+            leaving = await self._leaving_plan(session, admin_id, held=held, lowered_to=asked)
+            body["free_plan_preview"] = {"customers": asked, "shops_limited": len(leaving)}
+            return body
+
+    async def _tell_plan_lowered(
+        self, session: PlatformSession, admin_id: UUID, shop_id: UUID, held: int, customers: int
+    ) -> None:
+        """Tell the owner of a shop the free plan no longer holds what happened and how to leave the
+        limited mode. Once: the outbox keeps one message for a shop, a number and a day, so the same
+        number saved again that day tells nobody twice. Nothing of the shop is changed or removed."""
+        locked = await session.admin_lock_subscription(admin_id, shop_id)
+        if locked is None or locked.owner_tg is None:
+            return
+        await session.enqueue(
+            channel="telegram",
+            recipient=str(locked.owner_tg),
+            payload={
+                "text": say(
+                    locked.owner_lang or "uz", "free_plan_lowered", shop=locked.shop_name, limit=held, used=customers
+                )
+            },
+            dedupe_key=f"free_plan:lowered:{shop_id}:{held}:{self._today().isoformat()}",
+            shop_id=shop_id,
+        )
 
     async def update_settings(
         self,
@@ -399,7 +528,10 @@ class AdminService:
         reason: str | None,
         request_key: str | None,
     ) -> dict[str, Any]:
-        """Change switches and prices. Sensitive ones need a fresh code, which is used up by the change."""
+        """Change switches and prices. Sensitive ones need a fresh code, which is used up by the change.
+
+        A change that lowers how many customers the free plan holds tells the owners of the shops that
+        become limited by it, and the answer then carries `free_plan_lowered` with how many they are."""
         key = idempotency.validate_key(request_key)
         fields: dict[str, str] = {}
         cleaned: dict[str, platform_settings.Value] = {}
@@ -425,6 +557,16 @@ class AdminService:
                     if refused is not None:
                         raise _CodeRefused(refused)
                 stored = await session.platform_settings()
+                # BR-33: lowering the number of customers the free plan holds, while it is on and stays
+                # on, limits the shops that are now over it. They are found before the change is stored.
+                plan = {name: stored[name][0] for name in (FREE_PLAN_ON, FREE_PLAN_CUSTOMERS) if name in stored}
+                held = platform_settings.free_plan_customers(plan.get(FREE_PLAN_ON), plan.get(FREE_PLAN_CUSTOMERS))
+                plan |= {name: cleaned[name] for name in (FREE_PLAN_ON, FREE_PLAN_CUSTOMERS) if name in cleaned}
+                held_now = platform_settings.free_plan_customers(plan.get(FREE_PLAN_ON), plan.get(FREE_PLAN_CUSTOMERS))
+                lowered_to = held_now if held is not None and held_now is not None and held_now < held else None
+                leaving: list[tuple[AdminShopRow, int]] = []
+                if held is not None and lowered_to is not None:
+                    leaving = await self._leaving_plan(session, admin_id, held=held, lowered_to=lowered_to)
                 for name in sorted(cleaned):
                     old = platform_settings.effective(name, stored[name][0] if name in stored else None)
                     # One call: the database stores the setting and its audit row together, and refuses
@@ -442,7 +584,12 @@ class AdminService:
                     )
                     if not stored_now:
                         raise Unauthenticated()
-                return await self._settings_body(session)
+                body = await self._settings_body(session)
+                if lowered_to is not None:
+                    for row, customers in leaving:
+                        await self._tell_plan_lowered(session, admin_id, row.shop_id, lowered_to, customers)
+                    body["free_plan_lowered"] = {"customers": lowered_to, "shops_limited": len(leaving)}
+                return body
 
             try:
                 body = await idempotency.run_once(

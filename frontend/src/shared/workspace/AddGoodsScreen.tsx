@@ -27,12 +27,15 @@ export function canAddGoods(entry: Entry, now: Date): boolean {
 }
 
 /**
- * Who is offered "add goods": the entry's author, and whoever may add to another member's sale (a
- * manager or an owner by role), as the server requires. When
+ * Who is offered "add goods": among those who may record a credit sale, the entry's author, and whoever
+ * may add to another member's sale (a manager or an owner by role), as the server requires. When
  * the server names neither the author nor the signed-in person's membership the rule cannot be applied
  * here, so the action is offered and the server's refusal is shown.
  */
 export function mayAddGoods(entry: Entry, viewer: Viewer & { membershipId: string | null }): boolean {
+  if (!may(viewer, "credits.record")) {
+    return false;
+  }
   if (may(viewer, "entries.others") || viewer.membershipId === null || entry.authorId === null) {
     return true;
   }

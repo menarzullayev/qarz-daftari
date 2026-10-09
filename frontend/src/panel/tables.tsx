@@ -5,6 +5,7 @@ import type { CatalogItem, Customer, Debtor } from "../shared/api";
 import { formatMoney } from "../shared/format";
 import { type DesktopParts, DesktopProvider } from "../shared/layout";
 import { Link } from "../shared/router";
+import { useMay } from "../shared/workspace/context";
 import { owesAnything } from "../shared/workspace/CustomersScreen";
 import { Money } from "../shared/workspace/parts";
 import { type Column, DataTable } from "./DataTable";
@@ -17,6 +18,7 @@ const NONE = "—";
 
 function CustomersTable({ items, pick }: { items: readonly Customer[]; pick: boolean }) {
   const { t } = useI18n();
+  const can = useMay();
   const columns: Column<Customer>[] = [
     {
       id: "customer",
@@ -39,11 +41,13 @@ function CustomersTable({ items, pick }: { items: readonly Customer[]; pick: boo
       header: t("table.actions"),
       cell: (customer) => (
         <span className="table__actions">
-          <Link to={`/customers/${customer.id}/credit`} className="button button--primary button--small">
-            {t("entry.credit.short")}
-          </Link>
+          {can("credits.record") ? (
+            <Link to={`/customers/${customer.id}/credit`} className="button button--primary button--small">
+              {t("entry.credit.short")}
+            </Link>
+          ) : null}
           {/* A payment cannot exceed the debt, so there is nothing to pay when nothing is owed. */}
-          {owesAnything(customer) ? (
+          {owesAnything(customer) && can("payments.record") ? (
             <Link to={`/customers/${customer.id}/payment`} className="button button--small">
               {t("entry.payment.short")}
             </Link>

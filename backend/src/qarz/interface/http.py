@@ -19,6 +19,7 @@ from qarz.application.admin_ownership import AdminOwnershipService
 from qarz.application.admin_receipts import AdminReceiptService
 from qarz.application.auth import AuthService
 from qarz.application.cash_book import CashBookService
+from qarz.application.cash_export import CashExportService
 from qarz.application.catalog import CatalogService
 from qarz.application.chat import ChatService
 from qarz.application.credit import CreditService
@@ -228,7 +229,7 @@ def create_app(
         add_permission_routes(app, PermissionService(storage), current_user)
         add_link_routes(app, LinkService(storage, now), current_user)
         add_customer_share_routes(app, CustomerShareService(storage, now), current_user)
-        add_cash_routes(app, CashBookService(storage, now), current_user)
+        add_cash_routes(app, CashBookService(storage, now), current_user, CashExportService(storage, files, now))
         add_me_routes(app, CustomerAccountService(storage, now), current_user)
         add_shop_deletion_routes(app, ShopDeletionService(storage, now), current_user)
         add_subscription_routes(app, SubscriptionService(storage, now), current_user)

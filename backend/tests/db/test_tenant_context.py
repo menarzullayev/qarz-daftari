@@ -78,3 +78,36 @@ def test_a_tenant_session_cannot_see_or_change_another_shop(
     assert membership is None
     assert rowcount == 0
     assert owner.execute("SELECT name FROM shop WHERE id = %s", (shop_b.shop_id,)).fetchone() == ("Shop B",)
+
+
+def test_counting_the_active_customers_of_several_shops_leaves_the_transaction_without_a_tenant(
+    admin_database_url: str, shop_a: Shop, shop_b: Shop, owner: psycopg.Connection
+) -> None:
+    """The administrators' side counts what the free plan counts through one function, inside a
+    transaction that has no tenant: each shop's count is its own, and no shop's rows are in sight
+    before, during or after it."""
+    owner.execute(
+        "INSERT INTO customer (id, shop_id, display_name, name_norm, status) VALUES "
+        "(%s, %s, 'Second', 'second', 'active'), (%s, %s, 'Gone', 'gone', 'archived')",
+        (uuid.uuid4(), shop_a.shop_id, uuid.uuid4(), shop_a.shop_id),
+    )
+    unknown = uuid.uuid4()
+
+    async def scenario() -> tuple[dict[uuid.UUID, int], int, int, dict[uuid.UUID, int]]:
+        database = Database(admin_database_url, pool_size=1, max_overflow=0)
+        try:
+            async with database.platform() as session:
+                counts = await session.admin_active_customers([shop_a.shop_id, shop_b.shop_id, unknown])
+                inside = (await session._conn.execute(text("SELECT count(*) FROM customer"))).scalar_one()
+                nothing = await session.admin_active_customers([])
+            async with database._engine.begin() as conn:
+                after = (await conn.execute(text("SELECT count(*) FROM customer"))).scalar_one()
+            return counts, inside, after, nothing
+        finally:
+            await database.dispose()
+
+    counts, inside, after, nothing = asyncio.run(scenario())
+    assert counts == {shop_a.shop_id: 2, shop_b.shop_id: 1, unknown: 0}, "active customers only, each shop its own"
+    assert inside == 0, "counting gave the transaction a tenant"
+    assert after == 0
+    assert nothing == {}

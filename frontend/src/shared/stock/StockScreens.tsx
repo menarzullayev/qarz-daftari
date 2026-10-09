@@ -1,4 +1,5 @@
 import type { StockView } from "../workspace/routes";
+import { CounterDocumentsScreen } from "./CounterDocuments";
 import { DocumentScreen, DocumentsScreen, NewDocumentScreen, ReceiptScreen } from "./DocumentScreens";
 import "./messages";
 import "./stock.css";
@@ -17,7 +18,7 @@ export default function StockScreens({ view, office = false }: { view: StockView
   // `office`: the web panel, which has the documents' own pages to link to.
   switch (view.name) {
     case "items":
-      return <StockScreen />;
+      return <StockScreen office={office} />;
     case "item":
       return <StockItemScreen key={view.itemId} itemId={view.itemId} />;
     case "receipt":
@@ -30,6 +31,10 @@ export default function StockScreens({ view, office = false }: { view: StockView
       return <NewDocumentScreen key={view.kind} kind={view.kind} />;
     case "document":
       return <DocumentScreen key={view.documentId} documentId={view.documentId} />;
+    case "counterDocuments":
+      return <CounterDocumentsScreen />;
+    case "counterDocument":
+      return <DocumentScreen key={view.documentId} documentId={view.documentId} counter />;
     case "suppliers":
       return <SuppliersScreen />;
     case "supplier":

@@ -85,6 +85,11 @@ describe("reading the cash book", () => {
     await expect(cash.day(null, null)).rejects.toMatchObject({ code: "BAD_RESPONSE" });
   });
 
+  it("reads an entry the stock wrote, as the server names it", async () => {
+    const { cash } = calls(() => dayBody({ entries: [entry({ source: "stock", direction: "expense" })] }));
+    expect((await cash.day(null, null)).entries.map((row) => row.source)).toEqual(["stock"]);
+  });
+
   it("reads a period: by category and by day, each figure with its currency", async () => {
     const { server, cash } = calls(() => summaryBody());
     const summary = await cash.summary("2026-10-01", "2026-10-06");
@@ -94,6 +99,36 @@ describe("reading the cash book", () => {
       ["Ijara", "UZS", 300000, 1],
     ]);
     expect(summary.days).toEqual([{ date: "2026-10-05", currency: "UZS", income: 700000, expense: 300000 }]);
+  });
+
+  it("asks for a period as a file with a key, and reads the link it is given", async () => {
+    const { server, cash } = calls(() => ({
+      from: "2026-10-01",
+      to: "2026-10-06",
+      entries: 12,
+      url: "/files/abc.def",
+      expires_at: "2026-10-06T07:05:00+00:00",
+    }));
+    expect(await cash.exportPeriod("2026-10-01", "2026-10-06", "key-00000001")).toEqual({
+      from: "2026-10-01",
+      to: "2026-10-06",
+      entries: 12,
+      url: "/files/abc.def",
+      expiresAt: "2026-10-06T07:05:00+00:00",
+    });
+    expect(server.sent[0]).toMatchObject({
+      method: "POST",
+      path: `${SHOP_BASE}/cash/export`,
+      body: { from: "2026-10-01", to: "2026-10-06" },
+    });
+    expect(server.sent[0]?.headers["Idempotency-Key"]).toBe("key-00000001");
+  });
+
+  it("refuses an answer that is not a link to a file", async () => {
+    const { cash } = calls(() => ({ from: "2026-10-01", to: "2026-10-06", entries: 12, expires_at: "x" }));
+    await expect(cash.exportPeriod("2026-10-01", "2026-10-06", "key-00000001")).rejects.toMatchObject({
+      code: "BAD_RESPONSE",
+    });
   });
 
   it("reads the categories and the currencies an entry may be written in", async () => {

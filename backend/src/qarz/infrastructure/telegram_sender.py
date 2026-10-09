@@ -4,12 +4,26 @@ from typing import Any
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, TelegramNetworkError, TelegramRetryAfter
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import BufferedInputFile, InlineKeyboardMarkup
 from pydantic import ValidationError
 
 from qarz.application.ports import RecipientBlocked, RetryLater, SendFailed
 
 SEND, EDIT_TEXT, EDIT_BUTTONS = "sendMessage", "editMessageText", "editMessageReplyMarkup"
+# A message that is a file: its words are a caption, sent and edited as one.
+SEND_PHOTO, SEND_DOCUMENT, EDIT_CAPTION = "sendPhoto", "sendDocument", "editMessageCaption"
+
+
+def _upload(arguments: dict[str, Any]) -> BufferedInputFile:
+    """The file of a payload that is to be sent as one. Its content is bytes, which no stored outbox row
+    can hold: only `qarz.application.receipt_attachment`, after its checks, puts a file here."""
+    file = arguments.pop("file", None)
+    if not isinstance(file, dict):
+        raise ValueError("no file")
+    content, name = file.get("content"), file.get("name")
+    if not isinstance(content, bytes) or not isinstance(name, str):
+        raise ValueError("no file")
+    return BufferedInputFile(content, filename=name)
 
 
 class TelegramSender:
@@ -30,6 +44,12 @@ class TelegramSender:
                 await self._bot.edit_message_text(chat_id=int(recipient), **arguments)
             elif method == EDIT_BUTTONS:
                 await self._bot.edit_message_reply_markup(chat_id=int(recipient), **arguments)
+            elif method == SEND_PHOTO:
+                await self._bot.send_photo(chat_id=int(recipient), photo=_upload(arguments), **arguments)
+            elif method == SEND_DOCUMENT:
+                await self._bot.send_document(chat_id=int(recipient), document=_upload(arguments), **arguments)
+            elif method == EDIT_CAPTION:
+                await self._bot.edit_message_caption(chat_id=int(recipient), **arguments)
             else:
                 raise SendFailed("unknown method")
         except TelegramRetryAfter as error:

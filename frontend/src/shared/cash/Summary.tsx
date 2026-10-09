@@ -3,7 +3,7 @@ import { type FormEvent, useState } from "react";
 import { useI18n, type Translate } from "../../i18n/I18nProvider";
 import type { ApiError } from "../api";
 import { tashkentDay } from "../format";
-import { useLoad } from "../hooks";
+import { useLoad, useSubmit } from "../hooks";
 import type { Column } from "../layout";
 import { toIsoDate } from "../promise";
 import { dayText } from "../promiseParts";
@@ -21,11 +21,18 @@ import {
   presetPeriod,
   PRESETS,
 } from "../reports/period";
-import { useWorkspace } from "../workspace/context";
-import { Empty, Failure, FieldError, Loading } from "../workspace/parts";
+import { useMay, useWorkspace } from "../workspace/context";
+import { Empty, errorText, Failure, FieldError, formatInstant, Loading } from "../workspace/parts";
 import { money } from "./amounts";
 import { Balances } from "./Balances";
-import { type CashApi, type CashCurrency, type CashSummary, type Direction, DIRECTIONS } from "./cashApi";
+import {
+  type CashApi,
+  type CashCurrency,
+  type CashExport,
+  type CashSummary,
+  type Direction,
+  DIRECTIONS,
+} from "./cashApi";
 
 const NO_PROBLEMS: PeriodProblems = { from: null, to: null };
 
@@ -185,12 +192,54 @@ function PeriodFigures({
 }
 
 /**
+ * The period on the screen as a workbook. The server writes it at once and answers with a link, which
+ * needs no session and works for five minutes: it is opened by the person, in a new tab, as a finished
+ * export of the shop is. The link is a credential and lives in this component's state only.
+ */
+function PeriodExport({ calls, period }: { calls: CashApi; period: Period }) {
+  const { t, language } = useI18n();
+  const { state, submit } = useSubmit(
+    (asked: Period, key): Promise<CashExport> => calls.exportPeriod(asked.from, asked.to, key),
+  );
+  const pending = state.status === "pending";
+  const tooMany =
+    state.status === "error" && state.error.code === "VALIDATION" && state.error.fields["to"] === "TOO_MANY_ENTRIES";
+  return (
+    <section className="receipt" aria-labelledby="cash-export">
+      <h3 id="cash-export">{t("cash.export")}</h3>
+      <p className="field__hint">{t("cash.export.hint")}</p>
+      {state.status === "error" ? (
+        <p className="field__error" role="alert">
+          {tooMany ? t("cash.export.tooMany") : errorText(state.error, t)}
+        </p>
+      ) : null}
+      {state.status === "done" ? (
+        <>
+          <p className="actions">
+            <a className="button" href={state.result.url} target="_blank" rel="noopener noreferrer">
+              {t("cash.export.open")}
+            </a>
+          </p>
+          <p className="row__meta">{t("cash.export.valid", { date: formatInstant(state.result.expiresAt, language) })}</p>
+        </>
+      ) : null}
+      <p className="actions">
+        <button type="button" className="button button--small" onClick={() => submit(period)} disabled={pending}>
+          {pending ? t("state.loading") : state.status === "done" ? t("cash.export.again") : t("cash.export.make")}
+        </button>
+      </p>
+    </section>
+  );
+}
+
+/**
  * A period of the cash book: the balances over it, what stands in it by category and by day. Every
  * figure is of one currency; a cancelled entry is in none of them.
  */
 export function Summary({ calls }: { calls: CashApi }) {
   const { now } = useWorkspace();
   const { t } = useI18n();
+  const can = useMay();
   const today = tashkentDay(now());
   const [period, setPeriod] = useState<Period>(() => presetPeriod("month", today));
   const [from, setFrom] = useState(period.from);
@@ -276,6 +325,8 @@ export function Summary({ calls }: { calls: CashApi }) {
         </p>
       </form>
       <PeriodFigures calls={calls} period={period} onRefused={setProblems} />
+      {/* Whoever may read the book may take a period of it away as a file; a new period starts anew. */}
+      {can("cash.view") ? <PeriodExport key={`${period.from}:${period.to}`} calls={calls} period={period} /> : null}
     </>
   );
 }

@@ -1,12 +1,14 @@
 import { useState, type FormEvent } from "react";
 
 import { useI18n } from "../../i18n/I18nProvider";
-import type { ApiError, OpenPaymentNotice, ReceiptLink } from "../api";
+import { PAYMENT_METHODS } from "../api";
+import type { ApiError, OpenPaymentNotice, PaymentMethod, ReceiptLink } from "../api";
 import { formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
 import { amountInput, type Currency, currencyOf, parseMoney } from "../money";
 import { Link } from "../router";
-import { useWorkspace } from "./context";
+import { NotFoundScreen } from "../screens";
+import { useMay, useWorkspace } from "./context";
 import { amountMessage } from "./EntryScreen";
 import { Empty, errorText, Failure, FieldError, formatInstant, Loading, ReasonForm } from "./parts";
 
@@ -59,21 +61,28 @@ function Receipt({ noticeId }: { noticeId: string }) {
 /**
  * Accepting is the question and its answer in one: the amount starts as the customer stated it and can
  * be corrected, and nothing is recorded until the button that says "yes, record the payment".
+ *
+ * While the cash book is on (`askMethod`) the form also says how the money came, since that decides
+ * which balance of the book it goes to. It starts where the server would put it: a notice with a
+ * receipt as a payment by card, one without as cash.
  */
 function AcceptForm({
   notice,
+  askMethod,
   pending,
   error,
   onSubmit,
   onCancel,
 }: {
   notice: OpenPaymentNotice;
+  askMethod: boolean;
   pending: boolean;
   error: ApiError | null;
-  onSubmit: (amount: number) => void;
+  onSubmit: (amount: number, method: PaymentMethod | undefined) => void;
   onCancel: () => void;
 }) {
   const { t, language } = useI18n();
+  const [method, setMethod] = useState<PaymentMethod>(notice.hasReceipt ? "card" : "cash");
   // A notice of dollars is accepted in dollars: its amount, the correction and the debt are all cents.
   const currency = currencyOf(notice);
   const inDollars = currency === "USD";
@@ -91,7 +100,7 @@ function AcceptForm({
       // A payment cannot exceed the debt; the balance here is the one the list was read with.
       setProblem(exceeds);
     } else {
-      onSubmit(parsed.amount);
+      onSubmit(parsed.amount, askMethod ? method : undefined);
     }
   };
 
@@ -125,6 +134,23 @@ function AcceptForm({
         </p>
         <FieldError id={`${id}-error`} message={shown} />
       </div>
+      {askMethod ? (
+        <div className="field">
+          <label htmlFor={`${id}-method`}>{t("entry.method")}</label>
+          <select
+            id={`${id}-method`}
+            className="input"
+            value={method}
+            onChange={(event) => setMethod(PAYMENT_METHODS.find((way) => way === event.target.value) ?? method)}
+          >
+            {PAYMENT_METHODS.map((way) => (
+              <option key={way} value={way}>
+                {t(`entry.method.${way}`)}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
       <p className="actions">
         <button type="submit" className="button button--primary" disabled={pending}>
           {pending ? t("state.saving") : t("notices.accept.yes")}
@@ -137,13 +163,8 @@ function AcceptForm({
   );
 }
 
-/**
- * Payment notices that wait for the shop (REQ-061). Any member of staff accepts one, which records a
- * payment in their name for the stated or a corrected amount, or declines it with a reason the customer
- * receives. The receipt, when there is one, is opened through a short-lived link.
- */
-export default function PaymentNoticesScreen() {
-  const { api } = useWorkspace();
+function OpenNotices() {
+  const { api, features } = useWorkspace();
   const { t, language } = useI18n();
   const { state, reload } = useLoad((signal) => api.listPaymentNotices(signal), [api]);
   const [panel, setPanel] = useState<Panel>(null);
@@ -167,12 +188,13 @@ export default function PaymentNoticesScreen() {
         throw error;
       },
     );
-  const accept = useSubmit((payload: { id: string; amount: number; stated: number; currency: Currency }, key) =>
-    settle(
-      // Only a correction is sent as an amount; the stated one is the server's to record.
-      api.acceptPaymentNotice(payload.id, payload.amount === payload.stated ? null : payload.amount, key),
-      t("notices.done.accepted", { amount: formatMoney(payload.amount, language, payload.currency) }),
-    ),
+  const accept = useSubmit(
+    (payload: { id: string; amount: number; stated: number; currency: Currency; method: PaymentMethod | undefined }, key) =>
+      settle(
+        // Only a correction is sent as an amount; the stated one is the server's to record.
+        api.acceptPaymentNotice(payload.id, payload.amount === payload.stated ? null : payload.amount, key, payload.method),
+        t("notices.done.accepted", { amount: formatMoney(payload.amount, language, payload.currency) }),
+      ),
   );
   const decline = useSubmit((payload: { id: string; reason: string }, key) =>
     settle(api.declinePaymentNotice(payload.id, payload.reason, key), t("notices.done.declined")),
@@ -239,10 +261,11 @@ export default function PaymentNoticesScreen() {
             ) : panel.kind === "accept" ? (
               <AcceptForm
                 notice={notice}
+                askMethod={features?.cashBook === true}
                 pending={busy}
                 error={accept.state.status === "error" ? accept.state.error : null}
-                onSubmit={(amount) =>
-                  accept.submit({ id: notice.id, amount, stated: notice.amount, currency: currencyOf(notice) })
+                onSubmit={(amount, method) =>
+                  accept.submit({ id: notice.id, amount, stated: notice.amount, currency: currencyOf(notice), method })
                 }
                 onCancel={() => open(null)}
               />
@@ -281,4 +304,15 @@ export default function PaymentNoticesScreen() {
       {body}
     </>
   );
+}
+
+/**
+ * Payment notices that wait for the shop (REQ-061). A member who may decide them accepts one, which
+ * records a payment in their name for the stated or a corrected amount, or declines it with a reason the
+ * customer receives. The receipt, when there is one, is opened through a short-lived link. Anyone else
+ * is shown nothing and asks the server nothing.
+ */
+export default function PaymentNoticesScreen() {
+  const can = useMay();
+  return can("payment_notices.decide") ? <OpenNotices /> : <NotFoundScreen />;
 }

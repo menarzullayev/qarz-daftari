@@ -179,7 +179,7 @@ def balances_body(lines: list[Line]) -> dict[str, Any]:
     }
 
 
-def _period(raw_first: str | None, raw_last: str | None, today: date) -> tuple[date, date]:
+def period_of(raw_first: str | None, raw_last: str | None, today: date) -> tuple[date, date]:
     first, last = parse_day(raw_first), parse_day(raw_last)
     fields = {name: PeriodProblem.DATE_INVALID.value for name, day in (("from", first), ("to", last)) if day is None}
     if first is None or last is None:
@@ -261,7 +261,7 @@ class CashBookService:
             actor = await require_member(session, user_id, READ_SUMMARY)
             today = self._today()
             await require_viewable(session, actor, today)
-            first, last = _period(raw_first, raw_last, today)
+            first, last = period_of(raw_first, raw_last, today)
             after = last + timedelta(days=1)
             names = {record.category_id: record for record in await session.cash_categories()}
             by_category = sorted(

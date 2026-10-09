@@ -107,6 +107,12 @@ export const ruStock: RuStockCatalog = {
   "stock.docs.kind.all": "Все виды",
   "stock.docs.status.all": "Все состояния",
   "stock.docs.none": "Таких документов нет.",
+  "stock.docs.supplier.all": "Все поставщики",
+  "stock.docs.show": "Какие документы",
+  "stock.docs.open": "Документы и черновики",
+  "stock.docs.continue": "Продолжить",
+  "stock.docs.dropped": "Черновик удалён.",
+  "stock.docs.drafts.none": "Черновиков нет. Сохранённый приход появится здесь.",
 
   "stock.doc.ref": "{kind} № {number}",
   "stock.doc.date": "Дата",

@@ -94,6 +94,9 @@ DEFINER_FUNCTIONS: dict[str, set[str]] = {
     "admin_support_list(uuid,uuid,boolean,timestamp with time zone,timestamp with time zone,uuid,integer)": {ADMIN},
     "admin_reassign_owner(uuid,uuid,bigint,text,timestamp with time zone)": {ADMIN},
     "admin_set_platform_setting(uuid,text,jsonb,text,jsonb,timestamp with time zone)": {ADMIN},
+    # How many active customers each of some shops has, which is what the free plan counts: numbers
+    # for the administrators' list of shops (migration 0046).
+    "admin_active_customer_counts(uuid[])": {ADMIN},
     # --- the worker -----------------------------------------------------------------------------------
     "mark_recipient_unreachable(bigint)": {WORKER},
     "shops_due_for_reminders(smallint)": {WORKER},
@@ -107,6 +110,10 @@ DEFINER_FUNCTIONS: dict[str, set[str]] = {
     # The operations watch (migration 0035): in how many places the stored open debts differ from the
     # ledger. A count; the comparison itself stays closed to everybody.
     "open_debt_mismatch_count()": {WORKER},
+    # The same for the stock's two kept figures (migration 0046): two counts for the daily check, and
+    # the comparisons stay closed.
+    "stock_level_mismatch_count()": {WORKER},
+    "supplier_balance_mismatch_count()": {WORKER},
     # --- held by two roles ----------------------------------------------------------------------------
     # How long the oldest receipt has waited: one moment. The API serves it at /metrics, and the worker's
     # operations watch reads it for the same rule (migration 0035).

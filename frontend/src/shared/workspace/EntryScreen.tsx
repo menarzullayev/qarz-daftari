@@ -506,8 +506,7 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
   );
 }
 
-/** Records a credit sale or a payment for one customer and shows the balance the server answers with. */
-export function EntryScreen({ customerId, kind }: { customerId: string; kind: EntryKind }) {
+function Entry({ customerId, kind }: { customerId: string; kind: EntryKind }) {
   const { api } = useWorkspace();
   const { state, reload } = useLoad((signal) => api.readCustomer(customerId, signal), [api, customerId]);
 
@@ -523,5 +522,18 @@ export function EntryScreen({ customerId, kind }: { customerId: string; kind: En
       <h2 className="subject">{customer.displayName}</h2>
       <EntryForm customer={customer} kind={kind} onRecorded={reload} />
     </>
+  );
+}
+
+/**
+ * Records a credit sale or a payment for one customer and shows the balance the server answers with. A
+ * member who may not record that kind of entry is shown no form and asks the server nothing.
+ */
+export function EntryScreen({ customerId, kind }: { customerId: string; kind: EntryKind }) {
+  const can = useMay();
+  return can(kind === "credit" ? "credits.record" : "payments.record") ? (
+    <Entry customerId={customerId} kind={kind} />
+  ) : (
+    <NotFoundScreen />
   );
 }

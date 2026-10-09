@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CUSTOMER_ID,
   customerBody,
+  deferred,
   detailBody,
   fakeServer,
   itemBody,
@@ -393,11 +394,121 @@ describe("what the workspace offers when the server keeps permissions per member
     expect(server.sent.slice(before).some((sent) => sent.path.includes("/reports"))).toBe(false);
   });
 
-  it("keeps to the role when the member's permissions cannot be read", async () => {
-    const server = withPermissions("seller", "broken");
+  it("offers by role at once, with every action of the book, while the server does not say it keeps them", async () => {
+    const server = backend({ items: [membership("seller")], active_shop: SHOP_ID });
     start(server);
     await screen.findByText("Ali Valiyev");
+    go("#/customers");
+    expect((await screen.findByRole("link", { name: "Yangi mijoz" })).getAttribute("href")).toBe("#/customers/new");
+    expect(screen.getByRole("link", { name: "To'lov xabarlari" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Ulanishni kutayotganlar" })).toBeTruthy();
+    go("#/new");
+    expect(await screen.findByRole("link", { name: "Nasiya" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "To'lov" })).toBeTruthy();
+    go("#/customers/new");
+    expect(screen.getByRole("button", { name: "Yangi mijoz" })).toBeTruthy();
+    expect(server.sent.filter((sent) => sent.path === MINE)).toHaveLength(0);
+  });
+
+  it("shows a seller denied `customers.create` no way to add a customer, by link or by address", async () => {
+    const server = withPermissions("seller", ["ledger.view", "credits.record", "payments.record", "payment_notices.decide"]);
+    start(server);
+    await screen.findByText("Ali Valiyev");
+    go("#/customers");
+    expect(await screen.findByRole("link", { name: "To'lov xabarlari" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Yangi mijoz" })).toBeNull();
+    go("#/customers/new");
+    expect(screen.queryByRole("button", { name: "Yangi mijoz" })).toBeNull();
+    expect(screen.getByText("Bunday sahifa yo'q yoki sizda unga ruxsat yo'q.")).toBeTruthy();
+    expect(server.writes()).toHaveLength(0);
+  });
+
+  it("draws nothing to act on before the server has said what the member holds", async () => {
+    // A manager by role would be offered everything; the owner left this one the book to read.
+    const answer = deferred<{ status: number; body: unknown }>();
+    const server = backend({}, (sent) => {
+      if (sent.path === "/api/v1/me/shops") {
+        return {
+          status: 200,
+          body: { items: [membership("manager")], active_shop: SHOP_ID },
+          headers: { "X-Qarz-Permissions": "on" },
+        };
+      }
+      return sent.path === MINE ? answer.promise : null;
+    });
+    window.location.hash = "#/customers";
+    start(server);
     await waitFor(() => expect(server.sent.some((sent) => sent.path === MINE)).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // No section, no link into the shop, no button: only the shell, the shop's name and "loading".
+    expect(heading()).toBe("Baraka savdo");
+    expect(screen.getByRole("status").textContent).toBe("Yuklanmoqda…");
+    expect(screen.queryByRole("navigation")).toBeNull();
+    expect(screen.getByRole("main").querySelectorAll("a, button")).toHaveLength(0);
+    expect(screen.queryByRole("link", { name: "Yangi mijoz" })).toBeNull();
+    // Nothing of the shop was asked for either: the role opened nothing.
+    expect(server.sent.filter((sent) => sent.path.startsWith(SHOP_BASE)).map((sent) => sent.path)).toEqual([MINE]);
+
+    answer.resolve(ok({ membership_id: "m-1", role: "manager", permissions: ["ledger.view"] }));
+    await screen.findByText("Ali Valiyev");
+    // Then by permission: the book is there to read, with none of what the member does not hold.
+    expect(screen.getByRole("link", { name: "Ulanishni kutayotganlar" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Yangi mijoz" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "To'lov xabarlari" })).toBeNull();
+    go("#/");
+    expect(navLinks()).toEqual(["Umumiy ko'rinish", "Mijozlar", "Katalog"]);
+  });
+
+  it("opens nothing when the member's permissions cannot be read, and asks again when told to", async () => {
+    let broken = true;
+    const server = backend({}, (sent) => {
+      if (sent.path === "/api/v1/me/shops") {
+        return {
+          status: 200,
+          body: { items: [membership("owner")], active_shop: SHOP_ID },
+          headers: { "X-Qarz-Permissions": "on" },
+        };
+      }
+      if (sent.path === MINE) {
+        return broken
+          ? refusal(503, "TIMEOUT", "")
+          : ok({ membership_id: "m-1", role: "owner", permissions: ["ledger.view", "customers.create"] });
+      }
+      return null;
+    });
+    start(server);
+    const retry = await screen.findByRole("button", { name: "Qayta urinish" });
+    // Even an owner by role is offered nothing: the role is not a substitute for the answer.
+    expect(heading()).toBe("Xatolik yuz berdi");
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(screen.queryByRole("navigation")).toBeNull();
+    expect(screen.getByRole("main").querySelectorAll("a")).toHaveLength(0);
+    expect(screen.getByRole("main").querySelectorAll("button")).toHaveLength(1);
+    expect(server.sent.filter((sent) => sent.path.startsWith(SHOP_BASE)).map((sent) => sent.path)).toEqual([MINE]);
+
+    broken = false;
+    fireEvent.click(retry);
+    await screen.findByText("Ali Valiyev");
+    expect(server.sent.filter((sent) => sent.path === MINE)).toHaveLength(2);
+    expect(navLinks()).toEqual(["Umumiy ko'rinish", "Mijozlar", "Katalog"]);
+  });
+
+  it("keeps to the role when the server answers that it keeps no permissions after all", async () => {
+    // The switch was turned off between the two requests: the route is gone, which is the server's own
+    // word that roles decide.
+    const server = backend({}, (sent) => {
+      if (sent.path === "/api/v1/me/shops") {
+        return {
+          status: 200,
+          body: { items: [membership("seller")], active_shop: SHOP_ID },
+          headers: { "X-Qarz-Permissions": "on" },
+        };
+      }
+      return sent.path === MINE ? refusal(404, "NOT_FOUND", "") : null;
+    });
+    start(server);
+    await screen.findByText("Ali Valiyev");
     expect(navLinks()).toEqual(["Umumiy ko'rinish", "Mijozlar", "Yangi yozuv", "Katalog"]);
   });
 });

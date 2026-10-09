@@ -35,6 +35,7 @@ import {
   type StockDocument,
   type StockDocumentKind,
   type StockSettings,
+  type Supplier,
 } from "./stockApi";
 
 /** The kind a quick receipt writes. */
@@ -42,12 +43,12 @@ const RECEIPT: StockDocumentKind = "receipt";
 
 const STATUS_TONE = { draft: "warning", posted: "success", cancelled: "danger" } as const;
 
-function dateText(iso: string, language: Language): string {
+export function dateText(iso: string, language: Language): string {
   const day = parseIsoDate(iso);
   return day === null ? iso : formatCalendarDay(day, language);
 }
 
-function StatusBadge({ status }: { status: DocumentStatus }) {
+export function StatusBadge({ status }: { status: DocumentStatus }) {
   const { t } = useI18n();
   return <Badge tone={STATUS_TONE[status]}>{t(DOCUMENT_STATUS_LABELS[status])}</Badge>;
 }
@@ -62,18 +63,23 @@ export function DocumentView({
   document,
   settings,
   host,
+  resume = false,
   onChanged,
 }: {
   document: StockDocument;
   settings: StockSettings;
   host?: ScanHost | undefined;
+  /** Open a draft in its form at once, for a member who may change it: it was left to be continued. */
+  resume?: boolean;
   /** The document after a change made here. */
   onChanged: (document: StockDocument) => void;
 }) {
   const { t, language } = useI18n();
   const can = useMay();
   const stock = useStock();
-  const [mode, setMode] = useState<"view" | "edit" | "cancel">("view");
+  const allowed = can(permissionOfKind(document.kind));
+  const editable = document.status === "draft" && draftOf(document) !== null;
+  const [mode, setMode] = useState<"view" | "edit" | "cancel">(resume && allowed && editable ? "edit" : "view");
   const post = useSubmit((id: string, key) => stock.postDocument(id, key).then(onChanged));
   const cancel = useSubmit((job: { id: string; reason: string }, key) =>
     stock.cancelDocument(job.id, job.reason, key).then((changed) => {
@@ -81,7 +87,6 @@ export function DocumentView({
       onChanged(changed);
     }),
   );
-  const allowed = can(permissionOfKind(document.kind));
   const { money } = document;
   const stocktake = document.kind === "stocktake";
 
@@ -144,7 +149,6 @@ export function DocumentView({
     );
   }
   const failure = post.state.status === "error" ? post.state.error : null;
-  const editable = document.status === "draft" && draftOf(document) !== null;
 
   return (
     <>
@@ -240,8 +244,30 @@ function withSettings(
   return render(settings.state.data);
 }
 
-/** One document by its address, in the web panel. */
-export function DocumentScreen({ documentId, host }: { documentId: string; host?: ScanHost | undefined }) {
+/**
+ * One document by its address: in the web panel, or at the counter (`counter`), where it was reached
+ * from the phone's list and a draft opens in its form to be continued.
+ */
+export function DocumentScreen({
+  documentId,
+  host,
+  counter = false,
+}: {
+  documentId: string;
+  host?: ScanHost | undefined;
+  counter?: boolean;
+}) {
+  const can = useMay();
+  // Documents are read by those who write some kind of them; for nobody else is one asked for.
+  return mayWriteDocuments(can) ? <OneDocument documentId={documentId} host={host} counter={counter} /> : <NotFoundScreen />;
+}
+
+/** Whether the member writes any kind of document: the server lets the same people read them. */
+export function mayWriteDocuments(can: (permission: "stock.receive" | "stock.adjust") => boolean): boolean {
+  return can("stock.receive") || can("stock.adjust");
+}
+
+function OneDocument({ documentId, host, counter }: { documentId: string; host?: ScanHost | undefined; counter: boolean }) {
   const { t } = useI18n();
   const stock = useStock();
   const settings = useStockSettings();
@@ -258,10 +284,10 @@ export function DocumentScreen({ documentId, host }: { documentId: string; host?
   return (
     <>
       {withSettings(settings, (known) => (
-        <DocumentView document={document} settings={known} host={host} onChanged={setChanged} />
+        <DocumentView document={document} settings={known} host={host} resume={counter} onChanged={setChanged} />
       ))}
       <p className="actions">
-        <Link to="/stock-documents" className="button">
+        <Link to={counter ? "/stock/documents" : "/stock-documents"} className="button">
           {t("nav.stockDocuments")}
         </Link>
       </p>
@@ -335,7 +361,37 @@ function QuickReceipt({ host }: { host?: ScanHost | undefined }) {
   );
 }
 
-/** Every document of the stock, newest first, by kind and by state. */
+/** How many suppliers of each state the filter offers: one page of the list, as the document form asks. */
+const SUPPLIER_CHOICES = 100;
+
+/**
+ * The suppliers a list of documents can be narrowed to: those the shop works with, then the archived
+ * ones, whose documents are still in the books. Only for a member who may read the suppliers; for
+ * anyone else nothing is asked and no filter is drawn.
+ */
+function useSupplierChoices(): { active: Supplier[]; archived: Supplier[] } | null {
+  const can = useMay();
+  const stock = useStock();
+  const allowed = can("suppliers.view");
+  const { state } = useLoad(
+    (signal) =>
+      allowed
+        ? Promise.all(
+            (["active", "archived"] as const).map((status) =>
+              stock.suppliers({ status, limit: SUPPLIER_CHOICES }, signal).then((page) => page.suppliers),
+            ),
+          )
+        : Promise.resolve(null),
+    [stock, allowed],
+  );
+  if (state.status !== "ready" || state.data === null) {
+    return null;
+  }
+  const [active = [], archived = []] = state.data;
+  return active.length + archived.length > 0 ? { active, archived } : null;
+}
+
+/** Every document of the stock, newest first, by kind, by state and by supplier. */
 export function DocumentsScreen() {
   const { t, language } = useI18n();
   const can = useMay();
@@ -343,9 +399,11 @@ export function DocumentsScreen() {
   const { membershipId } = useWorkspace();
   const [kind, setKind] = useState("");
   const [status, setStatus] = useState("");
+  const [supplierId, setSupplierId] = useState("");
+  const suppliers = useSupplierChoices();
   const { state, reload, loadMore } = usePagedList(
-    (cursor, signal) => stock.documents({ kind, status, cursor }, signal),
-    [stock, kind, status],
+    (cursor, signal) => stock.documents({ kind, status, supplierId, cursor }, signal),
+    [stock, kind, status, supplierId],
   );
   // Each kind is offered to those who may write it: receiving goods is one permission, correcting another.
   const kinds = STOCK_DOCUMENT_KINDS.filter((known) => can(permissionOfKind(known)));
@@ -425,6 +483,33 @@ export function DocumentsScreen() {
             ))}
           </select>
         </div>
+        {suppliers ? (
+          <div className="field">
+            <label htmlFor="stock-docs-supplier">{t("stock.doc.supplier")}</label>
+            <select
+              id="stock-docs-supplier"
+              className="input"
+              value={supplierId}
+              onChange={(event) => setSupplierId(event.target.value)}
+            >
+              <option value="">{t("stock.docs.supplier.all")}</option>
+              {suppliers.active.map((known) => (
+                <option key={known.id} value={known.id}>
+                  {known.name}
+                </option>
+              ))}
+              {suppliers.archived.length > 0 ? (
+                <optgroup label={t("supplier.status.archived")}>
+                  {suppliers.archived.map((known) => (
+                    <option key={known.id} value={known.id}>
+                      {known.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+            </select>
+          </div>
+        ) : null}
       </section>
       {body}
     </>
