@@ -48,6 +48,10 @@ SETTINGS: dict[str, Setting] = {
     "sms_on": Setting("switch", False, needs_code=True),
     "sms_monthly_quota": Setting("number", 0, 0, 100_000),
     "online_pay_on": Setting("switch", False, needs_code=True),
+    # The free plan (BR-33 to BR-35): a shop with no more customers than this works in full without a
+    # paid period, and SMS is for paying shops alone. Off, everything is as it was before the plan.
+    "free_plan_on": Setting("switch", False, needs_code=True),
+    "free_plan_customers": Setting("number", 30, 1, 10_000),
     # A customer's secret read-only link and its QR code (the expansion of 2026-10-09, module B).
     "customer_links_on": Setting("switch", False, needs_code=True),
 }
@@ -106,6 +110,17 @@ def effective(key: str, stored: Any) -> Value:
         return SETTINGS[key].default if stored is None else validate(key, stored)
     except InvalidSetting:
         return SETTINGS[key].default
+
+
+def free_plan_customers(switch: Any, customers: Any) -> int | None:
+    """How many customers the free plan holds, from the two stored values; None while it is switched off.
+
+    Only a stored `true` is on, as for every switch that was added off."""
+    if switch is not True:
+        return None
+    held = effective("free_plan_customers", customers)
+    assert isinstance(held, int)
+    return held
 
 
 def needs_code(key: str) -> bool:

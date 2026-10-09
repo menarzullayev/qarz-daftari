@@ -28,6 +28,8 @@ DEFAULTS = {
     "sms_on": False,
     "sms_monthly_quota": 0,
     "online_pay_on": False,
+    "free_plan_on": False,
+    "free_plan_customers": 30,
     "customer_links_on": False,
 }
 # Specification, clients table: "changes to price, card number, and switches ask for the code again".
@@ -39,6 +41,7 @@ NEEDS_CODE = {
     "online_pay_on": True,
     "customer_links_on": True,
     "review_group": -1001234567890,
+    "free_plan_on": True,
 }
 
 

@@ -869,6 +869,70 @@ def test_imports_are_refused_in_limited_mode_and_in_a_suspended_shop(
     assert act(client, world, batch, "discard").status_code == 200
 
 
+def test_an_import_the_free_plan_cannot_hold_is_refused_and_one_that_fits_is_applied(
+    client: TestClient, world: World, owner: psycopg.Connection, free_plan: Any
+) -> None:
+    """BR-34 for an import: the customers it would add need places like any other."""
+    _subscription(owner, world, "state = 'limited', trial_ends = NULL, paid_through = NULL")
+    held = _active(owner, world) + 1
+    free_plan(held)
+    batch = uploaded(client, world, table("Karim,,250000,,", "Lola,,80000,,"))  # a free shop may import
+    plan = plan_of(client, world, batch)
+    before = nothing_saved(owner, world)
+
+    refused = apply(client, world, batch, plan)
+    assert (refused.status_code, refused.json()["error"]["code"]) == (402, "FREE_PLAN_FULL")
+    assert refused.json()["error"]["fields"] == {"limit": str(held)}
+    assert (nothing_saved(owner, world), state(client, world, batch)["status"]) == (before, "validated")
+    assert work() == 0, "nothing was queued"
+
+    free_plan(held + 1)
+    assert apply(client, world, batch, plan).status_code == 202
+    assert work() == 1
+    assert state(client, world, batch)["status"] == "applied"
+    assert _active(owner, world) == held + 1
+
+
+def test_the_worker_asks_again_whether_the_customers_of_an_import_fit(
+    client: TestClient, world: World, owner: psycopg.Connection, free_plan: Any
+) -> None:
+    _subscription(owner, world, "state = 'limited', trial_ends = NULL, paid_through = NULL")
+    held = _active(owner, world) + 1
+    free_plan(held)
+    batch = uploaded(client, world, table("Karim,,250000,,"))
+    shown = plan_of(client, world, batch)
+    assert apply(client, world, batch, shown).status_code == 202  # it fits when it is asked for
+    # The last place is taken before the worker comes to the batch.
+    taken = client.post(
+        f"{shop(world)}/customers", json={"display_name": "Oldinroq"}, headers={**as_user(world.seller_a), **key()}
+    )
+    assert taken.status_code == 201
+    before = nothing_saved(owner, world)
+    assert work() == 1
+
+    body = state(client, world, batch)
+    assert (body["status"], body["refused"]) == ("validated", {"step": "apply", "reason": "free_plan_full"})
+    assert nothing_saved(owner, world) == before, "all of it or nothing (BR-24)"
+    assert told(owner, batch, "import_refused_free_plan") == [
+        (tg(owner, world.manager_a), say("uz", "import_refused_free_plan", shop="Shop A", limit=held))
+    ]
+    assert told(owner, batch, "s_import_applied") == []
+
+    # Once the shop pays, the same preview is applied.
+    _subscription(owner, world, f"state = 'active', paid_through = '{today() + timedelta(days=30)}'")
+    assert apply(client, world, batch, body["preview"]["plan"]).status_code == 202
+    assert work() == 1
+    assert state(client, world, batch)["status"] == "applied"
+
+
+def _active(owner: psycopg.Connection, world: World) -> int:
+    row = owner.execute(
+        "SELECT count(*) FROM customer WHERE shop_id = %s AND status = 'active'", (world.shop_a,)
+    ).fetchone()
+    assert row is not None
+    return int(row[0])
+
+
 # --- undo -------------------------------------------------------------------------------------------------
 
 

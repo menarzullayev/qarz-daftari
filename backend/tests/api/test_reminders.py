@@ -540,6 +540,61 @@ def test_the_platform_switch_alone_stops_every_sms(
     assert messages(owner, world) == []
 
 
+@pytest.mark.parametrize(
+    ("plan_on", "state", "column", "sent"),
+    [
+        # BR-35: with the free plan on, SMS belongs to a paid period alone.
+        (True, "active", "paid_through", 2),
+        (True, "trial", "trial_ends", 0),
+        (True, "limited", None, 0),
+        # With the plan off nothing about SMS depends on the subscription, as before.
+        (False, "trial", "trial_ends", 2),
+        (False, "limited", None, 2),
+    ],
+)
+def test_with_the_free_plan_on_sms_is_sent_for_shops_in_a_paid_period_only(
+    client: TestClient,
+    world: World,
+    owner: psycopg.Connection,
+    worker_database_url: str,
+    day: date,
+    sms: Any,
+    free_plan: Callable[[int], None],
+    plan_on: bool,
+    state: str,
+    column: str | None,
+    sent: int,
+) -> None:
+    if plan_on:
+        free_plan(30)
+    ends = datetime.now(UTC).date() + timedelta(days=365 * 40)  # runs on the test's day and on the real today
+    owner.execute(
+        "UPDATE subscription SET state = %s, trial_ends = %s, paid_through = %s WHERE shop_id = %s",
+        (state, ends if column == "trial_ends" else None, ends if column == "paid_through" else None, world.shop_a),
+    )
+    turn_on(owner, world.shop_a)
+    owner.execute("UPDATE shop SET sms_on = true WHERE id = %s", (world.shop_a,))
+    for index in range(3):
+        debtor(owner, world, f"Sms {index}", 10000 + index, day - timedelta(days=2), phone=f"+99890111230{index}")
+
+    run_job(worker_database_url, at(day, 10), lambda service, _: service.run_hour(10))
+    assert [(row[1], row[2]) for row in reminders(owner, world)] == [("auto", "sms")] * sent, "within the quota of two"
+    assert [channel for channel, _, _ in messages(owner, world)] == ["sms"] * sent
+
+    # By hand it is the same rule: a customer with a phone alone cannot be reached from a shop that does
+    # not pay, and is listed for it as such.
+    owner.execute("DELETE FROM reminder WHERE shop_id = %s", (world.shop_a,))
+    today = tashkent_date(datetime.now(UTC))
+    late = debtor(owner, world, "Qo'lda", 20000, today - timedelta(days=2), phone="+998901112309")
+    by_hand = manual(client, world, late)
+    listed = client.get(f"{shop(world)}/reminders/unreachable", headers=as_user(world.manager_a)).json()["items"]
+    if sent:
+        assert (by_hand.status_code, by_hand.json()["channel"]) == (201, "sms")
+    else:
+        assert (by_hand.status_code, by_hand.json()["error"]["code"]) == (409, "CUSTOMER_UNREACHABLE")
+        assert "Qo'lda" in [item["display_name"] for item in listed]
+
+
 @pytest.mark.parametrize("status", ["unreachable", "ended"])
 def test_a_customer_whose_link_is_not_active_is_not_reminded_through_telegram(
     client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, status: str

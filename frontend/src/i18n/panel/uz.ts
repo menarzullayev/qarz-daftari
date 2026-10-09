@@ -179,6 +179,7 @@ export const uzPanel = {
   "activity.action.staff.removed": "Xodim olib tashlandi",
   "activity.action.staff.updated": "Xodim o'zgartirildi",
   "activity.action.subscription.limited": "Obuna tugadi: do'kon cheklangan rejimga o'tdi",
+  "activity.action.subscription.free": "Muddat tugadi: do'kon bepul tarifga o'tdi",
   "activity.action.export.requested": "Eksport so'raldi",
   "activity.action.support_access.opened": "Administrator yordam uchun kirish ochdi",
   "activity.action.support_access.closed": "Administrator kirishni yopdi",

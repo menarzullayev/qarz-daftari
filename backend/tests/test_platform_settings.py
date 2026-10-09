@@ -12,6 +12,7 @@ from qarz.domain.platform_settings import (
     card_tag,
     effective,
     find_card,
+    free_plan_customers,
     masked,
     needs_code,
     payment_cards,
@@ -32,6 +33,8 @@ def test_the_settings_are_the_ones_the_administrator_controls() -> None:
         "sms_on",
         "sms_monthly_quota",
         "online_pay_on",
+        "free_plan_on",
+        "free_plan_customers",
         "customer_links_on",
     }
     assert "card_number" not in SETTINGS, "the single card became the list"
@@ -47,6 +50,8 @@ def test_defaults_when_nothing_is_stored() -> None:
         "sms_on": False,
         "sms_monthly_quota": 0,
         "online_pay_on": False,
+        "free_plan_on": False,
+        "free_plan_customers": 30,
         "customer_links_on": False,
     }
 
@@ -54,6 +59,25 @@ def test_defaults_when_nothing_is_stored() -> None:
 def test_the_two_integration_switches_are_off_by_default() -> None:
     assert SETTINGS["sms_on"].default is False
     assert SETTINGS["online_pay_on"].default is False
+
+
+def test_the_free_plan_is_off_until_it_is_switched_on_and_holds_thirty_customers() -> None:
+    assert SETTINGS["free_plan_on"].default is False
+    assert needs_code("free_plan_on")
+    assert validate("free_plan_customers", 1) == 1
+    assert validate("free_plan_customers", 10_000) == 10_000
+    for wrong in (0, 10_001, -1, True, "30", 30.0, None):
+        with pytest.raises(InvalidSetting):
+            validate("free_plan_customers", wrong)
+
+
+def test_how_many_customers_the_free_plan_holds_is_nothing_while_it_is_off() -> None:
+    assert free_plan_customers(True, None) == 30
+    assert free_plan_customers(True, 50) == 50
+    assert free_plan_customers(True, 0) == 30, "a stored value outside the range does not apply"
+    # Only a stored true is on: nothing stored, false, or anything else leaves the plan off.
+    for off in (None, False, 1, "true"):
+        assert free_plan_customers(off, 50) is None
 
 
 def test_price_card_and_switches_need_a_code() -> None:
@@ -66,9 +90,11 @@ def test_price_card_and_switches_need_a_code() -> None:
         "online_pay_on",
         "customer_links_on",
         "review_group",
+        "free_plan_on",
     }
     assert not needs_code("trial_days")
     assert not needs_code("sms_monthly_quota")
+    assert not needs_code("free_plan_customers")
 
 
 @pytest.mark.parametrize("key", ["trial_on", "sms_on", "online_pay_on", "customer_links_on"])

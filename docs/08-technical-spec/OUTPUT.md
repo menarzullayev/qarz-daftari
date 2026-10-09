@@ -168,6 +168,8 @@ Authorization is evaluated in the application for every command, then enforced a
 
 In limited mode the credit-sale and import capabilities are refused for every role; in suspended mode only owner viewing and export remain (domain rules BR-29, BR-30).
 
+**The free plan** (BR-33 to BR-35) is behind the platform switch `free_plan_on`, off by default. While it is on, a shop without a running period whose active customers (`customer.status = 'active'`) are no more than `free_plan_customers` is reported as `free` and nothing is refused to it; the state is derived from the count in `qarz.application.customers.effective_subscription` and is never stored, so the `subscription` table and its states are unchanged (migration 0038 changes nothing). A customer beyond the number is refused with `FREE_PLAN_FULL` (402, `fields.limit`) wherever customers are added: the customers resource, the bot's fast entry, taking a customer out of the archive, and an import, at the request and again in the worker; the count is taken under a transaction-scoped advisory lock of the shop, so two requests cannot both take the last place. `/shops/{id}/subscription` then carries `plan`: `free_customers`, `customers`, `after_period` (`free` or `limited`: what follows the running period if it is not paid; null without one) and `sms` (`offered`, `included`, `quota`, `left`). SMS reminders are then sent only for a shop in a paid period. With the switch off none of this is read, the answer has no `plan`, and no state is `free`. The administrator's list of shops still shows a free shop as `limited`: its state is computed in SQL from the stored row alone.
+
 ## Security
 
 | Area | Control |
@@ -227,7 +229,7 @@ None of these has been measured. NFR-005, NFR-006, NFR-009 and NFR-011 require a
 |---|---|
 | Telegram Bot API | Webhook with secret; `sendMessage`, `editMessageReplyMarkup`, `answerCallbackQuery`, `sendPhoto`, `sendDocument`, `getFile` for receipts, `setMyCommands` per language, `setChatMenuButton` for the Mini App. Dispatcher limits: 1 a second per chat, 25 a second overall (EVID-032). |
 | Telegram Mini App and Login | Signature validation on the server as described above |
-| SMS | Adapter interface `send(phone, text) -> id` and delivery status callback; provider not chosen; behind the platform switch; texts limited to one segment where possible |
+| SMS | Adapter interface `send(phone, text) -> id` and delivery status callback; provider not chosen; behind the platform switch; with the free plan on, for shops in a paid period only (BR-35); texts limited to one segment where possible |
 | Click, Payme | Adapters implementing each provider's prepare, complete, and cancel calls with signature checks; mapped to subscription periods; behind the platform switch; not exercisable in production without a merchant contract |
 | File store | S3 API to the self-hosted store (ADR-020) |
 | Spreadsheets | Import template and exports in `.xlsx` |
@@ -243,6 +245,7 @@ None of these has been measured. NFR-005, NFR-006, NFR-009 and NFR-011 require a
 | Role lacks permission inside own shop | `FORBIDDEN_ROLE` naming the needed role |
 | Credit limit exceeded | Warning with balance and limit; refused for a seller when the shop forbids it |
 | Subscription limited or suspended | `SUBSCRIPTION_LIMITED` or `SHOP_SUSPENDED` with what is still allowed and how to pay |
+| The free plan holds no more customers | `FREE_PLAN_FULL` with the number it holds (`fields.limit`) and how to subscribe (BR-34) |
 | Domain rule violated | Specific codes: `EXCEEDS_BALANCE`, `ALREADY_REVERSED`, `LINES_ALREADY_ADDED`, `LINES_SUM_MISMATCH`, `LINES_WINDOW_CLOSED`, `DISPUTE_NOT_ALLOWED`, `REQUEST_ALREADY_OPEN`, `LIMIT_REACHED` |
 | Duplicate request or update | Stored result returned; no second effect |
 | Conflict on concurrent change | Retried once by the server; then `CONFLICT` |

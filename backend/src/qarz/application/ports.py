@@ -734,6 +734,12 @@ class TenantSession(Protocol):
         """The stored state, the trial end and the paid-through date; None when the shop has no subscription."""
         ...
 
+    async def active_customers(self, *, lock: bool = False) -> int:
+        """How many customers the shop has that count for the free plan: those whose status is active
+        (BR-33). With `lock`, a second request that is about to add a customer to the same shop waits
+        until this transaction ends, so that two cannot both take the last place."""
+        ...
+
     async def create_customer(
         self, *, customer_id: UUID, display_name: str, name_norm: str, phone: str | None
     ) -> CustomerRecord: ...

@@ -50,6 +50,8 @@ export const SETTING_RULES: Readonly<Record<string, SettingRule>> = {
   sms_on: { kind: "switch" },
   sms_monthly_quota: { kind: "number", low: 0, high: 100_000 },
   online_pay_on: { kind: "switch" },
+  free_plan_on: { kind: "switch" },
+  free_plan_customers: { kind: "number", low: 1, high: 10_000 },
   customer_links_on: { kind: "switch" },
 };
 
