@@ -161,3 +161,122 @@ export function parseUzs(input: string): number | null {
   const result = parseAmount(input);
   return result.ok ? result.amount : null;
 }
+
+/*
+ * ---------- Currencies ----------
+ *
+ * A shop keeps its debts in so'm and, when its owner turned that on, in US dollars beside them: two
+ * books, no exchange rate, and nothing anywhere is a sum of the two. This module is the one place in
+ * the client that knows the currencies: their minor units, how an amount of each is written and read,
+ * and the ranges the server accepts (backend/src/qarz/domain/money.py, `RULES`; keep the two in step).
+ *
+ * So'm are whole so'm. Dollars are whole cents end to end: 12.50 $ is 1250. No amount is ever held or
+ * computed as a fraction, so 0.1 + 0.2 cannot happen here.
+ */
+
+export type Currency = "UZS" | "USD";
+
+/** So'm first: the order the two are offered and shown in. */
+export const CURRENCIES: readonly Currency[] = ["UZS", "USD"];
+
+export type AmountRange = { min: number; max: number };
+
+/** One entry, in the currency's minor unit: 100 to 100 000 000 so'm, 0.01 $ to 10 000.00 $. */
+export const ENTRY_RANGE: Readonly<Record<Currency, AmountRange>> = {
+  UZS: { min: MIN_AMOUNT, max: MAX_AMOUNT },
+  USD: { min: 1, max: 1_000_000 },
+};
+
+/** A dollar credit limit in cents: 1.00 $ to 1 000 000.00 $. The so'm bounds come with the settings. */
+export const USD_LIMIT_RANGE: AmountRange = { min: 100, max: 100_000_000 };
+
+/** The currency of something the API tagged: so'm is the absence of the tag. */
+export function currencyOf(tagged: { currency?: Currency | undefined }): Currency {
+  return tagged.currency ?? "UZS";
+}
+
+const CENTS = 100;
+
+function centsParts(cents: number): { sign: string; dollars: string; rest: string } {
+  if (!Number.isSafeInteger(cents)) {
+    throw new RangeError("a dollar amount must be a whole number of cents");
+  }
+  const size = Math.abs(cents);
+  // Both are exact for a safe integer: no fraction is ever formed.
+  const rest = size % CENTS;
+  return { sign: cents < 0 ? "-" : "", dollars: ((size - rest) / CENTS).toString(), rest: rest.toString().padStart(2, "0") };
+}
+
+/** Cents as dollars with two decimals and thousands apart, without the sign: 125050 is "1 250.50". */
+export function formatUsd(cents: number): string {
+  const { sign, dollars, rest } = centsParts(cents);
+  return `${sign}${dollars.replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0")}.${rest}`;
+}
+
+/** Cents as they are shown everywhere: "1 250.50 $". The spaces do not break, so an amount stays on one line. */
+export function formatDollars(cents: number): string {
+  return `${formatUsd(cents)}\u00a0$`;
+}
+
+/** Cents as an amount field holds them, in the form `parseUsd` reads back: 125050 is "1250.50". */
+export function usdInput(cents: number): string {
+  const { sign, dollars, rest } = centsParts(cents);
+  return `${sign}${dollars}.${rest}`;
+}
+
+/** An amount without its currency word, as a range or a field shows it. */
+export function formatAmount(amount: number, currency: Currency): string {
+  return currency === "USD" ? formatUsd(amount) : formatUzs(amount);
+}
+
+/** What an amount field starts with when it is filled for the person. */
+export function amountInput(amount: number, currency: Currency): string {
+  return currency === "USD" ? usdInput(amount) : formatUzs(amount);
+}
+
+const USD_TEXT = /^(\d+)(?:[.,](\d+))?$/;
+/** Ten digits of dollars are twelve of cents: far above every range, far below an unsafe integer. */
+const MAX_DOLLAR_DIGITS = 10;
+
+/**
+ * Dollars as a person types them into an amount field, read into cents: digits, then at most one "."
+ * or "," with one or two digits after it. "12", "12.5", "12,50" and "0.01" are amounts; a third
+ * decimal is refused, never rounded, and so is everything else: a sign, a "$", a space or a second
+ * separator inside the number, letters, "12." and ".5". `min` and `max` are cents, inclusive.
+ *
+ * The digits are read as text and joined as whole numbers, so no float takes part: "19.99" is 1999.
+ */
+export function parseUsd(input: string, min: number, max: number): AmountResult {
+  if (input.length > MAX_INPUT_LENGTH) {
+    return fail("invalid");
+  }
+  const text = input.replace(OUTER_SPACES, "");
+  if (text === "") {
+    return fail("empty");
+  }
+  const match = USD_TEXT.exec(text);
+  if (!match) {
+    return fail("invalid");
+  }
+  const fraction = match[2] ?? "";
+  if (fraction.length > 2) {
+    return fail("not_whole");
+  }
+  const dollars = (match[1] ?? "").replace(/^0+/, "");
+  if (dollars.length > MAX_DOLLAR_DIGITS) {
+    return fail("too_large");
+  }
+  const amount = Number(dollars === "" ? "0" : dollars) * CENTS + Number(fraction.padEnd(2, "0"));
+  if (amount < min) {
+    return fail("too_small");
+  }
+  if (amount > max) {
+    return fail("too_large");
+  }
+  return { ok: true, amount };
+}
+
+/** What a person typed into an amount field, in the minor unit of the currency the field is in. */
+export function parseMoney(input: string, currency: Currency, range: AmountRange = ENTRY_RANGE[currency]): AmountResult {
+  return currency === "USD" ? parseUsd(input, range.min, range.max) : parseWholeUzs(input, range.min, range.max);
+}

@@ -77,7 +77,13 @@ def add_customer_share_routes(app: FastAPI, service: CustomerShareService, curre
     ) -> dict[str, Any]:
         return await service.set_contact(user_id, shop_id, body.phone, idempotency_key)
 
-    @app.get(PUBLIC_PATH, name=VIEW_SHARED_ACCOUNT.name, response_model=SharedAccount, dependencies=behind_switch)
+    @app.get(
+        PUBLIC_PATH,
+        name=VIEW_SHARED_ACCOUNT.name,
+        response_model=SharedAccount,
+        response_model_exclude_unset=True,
+        dependencies=behind_switch,
+    )
     async def view_shared_account(
         response: Response, token: Annotated[str | None, Header(alias=TOKEN_HEADER)] = None
     ) -> dict[str, Any]:

@@ -15,6 +15,7 @@ import {
 } from "../dateRules";
 import { type CalendarDay, formatCalendarDay, formatDateTime, formatMoney } from "../format";
 import { type Submission, useLoad, useSubmit } from "../hooks";
+import { currencyOf } from "../money";
 import { parseIsoDate } from "../promise";
 import { MyPaymentHistory } from "./MyPaymentHistory";
 import { PaymentNoticeSection } from "./PaymentNoticeSection";
@@ -28,6 +29,7 @@ import {
   Failure,
   formatInstant,
   Loading,
+  Money,
   ReasonForm,
 } from "../workspace/parts";
 
@@ -175,7 +177,7 @@ function EntryRow({
     <li className={entry.reversed ? "row row--struck" : "row"}>
       <p className="row__link">
         <span className="row__name">{t(ENTRY_KIND_LABELS[entry.kind] ?? "entry.kind.other")}</span>
-        <span className="row__amount">{formatMoney(entry.amount, language)}</span>
+        <span className="row__amount">{formatMoney(entry.amount, language, currencyOf(entry))}</span>
       </p>
       <p className="row__meta">{formatInstant(entry.createdAt, language)}</p>
       {entry.lines.length > 0 ? <GoodsList lines={entry.lines} /> : null}
@@ -277,6 +279,7 @@ function Detail({
   onRemoval: (outcome: RemovalOutcome) => void;
 }) {
   const { t, language } = useI18n();
+  const usd = account.usd;
   const [disputing, setDisputing] = useState<string | null>(null);
   const [asking, setAsking] = useState<Asking>(null);
 
@@ -318,7 +321,10 @@ function Detail({
       <p className="row__meta">{t("my.knownAs", { name: account.displayName })}</p>
 
       <p className="balance balance--large">
-        <span>{t("my.balance")}</span> <strong>{formatMoney(account.balance, language)}</strong>
+        <span>{t("my.balance")}</span>{" "}
+        <strong>
+          <Money uzs={account.balance} usd={usd?.balance} />
+        </strong>
       </p>
       {account.overdueAmount > 0 ? (
         <p className="row__warning">{t("overdue.amount", { amount: formatMoney(account.overdueAmount, language) })}</p>
@@ -329,7 +335,23 @@ function Detail({
         </p>
       ) : null}
 
-      <PaymentNoticeSection api={api} balance={account.balance} notices={account.paymentNotices} onSent={reload} />
+      {/* The dollar debt has its own lines: what of it is late, and what of it falls due today. */}
+      {usd && usd.overdueAmount > 0 ? (
+        <p className="row__warning">{t("overdue.amount", { amount: formatMoney(usd.overdueAmount, language, "USD") })}</p>
+      ) : null}
+      {usd && usd.dueToday > 0 ? (
+        <p className="row__meta">
+          <Badge tone="warning">{t("due.todayAmount", { amount: formatMoney(usd.dueToday, language, "USD") })}</Badge>
+        </p>
+      ) : null}
+
+      <PaymentNoticeSection
+        api={api}
+        balance={account.balance}
+        {...(usd ? { usdBalance: usd.balance } : {})}
+        notices={account.paymentNotices}
+        onSent={reload}
+      />
 
       <section aria-labelledby="my-entries-title">
         <h2 id="my-entries-title">{t("customer.entries")}</h2>
@@ -355,7 +377,8 @@ function Detail({
                   dispute.reset();
                 }}
                 onWithdraw={withdraw.submit}
-                later={laterDate(entry, account.balance, now)}
+                // What is still owed in the entry's own currency stands in for what is owed on the entry.
+                later={laterDate(entry, currencyOf(entry) === "USD" ? (usd?.balance ?? 0) : account.balance, now)}
                 now={now}
                 dating={dating === entry.id}
                 dateError={dating === entry.id ? failureOf(later.state) : null}
@@ -379,13 +402,21 @@ function Detail({
         ) : null}
       </section>
 
-      <MyPaymentHistory history={account.paymentHistory} />
+      <MyPaymentHistory history={account.paymentHistory} {...(usd ? { usd: usd.paymentHistory } : {})} />
 
       <section aria-labelledby="my-manage-title">
         <h2 id="my-manage-title">{t("my.manage")}</h2>
         {removal?.waitingForBalance != null ? (
           <p className="notice notice--done" role="status">
-            {t("my.removal.waiting", { amount: formatMoney(removal.waitingForBalance, language) })}
+            {t("my.removal.waiting", {
+              // Both debts wait to be paid, each named by itself; one that is nothing is not named.
+              amount: [
+                removal.waitingForBalance > 0 || !removal.waitingForUsd ? formatMoney(removal.waitingForBalance, language) : null,
+                removal.waitingForUsd ? formatMoney(removal.waitingForUsd, language, "USD") : null,
+              ]
+                .filter((part) => part !== null)
+                .join(" · "),
+            })}
           </p>
         ) : account.removalRequested ? (
           <p className="notice">{t("my.removal.requested")}</p>

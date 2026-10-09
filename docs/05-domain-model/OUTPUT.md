@@ -39,16 +39,17 @@ This model covers release 1 as defined in PRD version 2. Rules that go beyond wh
 
 | Value object | Definition |
 |---|---|
-| Money | Whole UZS, greater than zero for any entry or line total (REQ-N06) |
+| Money | An amount with its currency: whole UZS, or, in a shop that works in dollars, whole US cents. Greater than zero for any entry or line total (REQ-N06). Never a fraction of the smallest unit, never converted (BR-36) |
+| Currency | UZS or USD. UZS wherever none is named, so every record made before dollars existed is so'm (BR-36) |
 | Quantity | A positive number with up to three decimals, with a unit such as piece, kilogram, or litre |
-| Balance | Whole UZS, zero or greater, always derived from entries |
+| Balance | Of one currency: whole UZS or whole US cents, zero or greater, always derived from the entries of that currency. A customer has one per currency and no total of them (BR-37) |
 | Display name | The name staff typed, plus a normalized form for matching (lower-cased, Cyrillic transliterated) |
 | Phone number | Optional, international format |
 | Telegram identity | The account identifier of a user |
 | Language | Uzbek or Russian (REQ-051) |
 | Role | Owner, manager, or seller (REQ-033) |
 | Promised date | A calendar date in Tashkent time |
-| Credit limit | Whole UZS; per customer, with a shop default (REQ-044) |
+| Credit limit | Per customer, with a shop default (REQ-044). Whole UZS for the so'm debt; a separate one in whole US cents for the dollar debt (BR-40) |
 | Payment history indicator | Derived per customer from that shop's records only: share of due credit repaid by its promised date, and longest delay in days (REQ-045). Shown to the shop's staff and, on their own page, to the customer it is about (changed by the founder on 2026-10-08, DEC-066) |
 | Dispute reason, decline reason | Short required free text |
 | Reminder template | One of a fixed set of approved wordings per language |
@@ -107,6 +108,8 @@ The customer account remains the unit of consistency for money: every operation 
 | INV-16 | A subscription's paid-through date moves only through an approved receipt, a confirmed online payment, or a logged administrator action. | REQ-055 |
 | INV-17 | A changed catalog price never alters a saved goods line. | REQ-041 |
 | INV-18 | Every state change records the time and the actor. | REQ-N07, REQ-035 |
+| INV-19 | Amounts of different currencies are never added, compared or netted, and no figure shown or stored is a sum of them. There is no exchange rate anywhere. | Expansion decision 8 (2026-10-09) |
+| INV-20 | A reversal is in the currency of the entry it reverses. | INV-6; decision 8 |
 
 ## Business rules
 
@@ -123,6 +126,19 @@ Recording:
 | BR-7 | Line total is quantity times unit price, rounded to the nearest whole UZS, halves rounded up. | REQ-N06; rounding decided here |
 | BR-8 | A sale that would take the balance above the customer's credit limit produces a warning showing balance and limit. If the shop setting forbids it, a seller cannot proceed and a manager or owner can. | REQ-044 |
 | BR-9 | The payment history indicator counts only credit whose promised date has passed: on-time share is the value covered on or before the promised date, by BR-3 with payment times, divided by the value due. Customers with nothing yet due show no indicator. The customer sees the same figures on their own page (changed by the founder on 2026-10-08, DEC-066). | REQ-045; calculation decided here |
+
+Currencies (expansion module F; decided by the founder on 2026-10-09 as decision 8, "UZS and USD, separate balances, no conversion"; the details marked **decided here** were decided by the agent):
+
+| No. | Rule | Source |
+|---|---|---|
+| BR-36 | Every amount of a customer's debt has a currency: UZS or USD. So'm are whole so'm; dollars are whole cents. One entry is 100 to 100 000 000 so'm, or 0.01 to 10 000.00 dollars. A dollar amount is written with its thousands grouped, two decimals and the sign after it: `1 250.50 $`. | Decision 8; the dollar range and the way of writing decided here |
+| BR-37 | A customer account holds a so'm book and a dollar book in one sequence of entries. BR-2 to BR-5 and BR-9 hold inside each book: a payment reduces the debt of its own currency only and may not exceed it, payments cover the debts of their own currency from the oldest, and overdue status and the payment history indicator are worked out for each currency by itself. INV-3 holds for each balance. | Decision 8 |
+| BR-38 | A shop works in dollars when the platform switch `usd_on` is on and the shop's own setting is on. Both are off by default; only the owner changes the shop's setting. With either off the shop behaves as before dollars existed: nothing is recorded or shown in dollars, and `$` in a chat message is not read as a currency. | Module rules of 2026-10-09 |
+| BR-39 | The shop's setting cannot be turned off while any customer owes dollars; the refusal says so. If the platform switch is turned off while dollars are owed, those debts are kept, are hidden, cannot be acted on, and still count wherever a debt forbids something (INV-13, BR-32); they return when the switch is on again. | Module rules; the second sentence decided here |
+| BR-40 | BR-8 applies per currency: the existing limit and shop default are so'm and are compared with the so'm balance; dollars have a limit and a shop default of their own (1.00 to 1 000 000.00 dollars), compared with the dollar balance. A shop that sets no dollar limit has none. | Recommended in the module brief; decided here |
+| BR-41 | In the chat an amount is dollars only when it carries a dollar mark (`$` before or after, or the word usd, dollar, доллар) and the shop works in dollars; without a mark it is so'm, whatever its size. A dollar amount has at most two decimals. An amount that could be read two ways (`1.250$`, `50$ so'm`) is asked about and never guessed. | REQ-N03 (never guess); decided here |
+| BR-42 | Wherever a figure is shown per customer, per shop or per owner (a balance, what is overdue, a total, a report, an export), the so'm figure and the dollar figure are shown side by side. A reminder is one message per customer stating what is due in each currency; the limits of INV-14 are per customer, not per currency. | INV-19, INV-14 |
+| BR-43 | Not in dollars for now, and refused or left out rather than half done: goods lines on a dollar sale (the catalog's prices and BR-7's rounding are so'm); a spreadsheet import (BR-24 records so'm only); an SMS reminder (it states the so'm amount only, and a customer who owes only dollars and has no Telegram link is listed as not reachable); the product metrics of DOM-009 (dollar events are stored with their currency and left out of the weekly figures). Subscription prices and payments are so'm only. | Decided here |
 
 Customer side:
 
@@ -204,6 +220,7 @@ Outside, with the boundary stated so later stages do not cross it:
 - **No customer identity across shops for shops.** A user may be linked in several shops, but no staff-facing or owner-facing operation exposes or uses that, including an owner's combined totals, which add amounts and never match people (REQ-065).
 - **No money movement for customers.** Payments are notes that money changed hands elsewhere. A payment notice with a receipt is evidence for staff, not a transfer.
 - **No interest, fees, or penalties on debts.** A debt is exactly what was recorded (EVID-017).
+- **No exchange rate and no conversion.** So'm and dollars are separate books. The service never turns one into the other, never values a dollar debt in so'm, and offers no figure that adds them (INV-19).
 - **No stock.** The catalog holds names, units, and prices only; nothing counts quantities on hand.
 - **Subscription money is outside the ledger.** Receipts and paid-through dates never touch customer accounts.
 - **The reliability indicator stays inside the shop.** It is derived from one shop's records and shown only to its staff.

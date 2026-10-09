@@ -6,6 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from qarz.application import idempotency
+from qarz.application.currencies import USD, dollars_on, limit_hint
 from qarz.application.customers import require_viewable, require_writable
 from qarz.application.errors import AppError, ValidationFailed
 from qarz.application.operations import operation
@@ -13,6 +14,7 @@ from qarz.application.ports import CreditSettings, Storage
 from qarz.application.shops import require_member
 from qarz.domain.access import Capability
 from qarz.domain.credit import MAX_LIMIT, MIN_LIMIT, valid_limit
+from qarz.domain.money import RULES
 from qarz.domain.promise import tashkent_date
 
 READ_CREDIT_SETTINGS = operation("shop.credit.read", Capability.RECORD)
@@ -27,12 +29,19 @@ class LimitReached(AppError):
     code = "LIMIT_REACHED"
 
 
-def _body(settings: CreditSettings) -> dict[str, Any]:
-    return {
+def _body(settings: CreditSettings, dollars: bool = False) -> dict[str, Any]:
+    """The settings as the API gives them. The dollar limit is a setting of its own, in cents (BR-8)."""
+    body: dict[str, Any] = {
         "default_credit_limit": settings.default_limit,
         "sellers_may_exceed": settings.sellers_may_exceed,
         "limit_bounds": [MIN_LIMIT, MAX_LIMIT],
     }
+    if dollars:
+        body["usd"] = {
+            "default_credit_limit": settings.default_limit_usd,
+            "limit_bounds": [RULES[USD].min_limit, RULES[USD].max_limit],
+        }
+    return body
 
 
 class CreditService:
@@ -47,7 +56,7 @@ class CreditService:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, READ_CREDIT_SETTINGS)
             await require_viewable(session, actor, self._today())
-            return _body(await session.credit_settings())
+            return _body(await session.credit_settings(), await dollars_on(session))
 
     async def update(
         self,
@@ -57,13 +66,24 @@ class CreditService:
         default_credit_limit: Any,
         sellers_may_exceed: bool | None,
         request_key: str | None,
+        default_credit_limit_usd: Any = UNSET,
     ) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, UPDATE_CREDIT_SETTINGS)
             key = idempotency.validate_key(request_key)
             fields: dict[str, str] = {}
-            if default_credit_limit is UNSET and sellers_may_exceed is None:
+            dollars = await dollars_on(session)
+            if default_credit_limit_usd is not UNSET and not dollars:
+                # As any field the request model does not know: the shop has no dollar limit to set.
+                raise ValidationFailed({"default_credit_limit_usd": "unknown field"})
+            if default_credit_limit is UNSET and sellers_may_exceed is None and default_credit_limit_usd is UNSET:
                 fields["_"] = "nothing to change"
+            if (
+                default_credit_limit_usd is not UNSET
+                and default_credit_limit_usd is not None
+                and not valid_limit(default_credit_limit_usd, USD)
+            ):
+                fields["default_credit_limit_usd"] = limit_hint(USD)
             if (
                 default_credit_limit is not UNSET
                 and default_credit_limit is not None
@@ -79,6 +99,8 @@ class CreditService:
                     set_default=default_credit_limit is not UNSET,
                     default_limit=None if default_credit_limit is UNSET else default_credit_limit,
                     sellers_may_exceed=sellers_may_exceed,
+                    set_default_usd=default_credit_limit_usd is not UNSET,
+                    default_limit_usd=None if default_credit_limit_usd is UNSET else default_credit_limit_usd,
                 )
                 await session.record_activity(
                     membership_id=actor.membership_id,
@@ -86,7 +108,7 @@ class CreditService:
                     subject_type="shop",
                     subject_id=shop_id,
                 )
-                return _body(await session.credit_settings())
+                return _body(await session.credit_settings(), dollars)
 
             return await idempotency.run_once(
                 session,
@@ -97,6 +119,9 @@ class CreditService:
                     "default_set": default_credit_limit is not UNSET,
                     "default": None if default_credit_limit is UNSET else default_credit_limit,
                     "sellers_may_exceed": sellers_may_exceed,
+                    # Only a request that names the dollar limit carries the key: every other request
+                    # keeps the fingerprint it had before dollars existed.
+                    **({} if default_credit_limit_usd is UNSET else {"default_usd": default_credit_limit_usd}),
                 },
                 action=apply,
             )

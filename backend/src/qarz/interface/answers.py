@@ -9,6 +9,13 @@ the order the services write them, which keeps the body the same byte for byte
 
 Only reads carry a model. A write may answer with a result stored by an earlier version of the code
 (ADR-006), which a model declared today could refuse.
+
+Dollars. A shop that works in US dollars beside so'm gets further fields: `usd` objects holding, in
+cents, the same figures as the so'm ones beside them, and `currency` on an entry or a notice that is in
+dollars. These are the only fields with a default, and a route with such a model leaves an unset field
+out of the answer (`response_model_exclude_unset`): the answer of a shop without dollars has none of
+them, and is byte for byte what it was before dollars existed. No field anywhere is a sum of so'm and
+dollars.
 """
 
 from pydantic import BaseModel, ConfigDict
@@ -16,6 +23,33 @@ from pydantic import BaseModel, ConfigDict
 
 class Answer(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class Overdue(Answer):
+    amount: int
+    since: str | None
+    days: int
+    due_today: int
+
+
+class PaymentHistory(Answer):
+    on_time_percent: int
+    on_time_amount: int
+    due_amount: int
+    longest_delay_days: int
+
+
+class CustomerDollars(Answer):
+    """What a customer owes in US dollars: whole cents, beside the so'm figures and never added to them."""
+
+    # Whole cents the customer owes.
+    balance: int
+    # Whole cents; null when the shop's default dollar limit applies.
+    credit_limit: int | None
+    # In the list of debtors and on the customer's own page: what of the dollar debt is overdue.
+    overdue: Overdue | None = None
+    # On the customer's own page: the payment history of the dollar debt; null while none has fallen due.
+    payment_history: PaymentHistory | None = None
 
 
 class Customer(Answer):
@@ -28,18 +62,13 @@ class Customer(Answer):
     credit_limit: int | None
     # Whole UZS the customer owes.
     balance: int
+    # Only in a shop that works in dollars.
+    usd: CustomerDollars | None = None
 
 
 class CustomerPage(Answer):
     items: list[Customer]
     next_cursor: str | None
-
-
-class Overdue(Answer):
-    amount: int
-    since: str | None
-    days: int
-    due_today: int
 
 
 class Debtor(Customer):
@@ -49,13 +78,6 @@ class Debtor(Customer):
 class DebtorPage(Answer):
     items: list[Debtor]
     next_cursor: str | None
-
-
-class PaymentHistory(Answer):
-    on_time_percent: int
-    on_time_amount: int
-    due_amount: int
-    longest_delay_days: int
 
 
 class EntryLine(Answer):
@@ -103,6 +125,8 @@ class Entry(Answer):
     lines: list[EntryLine]
     promises: list[Promise]
     date_request: DateRequest | None
+    # "USD" on an entry in dollars, whose amount is then whole cents. Absent: so'm.
+    currency: str | None = None
 
 
 class StaffPaymentNotice(Answer):
@@ -116,6 +140,8 @@ class StaffPaymentNotice(Answer):
     created_at: str
     closed_at: str | None
     expires_at: str
+    # "USD" on a notice of dollars paid, whose amounts are then whole cents. Absent: so'm.
+    currency: str | None = None
     receipt_seen_before: bool
 
 
@@ -132,11 +158,16 @@ class OverviewOverdue(Answer):
     customers: int
 
 
-class Overview(Answer):
+class OverviewFigures(Answer):
     outstanding: int
     debtors: int
     overdue: OverviewOverdue
     due_today: int
+
+
+class Overview(OverviewFigures):
+    # Only in a shop that works in dollars: the same figures of the dollar debts, in cents.
+    usd: OverviewFigures | None = None
 
 
 class Shop(Answer):
@@ -144,6 +175,8 @@ class Shop(Answer):
     name: str
     lang: str
     default_promise_days: int
+    # Only while the platform offers dollars: whether this shop also works in them.
+    usd_on: bool | None = None
 
 
 class MyShop(Answer):
@@ -192,6 +225,15 @@ class SharedEntry(Answer):
     promised_date: str | None
     reversed: bool
     lines: list[SharedLine]
+    # "USD" on an entry in dollars, whose amount is then whole cents. Absent: so'm.
+    currency: str | None = None
+
+
+class SharedDollars(Answer):
+    """What the customer owes in US dollars, in whole cents: beside the so'm figures, never added to them."""
+
+    balance: int
+    overdue: SharedOverdue
 
 
 class SharedAccount(Answer):
@@ -204,6 +246,8 @@ class SharedAccount(Answer):
     lang: str
     balance: int
     overdue: SharedOverdue
+    # Only for a shop that works in dollars.
+    usd: SharedDollars | None = None
     expires_at: str
     entries: list[SharedEntry]
     entries_total: int

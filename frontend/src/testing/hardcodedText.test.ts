@@ -85,6 +85,12 @@ describe("findHardcodedText", () => {
     expect(reasons('export const A = () => <th scope="col">Mijoz</th>;')).toEqual(["text written in JSX"]);
   });
 
+  it("accepts a currency code, which chooses a format, and still rejects a code that would be shown", () => {
+    expect(reasons('export const A = () => <Lines currency="USD" />;')).toEqual([]);
+    expect(reasons('export const A = () => <Lines currency="USD" title="USD" />;')).toEqual(['text in the "title" attribute']);
+    expect(reasons('export const A = () => <p currency="USD">USD</p>;')).toEqual(["text written in JSX"]);
+  });
+
   it("does not see text that reaches JSX through a variable (documented limit)", () => {
     expect(reasons('const label = "Mijozlar";\nexport const A = () => <p>{label}</p>;')).toEqual([]);
   });

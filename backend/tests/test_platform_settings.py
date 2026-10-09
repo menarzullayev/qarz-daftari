@@ -37,6 +37,7 @@ def test_the_settings_are_the_ones_the_administrator_controls() -> None:
         "free_plan_customers",
         "permissions_on",
         "customer_links_on",
+        "usd_on",
     }
     assert "card_number" not in SETTINGS, "the single card became the list"
 
@@ -55,6 +56,7 @@ def test_defaults_when_nothing_is_stored() -> None:
         "free_plan_customers": 30,
         "permissions_on": False,
         "customer_links_on": False,
+        "usd_on": False,  # dollars beside so'm: off until the administrator turns them on
     }
 
 
@@ -99,6 +101,7 @@ def test_price_card_and_switches_need_a_code() -> None:
         "customer_links_on",
         "review_group",
         "free_plan_on",
+        "usd_on",
     }
     assert not needs_code("trial_days")
     assert not needs_code("sms_monthly_quota")

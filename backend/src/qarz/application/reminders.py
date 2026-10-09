@@ -5,13 +5,14 @@ debt stays overdue; a manager or owner may send one by hand, once a day per cust
 the shop and the amount and nothing else, in a fixed polite wording the shop picks from.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
 from qarz.application import idempotency
-from qarz.application.chat_texts import CATALOGS, money, say
+from qarz.application.chat_texts import CATALOGS, both, money, say
+from qarz.application.currencies import USD, UZS, dollars_on, shop_currencies
 from qarz.application.customers import (
     effective_subscription,
     free_plan_customers,
@@ -85,8 +86,31 @@ async def sms_allowance(session: TenantSession, today: date) -> tuple[bool, int,
 def reminder_text(lang: str, template: int, plan: ReminderPlan, channel: Channel, *, shop: str, name: str) -> str:
     """The fixed wording (REQ-024). SMS uses its own short form, whatever template the shop chose."""
     language = lang if lang in CATALOGS else "uz"
-    key = f"sms_{plan.kind.value}" if channel is Channel.SMS else f"r{template}_{plan.kind.value}"
-    return say(language, key, shop=shop, name=name, amount=money(language, plan.amount))
+    if channel is Channel.SMS:
+        # So'm only: see `qarz.domain.reminders.choose_channel`.
+        return say(language, f"sms_{plan.kind.value}", shop=shop, name=name, amount=money(language, plan.amount))
+    return say(
+        language,
+        f"r{template}_{plan.kind.value}",
+        shop=shop,
+        name=name,
+        amount=both(language, plan.amount, plan.amount_usd),
+    )
+
+
+def _by_sms(candidate: ReminderCandidate, plan: ReminderPlan) -> bool:
+    """Whether an SMS could carry this reminder: there is a number, and a so'm amount to state."""
+    return bool(candidate.phone) and plan.amount > 0
+
+
+def _statuses(
+    entries: Sequence[ledger.Entry], today: date, dollars: bool
+) -> tuple[ledger.OverdueStatus, ledger.OverdueStatus | None]:
+    """What is due in the so'm book and, for a shop that works in dollars, in the dollar book."""
+    return (
+        ledger.overdue(ledger.in_currency(entries, UZS), today),
+        ledger.overdue(ledger.in_currency(entries, USD), today) if dollars else None,
+    )
 
 
 def _settings_body(settings: ReminderSettings) -> dict[str, Any]:
@@ -194,7 +218,7 @@ class ReminderService:
         """Store the reminder and queue its message. None when the customer cannot be reached (BR-18)."""
         channel = choose_channel(
             telegram_reachable=candidate.tg_id is not None,
-            has_phone=bool(candidate.phone),
+            has_phone=_by_sms(candidate, plan),
             sms_on_platform=sms[0],
             sms_on_shop=settings.sms_on,
             sms_quota_left=sms[1],
@@ -202,7 +226,13 @@ class ReminderService:
         if channel is None:
             return None
         if not await session.add_reminder(
-            customer_id=candidate.customer_id, kind=kind, channel=channel.value, amount=plan.amount, sent_on=today
+            customer_id=candidate.customer_id,
+            kind=kind,
+            channel=channel.value,
+            amount=plan.amount,
+            # What the message stated: an SMS states no dollars.
+            amount_usd=0 if channel is Channel.SMS else plan.amount_usd,
+            sent_on=today,
         ):
             raise LimitReached()
         # BR-19: the customer's language if known, else the shop's.
@@ -234,8 +264,9 @@ class ReminderService:
                 # BR-17 holds for a reminder sent by hand as well.
                 if not settings.on or candidate.reminders_off:
                     raise RemindersOff()
+                dollars = await dollars_on(session)
                 accounts = await session.entries_of_many([customer_id])
-                plan = plan_manual(ledger.overdue(accounts[customer_id], today))
+                plan = plan_manual(*_statuses(accounts[customer_id], today, dollars))
                 if plan is None:
                     raise ReminderNotDue()
                 channel = await self._send(
@@ -255,7 +286,10 @@ class ReminderService:
                     subject_type="customer",
                     subject_id=customer_id,
                 )
-                return {"sent": True, "channel": channel.value, "amount": plan.amount}
+                body: dict[str, Any] = {"sent": True, "channel": channel.value, "amount": plan.amount}
+                if dollars:
+                    body["usd"] = {"amount": 0 if channel is Channel.SMS else plan.amount_usd}
+                return body
 
             return await idempotency.run_once(
                 session,
@@ -276,29 +310,34 @@ class ReminderService:
             if settings is None:
                 raise NotFound()
             sms = await self._sms_left(session, today)
+            dollars = await dollars_on(session)
+            currencies = await shop_currencies(session)
             items: list[dict[str, Any]] = []
             after: UUID | None = None
             while True:
-                batch = await session.reminder_candidates(after=after, limit=BATCH)
+                batch = await session.reminder_candidates(after=after, limit=BATCH, currencies=currencies)
                 if not batch:
                     break
                 accounts = await session.entries_of_many([candidate.customer_id for candidate in batch])
                 for candidate in batch:
-                    plan = plan_manual(ledger.overdue(accounts[candidate.customer_id], today))
+                    plan = plan_manual(*_statuses(accounts[candidate.customer_id], today, dollars))
+                    if plan is None:
+                        continue
                     reachable = choose_channel(
                         telegram_reachable=candidate.tg_id is not None,
-                        has_phone=bool(candidate.phone),
+                        has_phone=_by_sms(candidate, plan),
                         sms_on_platform=sms[0],
                         sms_on_shop=settings.sms_on,
                         sms_quota_left=sms[1],
                     )
-                    if plan is not None and reachable is None:
+                    if reachable is None:
                         items.append(
                             {
                                 "customer_id": str(candidate.customer_id),
                                 "display_name": candidate.display_name,
                                 "phone": candidate.phone,
                                 "amount": plan.amount,
+                                **({"usd": {"amount": plan.amount_usd}} if dollars else {}),
                             }
                         )
                 after = batch[-1].customer_id
@@ -324,9 +363,11 @@ class ReminderService:
             if settings is None or not settings.on or await effective_subscription(session, today) == "suspended":
                 return 0
             sms_on, sms_left = await self._sms_left(session, today)
+            dollars = await dollars_on(session)
+            currencies = await shop_currencies(session)
             after: UUID | None = None
             while True:
-                batch = await session.reminder_candidates(after=after, limit=BATCH)
+                batch = await session.reminder_candidates(after=after, limit=BATCH, currencies=currencies)
                 if not batch:
                     break
                 ids = [candidate.customer_id for candidate in batch]
@@ -335,8 +376,8 @@ class ReminderService:
                 for candidate in batch:
                     if candidate.reminders_off:
                         continue
-                    status = ledger.overdue(accounts[candidate.customer_id], today)
-                    plan = plan_automatic(status, last.get(candidate.customer_id), today)
+                    status, in_dollars = _statuses(accounts[candidate.customer_id], today, dollars)
+                    plan = plan_automatic(status, last.get(candidate.customer_id), today, in_dollars)
                     if plan is None:
                         continue
                     channel = await self._send(

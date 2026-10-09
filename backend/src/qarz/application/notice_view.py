@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from qarz.application.currencies import UZS, dollars_on, tag
 from qarz.application.ports import PaymentNoticeRecord, TenantSession
 from qarz.domain.payment_notices import NOTICE_LIFETIME, effective_status
 
@@ -12,6 +13,10 @@ NOTICES_SHOWN = 20
 
 
 def notice_body(record: PaymentNoticeRecord, now: datetime) -> dict[str, Any]:
+    return tag(_notice_fields(record, now), record.currency)
+
+
+def _notice_fields(record: PaymentNoticeRecord, now: datetime) -> dict[str, Any]:
     return {
         "id": str(record.notice_id),
         # A notice nobody decided in fourteen days reads as expired even before the hourly job marks it.
@@ -35,4 +40,9 @@ def staff_notice_body(record: PaymentNoticeRecord, now: datetime) -> dict[str, A
 async def open_notices_of(session: TenantSession, customer_id: UUID, now: datetime) -> list[dict[str, Any]]:
     """The customer's notices still waiting for the shop, oldest first."""
     waiting = await session.open_payment_notices(now - NOTICE_LIFETIME)
-    return [staff_notice_body(record, now) for record, _ in waiting if record.customer_id == customer_id]
+    dollars = await dollars_on(session)
+    return [
+        staff_notice_body(record, now)
+        for record, _ in waiting
+        if record.customer_id == customer_id and (dollars or record.currency is UZS)
+    ]

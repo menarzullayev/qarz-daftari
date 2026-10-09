@@ -125,6 +125,43 @@ Each such function may be executed by exactly the role of the part that calls it
 
 **Retention.** Processed update identifiers 14 days; sent outbox messages 30 days; request keys 7 days; customer payment-notice receipts 90 days after the notice closes; subscription receipts 3 years, a period chosen by the agent pending advice; import files 30 days; logs 30 days.
 
+## Currencies
+
+Expansion module F (decision 8 of 2026-10-09; business rules BR-36 to BR-43). UZS and USD, separate balances, no conversion and no exchange rate anywhere. The cash book, the stock and the suppliers build on what this section fixes.
+
+**The abstraction** is `qarz.domain.money`, whose module docstring is the contract:
+
+- An amount is a whole number of the currency's minor unit in a Python `int` and a PostgreSQL `bigint`: whole so'm (exponent 0), whole cents (exponent 2). No float, no decimal column, no rounding, because nothing is divided or converted.
+- `Currency` (`UZS`, `USD`) travels with every amount. `RULES[currency]` holds what is fixed about it: exponent, the range of one entry, the range of a credit limit, the unit written after an amount in each language. A further currency is a row there, a value in the `currency` check constraints, and its texts.
+- `Money(amount, currency)` refuses to add or subtract another currency (`CurrencyMismatch`); `totals()` gives one sum per currency. `to_minor()` reads what a person typed into an amount field and refuses what it cannot represent exactly; `plain()` writes it back for a form or a spreadsheet cell; `format_money()` writes it for a person.
+- The ledger's calculations (`qarz.domain.ledger`) take the entries of one currency: `in_currency(entries, currency)` picks a book out of an account, and a list that mixes currencies raises `LedgerIntegrityError`. A caller that forgets to pick a book fails; it cannot add so'm to dollars.
+
+| | UZS | USD |
+|---|---|---|
+| Stored as | whole so'm | whole cents |
+| One entry | 100 to 100 000 000 | 1 to 1 000 000 (0.01 $ to 10 000.00 $) |
+| Credit limit | 1 000 to 10 000 000 000 | 100 to 100 000 000 (1.00 $ to 1 000 000.00 $) |
+| Written | `45 000 so'm`, `45 000 сум` | `1 250.50 $` (always two decimals) |
+
+**Who works in dollars** is `qarz.application.currencies`: the platform setting `usd_on` (a switch, off by default, asks for the second factor) and the shop's own `shop.usd_on` (off by default, changed with `PATCH /shops/{id}` by the owner). `require_currency` is the one check of a currency named in a request: an unknown code and dollars in a shop without them are the same `VALIDATION` error on `currency`. A writer of a dollar amount reads the shop's setting `FOR SHARE` and turning it off updates the row first, so the two cannot pass each other; turning it off while `open_debt` holds a dollar row is refused with `USD_BALANCE_OPEN` (409).
+
+**How an answer carries dollars**, so that the answer of a shop without them is byte for byte what it was:
+
+- a so'm amount is written as before, with no currency beside it;
+- an entry, a payment notice, a dispute or a date request in dollars has `"currency": "USD"` beside its amount, which is then cents;
+- where an answer has figures per customer or per shop, the dollar figures of the same names are in a `usd` object beside them, present only while the shop works in dollars: `customer.usd {balance, credit_limit}` (with `overdue` in the debtors list and on the customer's page, and `payment_history` on the page), `overview.usd`, `credit-settings.usd {default_credit_limit, limit_bounds}`, the reports' `usd` (every money section again), `me/accounts[].usd`, `me/owner-totals` items and total, reminders' `usd {amount}`, and the customer's read-only link (`GET /customer-share`: `usd {balance, overdue}`, with `currency` on its dollar entries);
+- `GET /shops/{id}` has `usd_on` only while the platform switch is on.
+
+The typed response models (`interface/answers.py`) declare these as their only fields with a default, and their routes set `response_model_exclude_unset`, so a default is never written into an answer (`tests/test_api_description.py`).
+
+**Requests.** `POST …/entries` takes `currency` (`"UZS"` by default); `PATCH …/customers/{id}` takes `credit_limit_usd`; `PATCH …/credit-settings` takes `default_credit_limit_usd`; `GET …/overview/debtors` takes `currency` (whose debts are listed, largest first; every item shows both balances); `POST /me/accounts/{link}/payment-notices` takes `currency` beside `amount`. A request that names no currency keeps the idempotency fingerprint it had.
+
+**Chat.** `parse_entry(text, dollars=…)` reads `Ali 50$`, `Ali $50`, `Ali 50 usd`, `Ali 50.5$`, `Ali -20$`, `Ali 20$ berdi` as dollars when the shop works in them; without a dollar mark an amount is so'm (`Ali 45000`). `1.250$`, `50$ so'm` and the like are `AMBIGUOUS` and are asked about. With `dollars=False` the parser is the version 1 grammar unchanged. `/qarzim` and every message state each currency's amount by itself (`45 000 so'm va 12.50 $`).
+
+**Schema (migration 0041).** `currency text NOT NULL DEFAULT 'UZS' CHECK (currency IN ('UZS','USD'))` on `ledger_entry`, `open_debt`, `payment_notice` and `measure.event`; `shop.usd_on`, `shop.default_credit_limit_usd`, `customer.credit_limit_usd`; `reminder.amount_usd` with a check that one of the two amounts is above zero; a trigger that refuses a reversal in another currency than its target's (INV-20). `open_debts_of`, `refresh_open_debts` and `open_debt_mismatches` allocate per `(customer, currency)`; `my_accounts` returns the so'm balance, the dollar balance and the shop's setting. Row-level security and every role's rights on every table are unchanged (the new function is a trigger's and is granted to nobody). No index is added: a customer's rows of one currency are found through `open_debt_customer` and the ledger's `(customer_id, seq)` index and filtered by currency, which `tests/db/test_usd_schema.py` holds to. Every SQL statement of the application that adds amounts binds one `:currency`.
+
+**Not in dollars yet** (BR-43), each refused or left out and tested as such: goods lines on a dollar sale (`VALIDATION`, `not available in dollars yet`); spreadsheet import (so'm only; a currency column is an unknown column); SMS reminders (state so'm only); the weekly product metrics (so'm events only); subscription prices and payments.
+
 ## Events
 
 Domain events are raised and handled inside the command's transaction; effects on the outside world go through the outbox (ADR-007).

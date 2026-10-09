@@ -4,9 +4,9 @@ import { useI18n } from "../../i18n/I18nProvider";
 import type { CreditSettings, CreditSettingsPatch } from "../api";
 import { formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
-import { formatUzs } from "../money";
+import { amountInput, type Currency } from "../money";
 import { useMay, useWorkspace } from "./context";
-import { limitMessage } from "./CreditLimitSection";
+import { limitMessage, limitRange } from "./CreditLimitSection";
 import { parseLimit } from "./creditRules";
 import { errorText, Failure, FieldError, Loading } from "./parts";
 
@@ -22,6 +22,16 @@ function ReadOnly({ settings }: { settings: CreditSettings }) {
             ? t("credit.settings.default.none")
             : formatMoney(settings.defaultLimit, language)}
         </dd>
+        {settings.usd === undefined ? null : (
+          <>
+            <dt>{t("credit.settings.usd.default.label")}</dt>
+            <dd>
+              {settings.usd.defaultLimit === null
+                ? t("credit.settings.default.none")
+                : formatMoney(settings.usd.defaultLimit, language, "USD")}
+            </dd>
+          </>
+        )}
         <dt>{t("credit.settings.sellers.label")}</dt>
         <dd>{t(settings.sellersMayExceed ? "credit.settings.sellers.yes" : "credit.settings.sellers.no")}</dd>
       </dl>
@@ -29,7 +39,7 @@ function ReadOnly({ settings }: { settings: CreditSettings }) {
   );
 }
 
-const limitText = (limit: number | null) => (limit === null ? "" : formatUzs(limit));
+const limitText = (limit: number | null, currency: Currency = "UZS") => (limit === null ? "" : amountInput(limit, currency));
 
 function CreditForm({ settings }: { settings: CreditSettings }) {
   const { api } = useWorkspace();
@@ -39,10 +49,14 @@ function CreditForm({ settings }: { settings: CreditSettings }) {
   const [text, setText] = useState(limitText(settings.defaultLimit));
   const [sellersMayExceed, setSellersMayExceed] = useState(settings.sellersMayExceed);
   const [problem, setProblem] = useState<string | null>(null);
+  // The default dollar limit: a field of its own, there only in a shop that works in dollars.
+  const [usdText, setUsdText] = useState(limitText(settings.usd?.defaultLimit ?? null, "USD"));
+  const [usdProblem, setUsdProblem] = useState<string | null>(null);
   const { state, submit, reset } = useSubmit((patch: CreditSettingsPatch, key) =>
     api.updateCreditSettings(patch, key).then((updated) => {
       setSaved(updated);
       setText(limitText(updated.defaultLimit));
+      setUsdText(limitText(updated.usd?.defaultLimit ?? null, "USD"));
       setSellersMayExceed(updated.sellersMayExceed);
     }),
   );
@@ -50,10 +64,17 @@ function CreditForm({ settings }: { settings: CreditSettings }) {
   // An empty field means "no default limit"; anything else must be a limit the server accepts.
   const empty = text.trim() === "";
   const parsed = parseLimit(text, saved.bounds);
+  const usd = saved.usd;
+  const usdEmpty = usdText.trim() === "";
+  const usdParsed = usd ? parseLimit(usdText, usd.bounds, "USD") : null;
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
-    if (!empty && !parsed.ok) {
-      setProblem(limitMessage(parsed.problem, saved.bounds, t));
+    const wrong = !empty && !parsed.ok ? limitMessage(parsed.problem, saved.bounds, t) : null;
+    const usdWrong =
+      usd && usdParsed && !usdEmpty && !usdParsed.ok ? limitMessage(usdParsed.problem, usd.bounds, t, "USD") : null;
+    setProblem(wrong);
+    setUsdProblem(usdWrong);
+    if (wrong !== null || usdWrong !== null) {
       return;
     }
     const defaultLimit = empty || !parsed.ok ? null : parsed.amount;
@@ -61,6 +82,12 @@ function CreditForm({ settings }: { settings: CreditSettings }) {
     const patch: CreditSettingsPatch = {};
     if (defaultLimit !== saved.defaultLimit) {
       patch.defaultLimit = defaultLimit;
+    }
+    if (usd && usdParsed) {
+      const defaultLimitUsd = usdEmpty || !usdParsed.ok ? null : usdParsed.amount;
+      if (defaultLimitUsd !== usd.defaultLimit) {
+        patch.defaultLimitUsd = defaultLimitUsd;
+      }
     }
     if (sellersMayExceed !== saved.sellersMayExceed) {
       patch.sellersMayExceed = sellersMayExceed;
@@ -76,6 +103,11 @@ function CreditForm({ settings }: { settings: CreditSettings }) {
       ? limitMessage("too_small", saved.bounds, t)
       : null;
   const shown = problem ?? refused;
+  const usdShown =
+    usdProblem ??
+    (usd && failure?.code === "VALIDATION" && "default_credit_limit_usd" in failure.fields
+      ? limitMessage("too_small", usd.bounds, t, "USD")
+      : null);
   const pending = state.status === "pending";
   const touched = () => {
     if (state.status === "done") {
@@ -116,6 +148,29 @@ function CreditForm({ settings }: { settings: CreditSettings }) {
         </p>
         <FieldError id="credit-default-error" message={shown} />
       </div>
+      {usd && usdParsed ? (
+        <div className="field">
+          <label htmlFor="credit-default-usd">{t("credit.settings.usd.default")}</label>
+          <input
+            id="credit-default-usd"
+            className="input input--amount"
+            inputMode="decimal"
+            autoComplete="off"
+            value={usdText}
+            aria-invalid={usdShown !== null}
+            aria-describedby="credit-default-usd-error credit-default-usd-hint"
+            onChange={(event) => {
+              setUsdText(event.target.value);
+              setUsdProblem(null);
+              touched();
+            }}
+          />
+          <p className="field__hint" id="credit-default-usd-hint">
+            {usdParsed.ok ? formatMoney(usdParsed.amount, language, "USD") : limitRange(usd.bounds, t, "USD")}
+          </p>
+          <FieldError id="credit-default-usd-error" message={usdShown} />
+        </div>
+      ) : null}
       <label className="choice">
         <input
           type="checkbox"

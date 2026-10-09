@@ -2,13 +2,12 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Customer } from "../api";
-import { formatMoney } from "../format";
 import { usePagedList } from "../hooks";
 import { PlusIcon, SearchIcon, UsersIcon } from "../icons";
 import { useDesktop } from "../layout";
 import { Link } from "../router";
 import { useWorkspace } from "./context";
-import { Avatar, Empty, Failure, Loading, LoadMore } from "./parts";
+import { Avatar, Empty, Failure, Loading, LoadMore, Money } from "./parts";
 
 /** How long typing must pause before the list is searched again. */
 export const SEARCH_DELAY_MS = 300;
@@ -29,15 +28,21 @@ type CustomersScreenProps = {
   selectedId?: string;
 };
 
+/** Whether there is anything to pay: a debt in so'm or, in a shop that works in dollars, in dollars. */
+export function owesAnything(customer: Pick<Customer, "balance" | "usd">): boolean {
+  return customer.balance > 0 || (customer.usd?.balance ?? 0) > 0;
+}
+
 function Row({ customer, pick, selectedId }: { customer: Customer; pick: boolean; selectedId: string | undefined }) {
-  const { t, language } = useI18n();
+  const { t } = useI18n();
+  const owed = <Money uzs={customer.balance} usd={customer.usd?.balance} />;
   if (!pick) {
     return (
       <li className="row row--person">
         <Link to={`/customers/${customer.id}`} className="row__link" current={customer.id === selectedId}>
           <Avatar name={customer.displayName} />
           <span className="row__name">{customer.displayName}</span>
-          <span className="row__amount">{formatMoney(customer.balance, language)}</span>
+          <span className="row__amount">{owed}</span>
         </Link>
         {customer.phone ? <p className="row__meta">{customer.phone}</p> : null}
       </li>
@@ -48,14 +53,14 @@ function Row({ customer, pick, selectedId }: { customer: Customer; pick: boolean
       <p className="row__link">
         <Avatar name={customer.displayName} />
         <span className="row__name">{customer.displayName}</span>
-        <span className="row__amount">{formatMoney(customer.balance, language)}</span>
+        <span className="row__amount">{owed}</span>
       </p>
       <p className="actions">
         <Link to={`/customers/${customer.id}/credit`} className="button button--primary">
           {t("entry.credit.short")}
         </Link>
         {/* A payment cannot exceed the debt, so there is nothing to pay when nothing is owed. */}
-        {customer.balance > 0 ? (
+        {owesAnything(customer) ? (
           <Link to={`/customers/${customer.id}/payment`} className="button">
             {t("entry.payment.short")}
           </Link>

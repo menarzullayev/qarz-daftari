@@ -5,9 +5,9 @@ import type { MessageKey } from "../../i18n/types";
 import { type AccountApi, type ApiError, type PaymentNotice, RECEIPT_MAX_BYTES, RECEIPT_TYPES } from "../api";
 import { formatMoney } from "../format";
 import { useSubmit } from "../hooks";
-import { parseAmount } from "../money";
+import { type Currency, currencyOf, parseMoney } from "../money";
 import { amountMessage } from "../workspace/EntryScreen";
-import { errorText, FieldError, formatInstant } from "../workspace/parts";
+import { CurrencyToggle, errorText, FieldError, formatInstant } from "../workspace/parts";
 
 /** How many of a customer's notices may wait for the shop at once (backend/src/qarz/domain/payment_notices.py). */
 export const MAX_OPEN_NOTICES = 3;
@@ -46,7 +46,7 @@ export function receiptProblem(file: { size: number; type: string }): ReceiptPro
 type Refused = { amount: string | null; receipt: string | null; detail: string | null };
 
 /** Places a server refusal next to the field it is about, in the customer's words. */
-function refusedFields(error: ApiError | null, t: Translate): Refused {
+function refusedFields(error: ApiError | null, t: Translate, currency: Currency): Refused {
   const nothing: Refused = { amount: null, receipt: null, detail: null };
   if (error === null) {
     return nothing;
@@ -67,7 +67,7 @@ function refusedFields(error: ApiError | null, t: Translate): Refused {
       const receipt = error.fields["receipt"];
       const known = receipt !== undefined && receipt in RECEIPT_TEXTS ? receiptText(receipt as ReceiptProblem, t) : null;
       return {
-        amount: "amount" in error.fields ? amountMessage("invalid", t) : null,
+        amount: "amount" in error.fields ? amountMessage("invalid", t, currency) : null,
         // A word about the receipt this client does not know is still about the receipt.
         receipt: known ?? (receipt !== undefined ? errorText(error, t) : null),
         detail: null,
@@ -80,41 +80,54 @@ function refusedFields(error: ApiError | null, t: Translate): Refused {
 
 function NoticeForm({
   api,
-  balance,
+  balance: owedUzs,
+  usdBalance,
   onSent,
   onCancel,
 }: {
   api: AccountApi;
   balance: number;
+  /** What is owed in dollars, in cents; absent for a shop without dollars, which is offered no choice. */
+  usdBalance?: number;
   onSent: (notice: PaymentNotice) => void;
   onCancel: () => void;
 }) {
   const { t, language } = useI18n();
+  // So'm unless the customer says dollars; dollars from the start when they are all that is owed.
+  const [chosen, setChosen] = useState<Currency>(usdBalance !== undefined && owedUzs <= 0 && usdBalance > 0 ? "USD" : "UZS");
+  const currency: Currency = usdBalance === undefined ? "UZS" : chosen;
+  const inDollars = currency === "USD";
+  // The debt the payment is of: a notice can state no more than is owed in its own currency.
+  const balance = inDollars ? (usdBalance ?? 0) : owedUzs;
   const [amount, setAmount] = useState("");
   const [receipt, setReceipt] = useState<File | null>(null);
   const [problems, setProblems] = useState<{ amount: string | null; receipt: string | null }>({ amount: null, receipt: null });
   // The file is not part of what `useSubmit` compares, so a changed file is told to it by name and size.
-  const { state, submit } = useSubmit((payload: { amount: number; file: string | null }, key) =>
-    api.sendPaymentNotice(payload.amount, receipt, key).then(onSent),
+  const { state, submit } = useSubmit((payload: { amount: number; file: string | null; currency: Currency }, key) =>
+    api.sendPaymentNotice(payload.amount, receipt, key, payload.currency).then(onSent),
   );
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
-    const parsed = parseAmount(amount);
+    const parsed = parseMoney(amount, currency);
     const tooMuch = parsed.ok && parsed.amount > balance;
     const fileProblem = receipt === null ? null : receiptProblem(receipt);
     const found = {
-      amount: !parsed.ok ? amountMessage(parsed.problem, t) : tooMuch ? t("entry.amount.exceedsBalance") : null,
+      amount: !parsed.ok ? amountMessage(parsed.problem, t, currency) : tooMuch ? t("entry.amount.exceedsBalance") : null,
       receipt: fileProblem === null ? null : receiptText(fileProblem, t),
     };
     setProblems(found);
     if (parsed.ok && !tooMuch && fileProblem === null) {
-      submit({ amount: parsed.amount, file: receipt === null ? null : `${receipt.name}/${receipt.size}/${receipt.lastModified}` });
+      submit({
+        amount: parsed.amount,
+        file: receipt === null ? null : `${receipt.name}/${receipt.size}/${receipt.lastModified}`,
+        currency,
+      });
     }
   };
 
   const failure = state.status === "error" ? state.error : null;
-  const refused = refusedFields(failure, t);
+  const refused = refusedFields(failure, t, currency);
   const shown = { amount: problems.amount ?? refused.amount, receipt: problems.receipt ?? refused.receipt };
   const general = failure !== null && refused.amount === null && refused.receipt === null;
   const pending = state.status === "pending";
@@ -128,12 +141,24 @@ function NoticeForm({
         </div>
       ) : null}
       <p>{t("my.notice.hint")}</p>
+      {usdBalance === undefined ? null : (
+        <CurrencyToggle
+          value={currency}
+          disabled={pending}
+          onChange={(next) => {
+            setChosen(next);
+            // An amount typed for one currency is not an amount of the other.
+            setAmount("");
+            setProblems((current) => ({ ...current, amount: null }));
+          }}
+        />
+      )}
       <div className="field">
-        <label htmlFor="notice-amount">{t("my.notice.amount")}</label>
+        <label htmlFor="notice-amount">{t(inDollars ? "my.notice.amount.usd" : "my.notice.amount")}</label>
         <input
           id="notice-amount"
           className="input input--amount"
-          inputMode="numeric"
+          inputMode={inDollars ? "decimal" : "numeric"}
           autoComplete="off"
           value={amount}
           aria-invalid={shown.amount !== null}
@@ -144,7 +169,7 @@ function NoticeForm({
           }}
         />
         <p className="field__hint" id="notice-amount-hint">
-          {t("my.notice.amount.max", { amount: formatMoney(balance, language) })}
+          {t("my.notice.amount.max", { amount: formatMoney(balance, language, currency) })}
         </p>
         <FieldError id="notice-amount-error" message={shown.amount} />
       </div>
@@ -182,6 +207,7 @@ function NoticeForm({
 /** What became of one notice, in the customer's words. */
 function NoticeRow({ notice }: { notice: PaymentNotice }) {
   const { t, language } = useI18n();
+  const currency = currencyOf(notice);
   let state: string;
   switch (notice.status) {
     case "sent":
@@ -191,7 +217,7 @@ function NoticeRow({ notice }: { notice: PaymentNotice }) {
       // The shop may have recorded another amount than the one stated: then the customer is told which.
       state =
         notice.recordedAmount !== null && notice.recordedAmount !== notice.amount
-          ? t("my.notice.state.corrected", { recorded: formatMoney(notice.recordedAmount, language) })
+          ? t("my.notice.state.corrected", { recorded: formatMoney(notice.recordedAmount, language, currency) })
           : t("my.notice.state.accepted");
       break;
     case "declined":
@@ -207,7 +233,7 @@ function NoticeRow({ notice }: { notice: PaymentNotice }) {
     <li className="row">
       <p className="row__link">
         <span className="row__name">{formatInstant(notice.createdAt, language)}</span>
-        <span className="row__amount">{formatMoney(notice.amount, language)}</span>
+        <span className="row__amount">{formatMoney(notice.amount, language, currency)}</span>
       </p>
       <p className="row__note">{state}</p>
       {notice.status === "declined" && notice.declineReason ? (
@@ -226,11 +252,14 @@ function NoticeRow({ notice }: { notice: PaymentNotice }) {
 export function PaymentNoticeSection({
   api,
   balance,
+  usdBalance,
   notices,
   onSent,
 }: {
   api: AccountApi;
   balance: number;
+  /** What is owed in dollars, in cents; absent for a shop without dollars. */
+  usdBalance?: number;
   notices: readonly PaymentNotice[];
   /** Called once a notice is sent, to read the account again. */
   onSent: () => void;
@@ -240,7 +269,9 @@ export function PaymentNoticeSection({
   const [sent, setSent] = useState<PaymentNotice | null>(null);
   // Nothing is owed, so there is nothing to have paid; and the shop takes three waiting notices at most.
   const waiting = notices.filter((notice) => notice.status === "sent").length;
-  const offered = balance > 0 && waiting < MAX_OPEN_NOTICES;
+  // Owing in either currency is owing: a customer with a dollar debt only has something to have paid.
+  const owes = balance > 0 || (usdBalance ?? 0) > 0;
+  const offered = owes && waiting < MAX_OPEN_NOTICES;
 
   if (!offered && notices.length === 0 && sent === null) {
     return null;
@@ -250,16 +281,17 @@ export function PaymentNoticeSection({
       <h2 id="my-notices-title">{t("my.notices")}</h2>
       {sent ? (
         <p className="notice notice--done" role="status">
-          {t("my.notice.sent", { amount: formatMoney(sent.amount, language) })}
+          {t("my.notice.sent", { amount: formatMoney(sent.amount, language, currencyOf(sent)) })}
         </p>
       ) : null}
-      {balance > 0 && waiting >= MAX_OPEN_NOTICES ? (
+      {owes && waiting >= MAX_OPEN_NOTICES ? (
         <p className="notice">{t("my.notice.tooManyOpen", { max: MAX_OPEN_NOTICES })}</p>
       ) : null}
       {!offered ? null : open ? (
         <NoticeForm
           api={api}
           balance={balance}
+          {...(usdBalance === undefined ? {} : { usdBalance })}
           onSent={(notice) => {
             setOpen(false);
             setSent(notice);

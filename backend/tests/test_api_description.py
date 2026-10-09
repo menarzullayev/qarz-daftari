@@ -187,11 +187,29 @@ def _response_models(app: FastAPI) -> set[type[Answer]]:
     return found
 
 
+# The only fields with a default: what a shop that works in US dollars gets beside its so'm figures
+# (answers.py, "Dollars"). A route whose model has one leaves an unset field out of its answer, which the
+# test below this one holds it to, so the default is never written into an answer.
+DOLLAR_FIELDS = {
+    "Customer": ["usd"],
+    "CustomerDetail": ["usd"],
+    "CustomerDollars": ["overdue", "payment_history"],
+    "Debtor": ["usd"],
+    "Entry": ["currency"],
+    "Overview": ["usd"],
+    "SharedAccount": ["usd"],
+    "SharedEntry": ["currency"],
+    "Shop": ["usd_on"],
+    "StaffPaymentNotice": ["currency"],
+}
+
+
 def test_every_response_model_is_closed_strict_and_without_defaults() -> None:
     """So that a model can only refuse an answer, never drop, convert or fill in a field of it."""
     models = _response_models(build(described_settings()))
     assert len(models) >= 15  # the nested ones are found too
-    assert {model.__name__: _open_or_defaulted(model) for model in models if _open_or_defaulted(model)} == {}
+    faults = {model.__name__: _open_or_defaulted(model) for model in models if _open_or_defaulted(model)}
+    assert faults == DOLLAR_FIELDS
 
     # The negative cases: an open model and a field with a default are both noticed.
     class Loose(Answer):
@@ -204,3 +222,47 @@ def test_every_response_model_is_closed_strict_and_without_defaults() -> None:
 
     assert _open_or_defaulted(Loose) == ["open"]
     assert _open_or_defaulted(Defaulted) == ["note"]
+
+
+def _fills_in_defaults(app: FastAPI) -> list[str]:
+    """Routes whose model has a field with a default and that would write the default into the answer."""
+
+    def defaulted(model: type[Answer], seen: set[type[Answer]]) -> bool:
+        if model in seen:
+            return False
+        seen.add(model)
+        if any(not field.is_required() for field in model.model_fields.values()):
+            return True
+        nested: set[type[Answer]] = set()
+
+        def collect(annotation: Any) -> None:
+            if isinstance(annotation, type) and issubclass(annotation, Answer):
+                nested.add(annotation)
+            for inner in getattr(annotation, "__args__", ()):
+                collect(inner)
+
+        for field in model.model_fields.values():
+            collect(field.annotation)
+        return any(defaulted(inner, seen) for inner in nested)
+
+    return sorted(
+        route.path
+        for route in app.routes
+        if isinstance(route, APIRoute)
+        and (model := _model_of(route)) is not None
+        and defaulted(model, set())
+        and not route.response_model_exclude_unset
+    )
+
+
+def test_a_field_with_a_default_is_left_out_of_an_answer_never_filled_in() -> None:
+    """An answer of a shop without dollars has no dollar field at all: not null, not zero, not there."""
+    app = build(described_settings())
+    assert _fills_in_defaults(app) == []
+
+    # The negative case: a route with such a model that would write `"usd": null` is noticed.
+    @app.get("/api/v1/filled-in", response_model=Customer)
+    async def filled_in() -> dict[str, str]:
+        return {}
+
+    assert _fills_in_defaults(app) == ["/api/v1/filled-in"]

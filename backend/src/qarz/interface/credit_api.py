@@ -19,6 +19,8 @@ class CreditPatch(BaseModel):
     # Absent leaves the default as it is; null removes it.
     default_credit_limit: int | None = None
     sellers_may_exceed: bool | None = None
+    # The default dollar limit, in whole cents, the same way. Only in a shop that works in dollars.
+    default_credit_limit_usd: int | None = None
 
 
 def add_credit_routes(app: FastAPI, service: CreditService, current_user: CurrentUser) -> None:
@@ -41,4 +43,7 @@ def add_credit_routes(app: FastAPI, service: CreditService, current_user: Curren
             else UNSET,
             sellers_may_exceed=body.sellers_may_exceed,
             request_key=idempotency_key,
+            default_credit_limit_usd=body.default_credit_limit_usd
+            if "default_credit_limit_usd" in body.model_fields_set
+            else UNSET,
         )

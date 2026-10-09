@@ -5,6 +5,7 @@ import type { Language, MessageKey } from "../../i18n/types";
 import { type ApiError, cleanReason, NETWORK_ERROR, type Overdue, REASON_MAX, REASON_MIN } from "../api";
 import { formatDateTime, formatMoney } from "../format";
 import { AlertIcon, CheckIcon, ClockIcon, ListIcon } from "../icons";
+import { CURRENCIES, type Currency } from "../money";
 
 /**
  * Text for a failed call. The server's message is already in the user's language and is shown as it is;
@@ -126,23 +127,74 @@ export function FieldError({ id, message }: { id: string; message: string | null
   ) : null;
 }
 
-/** "45 000 so'm muddati o'tgan · 12 kun kechikkan", and what falls due today, when there is any. */
-export function OverdueLines({ overdue }: { overdue: Overdue }) {
+/**
+ * "45 000 so'm muddati o'tgan · 12 kun kechikkan", and what falls due today, when there is any. The
+ * dollar debt has lines of its own, with `currency`.
+ */
+export function OverdueLines({ overdue, currency }: { overdue: Overdue; currency?: Currency }) {
   const { t, language } = useI18n();
   return (
     <>
       {overdue.amount > 0 ? (
         <p className="row__warning">
-          <span>{t("overdue.amount", { amount: formatMoney(overdue.amount, language) })}</span>
+          <span>{t("overdue.amount", { amount: formatMoney(overdue.amount, language, currency) })}</span>
           {overdue.days > 0 ? <Badge tone="danger">{t("overdue.days", { count: overdue.days })}</Badge> : null}
         </p>
       ) : null}
       {overdue.dueToday > 0 ? (
         <p className="row__meta">
-          <Badge tone="warning">{t("due.todayAmount", { amount: formatMoney(overdue.dueToday, language) })}</Badge>
+          <Badge tone="warning">
+            {t("due.todayAmount", { amount: formatMoney(overdue.dueToday, language, currency) })}
+          </Badge>
         </p>
       ) : null}
     </>
+  );
+}
+
+/**
+ * What is owed, in so'm and, for a shop that works in dollars, in dollars beside it. The two are never
+ * added. Without a dollar figure this is the so'm amount as plain text, exactly as it always was.
+ */
+export function Money({ uzs, usd }: { uzs: number; usd: number | undefined }) {
+  const { language } = useI18n();
+  if (usd === undefined) {
+    return formatMoney(uzs, language);
+  }
+  return (
+    <>
+      <span className="money">{formatMoney(uzs, language)}</span>{" "}
+      <span className="money">{formatMoney(usd, language, "USD")}</span>
+    </>
+  );
+}
+
+/** So'm or dollars: the choice a form or a list offers only in a shop that works in dollars. */
+export function CurrencyToggle({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: Currency;
+  onChange: (currency: Currency) => void;
+  disabled?: boolean;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="toggle" role="group" aria-label={t("currency.choose")}>
+      {CURRENCIES.map((currency) => (
+        <button
+          key={currency}
+          type="button"
+          className="toggle__option"
+          aria-pressed={value === currency}
+          disabled={disabled}
+          onClick={() => onChange(currency)}
+        >
+          {t(currency === "USD" ? "currency.usd" : "currency.uzs")}
+        </button>
+      ))}
+    </div>
   );
 }
 

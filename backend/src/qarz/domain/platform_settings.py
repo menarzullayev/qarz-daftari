@@ -56,6 +56,9 @@ SETTINGS: dict[str, Setting] = {
     "permissions_on": Setting("switch", False, needs_code=True),
     # A customer's secret read-only link and its QR code (the expansion of 2026-10-09, module B).
     "customer_links_on": Setting("switch", False, needs_code=True),
+    # US dollars beside so'm (expansion module F): a shop may then keep dollar debts, each owner choosing
+    # for their own shop. Off: every shop is so'm only, exactly as before.
+    "usd_on": Setting("switch", False, needs_code=True),
 }
 
 

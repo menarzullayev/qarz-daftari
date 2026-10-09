@@ -523,6 +523,11 @@ textarea.input--text {
   overflow-wrap: anywhere;
 }
 
+/* The dollar figures under the so'm ones: a group of their own. */
+.figures + .figures {
+  margin-top: var(--qd-space-3);
+}
+
 /* The one number the screen is about. */
 .figure--main {
   grid-column: 1 / -1;
@@ -636,6 +641,27 @@ a.row__link:hover .row__name,
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/*
+ * Two amounts side by side: what is owed in so'm and what is owed in dollars. They are never added, so
+ * each keeps its own line of figures and neither breaks in the middle. In a row they stand one under
+ * the other, aligned to the same edge as a single amount.
+ */
+.money {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.money + .money {
+  margin-inline-start: var(--qd-space-3);
+}
+
+.row__amount .money {
+  display: block;
+  margin-inline-start: 0;
+  text-align: end;
 }
 
 .row__amount--in {

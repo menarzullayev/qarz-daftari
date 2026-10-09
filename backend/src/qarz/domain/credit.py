@@ -5,8 +5,14 @@ A limit never blocks a manager or an owner: it warns them. Whether it blocks a s
 
 from enum import StrEnum
 
-MIN_LIMIT = 1_000
-MAX_LIMIT = 10_000_000_000  # UZS; far above any shop's single customer, well inside a bigint
+from qarz.domain import money
+from qarz.domain.money import Currency
+
+# The so'm limit's range, under the names it had before dollars existed. Each currency has a limit of
+# its own (`money.RULES`): the so'm limit is compared with the so'm balance and the dollar limit with
+# the dollar balance, and neither says anything about the other.
+MIN_LIMIT = money.RULES[Currency.UZS].min_limit
+MAX_LIMIT = money.RULES[Currency.UZS].max_limit  # far above any shop's single customer, well inside a bigint
 
 
 class LimitOutcome(StrEnum):
@@ -32,5 +38,5 @@ def check_limit(limit: int | None, balance_after: int, *, may_manage: bool, sell
     return LimitOutcome.REFUSE
 
 
-def valid_limit(value: object) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool) and MIN_LIMIT <= value <= MAX_LIMIT
+def valid_limit(value: object, currency: Currency = Currency.UZS) -> bool:
+    return money.valid_limit(currency, value)

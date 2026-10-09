@@ -26,46 +26,68 @@ class Channel(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ReminderPlan:
+    """What one reminder states: uncovered and due, without entries under open dispute (BR-13).
+
+    One reminder speaks of everything the customer owes: the so'm amount and, in a shop that works in
+    dollars, the dollar amount (whole cents) beside it. They are two figures; at least one is above zero.
+    """
+
     kind: ReminderKind
-    amount: int  # what the message states: uncovered and due, without entries under open dispute (BR-13)
+    amount: int  # whole so'm
+    amount_usd: int = 0  # whole cents
 
 
 def amount_to_mention(status: OverdueStatus) -> int:
+    """Of one currency's book: what is due today and what is overdue, which are the same currency."""
     return status.reminder_due_today_amount + status.reminder_overdue_amount
 
 
-def plan_automatic(status: OverdueStatus, last_sent: date | None, today: date) -> ReminderPlan | None:
+def plan_automatic(
+    status: OverdueStatus, last_sent: date | None, today: date, dollars: OverdueStatus | None = None
+) -> ReminderPlan | None:
     """The automatic reminder owed today, if any.
 
     One on the promised date itself; while the debt stays overdue, at most one every seven days after
     the last one. `last_sent` is the day of the customer's last automatic reminder. Never two in one day.
+
+    `status` is the so'm book's and `dollars` the dollar book's, when the shop works in dollars. The
+    limits are per customer, not per currency (INV-14): a debt due in either currency is the ground, and
+    the one reminder states both amounts.
     """
     if last_sent == today:
         return None
-    amount = amount_to_mention(status)
-    if status.reminder_due_today_amount > 0:
-        return ReminderPlan(ReminderKind.DUE_TODAY, amount)
-    if status.reminder_overdue_amount > 0 and (last_sent is None or today - last_sent >= REPEAT_AFTER):
-        return ReminderPlan(ReminderKind.OVERDUE, amount)
+    books = [status] if dollars is None else [status, dollars]
+    amount, amount_usd = amount_to_mention(status), 0 if dollars is None else amount_to_mention(dollars)
+    if any(book.reminder_due_today_amount > 0 for book in books):
+        return ReminderPlan(ReminderKind.DUE_TODAY, amount, amount_usd)
+    if any(book.reminder_overdue_amount > 0 for book in books) and (
+        last_sent is None or today - last_sent >= REPEAT_AFTER
+    ):
+        return ReminderPlan(ReminderKind.OVERDUE, amount, amount_usd)
     return None
 
 
-def plan_manual(status: OverdueStatus) -> ReminderPlan | None:
+def plan_manual(status: OverdueStatus, dollars: OverdueStatus | None = None) -> ReminderPlan | None:
     """A manual reminder needs the same ground as an automatic one: something overdue or due today (BR-17).
 
     That it is sent at most once a day per customer is enforced where reminders are stored.
     """
-    amount = amount_to_mention(status)
-    if amount <= 0:
+    books = [status] if dollars is None else [status, dollars]
+    amount, amount_usd = amount_to_mention(status), 0 if dollars is None else amount_to_mention(dollars)
+    if amount <= 0 and amount_usd <= 0:
         return None
-    kind = ReminderKind.OVERDUE if status.reminder_overdue_amount > 0 else ReminderKind.DUE_TODAY
-    return ReminderPlan(kind, amount)
+    overdue = any(book.reminder_overdue_amount > 0 for book in books)
+    return ReminderPlan(ReminderKind.OVERDUE if overdue else ReminderKind.DUE_TODAY, amount, amount_usd)
 
 
 def choose_channel(
     *, telegram_reachable: bool, has_phone: bool, sms_on_platform: bool, sms_on_shop: bool, sms_quota_left: int
 ) -> Channel | None:
-    """BR-18. None means the customer cannot be reached and is listed for the shop as such."""
+    """BR-18. None means the customer cannot be reached and is listed for the shop as such.
+
+    An SMS states so'm only (its wordings are registered with the SMS provider one by one, and none
+    carries dollars yet): the caller passes `has_phone=False` for a reminder with no so'm amount.
+    """
     if telegram_reachable:
         return Channel.TELEGRAM
     if has_phone and sms_on_platform and sms_on_shop and sms_quota_left > 0:

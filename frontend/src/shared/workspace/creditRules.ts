@@ -1,5 +1,5 @@
-import type { ApiError, CreditSettings, LimitFigures } from "../api";
-import { type AmountResult, parseWholeUzs } from "../money";
+import type { ApiError, CreditSettings, Customer, LimitFigures } from "../api";
+import { type AmountResult, type Currency, parseMoney } from "../money";
 import { may, type Viewer } from "../permissions";
 
 /*
@@ -25,9 +25,38 @@ export function mayExceed(viewer: Viewer, settings: Pick<CreditSettings, "seller
   return may(viewer, "entries.over_limit") || settings.sellersMayExceed;
 }
 
-/** A limit as a person types it: a whole amount of UZS within the bounds the server accepts. */
-export function parseLimit(input: string, bounds: CreditSettings["bounds"]): AmountResult {
-  return parseWholeUzs(input, bounds.min, bounds.max);
+/**
+ * A limit as a person types it, within the bounds the server accepts: a whole amount of UZS, or for the
+ * dollar limit dollars with at most two decimals, read into cents.
+ */
+export function parseLimit(input: string, bounds: CreditSettings["bounds"], currency: Currency = "UZS"): AmountResult {
+  return parseMoney(input, currency, bounds);
+}
+
+/**
+ * The limit that applies to a customer in one currency, with the balance it is compared with, or null
+ * when the shop has no such currency. Each currency has its own limit and its own debt (BR-8).
+ */
+export function limitIn(
+  currency: Currency,
+  customer: Pick<Customer, "balance" | "creditLimit" | "usd">,
+  settings: Pick<CreditSettings, "defaultLimit" | "usd"> | null,
+): { own: number | null; limit: number | null; balance: number } | null {
+  if (currency === "UZS") {
+    return {
+      own: customer.creditLimit,
+      limit: effectiveLimit(customer.creditLimit, settings?.defaultLimit ?? null),
+      balance: customer.balance,
+    };
+  }
+  if (customer.usd === undefined) {
+    return null;
+  }
+  return {
+    own: customer.usd.creditLimit,
+    limit: effectiveLimit(customer.usd.creditLimit, settings?.usd?.defaultLimit ?? null),
+    balance: customer.usd.balance,
+  };
 }
 
 const DIGITS = /^\d{1,15}$/;

@@ -354,6 +354,7 @@ def test_error_codes_are_stable() -> None:
         "name_invalid",
         "name_too_long",
         "amount_not_whole",
+        "amount_too_precise",
         "amount_too_small",
         "amount_too_large",
         "note_too_long",

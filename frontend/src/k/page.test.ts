@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ACCOUNT_PATH, type Fetch, loadAccount, readAccount, readToken, TOKEN_HEADER } from "./account";
-import { CATALOGS, dayOfDate, dayOfInstant, LANGUAGES, type MessageKey, money, normalizeLanguage, say } from "./messages";
+import { CATALOGS, dayOfDate, dayOfInstant, dollars, LANGUAGES, type MessageKey, money, normalizeLanguage, say } from "./messages";
 import { knownLanguage, LANGUAGE_STORAGE_KEY, startPage } from "./page";
 
 const TOKEN = "Zm9vYmFyLXNoYXJlLXRva2VuLTAxMjM0NTY3ODktYWJ";
@@ -344,6 +344,137 @@ describe("the page's text", () => {
       null,
       null,
     ]);
+  });
+});
+
+describe("US dollars beside so'm", () => {
+  const plain = (text: string | null | undefined) => (text ?? "").replace(/\u00a0/g, " ");
+  const DOLLAR_ENTRY = { kind: "credit", amount: 125050, created_at: "2026-10-06T04:30:00+00:00", promised_date: "2026-10-20", reversed: false, lines: [], currency: "USD" };
+  const IN_DOLLARS = {
+    ...ACCOUNT,
+    usd: { balance: 125050, overdue: { amount: 5000, due_today: 1250 } },
+    entries: [DOLLAR_ENTRY, ...ACCOUNT.entries],
+    entries_total: 5,
+  };
+  const amounts = (root: HTMLElement) => [...root.querySelectorAll(".summary__amount")].map((amount) => plain(amount.textContent));
+  const everyText = (root: HTMLElement) => [...root.querySelectorAll("*")].map((node) => plain(node.textContent));
+
+  it("writes cents as dollars with two decimals, thousands apart and the sign after, by whole division", () => {
+    expect([0, 1, 10, 99, 100, 1250, 1999, 125050, 100000000].map((cents) => plain(dollars(cents)))).toEqual([
+      "0.00 $",
+      "0.01 $",
+      "0.10 $",
+      "0.99 $",
+      "1.00 $",
+      "12.50 $",
+      "19.99 $",
+      "1 250.50 $",
+      "1 000 000.00 $",
+    ]);
+    expect(dollars(125050)).toBe("1\u00a0250.50\u00a0$");
+    expect(plain(dollars(-125050))).toBe("-1 250.50 $");
+    for (const cents of [12.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53]) {
+      expect(() => dollars(cents), String(cents)).toThrow(RangeError);
+    }
+  });
+
+  it("reads the dollar figures and the currency of an entry, and nothing of either when they are absent", () => {
+    const account = readAccount(IN_DOLLARS);
+    expect(account.usd).toEqual({ balance: 125050, overdue: 5000, dueToday: 1250 });
+    expect(account.entries.map((entry) => entry.currency)).toEqual(["USD", undefined, undefined, undefined, undefined]);
+    const without = readAccount(ACCOUNT);
+    expect("usd" in without).toBe(false);
+    expect(without.entries.some((entry) => "currency" in entry)).toBe(false);
+  });
+
+  it("shows the so'm debt and the dollar debt as two amounts, with what is late and due today in each", async () => {
+    const root = await open(server(json(IN_DOLLARS)).fetch);
+    const text = plain(root.textContent);
+    expect(amounts(root)).toEqual(["30 000 so'm", "1 250.50 $"]);
+    expect(root.querySelectorAll(".summary__label")).toHaveLength(1);
+    expect([...root.querySelectorAll(".summary__overdue")].map((line) => plain(line.textContent))).toEqual([
+      "Shundan muddati o'tgani: 10 000 so'm",
+      "Shundan muddati o'tgani: 50.00 $",
+    ]);
+    expect([...root.querySelectorAll(".summary__due")].map((line) => plain(line.textContent))).toEqual([
+      "Bugun to'lanishi kerak: 5 000 so'm",
+      "Bugun to'lanishi kerak: 12.50 $",
+    ]);
+    // The entry in dollars carries its sign; the so'm entries are as they were.
+    const entries = [...root.querySelectorAll(".entry")].map((entry) => plain(entry.textContent));
+    expect(entries[0]).toBe("Nasiya1 250.50 $2026-yil 6-oktabrTo'lash muddati: 2026-yil 20-oktabr");
+    expect(entries[1]).toBe("To'lov20 000 so'm2026-yil 5-oktabr");
+    // Nothing on the page is a sum of the two: not 30 000 + 125 050, not 30 000 + 1 250.50.
+    for (const sum of ["155 050", "155050", "31 250", "31250"]) {
+      expect(text, sum).not.toContain(sum);
+    }
+    // Each amount stands in an element of its own: no element holds a so'm figure and "$" as one number.
+    expect(everyText(root).filter((value) => /^[\d .]+ (so'm|\$)$/.test(value)).sort()).toEqual(
+      ["1 250.50 $", "1 250.50 $", "20 000 so'm", "30 000 so'm", "50 000 so'm", "7 000 so'm", "7 000 so'm"].sort(),
+    );
+  });
+
+  it("is the same in Russian, where so'm have their own word and dollars the same sign", async () => {
+    const root = await open(server(json({ ...IN_DOLLARS, lang: "ru" })).fetch);
+    expect(amounts(root)).toEqual(["30 000 сум", "1 250.50 $"]);
+    expect(plain(root.textContent)).toContain("Из них просрочено: 50.00 $");
+    expect(plain(root.textContent)).toContain("Оплатить сегодня: 12.50 $");
+  });
+
+  it("shows the dollar debt alone when only dollars are owed", async () => {
+    const root = await open(
+      server(json({ ...IN_DOLLARS, balance: 0, overdue: { amount: 0, due_today: 0 }, entries: [DOLLAR_ENTRY], entries_total: 1 })).fetch,
+    );
+    expect(amounts(root)).toEqual(["1 250.50 $"]);
+    expect(root.querySelector(".summary__label")?.textContent).toBe("Qarzingiz");
+    expect(plain(root.querySelector(".summary")?.textContent)).not.toContain("so'm");
+    expect(root.textContent).not.toContain("Qarzingiz yo'q");
+  });
+
+  it("shows the so'm debt alone when no dollars are owed, and \"no debt\" only when both are nothing", async () => {
+    const none = { balance: 0, overdue: { amount: 0, due_today: 0 } };
+    const soms = await open(server(json({ ...ACCOUNT, usd: none })).fetch);
+    expect(amounts(soms)).toEqual(["30 000 so'm"]);
+    expect(soms.querySelector(".summary")?.textContent).not.toContain("$");
+    document.body.replaceChildren();
+
+    const clear = await open(server(json({ ...ACCOUNT, ...none, usd: none })).fetch);
+    expect(amounts(clear)).toEqual(["Qarzingiz yo'q"]);
+    document.body.replaceChildren();
+
+    // Nothing in so'm is not "no debt" while dollars are owed.
+    const dollarsOnly = await open(server(json({ ...ACCOUNT, ...none, usd: { ...none, balance: 1 } })).fetch);
+    expect(amounts(dollarsOnly)).toEqual(["0.01 $"]);
+  });
+
+  it("says nothing about dollars for a shop without them: no \"$\" anywhere on the page", async () => {
+    const root = await open(server(json(ACCOUNT)).fetch);
+    expect(root.textContent).not.toContain("$");
+    expect(root.textContent?.toLowerCase()).not.toContain("dollar");
+    expect(root.textContent).not.toContain("USD");
+    expect(amounts(root)).toEqual(["30 000 so'm"]);
+    expect(root.querySelectorAll(".summary__overdue, .summary__due")).toHaveLength(2);
+  });
+
+  it.each([
+    ["usd is null", { usd: null }],
+    ["usd is a number", { usd: 125050 }],
+    ["usd is a list", { usd: [] }],
+    ["the dollar balance is missing", { usd: { overdue: { amount: 0, due_today: 0 } } }],
+    ["the dollar balance is a fraction", { usd: { balance: 1250.5, overdue: { amount: 0, due_today: 0 } } }],
+    ["the dollar balance is text", { usd: { balance: "1250", overdue: { amount: 0, due_today: 0 } } }],
+    ["the dollar overdue is missing", { usd: { balance: 1250 } }],
+    ["the dollar due today is missing", { usd: { balance: 1250, overdue: { amount: 0 } } }],
+    ["an entry is in a currency the page does not know", { entries: [{ ...DOLLAR_ENTRY, currency: "EUR" }] }],
+    ["an entry's currency is null", { entries: [{ ...DOLLAR_ENTRY, currency: null }] }],
+  ])("treats an answer where %s as any malformed answer: nothing of it is shown", async (_what, wrong) => {
+    expect(() => readAccount({ ...ACCOUNT, ...wrong })).toThrow();
+    expect(await loadAccount(server(json({ ...ACCOUNT, ...wrong })).fetch, TOKEN)).toEqual({ status: "offline" });
+    const root = await open(server(json({ ...ACCOUNT, ...wrong })).fetch);
+    expect(root.querySelector(".summary")).toBeNull();
+    expect(root.querySelector("[role=alert]")).not.toBeNull();
+    expect(root.textContent).not.toContain("so'm");
+    expect(root.textContent).not.toContain("$");
   });
 });
 

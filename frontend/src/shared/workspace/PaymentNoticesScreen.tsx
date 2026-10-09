@@ -4,7 +4,7 @@ import { useI18n } from "../../i18n/I18nProvider";
 import type { ApiError, OpenPaymentNotice, ReceiptLink } from "../api";
 import { formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
-import { parseAmount } from "../money";
+import { amountInput, type Currency, currencyOf, parseMoney } from "../money";
 import { Link } from "../router";
 import { useWorkspace } from "./context";
 import { amountMessage } from "./EntryScreen";
@@ -74,16 +74,19 @@ function AcceptForm({
   onCancel: () => void;
 }) {
   const { t, language } = useI18n();
-  const [text, setText] = useState(String(notice.amount));
+  // A notice of dollars is accepted in dollars: its amount, the correction and the debt are all cents.
+  const currency = currencyOf(notice);
+  const inDollars = currency === "USD";
+  const [text, setText] = useState(inDollars ? amountInput(notice.amount, currency) : String(notice.amount));
   const [problem, setProblem] = useState<string | null>(null);
   const id = `accept-${notice.id}`;
-  const exceeds = t("notices.accept.exceeds", { balance: formatMoney(notice.customerBalance, language) });
+  const exceeds = t("notices.accept.exceeds", { balance: formatMoney(notice.customerBalance, language, currency) });
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const parsed = parseAmount(text);
+    const parsed = parseMoney(text, currency);
     if (!parsed.ok) {
-      setProblem(amountMessage(parsed.problem, t));
+      setProblem(amountMessage(parsed.problem, t, currency));
     } else if (parsed.amount > notice.customerBalance) {
       // A payment cannot exceed the debt; the balance here is the one the list was read with.
       setProblem(exceeds);
@@ -92,7 +95,7 @@ function AcceptForm({
     }
   };
 
-  const refused = error?.code === "EXCEEDS_BALANCE" ? errorText(error, t) : error?.code === "VALIDATION" && "amount" in error.fields ? amountMessage("invalid", t) : null;
+  const refused = error?.code === "EXCEEDS_BALANCE" ? errorText(error, t) : error?.code === "VALIDATION" && "amount" in error.fields ? amountMessage("invalid", t, currency) : null;
   const shown = problem ?? refused;
   return (
     <form className="form notice" onSubmit={submit} noValidate>
@@ -103,11 +106,11 @@ function AcceptForm({
       ) : null}
       <p>{t("notices.accept.question", { name: notice.customerName })}</p>
       <div className="field">
-        <label htmlFor={id}>{t("notices.accept.amount")}</label>
+        <label htmlFor={id}>{t(inDollars ? "notices.accept.amount.usd" : "notices.accept.amount")}</label>
         <input
           id={id}
           className="input input--amount"
-          inputMode="numeric"
+          inputMode={inDollars ? "decimal" : "numeric"}
           autoComplete="off"
           value={text}
           aria-invalid={shown !== null}
@@ -118,7 +121,7 @@ function AcceptForm({
           }}
         />
         <p className="field__hint" id={`${id}-hint`}>
-          {t("notices.accept.hint", { amount: formatMoney(notice.amount, language) })}
+          {t("notices.accept.hint", { amount: formatMoney(notice.amount, language, currency) })}
         </p>
         <FieldError id={`${id}-error`} message={shown} />
       </div>
@@ -164,11 +167,11 @@ export default function PaymentNoticesScreen() {
         throw error;
       },
     );
-  const accept = useSubmit((payload: { id: string; amount: number; stated: number }, key) =>
+  const accept = useSubmit((payload: { id: string; amount: number; stated: number; currency: Currency }, key) =>
     settle(
       // Only a correction is sent as an amount; the stated one is the server's to record.
       api.acceptPaymentNotice(payload.id, payload.amount === payload.stated ? null : payload.amount, key),
-      t("notices.done.accepted", { amount: formatMoney(payload.amount, language) }),
+      t("notices.done.accepted", { amount: formatMoney(payload.amount, language, payload.currency) }),
     ),
   );
   const decline = useSubmit((payload: { id: string; reason: string }, key) =>
@@ -198,12 +201,12 @@ export default function PaymentNoticesScreen() {
           <li key={notice.id} className="row">
             <Link to={`/customers/${notice.customerId}`} className="row__link">
               <span className="row__name">{notice.customerName}</span>
-              <span className="row__amount">{formatMoney(notice.amount, language)}</span>
+              <span className="row__amount">{formatMoney(notice.amount, language, currencyOf(notice))}</span>
             </Link>
             <p className="row__note">
               {t("notices.row.stated", {
-                amount: formatMoney(notice.amount, language),
-                balance: formatMoney(notice.customerBalance, language),
+                amount: formatMoney(notice.amount, language, currencyOf(notice)),
+                balance: formatMoney(notice.customerBalance, language, currencyOf(notice)),
               })}
             </p>
             <p className="row__meta">
@@ -238,7 +241,9 @@ export default function PaymentNoticesScreen() {
                 notice={notice}
                 pending={busy}
                 error={accept.state.status === "error" ? accept.state.error : null}
-                onSubmit={(amount) => accept.submit({ id: notice.id, amount, stated: notice.amount })}
+                onSubmit={(amount) =>
+                  accept.submit({ id: notice.id, amount, stated: notice.amount, currency: currencyOf(notice) })
+                }
                 onCancel={() => open(null)}
               />
             ) : (

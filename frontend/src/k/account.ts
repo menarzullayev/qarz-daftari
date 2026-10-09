@@ -28,7 +28,15 @@ export type Entry = {
   promisedDate: string | null;
   reversed: boolean;
   lines: Line[];
+  /** "USD" on an entry in dollars, whose amount is then whole cents. Absent: whole UZS. */
+  currency?: "USD";
 };
+
+/**
+ * What is owed in US dollars, in whole cents, in a shop that keeps dollar debts beside so'm ones. The
+ * two are separate debts: nothing on the page is a sum of them.
+ */
+export type Dollars = { balance: number; overdue: number; dueToday: number };
 
 export type Account = {
   shopName: string;
@@ -39,6 +47,8 @@ export type Account = {
   balance: number;
   overdue: number;
   dueToday: number;
+  /** Absent when the shop does not work in dollars: the page then says nothing about them. */
+  usd?: Dollars;
   expiresAt: string;
   entries: Entry[];
   entriesTotal: number;
@@ -102,9 +112,31 @@ function line(value: unknown): Line {
   };
 }
 
+/** So'm is the absence of the key; "USD" is dollars; any other word is not the account. */
+function currency(value: unknown): { currency?: "USD" } {
+  if (value === undefined) {
+    return {};
+  }
+  if (value !== "USD") {
+    throw new TypeError("not a currency");
+  }
+  return { currency: "USD" };
+}
+
+/** The dollar figures, read as strictly as the so'm ones; absent, there are none. */
+function dollars(value: unknown): { usd?: Dollars } {
+  if (value === undefined) {
+    return {};
+  }
+  const body = record(value);
+  const overdue = record(body["overdue"]);
+  return { usd: { balance: whole(body["balance"]), overdue: whole(overdue["amount"]), dueToday: whole(overdue["due_today"]) } };
+}
+
 function entry(value: unknown): Entry {
   const body = record(value);
   return {
+    ...currency(body["currency"]),
     kind: text(body["kind"]),
     amount: whole(body["amount"]),
     createdAt: text(body["created_at"]),
@@ -126,6 +158,7 @@ export function readAccount(value: unknown): Account {
     balance: whole(body["balance"]),
     overdue: whole(overdue["amount"]),
     dueToday: whole(overdue["due_today"]),
+    ...dollars(body["usd"]),
     expiresAt: text(body["expires_at"]),
     entries: list(body["entries"]).map(entry),
     entriesTotal: whole(body["entries_total"]),

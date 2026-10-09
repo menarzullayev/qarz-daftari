@@ -27,6 +27,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from qarz.application import idempotency
+from qarz.application.currencies import USD, UZS, dollars_on, tag
 from qarz.application.customers import CustomerArchived, clean_phone, require_viewable, require_writable
 from qarz.application.errors import NotFound
 from qarz.application.ledger_service import HISTORY_PAGE
@@ -229,10 +230,16 @@ class CustomerShareService:
             if record is None or record.share_id != share_id or record.expires_at <= now:
                 # Ended or replaced between the lookup and this transaction.
                 raise NotFound()
-            account = await session.entries_of(customer_id)
-            entries = [row.entry for row in account]
+            # Each currency is a book of its own (qarz.domain.money): the so'm figures come from the so'm
+            # entries alone, and a shop that works in dollars gets the dollar figures beside them. A shop
+            # that does not shows its so'm book and nothing else, as before dollars existed.
+            dollars = await dollars_on(session)
+            account = [row for row in await session.entries_of(customer_id) if dollars or row.entry.currency is UZS]
+            entries = ledger.in_currency([row.entry for row in account], UZS)
+            in_dollars = ledger.in_currency([row.entry for row in account], USD)
             today = self._today()
             status = ledger.overdue(entries, today)
+            usd_status = ledger.overdue(in_dollars, today)
             reversed_ids = {row.entry.reverses_id for row in account if row.entry.reverses_id is not None}
             shown = sorted(account, key=lambda row: row.entry.seq, reverse=True)[:HISTORY_PAGE]
             lines = await session.goods_lines_of([row.entry.id for row in shown])
@@ -248,28 +255,42 @@ class CustomerShareService:
                 "lang": language if language in LANGUAGES else LANGUAGES[0],
                 "balance": ledger.balance(entries),
                 "overdue": {"amount": status.overdue_amount, "due_today": status.due_today_amount},
+                # Whole cents, beside the so'm figures and never added to them.
+                **(
+                    {
+                        "usd": {
+                            "balance": ledger.balance(in_dollars),
+                            "overdue": {"amount": usd_status.overdue_amount, "due_today": usd_status.due_today_amount},
+                        }
+                    }
+                    if dollars
+                    else {}
+                ),
                 "expires_at": record.expires_at.isoformat(),
                 # No identifier, no note and no author: the page can only be read.
                 "entries": [
-                    {
-                        "kind": row.entry.kind.value,
-                        "amount": row.entry.amount,
-                        "created_at": row.entry.created_at.isoformat(),
-                        "promised_date": None
-                        if row.entry.promised_date is None
-                        else row.entry.promised_date.isoformat(),
-                        "reversed": row.entry.id in reversed_ids,
-                        "lines": [
-                            {
-                                "name": line.name,
-                                "qty": format_qty(line.qty),
-                                "unit": line.unit,
-                                "unit_price": line.unit_price,
-                                "line_total": line.line_total,
-                            }
-                            for line in lines.get(row.entry.id, [])
-                        ],
-                    }
+                    tag(
+                        {
+                            "kind": row.entry.kind.value,
+                            "amount": row.entry.amount,
+                            "created_at": row.entry.created_at.isoformat(),
+                            "promised_date": None
+                            if row.entry.promised_date is None
+                            else row.entry.promised_date.isoformat(),
+                            "reversed": row.entry.id in reversed_ids,
+                            "lines": [
+                                {
+                                    "name": line.name,
+                                    "qty": format_qty(line.qty),
+                                    "unit": line.unit,
+                                    "unit_price": line.unit_price,
+                                    "line_total": line.line_total,
+                                }
+                                for line in lines.get(row.entry.id, [])
+                            ],
+                        },
+                        row.entry.currency,
+                    )
                     for row in shown
                 ],
                 "entries_total": len(account),
