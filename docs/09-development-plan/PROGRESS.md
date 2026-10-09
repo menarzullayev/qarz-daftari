@@ -164,6 +164,7 @@ Each is implemented. If one is rejected, the named story must be revisited.
 | DEC-074 | Generated API types: six read operations typed, the rest open | Development |
 | DEC-075 | Single host: data leaves the country, one passphrase, no failover figure, no alerts | Deployment |
 | DEC-076 | CI in four test jobs; documents-only runs; superseded runs cancelled | Development |
+| DEC-077 | Legal questions and the two languages reported settled by the founder, on oral advice | Launch |
 | DEC-068 | Three database roles, one for each part of the application; what each is granted; sign out everywhere | S19.2 |
 
 Decided by the founder on 2026-10-07, and so not awaiting review: DEC-058 (nginx and Docker Compose, where the architecture document names Caddy; what to prepare before production); DEC-051 (buttons in the review group, honoured for platform administrators only, as the agent understood him), DEC-052 (no fresh code to decide a receipt), DEC-053 (store open debts).
@@ -209,7 +210,7 @@ Decided by the founder on 2026-10-07, and so not awaiting review: DEC-058 (nginx
 | No. | Criterion | State |
 |---|---|---|
 | 1 | Interviews and pDaftar test | Open; founder |
-| 2 | Legal review | Open; founder |
+| 2 | Legal review | Reported done by the founder on 2026-10-09: a lawyer answered the thirty questions in conversation and named no restriction (DEC-077). Nothing in writing; the questions that asked what must be done (registration, contract with shops, retention, breach notice and others) have no recorded answer |
 | 3 | Registration if required | Open; founder |
 | 4 | M1 to M8 complete, acceptance criteria pass in CI | 42 of 49 stories done in code and CI; S1.5, S16.1, S19.1, S19.2, S19.3 and S19.4 are partly done and each waits on something only people or real servers can give; S2.2's generated API client was never built. Every story's screens exist; fourteen end-to-end tests run the front end and back end together with signed stand-in data (EVID-076) |
 | 5 | Authorization and tenant suite covers every operation | In place and blocking; grows with each story |
@@ -221,7 +222,7 @@ Decided by the founder on 2026-10-07, and so not awaiting review: DEC-058 (nginx
 | 11 | Usability sessions | Not started; needs real sellers |
 | 12 | Two servers in use | Not met and no longer planned: by DEC-070 the service runs on one host; the criterion has to be rewritten by the founder |
 | 13 | Second operator named | Open; founder |
-| 14 | Both languages reviewed | Not started; needs native speakers |
+| 14 | Both languages reviewed | Reported done by the founder on 2026-10-09 (DEC-077); the reviewer is not named. Texts added on 2026-10-08 (the customer's indicator, signing out everywhere, the Eskiz templates) are included as far as he reported |
 | 15 | Payment process run end to end with a test shop | Not started |
 | 16 | Launch approval | Open; founder |
 
