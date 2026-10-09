@@ -43,8 +43,11 @@ from qarz.application.reports import ReportService
 from qarz.application.shop_deletion import ShopDeletionService
 from qarz.application.shops import ShopService
 from qarz.application.staff import StaffService
+from qarz.application.stock import StockService
+from qarz.application.stock_documents import DocumentService
 from qarz.application.subscription import SubscriptionService
 from qarz.application.subscription_receipts import SubscriptionReceiptService
+from qarz.application.suppliers import SupplierService
 from qarz.application.support_access import SupportAccessService
 from qarz.application.telegram_updates import UpdateProcessor
 from qarz.interface.account_api import add_account_routes
@@ -73,6 +76,7 @@ from qarz.interface.reports_api import add_report_routes
 from qarz.interface.shop_deletion_api import add_shop_deletion_routes
 from qarz.interface.shops_api import add_shop_routes
 from qarz.interface.staff_api import add_staff_routes
+from qarz.interface.stock_api import add_stock_routes
 from qarz.interface.subscription_api import add_subscription_routes
 from qarz.interface.subscription_receipts_api import SUBSCRIPTION_RECEIPT_UPLOAD, add_subscription_receipt_routes
 from qarz.interface.support_api import add_admin_support_routes, add_owner_support_routes
@@ -239,6 +243,13 @@ def create_app(
         add_import_routes(app, ImportService(storage, files, now), current_user)
         add_customer_routes(app, CustomerService(storage, now), LedgerService(storage, now), current_user)
         add_catalog_routes(app, CatalogService(storage, now), current_user)
+        add_stock_routes(
+            app,
+            StockService(storage, now),
+            DocumentService(storage, now),
+            SupplierService(storage, now),
+            current_user,
+        )
         add_account_routes(
             app, AccountService(storage), ActivityService(storage), OwnershipService(storage), current_user
         )

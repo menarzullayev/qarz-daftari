@@ -30,7 +30,7 @@ export function canManage(role: Role): boolean {
  * A part of the product that exists only while the platform has switched it on. The server says which
  * are on (a header of the person's shops); a section of one that is off is offered to nobody.
  */
-export type Feature = "cashBook";
+export type Feature = "cashBook" | "stock";
 export type Features = Readonly<Partial<Record<Feature, boolean>>>;
 
 /** A section opens for whoever holds any one of `needs`, and only while its `feature`, if any, is on. */
@@ -71,15 +71,50 @@ const STAFF_SECTIONS: readonly StaffSection[] = [
 export const STAFF_SECTION_IDS: readonly string[] = STAFF_SECTIONS.map((section) => section.id);
 
 /**
- * Exactly the sections the member may open, in display order: by what the server said they hold, or by
- * the role alone when it said nothing (`permissions` absent or null).
+ * The sections of the stock (the expansion's module I). They exist only while the platform switch
+ * `stock_on` is on, which the server says with a header of the person's shops; until then, and for a
+ * client that was not told, none of them is offered. `office` marks the one the web panel alone has:
+ * the documents are heavy tables, the Mini App keeps to the counter's tasks.
  */
-export function staffSections(role: Role, permissions?: Held, features: Features = {}): NavItem[] {
-  return STAFF_SECTIONS.filter(
-    (section) =>
-      (section.feature === undefined || features[section.feature] === true) &&
-      mayAny({ role, permissions }, section.needs),
-  ).map(({ id, path, labelKey }) => ({ id, path, labelKey }));
+const STOCK_SECTIONS: readonly (StaffSection & { office?: true })[] = [
+  { id: "stock", path: "/stock", labelKey: "nav.stock", needs: ["stock.view"], feature: "stock" },
+  {
+    id: "stockDocuments",
+    path: "/stock-documents",
+    labelKey: "nav.stockDocuments",
+    needs: ["stock.receive", "stock.adjust"],
+    feature: "stock",
+    office: true,
+  },
+  { id: "suppliers", path: "/suppliers", labelKey: "nav.suppliers", needs: ["suppliers.view"], feature: "stock" },
+];
+
+export const STOCK_SECTION_IDS: readonly string[] = STOCK_SECTIONS.map((section) => section.id);
+
+/** The section the stock's own follow: goods are in the catalog, the stock counts them. */
+const STOCK_AFTER = "catalog";
+
+/**
+ * Exactly the sections the member may open, in display order: by what the server said they hold, or by
+ * the role alone when it said nothing (`permissions` absent or null). A section of a part of the
+ * product that the platform has not switched on is offered to nobody. `office` is true for the web
+ * panel, which has the screens made of tables.
+ */
+export function staffSections(role: Role, permissions?: Held, features: Features = {}, office = false): NavItem[] {
+  const all: StaffSection[] = [];
+  for (const section of STAFF_SECTIONS) {
+    all.push(section);
+    if (section.id === STOCK_AFTER) {
+      all.push(...STOCK_SECTIONS.filter((added) => added.office !== true || office));
+    }
+  }
+  return all
+    .filter(
+      (section) =>
+        (section.feature === undefined || features[section.feature] === true) &&
+        mayAny({ role, permissions }, section.needs),
+    )
+    .map(({ id, path, labelKey }) => ({ id, path, labelKey }));
 }
 
 /** How many sections fit in the bottom tab bar of a phone; the rest sit behind "More". */

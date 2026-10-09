@@ -138,8 +138,58 @@ def fill(owner: psycopg.Connection, shop: Shop) -> uuid.UUID:
     ]
     for sql, values in statements:
         owner.execute(sql, values)
+    fill_stock(owner, shop, entry)
     owner.execute("UPDATE app_user SET active_shop = %s WHERE id = %s", (shop.shop_id, shop.user_id))
     return linked
+
+
+def fill_stock(owner: psycopg.Connection, shop: Shop, entry: uuid.UUID) -> None:
+    """A row of the shop in each table of the stock and of the suppliers (migration 0043): a receipt of
+    one item from a supplier, on credit, and a sale of part of it."""
+    item, supplier, document = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    owner.execute(
+        "INSERT INTO catalog_item (id, shop_id, name, name_norm, price, tracked) "
+        "VALUES (%s, %s, 'Shakar', 'shakar', 12000, true)",
+        (item, shop.shop_id),
+    )
+    owner.execute(
+        "INSERT INTO catalog_barcode (shop_id, code, item_id) VALUES (%s, '4780000000014', %s)", (shop.shop_id, item)
+    )
+    owner.execute(
+        "INSERT INTO supplier (id, shop_id, name, name_norm) VALUES (%s, %s, 'Ulgurji', 'ulgurji')",
+        (supplier, shop.shop_id),
+    )
+    owner.execute(
+        "INSERT INTO stock_document (id, shop_id, kind, number, doc_date, supplier_id, total, draft, created_by) "
+        "VALUES (%s, %s, 'receipt', 1, current_date, %s, 100000, '{}'::jsonb, %s)",
+        (document, shop.shop_id, supplier, shop.member_id),
+    )
+    owner.execute(
+        "INSERT INTO stock_document_line (shop_id, document_id, line_no, item_id, qty, unit_cost, line_total) "
+        "VALUES (%s, %s, 1, %s, 10, 10000, 100000)",
+        (shop.shop_id, document, item),
+    )
+    owner.execute(
+        "INSERT INTO stock_movement (id, shop_id, item_id, item_seq, kind, qty, unit_cost, cost_total, value_delta, "
+        "  currency, on_hand_after, value_after, document_id, line_no, author_id) "
+        "VALUES (gen_random_uuid(), %s, %s, 1, 'receipt', 10, 10000, 100000, 100000, 'UZS', 10, 100000, %s, 1, %s)",
+        (shop.shop_id, item, document, shop.member_id),
+    )
+    owner.execute(
+        "INSERT INTO stock_movement (id, shop_id, item_id, item_seq, kind, qty, cost_total, sale_total, value_delta, "
+        "  currency, on_hand_after, value_after, ledger_entry_id, author_id) "
+        "VALUES (gen_random_uuid(), %s, %s, 2, 'sale', -2, 20000, 24000, -20000, 'UZS', 8, 80000, %s, %s)",
+        (shop.shop_id, item, entry, shop.member_id),
+    )
+    owner.execute(
+        "UPDATE stock_document SET status = 'posted', draft = NULL, posted_by = %s, posted_at = now() WHERE id = %s",
+        (shop.member_id, document),
+    )
+    owner.execute(
+        "INSERT INTO supplier_entry (id, shop_id, supplier_id, seq, kind, amount, document_id, author_id) "
+        "VALUES (gen_random_uuid(), %s, %s, 1, 'purchase', 100000, %s, %s)",
+        (shop.shop_id, supplier, document, shop.member_id),
+    )
 
 
 def make_due(owner: psycopg.Connection, shop: Shop, interval: str = "-1 minute") -> None:

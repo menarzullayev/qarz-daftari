@@ -70,6 +70,8 @@ const CashScreen = lazy(() => import("./cash/CashScreen"));
 const ExportsScreen = lazy(() => import("./exports/ExportsScreen"));
 const ImportScreen = lazy(() => import("./imports/ImportScreen"));
 const SupportAccessSection = lazy(() => import("./support/SupportAccessSection"));
+// The stock, its documents and the suppliers: one module, fetched when one of their screens is opened.
+const StockScreens = lazy(() => import("./stock/StockScreens"));
 
 /**
  * Support access under the settings of the Mini App, for the owner alone: nobody else may read it, so
@@ -169,6 +171,12 @@ function workspaceScreen(
       );
     case "catalog":
       return <CatalogScreen />;
+    case "stock":
+      return (
+        <Suspense fallback={<Loading />}>
+          <StockScreens view={route.view} office={extension !== undefined} />
+        </Suspense>
+      );
     case "reminders":
       return <RemindersScreen />;
     case "subscription":
@@ -229,7 +237,7 @@ export function StaffRoutes({
     );
   }
 
-  const sections = staffSections(session.role, session.permissions, session.features);
+  const sections = staffSections(session.role, session.permissions, session.features, extension !== undefined);
   const primaryCount = primaryTabCount(sections);
   const overflow = sections.slice(primaryCount);
   const match = matchWorkspaceRoute(path);

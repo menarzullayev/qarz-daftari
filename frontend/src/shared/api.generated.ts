@@ -1813,6 +1813,180 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shops/{shop_id}/stock/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stock.Documents.List */
+        get: operations["stock_documents_list_api_v1_shops__shop_id__stock_documents_get"];
+        put?: never;
+        /** Stock.Documents.Create */
+        post: operations["stock_documents_create_api_v1_shops__shop_id__stock_documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/stock/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stock.Documents.Read */
+        get: operations["stock_documents_read_api_v1_shops__shop_id__stock_documents__document_id__get"];
+        /** Stock.Documents.Update */
+        put: operations["stock_documents_update_api_v1_shops__shop_id__stock_documents__document_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/stock/documents/{document_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stock.Documents.Cancel */
+        post: operations["stock_documents_cancel_api_v1_shops__shop_id__stock_documents__document_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/stock/documents/{document_id}/post": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stock.Documents.Post */
+        post: operations["stock_documents_post_api_v1_shops__shop_id__stock_documents__document_id__post_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/stock/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stock.Items.List */
+        get: operations["stock_items_list_api_v1_shops__shop_id__stock_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/stock/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stock.Items.Read */
+        get: operations["stock_items_read_api_v1_shops__shop_id__stock_items__item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Stock.Items.Update */
+        patch: operations["stock_items_update_api_v1_shops__shop_id__stock_items__item_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/stock/items/{item_id}/movements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stock.Movements.List */
+        get: operations["stock_movements_list_api_v1_shops__shop_id__stock_items__item_id__movements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/stock/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stock.Lookup */
+        get: operations["stock_lookup_api_v1_shops__shop_id__stock_lookup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/stock/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stock.Report */
+        get: operations["stock_report_api_v1_shops__shop_id__stock_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/stock/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stock.Settings.Read */
+        get: operations["stock_settings_read_api_v1_shops__shop_id__stock_settings_get"];
+        /** Stock.Settings.Update */
+        put: operations["stock_settings_update_api_v1_shops__shop_id__stock_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/shops/{shop_id}/subscription": {
         parameters: {
             query?: never;
@@ -1859,6 +2033,110 @@ export interface paths {
         put?: never;
         /** Shop.Subscription.Receipts.Submit */
         post: operations["shop_subscription_receipts_submit_api_v1_shops__shop_id__subscription_receipts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/suppliers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Suppliers.List */
+        get: operations["suppliers_list_api_v1_shops__shop_id__suppliers_get"];
+        put?: never;
+        /** Suppliers.Create */
+        post: operations["suppliers_create_api_v1_shops__shop_id__suppliers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/suppliers/{supplier_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Suppliers.Read */
+        get: operations["suppliers_read_api_v1_shops__shop_id__suppliers__supplier_id__get"];
+        /** Suppliers.Update */
+        put: operations["suppliers_update_api_v1_shops__shop_id__suppliers__supplier_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/suppliers/{supplier_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Suppliers.Archive */
+        post: operations["suppliers_archive_api_v1_shops__shop_id__suppliers__supplier_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/suppliers/{supplier_id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Suppliers.Entries.Create */
+        post: operations["suppliers_entries_create_api_v1_shops__shop_id__suppliers__supplier_id__entries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/suppliers/{supplier_id}/entries/{entry_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Suppliers.Entries.Cancel */
+        post: operations["suppliers_entries_cancel_api_v1_shops__shop_id__suppliers__supplier_id__entries__entry_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/suppliers/{supplier_id}/unarchive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Suppliers.Unarchive */
+        post: operations["suppliers_unarchive_api_v1_shops__shop_id__suppliers__supplier_id__unarchive_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2008,6 +2286,11 @@ export interface components {
              * Format: uuid
              */
             customer_id: string;
+        };
+        /** CancelBody */
+        CancelBody: {
+            /** Reason */
+            reason: string;
         };
         /** CashBackfill */
         CashBackfill: {
@@ -2327,6 +2610,39 @@ export interface components {
             /** Confirm Name */
             confirm_name: string;
         };
+        /** DocumentBody */
+        DocumentBody: {
+            /** Currency */
+            currency?: string | null;
+            /** Customer Id */
+            customer_id?: string | null;
+            /** Doc Date */
+            doc_date?: string | null;
+            /** Kind */
+            kind: string;
+            /** Lines */
+            lines: components["schemas"]["DocumentLineBody"][];
+            /** Method */
+            method?: string | null;
+            /** Note */
+            note?: string | null;
+            /** Paid */
+            paid?: number | null;
+            /** Reason */
+            reason?: string | null;
+            /** Supplier Id */
+            supplier_id?: string | null;
+        };
+        /** DocumentLineBody */
+        DocumentLineBody: {
+            /** Item Id */
+            item_id?: string | null;
+            new_item?: components["schemas"]["NewItemBody"] | null;
+            /** Qty */
+            qty: string;
+            /** Unit Cost */
+            unit_cost?: number | null;
+        };
         /** Entry */
         Entry: {
             /** Amount */
@@ -2407,6 +2723,22 @@ export interface components {
             name?: string | null;
             /** Price */
             price?: number | null;
+            /** Unit */
+            unit?: string | null;
+        };
+        /** ItemStockPatch */
+        ItemStockPatch: {
+            /** Barcodes */
+            barcodes?: string[] | null;
+            /**
+             * Clear Low Stock
+             * @default false
+             */
+            clear_low_stock: boolean;
+            /** Low Stock */
+            low_stock?: string | null;
+            /** Tracked */
+            tracked?: boolean | null;
             /** Unit */
             unit?: string | null;
         };
@@ -2515,6 +2847,34 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** NewDocumentBody */
+        NewDocumentBody: {
+            /** Currency */
+            currency?: string | null;
+            /** Customer Id */
+            customer_id?: string | null;
+            /** Doc Date */
+            doc_date?: string | null;
+            /** Kind */
+            kind: string;
+            /** Lines */
+            lines: components["schemas"]["DocumentLineBody"][];
+            /** Method */
+            method?: string | null;
+            /** Note */
+            note?: string | null;
+            /** Paid */
+            paid?: number | null;
+            /**
+             * Post
+             * @default false
+             */
+            post: boolean;
+            /** Reason */
+            reason?: string | null;
+            /** Supplier Id */
+            supplier_id?: string | null;
+        };
         /** NewEntry */
         NewEntry: {
             /** Amount */
@@ -2534,6 +2894,17 @@ export interface components {
         };
         /** NewItem */
         NewItem: {
+            /** Name */
+            name: string;
+            /** Price */
+            price: number;
+            /** Unit */
+            unit?: string | null;
+        };
+        /** NewItemBody */
+        NewItemBody: {
+            /** Barcode */
+            barcode?: string | null;
             /** Name */
             name: string;
             /** Price */
@@ -2808,6 +3179,33 @@ export interface components {
             recorded_amount: number | null;
             /** Status */
             status: string;
+        };
+        /** StockSettingsChange */
+        StockSettingsChange: {
+            /** Refuse Negative */
+            refuse_negative: boolean;
+        };
+        /** SupplierBody */
+        SupplierBody: {
+            /** Name */
+            name: string;
+            /** Note */
+            note?: string | null;
+            /** Phone */
+            phone?: string | null;
+        };
+        /** SupplierEntryBody */
+        SupplierEntryBody: {
+            /** Amount */
+            amount: number;
+            /** Currency */
+            currency?: string | null;
+            /** Kind */
+            kind: string;
+            /** Method */
+            method?: string | null;
+            /** Note */
+            note?: string | null;
         };
         /** TransferStart */
         TransferStart: {
@@ -7350,6 +7748,525 @@ export interface operations {
             };
         };
     };
+    stock_documents_list_api_v1_shops__shop_id__stock_documents_get: {
+        parameters: {
+            query?: {
+                kind?: string | null;
+                status?: string | null;
+                supplier_id?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_documents_create_api_v1_shops__shop_id__stock_documents_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewDocumentBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_documents_read_api_v1_shops__shop_id__stock_documents__document_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shop_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_documents_update_api_v1_shops__shop_id__stock_documents__document_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_documents_cancel_api_v1_shops__shop_id__stock_documents__document_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_documents_post_api_v1_shops__shop_id__stock_documents__document_id__post_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_items_list_api_v1_shops__shop_id__stock_items_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                filter?: string;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_items_read_api_v1_shops__shop_id__stock_items__item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shop_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_items_update_api_v1_shops__shop_id__stock_items__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemStockPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_movements_list_api_v1_shops__shop_id__stock_items__item_id__movements_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                shop_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_lookup_api_v1_shops__shop_id__stock_lookup_get: {
+        parameters: {
+            query: {
+                code: string;
+            };
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_report_api_v1_shops__shop_id__stock_report_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_settings_read_api_v1_shops__shop_id__stock_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_settings_update_api_v1_shops__shop_id__stock_settings_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StockSettingsChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     shop_subscription_read_api_v1_shops__shop_id__subscription_get: {
         parameters: {
             query?: never;
@@ -7470,6 +8387,313 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suppliers_list_api_v1_shops__shop_id__suppliers_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                status?: string;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suppliers_create_api_v1_shops__shop_id__suppliers_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupplierBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suppliers_read_api_v1_shops__shop_id__suppliers__supplier_id__get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                shop_id: string;
+                supplier_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suppliers_update_api_v1_shops__shop_id__suppliers__supplier_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+                supplier_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupplierBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suppliers_archive_api_v1_shops__shop_id__suppliers__supplier_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+                supplier_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suppliers_entries_create_api_v1_shops__shop_id__suppliers__supplier_id__entries_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+                supplier_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupplierEntryBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suppliers_entries_cancel_api_v1_shops__shop_id__suppliers__supplier_id__entries__entry_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+                supplier_id: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suppliers_unarchive_api_v1_shops__shop_id__suppliers__supplier_id__unarchive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+                supplier_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

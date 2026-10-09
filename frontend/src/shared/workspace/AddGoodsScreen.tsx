@@ -11,6 +11,7 @@ import { NotFoundScreen } from "../screens";
 import { useWorkspace } from "./context";
 import { type DraftLine, GoodsEditor, GoodsList, readDrafts } from "./GoodsEditor";
 import { errorText, Failure, Loading } from "./parts";
+import { StockRefusal, StockWarnings } from "./StockNotes";
 
 /**
  * Whether the interface offers "add goods" for an entry (REQ-038): a credit sale that is not reversed,
@@ -50,6 +51,7 @@ function AddGoodsForm({ customer, entry }: { customer: CustomerDetail; entry: En
     return (
       <div className="notice notice--done" role="status">
         <p>{t("goods.later.done")}</p>
+        <StockWarnings warnings={state.result.stockWarnings} />
         <GoodsList lines={state.result.lines} />
         <p className="actions">
           <Link to={back} className="button button--primary">
@@ -87,6 +89,7 @@ function AddGoodsForm({ customer, entry }: { customer: CustomerDetail; entry: En
       {failure ? (
         <div className="notice notice--error" role="alert">
           <p>{errorText(failure, t)}</p>
+          <StockRefusal error={failure} />
           {failure.serverMessage === null ? <p>{t("entry.retrySafe")}</p> : null}
         </div>
       ) : null}

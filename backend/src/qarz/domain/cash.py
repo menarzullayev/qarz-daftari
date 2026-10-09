@@ -47,6 +47,17 @@ MAX_PAGE = 100
 
 # The category a customer's payment lands in, whatever the shop has renamed it to.
 DEBT_REPAID = "debt_repaid"
+# The stock's own two (expansion module I), made for a shop the first time the stock pays money out:
+# what is paid for goods, to a supplier or on a purchase for cash; and what is handed back to a
+# customer for goods returned. Their totals are then exactly what the stock's documents say.
+GOODS_PURCHASE = "goods_purchase"
+CUSTOMER_REFUND = "customer_refund"
+STOCK_CATEGORIES: dict[str, tuple[str, str]] = {
+    GOODS_PURCHASE: ("Ombor: tovar xaridi", "Склад: закупка товара"),
+    CUSTOMER_REFUND: ("Ombor: mijozga qaytarildi", "Склад: возврат клиенту"),
+}
+# The categories only the service writes under: a person records nothing there by hand.
+_WRITTEN_BY_THE_SERVICE = frozenset({DEBT_REPAID, GOODS_PURCHASE, CUSTOMER_REFUND})
 
 
 class Direction(StrEnum):
@@ -150,8 +161,9 @@ def day_problem(day: date, today: date) -> DayProblem | None:
 
 
 def may_write_by_hand(system_key: str | None) -> bool:
-    """Whether a person may record an entry under the category. Not under the ledger's own (BR-48)."""
-    return system_key != DEBT_REPAID
+    """Whether a person may record an entry under the category. Not under the ledger's own (BR-48),
+    nor under the stock's."""
+    return system_key not in _WRITTEN_BY_THE_SERVICE
 
 
 _METHOD_WORDS: dict[str, Method] = {

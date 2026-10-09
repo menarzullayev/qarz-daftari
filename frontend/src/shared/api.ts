@@ -260,7 +260,18 @@ export type RecordedEntry = {
   customer: Customer;
   /** Set when the sale was saved although it took the balance above the limit that applies (REQ-044). */
   limitWarning: LimitFigures | null;
-};
+} & StockNoted;
+
+/**
+ * What a sale with goods did to the stock that the seller should know (the expansion's module I): an
+ * item went below zero, or was sold in another unit than it is counted in and so was not taken out.
+ * Quantities are the API's decimal strings. Absent unless the server sent some, which it only does
+ * while the stock is switched on.
+ */
+export type StockWarning =
+  | { kind: "negative"; itemId: string; name: string; onHand: string }
+  | { kind: "unit"; itemId: string; name: string; unit: string };
+export type StockNoted = { stockWarnings?: StockWarning[] };
 
 /** A credit limit and the balance that met it, both in the entry's currency. */
 export type LimitFigures = { limit: number; balance: number };
@@ -366,7 +377,7 @@ export function cardTag(card: PaymentCard): string {
   return `${card.label} ··${card.number.slice(-4)}`;
 }
 
-export type AddedLines = { id: string; amount: number; lines: GoodsLine[] };
+export type AddedLines = { id: string; amount: number; lines: GoodsLine[] } & StockNoted;
 export type ChosenPromise = { id: string; amount: number; promisedDate: string };
 
 export type CatalogItem = {
@@ -408,6 +419,8 @@ export type MyShops = {
   permissionsOn: boolean;
   /** The platform has switched the cash book on: a shop then answers its cash routes, and offers it. */
   cashBookOn: boolean;
+  /** The platform has switched the stock on: a shop then answers its stock and supplier routes. */
+  stockOn: boolean;
 };
 
 /** A customer's objection to one entry. `status`: open, declined, withdrawn, or reversed (the shop agreed). */
@@ -818,7 +831,33 @@ function recordedEntry(value: unknown): RecordedEntry {
     },
     customer: customer(body["customer"]),
     limitWarning: limitFigures(body["limit_warning"]),
+    ...stockNoted(body["stock_warnings"]),
   };
+}
+
+/** A quantity as the stock writes it: a decimal string with up to three decimals, below zero too. */
+const STOCK_QTY = /^-?\d{1,12}(?:\.\d{1,3})?$/;
+
+/** The stock's warnings on an answer, when it carries any. A kind this client does not know is left out. */
+function stockNoted(value: unknown): StockNoted {
+  if (value === undefined || value === null) {
+    return {};
+  }
+  const stockWarnings: StockWarning[] = [];
+  for (const element of list(value, record)) {
+    const itemId = text(element["item"]);
+    const name = text(element["name"]);
+    if (element["kind"] === "negative") {
+      const onHand = text(element["on_hand"]);
+      if (!STOCK_QTY.test(onHand)) {
+        throw new Malformed();
+      }
+      stockWarnings.push({ kind: "negative", itemId, name, onHand });
+    } else if (element["kind"] === "unit") {
+      stockWarnings.push({ kind: "unit", itemId, name, unit: text(element["unit"]) });
+    }
+  }
+  return stockWarnings.length > 0 ? { stockWarnings } : {};
 }
 
 function limitFigures(value: unknown): LimitFigures | null {
@@ -934,8 +973,14 @@ function paymentCard(value: unknown): PaymentCard {
 }
 
 function addedLines(value: unknown): AddedLines {
-  const made = record(record(value)["entry"]);
-  return { id: text(made["id"]), amount: whole(made["amount"]), lines: list(made["lines"], goodsLine) };
+  const body = record(value);
+  const made = record(body["entry"]);
+  return {
+    id: text(made["id"]),
+    amount: whole(made["amount"]),
+    lines: list(made["lines"], goodsLine),
+    ...stockNoted(body["stock_warnings"]),
+  };
 }
 
 function chosenPromise(value: unknown): ChosenPromise {
@@ -998,12 +1043,15 @@ function linesBody(lines: readonly NewLine[]): Wire["GoodsLine"][] {
 export const PERMISSIONS_HEADER = "X-Qarz-Permissions";
 /** The header the server sends with a person's shops while the cash book is switched on. */
 export const CASH_BOOK_HEADER = "X-Qarz-Cash-Book";
+/** The header the server sends with a person's shops while the stock is switched on. */
+export const STOCK_HEADER = "X-Qarz-Stock";
 
 function myShops(value: unknown, headers: Headers): MyShops {
   const body = fieldsOf<Wire["MyShops"]>(value);
   return {
     permissionsOn: headers.get(PERMISSIONS_HEADER) === "on",
     cashBookOn: headers.get(CASH_BOOK_HEADER) === "on",
+    stockOn: headers.get(STOCK_HEADER) === "on",
     items: list(body.raw("items"), (element) => {
       const shop = fieldsOf<Wire["MyShop"]>(element);
       const role = shop.raw("role");
