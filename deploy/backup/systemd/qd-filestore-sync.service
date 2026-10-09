@@ -1,6 +1,6 @@
 # Runs on the standby server. Output goes to the journal: journalctl -u qd-filestore-sync.service
 [Unit]
-Description=Qarz Daftari: copy the file store's bucket to the standby
+Description=qarz: copy the file store's bucket to the standby
 Documentation=https://github.com/menarzullayev/qarz-daftari/blob/main/deploy/backup/README.md
 After=network-online.target postgresql.service
 Wants=network-online.target

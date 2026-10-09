@@ -23,6 +23,21 @@ its wording as expected.
 
 ## What there is to review
 
+**The line on what the product is (added 2026-10-10 with the name HisoBox).** It is not in the
+catalogs but in the brand's definition, `backend/src/qarz/domain/brand.json` (`tagline`), and is
+read in the bot's greeting and the manifest. The Uzbek and Russian lines are the founder's; the
+English one is his too. **The Tajik and Karakalpak lines were written by a model and are on this
+list for a native speaker:**
+
+| Language | Line | Source (uz) |
+|---|---|---|
+| `tg` | Ҳисоби мағозаи шумо дар як ҷо | Do'koningiz hisobi bir joyda |
+| `kaa` | Dúkanıńızdıń esabı bir jerde | Do'koningiz hisobi bir joyda |
+
+The greeting itself (`welcome_new`) now reads "<name> — <line>." in every language, so its first
+sentence in Tajik and Karakalpak is new text as well.
+
+
 About 2 700 texts for each of Tajik, Karakalpak and English: every module of the expansion, the network
 between shops (module J) included since the final pass of 2026-10-09. **Completeness is enforced:** CI
 runs `npm run i18n:missing -- --strict` in `frontend/` and `python scripts/i18n_missing.py --strict` in

@@ -1,6 +1,6 @@
 # The first day of each month, 04:30 Tashkent time.
 [Unit]
-Description=Qarz Daftari: monthly database dump, kept for twelve months (schedule)
+Description=qarz: monthly database dump, kept for twelve months (schedule)
 
 [Timer]
 OnCalendar=*-*-01 04:30:00 Asia/Tashkent

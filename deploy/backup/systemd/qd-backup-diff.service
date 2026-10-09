@@ -1,6 +1,6 @@
 # Runs on the standby server. Output goes to the journal: journalctl -u qd-backup-diff.service
 [Unit]
-Description=Qarz Daftari: daily differential database backup (pgBackRest)
+Description=qarz: daily differential database backup (pgBackRest)
 Documentation=https://github.com/menarzullayev/qarz-daftari/blob/main/deploy/backup/README.md
 After=network-online.target postgresql.service
 Wants=network-online.target

@@ -62,7 +62,8 @@ describe("what is loaded", () => {
   it("names the Uzbek catalog alone in the module every entry point loads", () => {
     const source = readFileSync(resolve(import.meta.dirname, "catalog.ts"), "utf8");
     const staticImports = [...source.matchAll(/^import (?!type\b)[^;]*?from "([^"]+)";/gms)].map((found) => found[1]);
-    expect(staticImports.sort()).toEqual(["./types", "./uz"]);
+    // Besides Uzbek: the types, and the product's name, which is one word for every language.
+    expect(staticImports.sort()).toEqual(["../shared/brand", "./types", "./uz"]);
     for (const language of ["ru", "tg", "kaa", "en"]) {
       expect(source).toContain(`import("./${language}")`);
     }

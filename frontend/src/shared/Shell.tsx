@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 
 import { useI18n } from "../i18n/I18nProvider";
 import { LANGUAGES, type Language, type MessageKey } from "../i18n/types";
+import { BrandMark } from "./BrandMark";
 import { NavIcon } from "./icons";
 import { Link } from "./router";
 import { ThemeToggle } from "./ThemeToggle";
@@ -124,6 +125,7 @@ export function Shell({
       <header className="shell__header">
         <div className="shell__identity">
           <p className="shell__brand">
+            <BrandMark />
             <span className="shell__product">{appName}</span>
             {entryKey ? <span className="shell__entry badge">{t(entryKey)}</span> : null}
           </p>

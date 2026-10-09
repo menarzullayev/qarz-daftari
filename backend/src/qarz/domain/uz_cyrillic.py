@@ -7,8 +7,8 @@ What is left exactly as it is:
 
 - placeholders (`{name}`), links, e-mail addresses, `@names`, bot commands (`/obuna`), markup tags and
   file extensions;
-- the product's name and other brands (`BRANDS`); an Uzbek ending after a brand is still written in
-  Cyrillic: "Telegramda" becomes "Telegramда";
+- the product's name (read from `qarz.domain.brand`, never written here) and other brands (`BRANDS`); an
+  Uzbek ending after a brand is still written in Cyrillic: "Telegramda" becomes "Telegramда";
 - codes: the ones in `CODES`, any word in capitals of two letters or more that is not a known Uzbek
   word ("SMS", "QR", "UZS"), and letters that touch a digit ("45k");
 - everything that is not a Latin letter: digits, punctuation, currency signs, Cyrillic text.
@@ -19,6 +19,8 @@ lost what Cyrillic keeps (the soft sign of "октябрь", the "ц" of "цир
 """
 
 import re
+
+from qarz.domain import brand
 
 # Product and brand names, kept in Latin. Matched at the start of a word with their capital letters, so
 # that "Eskiz" the provider stays and "eskiz" the sketch does not; what follows is an ending.
@@ -37,8 +39,9 @@ BRANDS = (
     "WebP",
 )
 
-# The product's own name is two ordinary words; only together are they the name.
-PRODUCT = "Qarz Daftari"
+# The product's own name comes from the one place it is written. As a whole it is never touched; when it
+# is a single word it is also a brand like the ones above, so an ending after it is still transliterated.
+PRODUCT = brand.NAME
 
 # Codes written in lower case too. Compared without regard to case.
 CODES = frozenset(
@@ -163,7 +166,9 @@ _PROTECTED = re.compile(
 _WORD = re.compile(
     rf"(?:[oOgG][{_APOSTROPHES}]|[A-Za-z])(?:[oOgG][{_APOSTROPHES}]|[A-Za-z]|[{_APOSTROPHES}](?=[A-Za-z]))*"
 )
-_BRANDS = tuple(sorted(BRANDS, key=len, reverse=True))
+_BRANDS = tuple(
+    sorted({*BRANDS, *([PRODUCT] if _WORD.fullmatch(PRODUCT) else [])}, key=lambda name: (-len(name), name))
+)
 _STEMS = tuple(sorted(STEMS, key=len, reverse=True))
 
 
@@ -251,11 +256,11 @@ def _word(word: str) -> str:
     low = word.lower().translate(_PLAIN)
     if low in CODES:
         return word
-    for brand in _BRANDS:
-        if word.startswith(brand):
-            ending = word[len(brand) :]
+    for name in _BRANDS:
+        if word.startswith(name):
+            ending = word[len(name) :]
             if ending == "" or ending.islower():
-                return brand + _by_rules(ending, _kind(brand[-1]))
+                return name + _by_rules(ending, _kind(name[-1]))
     if len(word) > 1 and word.isupper() and low not in UPPER_WORDS and "'" not in low:
         return word
     if low in WORDS:

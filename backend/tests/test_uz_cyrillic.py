@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from qarz.application import chat_texts, export_texts
-from qarz.domain import uz_cyrillic
+from qarz.domain import brand, uz_cyrillic
 from qarz.domain.uz_cyrillic import to_cyrillic
 from qarz.interface.errors import _MESSAGES
 
@@ -54,7 +54,7 @@ def test_what_a_careless_rule_would_write_never_comes_out(latin: str, wrong: str
 def test_the_tables_are_the_shared_ones() -> None:
     """The browser's twin is held to the same file, so the two cannot drift apart word by word."""
     assert sorted(uz_cyrillic.BRANDS) == FIXTURE["brands"]
-    assert FIXTURE["product"] == uz_cyrillic.PRODUCT
+    assert uz_cyrillic.PRODUCT == brand.NAME
     assert sorted(uz_cyrillic.CODES) == FIXTURE["codes"]
     assert sorted(uz_cyrillic.UPPER_WORDS) == FIXTURE["upper_words"]
     assert FIXTURE["words"] == uz_cyrillic.WORDS
@@ -71,7 +71,7 @@ def test_the_tables_are_the_shared_ones() -> None:
         "https://t.me/qarz_bot?start=abc",
         "yordam@qarz.uz",
         "@qarz_bot",
-        "Qarz Daftari",
+        brand.NAME,
         "Telegram",
         "Excel",
         "SMS",

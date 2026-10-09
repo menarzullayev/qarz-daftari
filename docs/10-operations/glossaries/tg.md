@@ -1,6 +1,6 @@
 # Tajik (tg) glossary
 
-The Tajik texts of Qarz Daftari are written in **Cyrillic script, in standard literary Tajik** with the
+The Tajik texts of HisoBox (formerly Qarz Daftari) are written in **Cyrillic script, in standard literary Tajik** with the
 letters ғ, ӣ, қ, ӯ, ҳ, ҷ, as used in Tajikistan and by Tajik speakers in Uzbekistan. The register is
 everyday shop language with the polite plural «Шумо» (capitalised); where a plain word and a bookish
 Persian or Russian one compete, the plain one is used.
@@ -19,7 +19,7 @@ refusals, permission names).
 | payment | to'lov | пардохт | Verb «пардохт кардан». «Қабули пардохт» = taking a payment. Colloquial «пул додан» is avoided for consistency. |
 | customer | mijoz | мизоҷ | Plural «мизоҷон». |
 | shop | do'kon | мағоза | «Дӯкон» is also understood; «мағоза» was chosen as the neutral word in both countries. |
-| ledger (the book) | daftar | дафтар | The product name «Qarz Daftari» is never translated. |
+| ledger (the book) | daftar | дафтар | The product's name (HisoBox) is never translated and never typed: a text writes `{brand}`. |
 | cash book (the module) | kassa | касса | Menu item, sheet name, permission group. Spelled out once as «дафтари воридот ва хароҷот»; «дафтари рӯзона» = the day's book. |
 | income (money in) | kirim | воридот | Not «даромад»: that word is already the sign-in title, and a customer repaying a debt is an inflow, not earnings. |
 | expense (money out) | chiqim | хароҷот | |
@@ -125,7 +125,7 @@ refusals, permission names).
 
 ## Conventions
 
-- **Never translated:** the product name `Qarz Daftari`, bot commands (`/obuna`, `/til`, `/dokon`,
+- **Never translated:** the product's name (`{brand}` in a text, HisoBox on the screen), bot commands (`/obuna`, `/til`, `/dokon`,
   `/yordam`, `/kassa`, `/ombor`, `/qarzim`, `/uzish`, `/ochirish`, `/start`), `Telegram`, `SMS`, `QR`, `PDF`, `Excel`, `CSV`,
   `UUID`, file extensions, and the language autonyms (`O'zbekcha`, `Русский`, `Ўзбекча`, `Тоҷикӣ`,
   `Qaraqalpaqsha`, `English`).

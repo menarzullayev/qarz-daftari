@@ -15,7 +15,7 @@ export const SHOP_ID = "5a0c6d3e-0000-4000-8000-00000000aaaa";
 export const OTHER_SHOP = "5a0c6d3e-0000-4000-8000-00000000bbbb";
 export const ADMIN_ID = "77777777-7777-4777-8777-777777a1b2c3";
 /** A provisioning URI as the server builds one. Not a real secret. */
-export const OTPAUTH = "otpauth://totp/Qarz%20Daftari:admin-1?secret=ORSXG5BAMZXXEIDUMVZXI4Y&issuer=Qarz%20Daftari";
+export const OTPAUTH = "otpauth://totp/Some%20Issuer:admin-1?secret=ORSXG5BAMZXXEIDUMVZXI4Y&issuer=Some%20Issuer";
 export const LOGIN = { id: 123456789, first_name: "Ali", auth_date: 1791270000, hash: "ab12" };
 /** Tuesday 6 October 2026, 12:00 in Tashkent. */
 export const NOW = new Date("2026-10-06T07:00:00Z");

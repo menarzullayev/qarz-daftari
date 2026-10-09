@@ -361,6 +361,28 @@ r = c.getresponse(); print(r.status, r.getheader("Location") or "")' "$marker" "
   step health-after-stale-check 1 dc exec -T backup /opt/qarz-single/healthcheck.sh
   step check-fresh-again 0 job check
   step health-after-fresh-check 0 dc exec -T backup /opt/qarz-single/healthcheck.sh
+  # Checks do not wait behind the jobs' lock, so the scheduler's and a person's can end in the same
+  # moment. Four rounds of twelve at once: every one must end as it would alone (a status file whose
+  # temporary name was shared by all writers made one of two fail with "mv: cannot stat"), and what
+  # they leave is one whole status and no file of a writer's own.
+  step checks-at-once 0 dc exec -T backup bash -c '
+    code=0
+    for round in 1 2 3 4; do
+      pids=""
+      for n in 1 2 3 4 5 6 7 8 9 10 11 12; do
+        /opt/qarz-single/job.sh check --quiet > /dev/null &
+        pids="$pids $!"
+      done
+      for pid in $pids; do
+        wait "$pid" || { code=1; echo "ERROR: a check of round $round failed beside the others" >&2; }
+      done
+    done
+    exit "$code"'
+  expect "the status they left is one whole line: the verdict 0 and a moment" \
+    bash -c '[[ "$1" =~ ^0\ [0-9]{9,11}$ ]]' _ "$(dc exec -T backup cat /var/lib/qarz-backup/check.status | tr -d '\r')"
+  expect "no writer left a file of its own beside it" \
+    bash -c '[ "$1" = check.status ]' _ "$(dc exec -T backup bash -c 'ls -A /var/lib/qarz-backup | grep -F check.status' | tr -d '\r')"
+  step health-after-checks-at-once 0 dc exec -T backup /opt/qarz-single/healthcheck.sh
   local figures wanted
   figures="$(dc exec -T backup bash -c 'cat /var/lib/qarz-backup-figures/*.prom' | grep -v '^#' | tr -d '\r')"
   echo "$figures" | sort | sed 's/^/      /'

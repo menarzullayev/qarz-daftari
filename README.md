@@ -1,6 +1,6 @@
-# Qarz Daftari
+# HisoBox
 
-A credit ledger service for mahalla grocery shops in Uzbekistan, used through Telegram and the web. "Qarz Daftari" is a working title.
+A shop's books in one place for mahalla grocery shops in Uzbekistan, used through Telegram and the web: credit sales and the debt ledger, the cash book, stock, suppliers. Formerly "Qarz Daftari", the working title until 2026-10-10; the repository, the package `qarz` and the `QD_*` names keep it (`docs/08-technical-spec/OUTPUT.md`, "Brand").
 
 **Status:** in development. Nothing here is deployed or used by real shops. The service must not process real customer data until the launch criteria in `docs/10-operations/OUTPUT.md` are met.
 

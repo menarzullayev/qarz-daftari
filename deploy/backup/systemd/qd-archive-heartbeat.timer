@@ -1,7 +1,7 @@
 # Every minute, on the primary (and installed on the standby too: it does nothing there
 # until that server is promoted).
 [Unit]
-Description=Qarz Daftari: one small WAL record a minute, so that a quiet archive means a broken one (schedule)
+Description=qarz: one small WAL record a minute, so that a quiet archive means a broken one (schedule)
 
 [Timer]
 OnCalendar=*-*-* *:*:30

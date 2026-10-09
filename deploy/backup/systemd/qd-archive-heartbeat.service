@@ -1,6 +1,6 @@
 # Runs on the primary server. Output goes to the journal: journalctl -u qd-archive-heartbeat.service
 [Unit]
-Description=Qarz Daftari: one small WAL record a minute, so that a quiet archive means a broken one
+Description=qarz: one small WAL record a minute, so that a quiet archive means a broken one
 Documentation=https://github.com/menarzullayev/qarz-daftari/blob/main/deploy/backup/README.md
 After=network-online.target postgresql.service
 Wants=network-online.target

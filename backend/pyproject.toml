@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "qarz-daftari-backend"
 version = "0.1.0"
-description = "Qarz Daftari backend: API and worker"
+description = "Backend of the product named in src/qarz/domain/brand.json: API and worker"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115,<1",
@@ -31,6 +31,10 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# The product's name is data of the package: an installed copy reads it like a checkout does.
+[tool.setuptools.package-data]
+"qarz.domain" = ["brand.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

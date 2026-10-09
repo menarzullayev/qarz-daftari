@@ -6,14 +6,14 @@ const uz = {
   "a.one": "Mijozning qarzi to'liq to'langan",
   "a.two": "Bugun to'lanishi kerak bo'lgan summa",
   "a.three": "Do'kon egasiga murojaat qiling va kuting",
-  "a.name": "Qarz Daftari",
+  "a.name": "Telegram orqali kirish",
   "a.count": { other: "{count} ta mijoz ro'yxatda turibdi" },
 };
 const ru = {
   "a.one": "Долг клиента оплачен полностью, спасибо",
   "a.two": "Сумма, которую нужно оплатить сегодня",
   "a.three": "Обратитесь к владельцу магазина и ждите",
-  "a.name": "Qarz Daftari",
+  "a.name": "Telegram orqali kirish",
   "a.count": { one: "{count} клиент", few: "{count} клиента", many: "{count} клиентов" },
 };
 
@@ -25,8 +25,8 @@ describe("the sentences a language is recognised by", () => {
       "Обратитесь к владельцу магазина и ждите",
     ]);
     // Short text, text with a place to fill in, text with a quote, and text another catalog has too.
-    expect(markersOf({ short: "Клиенты", place: "{count} клиентов в этом списке сейчас", same: "Qarz Daftari — nasiya hisobi uchun" }, [
-      { same: "Qarz Daftari — nasiya hisobi uchun" },
+    expect(markersOf({ short: "Клиенты", place: "{count} клиентов в этом списке сейчас", same: "Telegram orqali — nasiya hisobi uchun" }, [
+      { same: "Telegram orqali — nasiya hisobi uchun" },
     ])).toEqual([]);
     expect(markersOf(uz, [ru])).toEqual([]);
     expect(markersOf({ ...uz, plain: "Hisobot tayyorlanmoqda, biroz kuting" }, [ru])).toEqual(["Hisobot tayyorlanmoqda, biroz kuting"]);

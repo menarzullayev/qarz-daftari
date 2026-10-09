@@ -3,7 +3,7 @@ import type { uz } from "./uz";
 
 /** Tajik text of the main catalog. A key that is absent here reads Uzbek at run time. */
 export const tg: PartialCatalog<typeof uz> = {
-  "app.name": "Qarz Daftari",
+  "app.name": "{brand}",
   "entry.app": "Ҷойи кории кормандон",
   "entry.panel": "Панели идора",
   "entry.admin": "Идораи платформа",

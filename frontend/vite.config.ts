@@ -7,6 +7,7 @@ import type { Plugin } from "vite";
 import { defineConfig } from "vitest/config";
 
 import { collectInitialAssets } from "./scripts/size.ts";
+import { BRAND_NAME, BRAND_PLACEHOLDER, BRAND_SOURCE, BRAND_TAGLINE } from "./src/shared/brand.ts";
 
 /** Where the web panel's service worker is built to: a name that never changes, beside the panel's page. */
 export const WORKER_FILE = "panel/sw.js";
@@ -67,12 +68,44 @@ function panelWorker(): Plugin {
   };
 }
 
+/** What a page writes where the line on what the product is belongs. */
+export const TAGLINE_PLACEHOLDER = "{tagline}";
+
+const inAttribute = (text: string) => text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+
+/**
+ * A page with the product's name and the line on what it is filled in. The four `index.html` files say
+ * `{brand}` in their title and description, as the texts do, and the name is put there when the page is
+ * built or served, from the one place it is written (`src/shared/brand.ts`). A page that still holds a
+ * brace in its head afterwards names something this function does not know, and the build stops.
+ */
+export function brandedHtml(html: string): string {
+  const filled = html.split(BRAND_PLACEHOLDER).join(inAttribute(BRAND_NAME)).split(TAGLINE_PLACEHOLDER).join(inAttribute(BRAND_TAGLINE));
+  const head = /<head>[\s\S]*?<\/head>/.exec(filled.replace(/<!--[\s\S]*?-->/g, ""))?.[0] ?? "";
+  const left = /\{\w*\}/.exec(head);
+  if (left) {
+    throw new Error(`a page's head holds ${left[0]}, which the build does not fill in`);
+  }
+  return filled;
+}
+
+/** Fills the product's name into every page, in the build and in the development server alike. */
+function brandPages(): Plugin {
+  return {
+    name: "qd-brand-pages",
+    transformIndexHtml: { order: "pre", handler: brandedHtml },
+  };
+}
+
 // One application, four pages and a worker (ADR-011): the staff workspace served to the Telegram Mini
 // App, the web panel for desktop, the administration panel, and the page behind a customer's read-only
 // link, which shares nothing with the others but the design tokens. The web panel alone can be
 // installed; its service worker is built to /panel/sw.js.
 export default defineConfig({
-  plugins: [react(), panelWorker()],
+  plugins: [react(), brandPages(), panelWorker()],
+  // The brand's definition is the one file the pages read from outside this directory; the development
+  // server serves nothing else from there.
+  server: { fs: { allow: [import.meta.dirname, resolve(import.meta.dirname, "..", BRAND_SOURCE)] } },
   build: {
     rollupOptions: {
       input: {

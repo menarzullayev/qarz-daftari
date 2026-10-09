@@ -174,6 +174,8 @@ def test_the_script_refuses_an_argument_it_does_not_know() -> None:
 
 # The test modules that name a path under docs/ or .project-alpha/, or a Markdown file, with what they read.
 DOCUMENT_READERS = {
+    # Names documents only to leave them out of its search for the product's name: it opens none.
+    "tests/test_brand.py": [],
     "tests/db/test_schema_rules.py": ["docs/08-technical-spec/schema.sql"],
     "tests/test_sms_templates.py": ["docs/10-operations/runbooks.md"],
 }

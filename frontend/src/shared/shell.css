@@ -130,6 +130,21 @@ a {
   font-weight: 600;
 }
 
+/* The brand's mark beside the name: decoration, drawn from the brand's definition (BrandMark.tsx). */
+.shell__mark {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.shell__mark-ground {
+  fill: var(--qd-accent);
+}
+
+.shell__mark-block {
+  fill: var(--qd-on-accent);
+}
+
 .shell__product {
   color: var(--qd-text);
   font-size: 1rem;

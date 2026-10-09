@@ -1,7 +1,8 @@
 {
   "id": "/panel/",
-  "name": "Qarz Daftari",
-  "short_name": "Qarz Daftari",
+  "name": "HisoBox",
+  "short_name": "HisoBox",
+  "description": "HisoBox — Do'koningiz hisobi bir joyda.",
   "lang": "uz",
   "dir": "ltr",
   "start_url": "/panel/",

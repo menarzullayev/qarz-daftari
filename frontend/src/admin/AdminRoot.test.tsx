@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { fakeServer, type Reply, type Sent } from "../testing/fakeServer";
 import { go } from "../testing/renderScreen";
+import { BRAND_NAME } from "../shared/brand";
 import { AdminRoot } from "./AdminRoot";
 import { type LoginReturn, NO_RETURN } from "../panel/loginReturn";
 import type { LoginWidgetProps } from "../panel/TelegramLogin";
@@ -167,7 +168,7 @@ describe("someone who is not an administrator", () => {
     expect(screen.queryByRole("navigation")).toBeNull();
     expect(view.container.textContent).not.toMatch(ADMIN_WORDS);
     // The title is set in an effect, after the heading is drawn: it is waited for, not read at once.
-    await waitFor(() => expect(document.title).toBe("Sahifa topilmadi — Qarz Daftari"));
+    await waitFor(() => expect(document.title).toBe(`Sahifa topilmadi — ${BRAND_NAME}`));
     expect(screen.queryByLabelText("6 xonali kod")).toBeNull();
     expect(screen.queryByRole("button", { name: "Maxfiy kalit yaratish" })).toBeNull();
   });
