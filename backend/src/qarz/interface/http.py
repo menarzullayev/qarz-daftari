@@ -49,6 +49,7 @@ from qarz.application.shops import ShopService
 from qarz.application.staff import StaffService
 from qarz.application.stock import StockService
 from qarz.application.stock_documents import DocumentService
+from qarz.application.stock_sales import SaleService
 from qarz.application.subscription import SubscriptionService
 from qarz.application.subscription_receipts import SubscriptionReceiptService
 from qarz.application.suppliers import SupplierService
@@ -254,6 +255,7 @@ def create_app(
             DocumentService(storage, now),
             SupplierService(storage, now),
             current_user,
+            SaleService(storage, now),
         )
         add_network_routes(
             app,

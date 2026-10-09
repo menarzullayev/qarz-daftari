@@ -84,6 +84,12 @@ CREATE INDEX stock_movement_sold ON stock_movement (shop_id, created_at)
   WHERE kind = 'sale';
 
 -- The lists of documents never show a sale (it has lists of its own), and a shop that sells for cash
--- writes hundreds of sales between two receipts: the documents, newest first, are read through an index
--- that holds every kind but that one, so a page of them costs what it holds whatever was sold.
-CREATE INDEX stock_document_papers ON stock_document (shop_id, created_at DESC, id DESC) WHERE kind <> 'sale';
+-- writes hundreds of sales between two receipts. The two indexes those lists walk, newest first and by
+-- state (migrations 0043 and 0047), are therefore rebuilt to hold every kind but that one: a page of
+-- documents costs what it holds, whatever was sold. Nothing else read them: a sale is found through
+-- `stock_document_by_kind`, which leads with the shop like these.
+DROP INDEX stock_document_recent;
+CREATE INDEX stock_document_recent ON stock_document (shop_id, created_at DESC, id DESC) WHERE kind <> 'sale';
+DROP INDEX stock_document_by_status;
+CREATE INDEX stock_document_by_status ON stock_document (shop_id, status, created_at DESC, id DESC)
+  WHERE kind <> 'sale';

@@ -84,6 +84,7 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
         "ITEM_NOT_COUNTABLE",
         "DOCUMENT_NOT_DRAFT",
         "DOCUMENT_CANCELLED",
+        "SALE_CANCELLED",
         "SUPPLIER_NAME_TAKEN",
         "SUPPLIER_ARCHIVED",
         "SUPPLIER_HAS_BALANCE",

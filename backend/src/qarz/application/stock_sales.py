@@ -281,11 +281,11 @@ async def sell_in(
     refuse = await session.stock_refuse_negative()
     show_costs = sees_costs(actor)
     warnings: list[dict[str, str]] = []
-    for line in priced:
-        item = items[line.item_id]
+    for sold in priced:
+        item = items[sold.item_id]
         if not item.tracked:
             continue
-        qty = line.qty
+        qty = sold.qty
         moved = await move(
             session,
             actor,
@@ -293,16 +293,16 @@ async def sell_in(
             kind=stock.SALE,
             compute=lambda level, qty=qty: stock.go_out(level, qty, may_go_negative=not refuse),  # type: ignore[misc]
             now=now,
-            sale_total=line.line_total,
+            sale_total=sold.line_total,
             document_id=document_id,
-            line_no=line.line_no,
+            line_no=sold.line_no,
         )
-        assert moved is not None and line.line_total is not None
+        assert moved is not None and sold.line_total is not None
         effect = moved[1]
         named = {"item": str(item.item_id), "name": item.name}
         if effect.after.on_hand < 0:
             warnings.append({"kind": "negative", **named, "on_hand": format_qty(effect.after.on_hand)})
-        margin = stock.sale_margin(line.line_total, effect.cost_total, effect.after.currency)
+        margin = stock.sale_margin(sold.line_total, effect.cost_total, effect.after.currency)
         if show_costs and margin is not None and margin < 0:
             # Said only to someone who may see cost: to anyone else it would tell what the goods cost.
             warnings.append({"kind": "below_cost", **named})
@@ -446,7 +446,13 @@ class SaleService:
             since, until = _day_bounds(first, last)
             seller = actor.membership_id if mine else seller_id
             rows = await session.list_sales(
-                since=since, until=until, item_id=item_id, seller_id=seller, status=status, before=before, limit=limit + 1
+                since=since,
+                until=until,
+                item_id=item_id,
+                seller_id=seller,
+                status=status,
+                before=before,
+                limit=limit + 1,
             )
             page, more = rows[:limit], len(rows) > limit
             lines = await session.document_lines_of([row.document_id for row in page])

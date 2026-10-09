@@ -37,6 +37,15 @@ from qarz.application.stock_documents import (
     LineRequest,
     NewItemRequest,
 )
+from qarz.application.stock_sales import (
+    CANCEL_SALE,
+    LIST_SALES,
+    READ_SALE,
+    RECORD_SALE,
+    SaleLineRequest,
+    SaleRequest,
+    SaleService,
+)
 from qarz.application.suppliers import (
     ADD_ENTRY,
     ARCHIVE_SUPPLIER,
@@ -136,6 +145,37 @@ class NewDocumentBody(DocumentBody):
     post: Annotated[bool, Field(strict=True)] = False
 
 
+class SaleLineBody(BaseModel):
+    # Not strict: an identifier arrives as a string.
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: UUID
+    qty: str = Field(max_length=20)
+    # What one unit is sold for, in so'm. Left out, it is the item's own price.
+    price: Annotated[int, Field(strict=True)] | None = None
+
+
+class SaleBody(BaseModel):
+    """A sale for cash, without a customer: recorded and posted in one step."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lines: list[SaleLineBody] = Field(max_length=200)
+    # How the buyer paid: cash, card or transfer. Cash when it says nothing.
+    method: str | None = Field(default=None, max_length=20)
+    # UZS, or left out: a cash sale is in so'm.
+    currency: str | None = Field(default=None, max_length=3)
+    note: str | None = Field(default=None, max_length=400)
+
+    def request(self) -> SaleRequest:
+        return SaleRequest(
+            lines=[SaleLineRequest(line.item_id, line.qty, line.price) for line in self.lines],
+            method=self.method,
+            currency=self.currency,
+            note=self.note,
+        )
+
+
 class CancelBody(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -166,6 +206,7 @@ def add_stock_routes(
     documents: DocumentService,
     suppliers: SupplierService,
     current_user: CurrentUser,
+    sales: SaleService,
 ) -> None:
     async def switched_on() -> None:
         await stock.require_on()
@@ -283,6 +324,50 @@ def add_stock_routes(
         shop_id: UUID, document_id: UUID, body: CancelBody, user_id: user, idempotency_key: IdempotencyKey = None
     ) -> dict[str, Any]:
         return await documents.cancel(user_id, shop_id, document_id, reason=body.reason, request_key=idempotency_key)
+
+    # --- cash sales -------------------------------------------------------------------------------
+
+    @app.get(base + "/sales", name=LIST_SALES.name, dependencies=behind_switch)
+    async def list_sales(
+        shop_id: UUID,
+        user_id: user,
+        day_from: date | None = None,
+        day_to: date | None = None,
+        item_id: UUID | None = None,
+        seller_id: UUID | None = None,
+        mine: bool = False,
+        status: Annotated[str | None, Query(max_length=20)] = None,
+        cursor: Annotated[str | None, Query(max_length=400)] = None,
+        limit: Annotated[int, Query()] = 50,
+    ) -> dict[str, Any]:
+        return await sales.list(
+            user_id,
+            shop_id,
+            day_from=day_from,
+            day_to=day_to,
+            item_id=item_id,
+            seller_id=seller_id,
+            mine=mine,
+            status=status,
+            cursor=cursor,
+            limit=limit,
+        )
+
+    @app.post(base + "/sales", name=RECORD_SALE.name, status_code=201, dependencies=behind_switch)
+    async def record_sale(
+        shop_id: UUID, body: SaleBody, user_id: user, idempotency_key: IdempotencyKey = None
+    ) -> dict[str, Any]:
+        return await sales.sell(user_id, shop_id, body.request(), request_key=idempotency_key)
+
+    @app.get(base + "/sales/{sale_id}", name=READ_SALE.name, dependencies=behind_switch)
+    async def read_sale(shop_id: UUID, sale_id: UUID, user_id: user) -> dict[str, Any]:
+        return await sales.read(user_id, shop_id, sale_id)
+
+    @app.post(base + "/sales/{sale_id}/cancel", name=CANCEL_SALE.name, dependencies=behind_switch)
+    async def cancel_sale(
+        shop_id: UUID, sale_id: UUID, body: CancelBody, user_id: user, idempotency_key: IdempotencyKey = None
+    ) -> dict[str, Any]:
+        return await sales.cancel(user_id, shop_id, sale_id, reason=body.reason, request_key=idempotency_key)
 
     # --- suppliers --------------------------------------------------------------------------------
 

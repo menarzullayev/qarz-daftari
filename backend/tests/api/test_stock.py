@@ -160,6 +160,10 @@ def _every_route(world: World) -> list[tuple[str, str, Any]]:
         ("PUT", f"{stock(world)}/documents/{one}", {"kind": "write_off", "reason": "lost", "lines": []}),
         ("POST", f"{stock(world)}/documents/{one}/post", None),
         ("POST", f"{stock(world)}/documents/{one}/cancel", {"reason": "xato"}),
+        ("GET", f"{stock(world)}/sales", None),
+        ("POST", f"{stock(world)}/sales", {"lines": [{"item_id": str(world.catalog_item_a), "qty": "1"}]}),
+        ("GET", f"{stock(world)}/sales/{one}", None),
+        ("POST", f"{stock(world)}/sales/{one}/cancel", {"reason": "xato"}),
         ("GET", f"{shop(world)}/suppliers", None),
         ("POST", f"{shop(world)}/suppliers", {"name": "Ulgurji"}),
         ("GET", f"{shop(world)}/suppliers/{one}", None),
@@ -174,7 +178,7 @@ def _every_route(world: World) -> list[tuple[str, str, Any]]:
 def test_the_list_of_routes_below_is_every_operation_of_the_module(world: World) -> None:
     """The switch test tries each route once; an operation added later must be added to it."""
     ours = [op for op in all_operations() if op.name.startswith(("stock.", "suppliers."))]
-    assert len(ours) == len(_every_route(world)) == 22
+    assert len(ours) == len(_every_route(world)) == 26
 
 
 @pytest.mark.parametrize("stored", [None, "false", '"true"', "1", "null"])

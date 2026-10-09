@@ -78,7 +78,8 @@ _DOCUMENT_BY_ID = f"SELECT {_DOCUMENT_COLUMNS} FROM stock_document d WHERE d.id 
 _DOCUMENT_LOCKED = f"{_DOCUMENT_BY_ID} FOR NO KEY UPDATE OF d"
 
 # A cash sale is a document nobody writes as one: the lists of documents leave it out, through an index
-# that holds every other kind (`stock_document_papers`), and it has lists of its own below.
+# that holds every other kind (`stock_document_recent`, and `stock_document_by_status` for a state), and
+# it has lists of its own below.
 _NOT_A_SALE = "d.kind <> 'sale'"
 # The cash sales of a stretch of time, through `stock_document_by_kind`. Narrowed to a seller the rows of
 # the stretch are filtered; to an item, each is asked for a line of it through the lines' primary key.
@@ -100,7 +101,8 @@ _SALES_TOTALS = (
     f"FROM stock_document d WHERE {_SALES_WHERE} AND d.status = 'posted' GROUP BY d.method"
 )
 _SALE_COSTS = (
-    "SELECT m.line_no, m.cost_total, m.currency FROM stock_movement m WHERE m.document_id = :document AND m.kind = 'sale'"
+    "SELECT m.line_no, m.cost_total, m.currency FROM stock_movement m "
+    "WHERE m.document_id = :document AND m.kind = 'sale'"
 )
 # Through `stock_movement_sold`, which holds the sales alone with everything added up here.
 _SOLD = (
@@ -784,9 +786,7 @@ class StockQueries:
         )
 
     async def stock_sold(self, *, since: datetime, limit: int) -> list[SoldItem]:
-        rows = (
-            await self._conn.execute(text(_SOLD), {"shop_id": self._shop_id, "since": since, "limit": limit})
-        ).all()
+        rows = (await self._conn.execute(text(_SOLD), {"shop_id": self._shop_id, "since": since, "limit": limit})).all()
         return [
             SoldItem(
                 item_id=row.item_id,

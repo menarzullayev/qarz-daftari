@@ -43,6 +43,8 @@ EXPECTED: dict[str, tuple[set[Role], bool]] = {
     "stock.receive": ({M, OWN}, False),
     "stock.adjust": ({M, OWN}, False),
     "stock.costs.view": ({M, OWN}, False),
+    "stock.sell": ({S, M, OWN}, False),
+    "stock.sell.cancel": ({M, OWN}, False),
     "suppliers.view": ({M, OWN}, False),
     "suppliers.manage": ({M, OWN}, False),
     "suppliers.pay": ({M, OWN}, False),
@@ -170,6 +172,11 @@ def test_the_operations_opened_by_more_than_one_permission() -> None:
         "stock.documents.update",
         "stock.documents.post",
         "stock.documents.cancel",
+        # Selling for cash opens what finding the item needs, as looking at the stock does: the list, the
+        # barcode and the settings. There is nothing finer to ask inside those.
+        "stock.settings.read",
+        "stock.items.list",
+        "stock.lookup",
         # A payment to a supplier needs one permission and an opening balance the other
         # (tests/api/test_suppliers.py).
         "suppliers.entries.create",

@@ -421,6 +421,8 @@ class StockService:
             idle = await session.stock_idle(unsold_since=since, limit=REPORT_ROWS + 1)
             below = await session.stock_sold_below_cost(since=since, limit=REPORT_ROWS + 1)
             low = await session.stock_items(name_part=None, only="low", after=None, limit=REPORT_ROWS + 1)
+            sold = await session.stock_sold(since=since, limit=REPORT_ROWS + 1)
+            cash_sales = await session.sale_totals(since=since, until=self._now(), item_id=None, seller_id=None)
             cost_uzs = totals.cost.get("UZS", 0)
             return {
                 "days": days,
@@ -458,5 +460,32 @@ class StockService:
                 "low_stock": {
                     "items": [item_body(item, [], costs=True) for item in low[:REPORT_ROWS]],
                     "more": len(low) > REPORT_ROWS,
+                },
+                # What sold in those days, per counted item: credit sales and cash sales together, with
+                # how much of it was for cash. The margin is of the sales whose cost is known in so'm.
+                "sold": {
+                    "items": [
+                        {
+                            "item_id": str(row.item_id),
+                            "name": row.name,
+                            "unit": row.unit,
+                            "qty": format_qty(row.qty),
+                            "revenue": row.revenue,
+                            "cost": row.cost,
+                            "margin": row.costed_revenue - row.cost,
+                            "cash_qty": format_qty(row.cash_qty),
+                            "cash_revenue": row.cash_revenue,
+                        }
+                        for row in sold[:REPORT_ROWS]
+                    ],
+                    "more": len(sold) > REPORT_ROWS,
+                },
+                # The cash sales of those days that stand, every line of them, counted item or not.
+                "cash_sales": {
+                    "count": cash_sales.count,
+                    "total": cash_sales.total,
+                    "by_method": [
+                        {"method": method, "total": total} for method, total in sorted(cash_sales.by_method.items())
+                    ],
                 },
             }
