@@ -37,6 +37,12 @@ export type Features = Readonly<Partial<Record<Feature, boolean>>>;
 type StaffSection = NavItem & { needs: readonly PermissionKey[]; feature?: Feature };
 
 /**
+ * A section of the stock. `office` marks the one the web panel alone has. `counter` is what opens the
+ * section where that one is absent (the Mini App), when it is more than `needs`.
+ */
+type StockSection = StaffSection & { office?: true; counter?: readonly PermissionKey[] };
+
+/**
  * Sections of the staff workspace and the permissions that open each (REQ-033; the server's catalogue).
  * By role alone a manager can do everything a seller can and an owner everything; the owner may then
  * change that for one member, and the server says what the member holds. This list only decides what
@@ -75,9 +81,21 @@ export const STAFF_SECTION_IDS: readonly string[] = STAFF_SECTIONS.map((section)
  * `stock_on` is on, which the server says with a header of the person's shops; until then, and for a
  * client that was not told, none of them is offered. `office` marks the one the web panel alone has:
  * the documents are heavy tables, the Mini App keeps to the counter's tasks.
+ *
+ * In the Mini App the documents are reached through the stock's own section (`#/stock/documents`), so
+ * there the section opens for whoever holds any permission of the stock, and each of its screens then
+ * shows what that member may read: a member who writes documents but may not see the stock gets the
+ * documents and not the items. In the panel the two are sections of their own, each by its permission.
  */
-const STOCK_SECTIONS: readonly (StaffSection & { office?: true })[] = [
-  { id: "stock", path: "/stock", labelKey: "nav.stock", needs: ["stock.view"], feature: "stock" },
+const STOCK_SECTIONS: readonly StockSection[] = [
+  {
+    id: "stock",
+    path: "/stock",
+    labelKey: "nav.stock",
+    needs: ["stock.view"],
+    counter: ["stock.view", "stock.receive", "stock.adjust"],
+    feature: "stock",
+  },
   {
     id: "stockDocuments",
     path: "/stock-documents",
@@ -116,7 +134,11 @@ export function staffSections(role: Role, permissions?: Held, features: Features
   for (const section of STAFF_SECTIONS) {
     all.push(section);
     if (section.id === STOCK_AFTER) {
-      all.push(...STOCK_SECTIONS.filter((added) => added.office !== true || office));
+      for (const added of STOCK_SECTIONS) {
+        if (added.office !== true || office) {
+          all.push(office || added.counter === undefined ? added : { ...added, needs: added.counter });
+        }
+      }
       all.push(...NETWORK_SECTIONS);
     }
   }

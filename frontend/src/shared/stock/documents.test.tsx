@@ -470,3 +470,60 @@ describe("the list of documents", () => {
     expect(screen.queryByRole("button", { name: "Yana ko'rsatish" })).toBeNull();
   });
 });
+
+/**
+ * The server opens the documents by "stock.receive" or "stock.adjust", and the items, a barcode and
+ * the stock's settings by "stock.view" alone. A member who holds the first without the second reads,
+ * posts and cancels documents; the form, which searches items and reads the settings, is not drawn
+ * for them, and neither read is ever asked on their behalf.
+ */
+describe("for a member who writes documents and may not see the stock", () => {
+  const RECEIVER = { role: "seller" as const, permissions: ["stock.receive"] };
+  const HINT = /«Omborni ko'rish» ruxsati ham kerak/;
+  const stockReads = (server: ReturnType<typeof backend>) =>
+    server.sent.filter((sent) => [`${STOCK}/settings`, `${STOCK}/items`, `${STOCK}/lookup`, SUPPLIERS].includes(sent.path));
+
+  it("the panel's list offers no new document and says why; with stock.view it offers them and says nothing", async () => {
+    const server = backend();
+    renderScreen(<DocumentsScreen />, { fetch: server.fetch, ...RECEIVER });
+    await screen.findByRole("list", { name: "Ombor hujjatlari" });
+    expect(within(screen.getByRole("navigation", { name: "Yangi hujjat" })).queryAllByRole("link")).toEqual([]);
+    expect(screen.getByText(HINT)).toBeTruthy();
+    expect(stockReads(server)).toEqual([]);
+    cleanup();
+    renderScreen(<DocumentsScreen />, { fetch: server.fetch, role: "seller", permissions: ["stock.view", "stock.receive"] });
+    await screen.findByRole("list", { name: "Ombor hujjatlari" });
+    expect(within(screen.getByRole("navigation", { name: "Yangi hujjat" })).getAllByRole("link").map((link) => link.textContent)).toEqual([
+      "Kirim",
+      "Ta'minotchiga qaytarish",
+    ]);
+    expect(screen.queryByText(HINT)).toBeNull();
+  });
+
+  it("a draft is shown as it stands, posted with one request, and never opened in the form", async () => {
+    const draft = () => documentBody({ status: "draft", posted_at: null });
+    const server = backend((sent) => (sent.path === `${STOCK}/documents/${DOCUMENT_ID}/post` ? ok(documentBody()) : NOT_FOUND), draft);
+    // `counter`: where a member who may change the draft is taken straight to its form.
+    renderScreen(<DocumentScreen documentId={DOCUMENT_ID} counter host={{}} />, { fetch: server.fetch, ...RECEIVER });
+    expect(await screen.findByRole("heading", { name: /Kirim № 7/ })).toBeTruthy();
+    expect(screen.queryByLabelText("Miqdor (kg)")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Tahrirlash" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Qoralamani o'chirish" })).toBeTruthy();
+    // A unit the settings would have named is shown by the server's own word for it.
+    expect(screen.getByRole("list", { name: "Tovarlar" }).textContent).toContain("2 kg");
+    fireEvent.click(screen.getByRole("button", { name: "O'tkazish" }));
+    await waitFor(() => expect(server.writes()).toHaveLength(1));
+    expect(server.writes()[0]).toMatchObject({ method: "POST", path: `${STOCK}/documents/${DOCUMENT_ID}/post` });
+    expect(stockReads(server)).toEqual([]);
+  });
+
+  it("the form's own addresses are not screens: a new document and the quick receipt ask nothing", async () => {
+    const server = backend();
+    renderScreen(<NewDocumentScreen kind="receipt" host={{}} />, { fetch: server.fetch, ...RECEIVER });
+    expect(await screen.findByText("Bosh sahifaga qaytish")).toBeTruthy();
+    cleanup();
+    renderScreen(<ReceiptScreen host={{}} />, { fetch: server.fetch, ...RECEIVER });
+    expect(await screen.findByText("Bosh sahifaga qaytish")).toBeTruthy();
+    expect(server.sent).toEqual([]);
+  });
+});

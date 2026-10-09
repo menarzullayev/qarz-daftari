@@ -115,6 +115,9 @@ export const tgStock: PartialCatalog<typeof uzStock> = {
   "stock.docs.show": "Кадом ҳуҷҷатҳо",
   "stock.docs.open": "Ҳуҷҷатҳо ва сиёҳнависҳо",
   "stock.docs.continue": "Давом додан",
+  "stock.docs.view": "Кушодан",
+  "stock.docs.needView":
+    "Барои навиштани ҳуҷҷати нав ва тағйир додани сиёҳнавис иҷозати «Дидани анбор» низ лозим аст. Ҳуҷҷатҳои мавҷударо кушодан, ба қайд гирифтан ва бекор кардан мумкин аст.",
   "stock.docs.dropped": "Сиёҳнавис нест карда шуд.",
   "stock.docs.drafts.none": "Сиёҳнавис нест. Воридоти нигоҳдошташуда дар ҳамин ҷо меистад.",
 

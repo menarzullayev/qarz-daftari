@@ -78,7 +78,9 @@ export function DocumentView({
   const can = useMay();
   const stock = useStock();
   const allowed = can(permissionOfKind(document.kind));
-  const editable = document.status === "draft" && draftOf(document) !== null;
+  // The form finds items and reads the stock's settings, which "stock.view" alone opens: without it a
+  // draft is posted or dropped as it stands, and is not changed here.
+  const editable = document.status === "draft" && draftOf(document) !== null && mayComposeDocuments(can);
   const [mode, setMode] = useState<"view" | "edit" | "cancel">(resume && allowed && editable ? "edit" : "view");
   const post = useSubmit((id: string, key) => stock.postDocument(id, key).then(onChanged));
   const cancel = useSubmit((job: { id: string; reason: string }, key) =>
@@ -90,7 +92,7 @@ export function DocumentView({
   const { money } = document;
   const stocktake = document.kind === "stocktake";
 
-  if (mode === "edit" && document.status === "draft") {
+  if (mode === "edit" && allowed && editable) {
     return (
       <DocumentEditor
         kind={document.kind}
@@ -267,10 +269,41 @@ export function mayWriteDocuments(can: (permission: "stock.receive" | "stock.adj
   return can("stock.receive") || can("stock.adjust");
 }
 
+/**
+ * Whether the document form can be drawn for the member at all. It finds items by name or barcode and
+ * reads the units, the reasons and the currencies, and the server opens all of that by "stock.view"
+ * alone (`stock/items`, `stock/lookup`, `stock/settings`). A member who writes documents without it
+ * reads, posts and cancels them, and is not shown a form that every search would be refused in.
+ */
+export function mayComposeDocuments(can: (permission: "stock.view") => boolean): boolean {
+  return can("stock.view");
+}
+
+/**
+ * What a document is drawn with for a member who may not read the stock's settings: no names for the
+ * units and the reasons, so the server's own words for them are shown, and nothing to choose from.
+ */
+const UNREAD_SETTINGS: StockSettings = { refuseNegative: false, currencies: ["UZS"], units: [], writeOffReasons: [], cashBook: false };
+
+/** The stock's settings for one who may read them; for anyone else nothing is asked. */
+function useSettingsIfReadable(): ReturnType<typeof useStockSettings> {
+  const can = useMay();
+  const stock = useStock();
+  const readable = can("stock.view");
+  return useLoad((signal) => (readable ? stock.settings(signal) : Promise.resolve(UNREAD_SETTINGS)), [stock, readable]);
+}
+
+/** Said in a list of documents to a member who writes them and may not see the stock: why no form is offered. */
+export function NeedsView() {
+  const { t } = useI18n();
+  const can = useMay();
+  return mayWriteDocuments(can) && !mayComposeDocuments(can) ? <p className="hint">{t("stock.docs.needView")}</p> : null;
+}
+
 function OneDocument({ documentId, host, counter }: { documentId: string; host?: ScanHost | undefined; counter: boolean }) {
   const { t } = useI18n();
   const stock = useStock();
-  const settings = useStockSettings();
+  const settings = useSettingsIfReadable();
   const { state, reload } = useLoad((signal) => stock.document(documentId, signal), [stock, documentId]);
   // What a change made here answered with; shown until the address changes.
   const [changed, setChanged] = useState<StockDocument | null>(null);
@@ -298,8 +331,9 @@ function OneDocument({ documentId, host, counter }: { documentId: string; host?:
 /** A new document of a kind, in the web panel; once saved, its own page opens. */
 export function NewDocumentScreen({ kind, host }: { kind: StockDocumentKind; host?: ScanHost | undefined }) {
   const can = useMay();
-  // A kind the member may not write is not a screen for them, and nothing is asked on their behalf.
-  return can(permissionOfKind(kind)) ? <NewDocument kind={kind} host={host} /> : <NotFoundScreen />;
+  // A kind the member may not write is not a screen for them, and nothing is asked on their behalf;
+  // nor is the form for one who could not find an item in it.
+  return can(permissionOfKind(kind)) && mayComposeDocuments(can) ? <NewDocument kind={kind} host={host} /> : <NotFoundScreen />;
 }
 
 function NewDocument({ kind, host }: { kind: StockDocumentKind; host?: ScanHost | undefined }) {
@@ -322,7 +356,7 @@ function NewDocument({ kind, host }: { kind: StockDocumentKind; host?: ScanHost 
  */
 export function ReceiptScreen({ host }: { host?: ScanHost | undefined }) {
   const can = useMay();
-  return can("stock.receive") ? <QuickReceipt host={host} /> : <NotFoundScreen />;
+  return can("stock.receive") && mayComposeDocuments(can) ? <QuickReceipt host={host} /> : <NotFoundScreen />;
 }
 
 function QuickReceipt({ host }: { host?: ScanHost | undefined }) {
@@ -406,7 +440,7 @@ export function DocumentsScreen() {
     [stock, kind, status, supplierId],
   );
   // Each kind is offered to those who may write it: receiving goods is one permission, correcting another.
-  const kinds = STOCK_DOCUMENT_KINDS.filter((known) => can(permissionOfKind(known)));
+  const kinds = mayComposeDocuments(can) ? STOCK_DOCUMENT_KINDS.filter((known) => can(permissionOfKind(known))) : [];
 
   const columns: Column<DocumentSummary>[] = [
     {
@@ -460,6 +494,7 @@ export function DocumentsScreen() {
           </Link>
         ))}
       </nav>
+      <NeedsView />
       <section className="stock-filters" aria-label={t("stock.docs.filters")}>
         <div className="field">
           <label htmlFor="stock-docs-kind">{t("stock.docs.kind")}</label>

@@ -117,6 +117,9 @@ export const enStock: PartialCatalog<typeof uzStock, EnPlural> = {
   "stock.docs.show": "Which documents",
   "stock.docs.open": "Documents and drafts",
   "stock.docs.continue": "Continue",
+  "stock.docs.view": "Open",
+  "stock.docs.needView":
+    "Writing a new document or changing a draft also needs the “View the stock” permission. Existing documents can be opened, posted and cancelled.",
   "stock.docs.dropped": "The draft was deleted.",
   "stock.docs.drafts.none": "No drafts. A goods receipt saved for later is kept here.",
 

@@ -115,6 +115,9 @@ export const uzStock = {
   "stock.docs.show": "Qaysi hujjatlar",
   "stock.docs.open": "Hujjatlar va qoralamalar",
   "stock.docs.continue": "Davom ettirish",
+  "stock.docs.view": "Ochish",
+  "stock.docs.needView":
+    "Yangi hujjat yozish va qoralamani o'zgartirish uchun «Omborni ko'rish» ruxsati ham kerak. Bor hujjatlarni ochish, o'tkazish va bekor qilish mumkin.",
   "stock.docs.dropped": "Qoralama o'chirildi.",
   "stock.docs.drafts.none": "Qoralama yo'q. Saqlab qo'yilgan kirim shu yerda turadi.",
 
