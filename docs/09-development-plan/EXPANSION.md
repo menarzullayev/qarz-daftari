@@ -1,7 +1,7 @@
 # Expansion: from a credit ledger to a shop system
 
 Decided by the founder on 2026-10-09 after comparing the product with pDaftar, one question at a time.
-The clock for "how long does this take with AI agents" started at **2026-10-09T11:20Z**. Each module's
+The clock for "how long does this take with AI agents" started at **2026-10-09T11:00Z**. Each module's
 row is filled in when its pull request is merged.
 
 ## What was decided
