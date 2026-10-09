@@ -39,6 +39,7 @@ possible. The founder's decisions stand.
 | I | Stock | F, G | `stock_on` | 0043 | | |
 | J | Suppliers and the network between shops | I | `network_on` (and `stock_on`) | 0045 | | |
 | E | Four more languages | all texts final (built beside H and I, before J: see below) | - | 0044 | | |
+| - | Gaps left by the modules above (free plan in the administrator's panel, stock check in the operations watch, and others) | A, F, G, H, I | the modules' own | 0046 (three count functions; no table) | | |
 
 Module E was built while H, I and J were still being written (H and I were merged first and are
 translated; J is not), so it does not wait for their texts: a key

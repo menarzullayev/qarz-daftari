@@ -1695,8 +1695,8 @@ class PlatformSession(Protocol):
 
     async def admin_active_customers(self, shop_ids: Sequence[UUID]) -> dict[UUID, int]:
         """How many customers of each of these shops have the status active: what the free plan counts
-        (BR-33). A number and nothing else of a shop's customers (REQ-059). Each shop is counted as its
-        own tenant, and the transaction has no tenant again afterwards."""
+        (BR-33). A number and nothing else of a shop's customers (REQ-059), from one function of the
+        administrators' (migration 0046); the transaction has no tenant before or after it."""
         ...
 
     async def admin_shop_receipts(self, admin_id: UUID, shop_id: UUID) -> list[AdminReceiptRow]: ...

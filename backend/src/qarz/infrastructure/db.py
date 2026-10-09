@@ -3717,18 +3717,18 @@ class PgPlatformSession:
         ]
 
     async def admin_active_customers(self, shop_ids: Sequence[UUID]) -> dict[UUID, int]:
-        counts: dict[UUID, int] = {}
+        counts: dict[UUID, int] = dict.fromkeys(shop_ids, 0)
         if not shop_ids:
             return counts
-        tenant = text("SELECT set_config('qd.shop_id', :shop_id, true)")
-        for shop_id in shop_ids:
-            # Row-level security shows one shop at a time, so each is counted as its own tenant. The
-            # setting is local to this transaction, as in `Database.tenant`.
-            await self._conn.execute(tenant, {"shop_id": str(shop_id)})
-            row = (await self._conn.execute(text("SELECT count(*) AS n FROM customer WHERE status = 'active'"))).one()
-            counts[shop_id] = int(row.n)
-        # What follows in this transaction has no tenant, as before the count.
-        await self._conn.execute(tenant, {"shop_id": ""})
+        # One function for the page (migration 0046): numbers only, and no tenant is set here.
+        rows = (
+            await self._conn.execute(
+                text("SELECT shop_id, customers FROM admin_active_customer_counts(:shops)"),
+                {"shops": list(shop_ids)},
+            )
+        ).all()
+        for row in rows:
+            counts[row.shop_id] = int(row.customers)
         return counts
 
     async def admin_open_shop(self, admin_id: UUID, shop_id: UUID, now: datetime) -> tuple[UUID, datetime] | None:

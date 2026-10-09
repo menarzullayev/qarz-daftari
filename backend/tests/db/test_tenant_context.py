@@ -83,8 +83,9 @@ def test_a_tenant_session_cannot_see_or_change_another_shop(
 def test_counting_the_active_customers_of_several_shops_leaves_the_transaction_without_a_tenant(
     admin_database_url: str, shop_a: Shop, shop_b: Shop, owner: psycopg.Connection
 ) -> None:
-    """The administrators' side counts what the free plan counts, shop by shop, inside a transaction
-    that has no tenant. Each shop's count is its own, and afterwards no shop's rows are in sight."""
+    """The administrators' side counts what the free plan counts through one function, inside a
+    transaction that has no tenant: each shop's count is its own, and no shop's rows are in sight
+    before, during or after it."""
     owner.execute(
         "INSERT INTO customer (id, shop_id, display_name, name_norm, status) VALUES "
         "(%s, %s, 'Second', 'second', 'active'), (%s, %s, 'Gone', 'gone', 'archived')",
@@ -107,6 +108,6 @@ def test_counting_the_active_customers_of_several_shops_leaves_the_transaction_w
 
     counts, inside, after, nothing = asyncio.run(scenario())
     assert counts == {shop_a.shop_id: 2, shop_b.shop_id: 1, unknown: 0}, "active customers only, each shop its own"
-    assert inside == 0, "the last shop counted stayed the tenant of the transaction"
+    assert inside == 0, "counting gave the transaction a tenant"
     assert after == 0
     assert nothing == {}

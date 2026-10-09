@@ -94,6 +94,9 @@ DEFINER_FUNCTIONS: dict[str, set[str]] = {
     "admin_support_list(uuid,uuid,boolean,timestamp with time zone,timestamp with time zone,uuid,integer)": {ADMIN},
     "admin_reassign_owner(uuid,uuid,bigint,text,timestamp with time zone)": {ADMIN},
     "admin_set_platform_setting(uuid,text,jsonb,text,jsonb,timestamp with time zone)": {ADMIN},
+    # How many active customers each of some shops has, which is what the free plan counts: numbers
+    # for the administrators' list of shops (migration 0046).
+    "admin_active_customer_counts(uuid[])": {ADMIN},
     # --- the worker -----------------------------------------------------------------------------------
     "mark_recipient_unreachable(bigint)": {WORKER},
     "shops_due_for_reminders(smallint)": {WORKER},
