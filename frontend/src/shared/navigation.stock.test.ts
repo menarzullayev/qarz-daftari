@@ -96,6 +96,9 @@ describe("the stock's addresses", () => {
     expect(section("/stock/receipt")).toBe("/stock");
     expect(section("/stock/report")).toBe("/stock");
     expect(section(`/stock/items/${ID}`)).toBe("/stock");
+    // The documents as a phone lists them are the stock's: the Mini App has no documents section.
+    expect(section("/stock/documents")).toBe("/stock");
+    expect(section(`/stock/documents/${ID}`)).toBe("/stock");
     expect(section("/stock-documents")).toBe("/stock-documents");
     expect(section(`/stock-documents/${ID}`)).toBe("/stock-documents");
     expect(section("/suppliers")).toBe("/suppliers");
@@ -105,6 +108,9 @@ describe("the stock's addresses", () => {
   it("name their screen", () => {
     expect(matchWorkspaceRoute(`/stock/items/${ID}`)?.route).toEqual({ screen: "stock", view: { name: "item", itemId: ID } });
     expect(matchWorkspaceRoute(`/suppliers/${ID}`)?.route).toEqual({ screen: "stock", view: { name: "supplier", supplierId: ID } });
+    expect(matchWorkspaceRoute("/stock/documents")?.route).toEqual({ screen: "stock", view: { name: "counterDocuments" } });
+    expect(matchWorkspaceRoute(`/stock/documents/${ID}`)?.route).toEqual({ screen: "stock", view: { name: "counterDocument", documentId: ID } });
+    expect(matchWorkspaceRoute(`/stock-documents/${ID}`)?.route).toEqual({ screen: "stock", view: { name: "document", documentId: ID } });
     for (const kind of STOCK_DOCUMENT_KINDS) {
       expect(matchWorkspaceRoute(`/stock-documents/new/${kind}`)?.route).toEqual({ screen: "stock", view: { name: "newDocument", kind } });
     }
@@ -116,6 +122,9 @@ describe("the stock's addresses", () => {
       "/stock/items/",
       `/stock/items/${ID}/edit`,
       "/stock-documents/new/gift",
+      "/stock/documents/7",
+      "/stock/documents/new",
+      `/stock/documents/${ID}/cancel`,
       "/stock-documents/new",
       "/stock-documents/new/receipt/x",
       "/suppliers/abc",

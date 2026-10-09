@@ -7,7 +7,7 @@ import { go } from "../testing/renderScreen";
 import type { ApiAuth } from "./api";
 import { type Role } from "./navigation";
 import { StaffRoot } from "./StaffRoot";
-import { stockItemBody, stockSettingsBody } from "./stock/testing";
+import { DOCUMENT_ID, documentBody, stockItemBody, stockSettingsBody } from "./stock/testing";
 
 const ON = { "X-Qarz-Stock": "on" };
 
@@ -56,6 +56,10 @@ function backend(role: Role, header: Record<string, string>, options: { permissi
         return ok({ items: [stockItemBody()], next_cursor: null });
       case `${SHOP_BASE}/suppliers`:
         return ok({ suppliers: [], totals: [], next_cursor: null });
+      case `${SHOP_BASE}/stock/documents`:
+        return ok({ documents: [documentBody({ status: "draft", posted_at: null, lines: undefined })], next_cursor: null });
+      case `${SHOP_BASE}/stock/documents/${DOCUMENT_ID}`:
+        return ok(documentBody({ status: "draft", posted_at: null }));
       default:
         return NOT_FOUND;
     }
@@ -83,7 +87,7 @@ describe("the stock switched off", () => {
     }
     expect(screen.queryByText("Ombor")).toBeNull();
     expect(screen.queryByText("Ta'minotchilar")).toBeNull();
-    for (const path of ["#/stock", "#/stock/receipt", "#/stock/report", "#/suppliers", "#/stock-documents"]) {
+    for (const path of ["#/stock", "#/stock/receipt", "#/stock/report", "#/stock/documents", `#/stock/documents/${DOCUMENT_ID}`, "#/suppliers", "#/stock-documents"]) {
       go(path);
       expect(heading()).toBe("Sahifa topilmadi");
     }
@@ -151,6 +155,34 @@ describe("the stock switched on", () => {
     expect(screen.queryByRole("link", { name: "Ombor" })).toBeNull();
     go("#/stock");
     expect(heading()).toBe("Sahifa topilmadi");
+  });
+
+  it("leads a manager from the stock to its documents, and from a draft to its form, without a documents section", async () => {
+    const server = backend("manager", ON);
+    await miniApp(server, "#/stock");
+    const open = await screen.findByRole("link", { name: "Hujjatlar va qoralamalar" });
+    expect(open.getAttribute("href")).toBe("#/stock/documents");
+    go("#/stock/documents");
+    expect(heading()).toBe("Ombor hujjatlari");
+    const list = await screen.findByRole("list", { name: "Ombor hujjatlari" });
+    expect(within(list).getByRole("link", { name: "Davom ettirish" }).getAttribute("href")).toBe(`#/stock/documents/${DOCUMENT_ID}`);
+    expect(asked(server).filter((sent) => sent.path.endsWith("/stock/documents")).map((sent) => sent.query)).toEqual([{ status: "draft" }]);
+    go(`#/stock/documents/${DOCUMENT_ID}`);
+    expect(((await screen.findByLabelText("Miqdor (kg)")) as HTMLInputElement).value).toBe("2");
+    // Still the stock's own section: the Mini App gained no tab.
+    expect(links()).not.toContain("#/stock-documents");
+    expect(server.writes()).toEqual([]);
+  });
+
+  it("does not open the documents for a seller even by their address, and asks nothing for them", async () => {
+    const server = backend("seller", ON);
+    await miniApp(server);
+    await waitFor(() => expect(links()).toContain("#/stock"));
+    for (const path of ["#/stock/documents", `#/stock/documents/${DOCUMENT_ID}`]) {
+      go(path);
+      expect(await screen.findByText("Bosh sahifaga qaytish")).toBeTruthy();
+    }
+    expect(asked(server).filter((sent) => sent.path.includes("/documents"))).toEqual([]);
   });
 
   it("does not offer a seller the quick receipt even by its address", async () => {

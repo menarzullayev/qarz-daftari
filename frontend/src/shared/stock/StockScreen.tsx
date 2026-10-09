@@ -79,7 +79,7 @@ function RefuseNegative() {
  * name; filtered to what runs low. What goods cost is in the list only when the server sent it, which
  * it does for a member who may see cost.
  */
-export function StockScreen({ host }: { host?: ScanHost | undefined }) {
+export function StockScreen({ host, office = false }: { host?: ScanHost | undefined; office?: boolean }) {
   const { t, language } = useI18n();
   const can = useMay();
   const stock = useStock();
@@ -252,6 +252,12 @@ export function StockScreen({ host }: { host?: ScanHost | undefined }) {
         {can("stock.receive") ? (
           <Link to="/stock/receipt" className="button button--primary">
             {t("stock.receipt.quick")}
+          </Link>
+        ) : null}
+        {/* The web panel has the documents as a section of its own; at the counter they are reached from here. */}
+        {!office && (can("stock.receive") || can("stock.adjust")) ? (
+          <Link to="/stock/documents" className="button">
+            {t("stock.docs.open")}
           </Link>
         ) : null}
         {can("stock.costs.view") ? (

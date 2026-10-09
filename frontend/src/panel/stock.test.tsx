@@ -121,6 +121,8 @@ describe("the stock in the web panel", () => {
     ]);
     const cells = within(within(table).getAllByRole("row")[1] as HTMLElement).getAllByRole("cell");
     expect(cells.map((cell) => cell.textContent)).toEqual(["7,5 kg ", "15 000 so'm", "12 000 so'm", "90 000 so'm", "3 000 so'm"]);
+    // The panel has the documents as a section: the stock's screen does not repeat the way to them.
+    expect(screen.queryByRole("link", { name: "Hujjatlar va qoralamalar" })).toBeNull();
   });
 
   it("draws the same list as rows on a narrow screen", async () => {

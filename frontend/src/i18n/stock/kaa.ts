@@ -112,6 +112,12 @@ export const kaaStock: PartialCatalog<typeof uzStock> = {
   "stock.docs.kind.all": "Barlıq túrler",
   "stock.docs.status.all": "Barlıq jaǵdaylar",
   "stock.docs.none": "Bunday hújjet joq.",
+  "stock.docs.supplier.all": "Barlıq támiyinlewshiler",
+  "stock.docs.show": "Qaysı hújjetler",
+  "stock.docs.open": "Hújjetler hám qaralamalar",
+  "stock.docs.continue": "Dawam ettiriw",
+  "stock.docs.dropped": "Qaralama óshirildi.",
+  "stock.docs.drafts.none": "Qaralama joq. Saqlap qoyılǵan kiris usı jerde turadı.",
 
   "stock.doc.ref": "{kind} № {number}",
   "stock.doc.date": "Sáne",

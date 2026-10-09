@@ -111,6 +111,12 @@ export const tgStock: PartialCatalog<typeof uzStock> = {
   "stock.docs.kind.all": "Ҳамаи намудҳо",
   "stock.docs.status.all": "Ҳамаи ҳолатҳо",
   "stock.docs.none": "Чунин ҳуҷҷат нест.",
+  "stock.docs.supplier.all": "Ҳамаи таъминкунандагон",
+  "stock.docs.show": "Кадом ҳуҷҷатҳо",
+  "stock.docs.open": "Ҳуҷҷатҳо ва сиёҳнависҳо",
+  "stock.docs.continue": "Давом додан",
+  "stock.docs.dropped": "Сиёҳнавис нест карда шуд.",
+  "stock.docs.drafts.none": "Сиёҳнавис нест. Воридоти нигоҳдошташуда дар ҳамин ҷо меистад.",
 
   "stock.doc.ref": "{kind} № {number}",
   "stock.doc.date": "Сана",
