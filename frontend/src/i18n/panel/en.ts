@@ -248,6 +248,8 @@ export const enPanel: PartialCatalog<typeof uzPanel, EnPlural> = {
   "activity.action.network.order_declined": "Partner order declined",
   "activity.action.network.order_cancelled": "Partner order cancelled",
   "activity.action.network.note_issued": "Delivery note issued",
+  "activity.action.network.note_posted_for_owner":
+    "Delivery note posted in the owner's name: the staff member who issued it may no longer record credit sales",
   "activity.action.network.note_corrected": "Delivery note corrected",
   "activity.action.network.note_received": "Delivery note confirmed, goods received",
   "activity.action.network.note_rejected": "Delivery note rejected",

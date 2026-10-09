@@ -1185,8 +1185,9 @@ def test_issuing_a_note_asks_for_the_right_to_sell_on_credit(
     set_overrides(owner, world.manager_a_membership, denied=("network.fulfil",))
     error = refused(write(client, world.manager_a, "POST", path), 403, "FORBIDDEN_PERMISSION")
     assert error["fields"] == {"permission": "network.fulfil"}
-    # The note is in the name of the member who issued it, and so is the sale it becomes, whatever
-    # happens to that member afterwards: nobody of the supplier is there when the buyer confirms.
+    # The note is in the name of the member who issued it. The sale it becomes is written whatever
+    # happens to that member afterwards (nobody of the supplier is there when the buyer confirms), and
+    # is then in the owner's name: tests/api/test_network_note_author.py has every case.
     set_overrides(owner, world.manager_a_membership)
     note_id = ok(write(client, world.manager_a, "POST", path), 201)["id"]
     owner.execute("UPDATE membership SET status = 'removed' WHERE id = %s", (world.manager_a_membership,))
@@ -1194,7 +1195,10 @@ def test_issuing_a_note_asks_for_the_right_to_sell_on_credit(
     authors = owner.execute(
         "SELECT DISTINCT author_id FROM ledger_entry WHERE shop_id = %s AND note LIKE 'Yuk xati%%'", (world.shop_a,)
     ).fetchall()
-    assert authors == [(world.manager_a_membership,)]
+    assert authors == [(world.owner_a_membership,)]
+    assert owner.execute(
+        "SELECT issued_by FROM network_note WHERE shop_id = %s AND id = %s", (world.shop_a, note_id)
+    ).fetchone() == (world.manager_a_membership,)
 
 
 # --- one shop never reaches another's side ----------------------------------------------------------------------

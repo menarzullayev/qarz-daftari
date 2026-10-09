@@ -9,6 +9,7 @@
     "network.link_requested",
     "network.note_corrected",
     "network.note_issued",
+    "network.note_posted_for_owner",
     "network.note_received",
     "network.note_rejected",
     "network.order_accepted",
