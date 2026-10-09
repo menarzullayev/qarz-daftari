@@ -238,6 +238,8 @@ describe("a sale at the counter", () => {
 
   it("sends nothing while a quantity or a price cannot be read, and says which", async () => {
     const server = await counter();
+    // A good line beside the one that cannot be read: the sale is not sent without the bad line either.
+    await scan(TEA_EAN, "Choy");
     const weight = await scan(EAN, "Shakar");
     const price = screen.getByLabelText("«Shakar»: bir birlik narxi, so'm");
     fireEvent.change(weight, { target: { value: "abc" } });
@@ -258,7 +260,13 @@ describe("a sale at the counter", () => {
     fireEvent.change(weight, { target: { value: "0,5" } });
     fireEvent.click(screen.getByRole("button", { name: "Sotish" }));
     await waitFor(() => expect(sales(server)).toHaveLength(1));
-    expect(sales(server)[0]?.body).toEqual({ lines: [{ item_id: ITEM_ID, qty: "0.5", price: 100 }], method: "cash" });
+    expect(sales(server)[0]?.body).toEqual({
+      lines: [
+        { item_id: OTHER_ITEM, qty: "1", price: 8000 },
+        { item_id: ITEM_ID, qty: "0.5", price: 100 },
+      ],
+      method: "cash",
+    });
   });
 
   it("says that the money goes into the cash book only in a shop that keeps one", async () => {
@@ -517,9 +525,9 @@ describe("the day's cash sales at the counter", () => {
     expect(asked(server)).toEqual([{}]);
     expect(screen.getByRole("heading", { name: "Bugungi savdolar" })).toBeTruthy();
     expect(rows().map((row) => row.textContent)).toEqual([
-      som("Naqd savdo № 3Vaqt2026-yil 6-oktabr, 11:30TovarlarShakar 2,5 kgJami37 500 so'mTo'lov usuliNaqdKim sotdiMen"),
-      som("Naqd savdo № 2Vaqt2026-yil 6-oktabr, 10:10TovarlarChoy 2 donaJami16 000 so'mTo'lov usuliKartaKim sotdiMenejer"),
-      som("Naqd savdo № 1 Bekor qilinganVaqt2026-yil 6-oktabr, 11:30TovarlarShakar 2,5 kgJami37 500 so'mTo'lov usuliNaqdKim sotdiMen"),
+      som("Naqd savdo № 3Shakar 2,5 kgVaqt2026-yil 6-oktabr, 11:30Jami37 500 so'mTo'lov usuliNaqdKim sotdiMen"),
+      som("Naqd savdo № 2Choy 2 donaVaqt2026-yil 6-oktabr, 10:10Jami16 000 so'mTo'lov usuliKartaKim sotdiMenejer"),
+      som("Naqd savdo № 1 Bekor qilinganShakar 2,5 kgVaqt2026-yil 6-oktabr, 11:30Jami37 500 so'mTo'lov usuliNaqdKim sotdiMen"),
     ]);
     // The cancelled one is in none of the figures, which are the server's own.
     expect(figures()).toEqual([som("Savdolar soni2"), som("Jami tushum53 500 so'm"), som("Naqd37 500 so'm"), som("Karta16 000 so'm")]);
@@ -732,7 +740,7 @@ describe("one sale", () => {
     await screen.findByRole("heading", { name: /Naqd savdo № 3/ });
     expect(fact("Jami")).toBe(som("37 500 so'm"));
     expect(fact("To'lov usuli")).toBe("O'tkazma");
-    expect(fact("Sana")).toBe("2026-yil 6-oktabr");
+    expect(fact("Vaqt")).toBe("2026-yil 6-oktabr, 11:30");
     expect(fact("Kim sotdi")).toBe("Ishdan ketgan xodim");
     expect(fact("Izoh")).toBe("ulgurji");
     expect(shownOfSale()).not.toMatch(/tannarx|foyda/i);

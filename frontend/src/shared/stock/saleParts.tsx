@@ -5,7 +5,6 @@ import type { Column } from "../layout";
 import type { Role } from "../navigation";
 import { Badge, formatInstant } from "../workspace/parts";
 import { stockQtyText } from "../workspace/StockNotes";
-import { dateText } from "./DocumentScreens";
 import { Fact, Listing, moneyOrNone, qtyWithUnit } from "./parts";
 import type { PaymentMethod, Sale, SaleLine, SaleStatus, SaleSummary, SaleWarning } from "./stockApi";
 
@@ -121,7 +120,6 @@ export function SaleDetails({ sale }: { sale: Sale }) {
       <dl className="facts">
         <Fact name={t("stock.doc.total")}>{formatMoney(sale.total, language)}</Fact>
         <Fact name={t("stock.method")}>{t(SALE_METHOD_LABELS[sale.method])}</Fact>
-        <Fact name={t("stock.doc.date")}>{dateText(sale.day, language)}</Fact>
         <Fact name={t("stock.col.when")}>{formatInstant(sale.createdAt, language)}</Fact>
         <Fact name={t("stock.sale.seller")}>{sellerText(sale, t)}</Fact>
         {sale.note !== null ? <Fact name={t("stock.doc.note")}>{sale.note}</Fact> : null}

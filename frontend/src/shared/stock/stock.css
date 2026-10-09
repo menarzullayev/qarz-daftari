@@ -106,6 +106,7 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
   align-items: center;
   gap: var(--qd-space-2);
+  max-width: 36rem;
   margin-top: var(--qd-space-1);
 }
 
@@ -138,4 +139,16 @@
 
 .sale-total strong {
   font: var(--qd-type-amount);
+}
+
+/* "Naqd savdo № 7" is one name: the number stays with its sign. */
+.sale-ref {
+  white-space: nowrap;
+}
+
+/* What a sale was of, under its name in a list drawn as rows. */
+.sale-goods {
+  display: block;
+  font-weight: 400;
+  overflow-wrap: anywhere;
 }

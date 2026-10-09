@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useI18n } from "../../i18n/I18nProvider";
 import { formatMoney, tashkentDay } from "../format";
 import { useLoad, usePagedList, useSubmit } from "../hooks";
-import type { Column } from "../layout";
+import { type Column, useDesktop } from "../layout";
 import type { Role } from "../navigation";
 import { addDays, compareDays, parseIsoDate, toIsoDate } from "../promise";
 import { Link } from "../router";
@@ -57,6 +57,8 @@ function Sales({ office, saleId }: { office: boolean; saleId: string | null }) {
   const { t, language } = useI18n();
   const stock = useStock();
   const { now } = useWorkspace();
+  // A real table on a wide screen of the web panel; rows everywhere else.
+  const wide = useDesktop() !== null;
   const today = toIsoDate(tashkentDay(now()));
   // The days as they stand in the two fields, and the last stretch of them that could be asked for.
   const [from, setFrom] = useState(today);
@@ -133,18 +135,22 @@ function Sales({ office, saleId }: { office: boolean; saleId: string | null }) {
       rowHeader: true,
       cell: (sale) => (
         <>
-          <Link to={`/stock/sales/${sale.id}`}>{t("stock.sale.ref", { number: sale.number })}</Link>
+          <Link to={`/stock/sales/${sale.id}`} className="sale-ref">
+            {t("stock.sale.ref", { number: sale.number })}
+          </Link>
           {sale.status === "cancelled" ? (
             <>
               {" "}
               <SaleStatusBadge status={sale.status} />
             </>
           ) : null}
+          {/* In rows, what was sold stands under the sale's name: beside a column's name it had no room. */}
+          {wide ? null : <span className="row__meta sale-goods">{goodsText(sale.lines)}</span>}
         </>
       ),
     },
     { id: "when", header: t("stock.col.when"), cell: (sale) => formatInstant(sale.createdAt, language) },
-    { id: "goods", header: t("stock.doc.lines"), cell: (sale) => goodsText(sale.lines) },
+    ...(wide ? [{ id: "goods", header: t("stock.doc.lines"), cell: (sale: SaleSummary) => goodsText(sale.lines) }] : []),
     { id: "total", header: t("stock.doc.total"), numeric: true, cell: (sale) => formatMoney(sale.total, language) },
     { id: "method", header: t("stock.method"), cell: (sale) => t(SALE_METHOD_LABELS[sale.method]) },
     { id: "seller", header: t("stock.sale.seller"), cell: (sale) => sellerText(sale, t) },
