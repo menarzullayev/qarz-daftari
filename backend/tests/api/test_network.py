@@ -79,7 +79,7 @@ def mismatches(owner: psycopg.Connection, *shops: uuid.UUID) -> list[Any]:
     for shop in shops:
         found += owner.execute("SELECT * FROM stock_level_mismatches(%s)", (shop,)).fetchall()
         found += owner.execute("SELECT * FROM supplier_balance_mismatches(%s)", (shop,)).fetchall()
-        found += owner.execute("SELECT * FROM open_debt_mismatches() WHERE shop_id = %s", (shop,)).fetchall()
+        found += owner.execute("SELECT * FROM open_debt_mismatches(%s)", (shop,)).fetchall()
     return found
 
 
@@ -91,7 +91,9 @@ def new_shop(owner: psycopg.Connection, name: str) -> tuple[uuid.UUID, uuid.UUID
     owner.execute(
         "INSERT INTO membership (id, shop_id, user_id, role) VALUES (%s, %s, %s, 'owner')", (uuid.uuid4(), shop, user)
     )
-    owner.execute("INSERT INTO subscription (shop_id, state, trial_ends) VALUES (%s, 'trial', current_date + 30)", (shop,))
+    owner.execute(
+        "INSERT INTO subscription (shop_id, state, trial_ends) VALUES (%s, 'trial', current_date + 30)", (shop,)
+    )
     return shop, user
 
 
@@ -99,7 +101,9 @@ def item(
     client: TestClient, shop: uuid.UUID, user: uuid.UUID, name: str, *, price: int = 15_000, unit: str = "kg"
 ) -> str:
     """A counted item of the shop's catalogue."""
-    made = ok(write(client, user, "POST", f"/api/v1/shops/{shop}/catalog", {"name": name, "price": price, "unit": unit}), 201)
+    made = ok(
+        write(client, user, "POST", f"/api/v1/shops/{shop}/catalog", {"name": name, "price": price, "unit": unit}), 201
+    )
     ok(write(client, user, "PATCH", f"/api/v1/shops/{shop}/stock/items/{made['id']}", {"tracked": True}))
     return str(made["id"])
 
@@ -171,7 +175,9 @@ def deal(client: TestClient, world: World) -> Deal:
 def order(client: TestClient, d: Deal, lines: list[dict[str, Any]], **extra: Any) -> str:
     """The buyer writes an order and sends it."""
     draft = ok(
-        write(client, d.buyer.user, "POST", f"{net(d.buyer.shop)}/drafts", {"link_id": d.link, "lines": lines, **extra}),
+        write(
+            client, d.buyer.user, "POST", f"{net(d.buyer.shop)}/drafts", {"link_id": d.link, "lines": lines, **extra}
+        ),
         201,
     )
     sent = ok(write(client, d.buyer.user, "POST", f"{net(d.buyer.shop)}/drafts/{draft['id']}/send"))
@@ -218,6 +224,17 @@ def delivered(client: TestClient, d: Deal, *, paid: int = 0, own: dict[str, str]
 
 def new_goods(prices: dict[int, int]) -> dict[str, Any]:
     return {"lines": [{"line_no": line_no, "new_price": price} for line_no, price in prices.items()]}
+
+
+def goods(owner: psycopg.Connection, shop: uuid.UUID) -> dict[str, Any]:
+    """How the buyer takes rice and sugar: as the items it already has by those names, or as new ones."""
+    lines: list[dict[str, Any]] = []
+    for line_no, (name, price) in enumerate((("Guruch", 16_000), ("Shakar", 14_000)), start=1):
+        row = owner.execute("SELECT id FROM catalog_item WHERE shop_id = %s AND name = %s", (shop, name)).fetchone()
+        lines.append(
+            {"line_no": line_no, "new_price": price} if row is None else {"line_no": line_no, "item_id": str(row[0])}
+        )
+    return {"lines": lines}
 
 
 # --- the switch ------------------------------------------------------------------------------------------
@@ -317,7 +334,9 @@ def test_two_shops_connect_by_a_code_and_each_learns_a_name_and_a_phone(
     # Only the hash of the code is kept.
     assert made["code"] not in str(owner.execute("SELECT t::text FROM network_invite t").fetchall())
 
-    asked = ok(write(client, world.owner_a, "POST", f"{net(world.shop_a)}/links", {"code": made["code"], "as": "buyer"}), 201)
+    asked = ok(
+        write(client, world.owner_a, "POST", f"{net(world.shop_a)}/links", {"code": made["code"], "as": "buyer"}), 201
+    )
     link = asked["link"]
     # A request shows the name, and nothing else of the other shop.
     assert link["partner"] == {"name": "Shop B", "phone": None, "removed": False}
@@ -331,7 +350,9 @@ def test_two_shops_connect_by_a_code_and_each_learns_a_name_and_a_phone(
     assert "Shop A" in told(owner, world.owner_b)[-1]
 
     # Only the shop that made the invitation answers it.
-    refused(write(client, world.owner_a, "POST", f"{net(world.shop_a)}/links/{link['id']}/accept"), 409, "NETWORK_STATE")
+    refused(
+        write(client, world.owner_a, "POST", f"{net(world.shop_a)}/links/{link['id']}/accept"), 409, "NETWORK_STATE"
+    )
     accepted = ok(write(client, world.owner_b, "POST", f"{net(world.shop_b)}/links/{link['id']}/accept"))["link"]
     assert accepted["state"] == "active" and accepted["counterpart"]["kind"] == "customer"
     mine = ok(read(client, world.owner_a, f"{net(world.shop_a)}/links/{link['id']}"))
@@ -375,7 +396,10 @@ def test_a_code_is_shown_once_works_once_and_fails_the_same_way_for_every_reason
     revoked = ok(write(client, world.owner_b, "POST", f"{net(world.shop_b)}/invites", {"as": "supplier"}), 201)
     ok(write(client, world.owner_b, "DELETE", f"{net(world.shop_b)}/invites/{revoked['id']}"))
     answers.append(present(owner_c, shop_c, revoked["code"]))  # withdrawn
-    owner.execute("UPDATE network_invite SET created_at = created_at - interval '3 days', expires_at = now() - interval '1 hour' WHERE used_at IS NULL AND revoked_at IS NULL")  # fmt: skip
+    owner.execute(
+        "UPDATE network_invite SET created_at = created_at - interval '3 days', expires_at = now() - interval '1 hour' "
+        "WHERE used_at IS NULL AND revoked_at IS NULL"
+    )
     for answer in answers:
         refused(answer, 404, "NETWORK_INVITE_INVALID")
     assert len({answer.text for answer in answers}) == 1
@@ -410,14 +434,18 @@ def test_declining_and_ending_a_link_show_nothing_new_and_stop_new_work(
 ) -> None:
     owner.execute("UPDATE shop SET share_phone = '+998901112233' WHERE id = %s", (world.shop_b,))
     code = ok(write(client, world.owner_b, "POST", f"{net(world.shop_b)}/invites", {"as": "supplier"}), 201)["code"]
-    link = ok(write(client, world.owner_a, "POST", f"{net(world.shop_a)}/links", {"code": code, "as": "buyer"}), 201)["link"]
+    link = ok(write(client, world.owner_a, "POST", f"{net(world.shop_a)}/links", {"code": code, "as": "buyer"}), 201)[
+        "link"
+    ]
     declined = ok(write(client, world.owner_b, "POST", f"{net(world.shop_b)}/links/{link['id']}/decline"))["link"]
     assert declined["state"] == "declined"
     mine = ok(read(client, world.owner_a, f"{net(world.shop_a)}/links/{link['id']}"))["link"]
     assert (mine["state"], mine["partner"]["phone"], mine["counterpart"]) == ("declined", None, None)
     assert owner.execute("SELECT count(*) FROM customer WHERE shop_id = %s", (world.shop_b,)).fetchone() == (0,)
     for step in ("accept", "decline", "end"):
-        refused(write(client, world.owner_b, "POST", f"{net(world.shop_b)}/links/{link['id']}/{step}"), 409, "NETWORK_STATE")
+        refused(
+            write(client, world.owner_b, "POST", f"{net(world.shop_b)}/links/{link['id']}/{step}"), 409, "NETWORK_STATE"
+        )
 
     d = deal(client, world)
     order_id, note_id = delivered(client, d)
@@ -433,7 +461,7 @@ def test_declining_and_ending_a_link_show_nothing_new_and_stop_new_work(
     before = snapshot(owner, *d.shops)
     draft = {"link_id": d.link, "lines": [RICE]}
     refused(write(client, world.owner_a, "POST", f"{net(world.shop_a)}/drafts", draft), 409, "NETWORK_STATE")
-    refused(confirm(client, d, note_id, **new_goods({1: 16_000, 2: 14_000})), 409, "NETWORK_STATE")
+    refused(confirm(client, d, note_id, **goods(owner, d.buyer.shop)), 409, "NETWORK_STATE")
     refused(
         write(client, world.owner_a, "POST", f"{net(world.shop_a)}/payments", {"link_id": d.link, "amount": 10_000}),
         409,
@@ -477,10 +505,9 @@ def test_an_order_is_delivered_and_confirmed_and_both_books_take_it_in_one_step(
     theirs = item(client, b, world.owner_b, "Guruch oliy", price=12_000)
     stock_in(client, b, world.owner_b, theirs, "50", 9_000)
 
-    draft = ok(
-        write(client, world.manager_a, "POST", f"{net(a)}/drafts", {"link_id": d.link, "note": "Ertaga kerak", "lines": [{**RICE, "item_id": mine}, SUGAR]}),
-        201,
-    )  # fmt: skip
+    wanted = [{**RICE, "item_id": mine}, SUGAR]
+    body = {"link_id": d.link, "note": "Ertaga kerak", "lines": wanted}
+    draft = ok(write(client, world.manager_a, "POST", f"{net(a)}/drafts", body), 201)
     assert draft["status"] == "draft"
     # A draft is the buyer's alone.
     assert ok(read(client, world.owner_b, f"{net(b)}/orders"))["orders"] == []
@@ -503,7 +530,8 @@ def test_an_order_is_delivered_and_confirmed_and_both_books_take_it_in_one_step(
     assert (accepted["status"], accepted["currency"], accepted["total"]) == ("accepted", "UZS", TOTAL)
     seen = ok(read(client, world.manager_a, f"{net(a)}/orders/{order_id}"))
     # The buyer sees the supplier's changes beside what it asked for, and its own item, not the supplier's.
-    assert [(line["qty"], line["accepted_qty"], line["unit_price"], line["line_total"], line["changed"], line["item_id"]) for line in seen["lines"]] == [
+    shown = ("qty", "accepted_qty", "unit_price", "line_total", "changed", "item_id")
+    assert [tuple(line[name] for name in shown) for line in seen["lines"]] == [
         ("10", "10", 12_000, 120_000, False, mine),
         ("5", "4.5", 11_000, 49_500, True, None),
     ]  # fmt: skip
@@ -511,7 +539,13 @@ def test_an_order_is_delivered_and_confirmed_and_both_books_take_it_in_one_step(
     books = snapshot(owner, a, b, tables=BOOKS[:10])
     note_id = deliver(client, d, order_id, paid=20_000)
     note = ok(read(client, world.manager_a, f"{net(a)}/notes/{note_id}"))
-    assert (note["number"], note["status"], note["total"], note["paid"], note["terms"]) == (1, "issued", TOTAL, 20_000, "part")
+    assert (note["number"], note["status"], note["total"], note["paid"], note["terms"]) == (
+        1,
+        "issued",
+        TOTAL,
+        20_000,
+        "part",
+    )
     assert [(line["name"], line["qty"], line["unit_price"], line["line_total"]) for line in note["lines"]] == [
         ("Guruch", "10", 12_000, 120_000),
         ("Shakar", "4.5", 11_000, 49_500),
@@ -570,7 +604,7 @@ def test_an_order_is_delivered_and_confirmed_and_both_books_take_it_in_one_step(
             "network.note_received",
         ]
     assert [text.split(" ", 1)[0] for text in told(owner, world.owner_b)][-2:] == ["🧾", "✅"]
-    assert "169 500" in told(owner, world.owner_a)[-1] and "Shop B" in told(owner, world.owner_a)[-1]
+    assert "169 500" in told(owner, world.owner_a)[-1] and "Shop B" in told(owner, world.owner_a)[-1]
 
     # Once.
     before = snapshot(owner, a, b)
@@ -586,7 +620,7 @@ def test_a_note_paid_in_full_leaves_nothing_owed_and_one_on_credit_owes_all(
     d = deal(client, world)
     _, paid_note = delivered(client, d, paid=TOTAL)
     assert ok(read(client, world.owner_a, f"{net(world.shop_a)}/notes/{paid_note}"))["terms"] == "paid"
-    ok(confirm(client, d, paid_note, **new_goods({1: 16_000, 2: 14_000})))
+    ok(confirm(client, d, paid_note, **goods(owner, d.buyer.shop)))
     assert owed_to_supplier(owner, world.shop_a) == {}
     _, credit_note = delivered(client, d)
     assert ok(read(client, world.owner_a, f"{net(world.shop_a)}/notes/{credit_note}"))["terms"] == "credit"
@@ -617,7 +651,9 @@ def test_if_either_side_cannot_be_written_neither_is(
         theirs = item(client, supplier.shop, supplier.user, f"Guruch {uuid.uuid4().hex[:5]}")
         stock_in(client, supplier.shop, supplier.user, theirs, "50", 9_000)
         _, note_id = delivered(client, d, paid=20_000, own={"supplier_rice": theirs})
-        customer = owner.execute("SELECT customer_id FROM network_link WHERE shop_id = %s AND id = %s", (supplier.shop, d.link)).fetchone()  # fmt: skip
+        customer = owner.execute(
+            "SELECT customer_id FROM network_link WHERE shop_id = %s AND id = %s", (supplier.shop, d.link)
+        ).fetchone()
         assert customer is not None
         goods = new_goods({1: 16_000, 2: 14_000})
         if failing == "supplier":
@@ -630,7 +666,16 @@ def test_if_either_side_cannot_be_written_neither_is(
         else:
             # The buyer's own catalogue already has a "Shakar": the new item of the receipt is refused,
             # after the supplier's side was written when the supplier is the lower shop.
-            ok(write(client, buyer.user, "POST", f"/api/v1/shops/{buyer.shop}/catalog", {"name": "Shakar", "price": 14_000, "unit": "kg"}), 201)  # fmt: skip
+            ok(
+                write(
+                    client,
+                    buyer.user,
+                    "POST",
+                    f"/api/v1/shops/{buyer.shop}/catalog",
+                    {"name": "Shakar", "price": 14_000, "unit": "kg"},
+                ),
+                201,
+            )
             before = snapshot(owner, *d.shops)
             refused(confirm(client, d, note_id, **goods), 409, "CATALOG_NAME_TAKEN")
         assert snapshot(owner, *d.shops) == before
@@ -649,29 +694,46 @@ def test_a_rejected_note_posts_nothing_and_a_corrected_one_takes_its_place(
     # A reason is required, and the supplier does not answer its own note.
     path = f"{net(a)}/notes/{note_id}/reject"
     refused(write(client, world.owner_a, "POST", path, {"reason": " "}), 422, "VALIDATION")
-    refused(write(client, world.owner_b, "POST", f"{net(b)}/notes/{note_id}/reject", {"reason": "Yo'q"}), 409, "NETWORK_STATE")
+    refused(
+        write(client, world.owner_b, "POST", f"{net(b)}/notes/{note_id}/reject", {"reason": "Yo'q"}),
+        409,
+        "NETWORK_STATE",
+    )
     refused(write(client, world.owner_b, "POST", f"{net(b)}/notes/{note_id}/confirm"), 409, "NETWORK_STATE")
     counted = [{"line_no": 2, "received_qty": "4"}]
     rejected = ok(write(client, world.owner_a, "POST", path, {"reason": "Shakar yarim kilo kam", "lines": counted}))
     assert (rejected["status"], rejected["reject_reason"]) == ("rejected", "Shakar yarim kilo kam")
     seen = ok(read(client, world.owner_b, f"{net(b)}/notes/{note_id}"))
-    assert (seen["status"], seen["reject_reason"], seen["lines"][1]["received_qty"]) == ("rejected", "Shakar yarim kilo kam", "4")
+    assert (seen["status"], seen["reject_reason"], seen["lines"][1]["received_qty"]) == (
+        "rejected",
+        "Shakar yarim kilo kam",
+        "4",
+    )
     assert ok(read(client, world.owner_b, net(b)))["waiting"]["rejected_notes"] == 1
     assert "Shakar yarim kilo kam" in told(owner, world.owner_b)[-1]
     assert snapshot(owner, a, b, tables=BOOKS[:10]) == books
-    refused(confirm(client, d, note_id, **new_goods({1: 16_000, 2: 14_000})), 409, "NETWORK_STATE")
+    refused(confirm(client, d, note_id, **goods(owner, d.buyer.shop)), 409, "NETWORK_STATE")
 
     correct = f"{net(b)}/notes/{note_id}/correct"
     refused(write(client, world.owner_b, "POST", correct, {"reason": ""}), 422, "VALIDATION")
-    refused(write(client, world.owner_a, "POST", f"{net(a)}/notes/{note_id}/correct", {"reason": "O'zim"}), 409, "NETWORK_STATE")
+    refused(
+        write(client, world.owner_a, "POST", f"{net(a)}/notes/{note_id}/correct", {"reason": "O'zim"}),
+        409,
+        "NETWORK_STATE",
+    )
     lines = [{"line_no": 1, "qty": "10", "unit_price": 12_000}, {"line_no": 2, "qty": "4", "unit_price": 11_000}]
     corrected = ok(write(client, world.owner_b, "POST", correct, {"reason": "Qayta tortildi", "lines": lines}), 201)
-    assert (corrected["number"], corrected["status"], corrected["total"], corrected["supersedes_id"]) == (2, "issued", 164_000, note_id)
+    assert (corrected["number"], corrected["status"], corrected["total"], corrected["supersedes_id"]) == (
+        2,
+        "issued",
+        164_000,
+        note_id,
+    )
     # The first note is as it was, marked superseded; it cannot be answered or corrected again.
     old = ok(read(client, world.owner_a, f"{net(a)}/notes/{note_id}"))
     assert (old["status"], old["total"], old["lines"][1]["qty"]) == ("superseded", TOTAL, "4.5")
     refused(write(client, world.owner_b, "POST", correct, {"reason": "Yana bir marta"}), 409, "NETWORK_STATE")
-    ok(confirm(client, d, corrected["id"], **new_goods({1: 16_000, 2: 14_000})))
+    ok(confirm(client, d, corrected["id"], **goods(owner, d.buyer.shop)))
     assert owed_to_supplier(owner, a) == {"UZS": 164_000}
     assert ok(read(client, world.owner_a, f"{net(a)}/orders/{order_id}"))["status"] == "received"
     assert mismatches(owner, a, b) == []
@@ -684,9 +746,19 @@ def test_an_order_is_cancelled_or_declined_only_while_nothing_of_it_is_received(
     a, b = d.shops
     first = order(client, d, [RICE])
     # Each side closes with its own word, and neither with the other's.
-    refused(write(client, world.owner_a, "POST", f"{net(a)}/orders/{first}/decline", {"reason": "Kerak emas"}), 404, "NOT_FOUND")
-    refused(write(client, world.owner_b, "POST", f"{net(b)}/orders/{first}/cancel", {"reason": "Kerak emas"}), 404, "NOT_FOUND")
-    refused(write(client, world.owner_b, "POST", f"{net(b)}/orders/{first}/decline", {"reason": "x"}), 422, "VALIDATION")
+    refused(
+        write(client, world.owner_a, "POST", f"{net(a)}/orders/{first}/decline", {"reason": "Kerak emas"}),
+        404,
+        "NOT_FOUND",
+    )
+    refused(
+        write(client, world.owner_b, "POST", f"{net(b)}/orders/{first}/cancel", {"reason": "Kerak emas"}),
+        404,
+        "NOT_FOUND",
+    )
+    refused(
+        write(client, world.owner_b, "POST", f"{net(b)}/orders/{first}/decline", {"reason": "x"}), 422, "VALIDATION"
+    )
     declined = ok(write(client, world.owner_b, "POST", f"{net(b)}/orders/{first}/decline", {"reason": "Tovar yo'q"}))
     assert (declined["status"], declined["closed_reason"]) == ("declined", "Tovar yo'q")
     assert ok(read(client, world.owner_a, f"{net(a)}/orders/{first}"))["closed_reason"] == "Tovar yo'q"
@@ -702,10 +774,18 @@ def test_an_order_is_cancelled_or_declined_only_while_nothing_of_it_is_received(
     assert ok(read(client, world.owner_b, f"{net(b)}/notes/{note_id}"))["status"] == "void"
 
     third, last = delivered(client, d)
-    ok(confirm(client, d, last, **new_goods({1: 16_000, 2: 14_000})))
+    ok(confirm(client, d, last, **goods(owner, d.buyer.shop)))
     before = snapshot(owner, a, b)
-    refused(write(client, world.owner_a, "POST", f"{net(a)}/orders/{third}/cancel", {"reason": "Kech"}), 409, "NETWORK_STATE")
-    refused(write(client, world.owner_b, "POST", f"{net(b)}/orders/{third}/decline", {"reason": "Kech"}), 409, "NETWORK_STATE")
+    refused(
+        write(client, world.owner_a, "POST", f"{net(a)}/orders/{third}/cancel", {"reason": "Kech"}),
+        409,
+        "NETWORK_STATE",
+    )
+    refused(
+        write(client, world.owner_b, "POST", f"{net(b)}/orders/{third}/decline", {"reason": "Kech"}),
+        409,
+        "NETWORK_STATE",
+    )
     assert snapshot(owner, a, b) == before
 
 
@@ -725,9 +805,17 @@ def test_what_is_typed_into_an_order_or_an_answer_is_checked(
         # An item of the other shop is no item of this one.
         ([{**RICE, "item_id": theirs}], "lines.0.item_id"),
     ):
-        error = refused(write(client, world.owner_a, "POST", f"{net(a)}/drafts", {"link_id": d.link, "lines": lines}), 422, "VALIDATION")
+        error = refused(
+            write(client, world.owner_a, "POST", f"{net(a)}/drafts", {"link_id": d.link, "lines": lines}),
+            422,
+            "VALIDATION",
+        )
         assert field in error["fields"], error
-    error = refused(write(client, world.owner_a, "POST", f"{net(a)}/drafts", {"link_id": str(uuid.uuid4()), "lines": [RICE]}), 422, "VALIDATION")
+    error = refused(
+        write(client, world.owner_a, "POST", f"{net(a)}/drafts", {"link_id": str(uuid.uuid4()), "lines": [RICE]}),
+        422,
+        "VALIDATION",
+    )
     assert "link_id" in error["fields"]
     assert snapshot(owner, a, b) == before
 
@@ -752,7 +840,11 @@ def test_what_is_typed_into_an_order_or_an_answer_is_checked(
     ]
     ok(accept(client, d, order_id, PRICES))
     # More is paid on delivery than the note is for.
-    refused(write(client, world.owner_b, "POST", f"{net(b)}/orders/{order_id}/deliver", {"paid": TOTAL + 1}), 422, "VALIDATION")
+    refused(
+        write(client, world.owner_b, "POST", f"{net(b)}/orders/{order_id}/deliver", {"paid": TOTAL + 1}),
+        422,
+        "VALIDATION",
+    )
     note_id = deliver(client, d, order_id)
     for body, field in (
         ({"lines": [{"line_no": 1, "new_price": 16_000}]}, "lines.1.item_id"),  # a line with no item
@@ -775,7 +867,9 @@ def test_a_shop_that_refuses_sales_beyond_its_stock_is_refused_a_note_for_more_t
     ok(write(client, world.owner_b, "PUT", f"/api/v1/shops/{b}/stock/settings", {"refuse_negative": True}))
     order_id = order(client, d, [RICE])
     ok(accept(client, d, order_id, [{**PRICES[0], "item_id": theirs}]))
-    error = refused(write(client, world.owner_b, "POST", f"{net(b)}/orders/{order_id}/deliver"), 409, "STOCK_INSUFFICIENT")
+    error = refused(
+        write(client, world.owner_b, "POST", f"{net(b)}/orders/{order_id}/deliver"), 409, "STOCK_INSUFFICIENT"
+    )
     assert (error["fields"]["on_hand"], error["fields"]["wanted"]) == ("6", "10")
     stock_in(client, b, world.owner_b, theirs, "4", 9_000)
     note_id = deliver(client, d, order_id)
@@ -797,7 +891,7 @@ def owing(client: TestClient, world: World, owner: psycopg.Connection) -> Deal:
     """A link over which a delivery on credit was confirmed: the buyer owes the supplier the total."""
     d = deal(client, world)
     _, note_id = delivered(client, d)
-    ok(confirm(client, d, note_id, **new_goods({1: 16_000, 2: 14_000})))
+    ok(confirm(client, d, note_id, **goods(owner, d.buyer.shop)))
     return d
 
 
@@ -825,7 +919,7 @@ def test_a_payment_is_in_the_recorders_books_at_once_and_in_the_others_only_when
         (payment["id"], "awaiting", "partner", False, 50_000)
     ]
     assert ok(read(client, world.owner_b, net(b)))["waiting"]["payments"] == 1
-    assert "50 000" in told(owner, world.owner_b)[-1]
+    assert "50 000" in told(owner, world.owner_b)[-1]
     # The two books disagree, and each side is shown that they do, in its own terms.
     mine, other = reconciled(client, d.buyer, d.link), reconciled(client, d.supplier, d.link)
     assert (mine["own_balance"], mine["agreed"]["balance"], mine["difference"]) == (TOTAL - 50_000, TOTAL, -50_000)
@@ -878,9 +972,15 @@ def test_a_declined_payment_stays_in_the_recorders_books_and_is_shown_as_a_diffe
     refused(write(client, world.owner_b, "POST", path, {"reason": ""}), 422, "VALIDATION")
     before = snapshot(owner, b, tables=BOOKS)
     declined = ok(write(client, world.owner_b, "POST", path, {"reason": "Pul kelmadi"}))
-    assert (declined["status"], declined["decline_reason"], declined["in_own_books"]) == ("declined", "Pul kelmadi", False)
+    assert (declined["status"], declined["decline_reason"], declined["in_own_books"]) == (
+        "declined",
+        "Pul kelmadi",
+        False,
+    )
     after = snapshot(owner, b, tables=BOOKS)
-    assert [rows for table, rows in after if table != "activity"] == [rows for table, rows in before if table != "activity"]
+    assert [rows for table, rows in after if table != "activity"] == [
+        rows for table, rows in before if table != "activity"
+    ]
     # Nothing is reconciled by itself: the buyer's books still hold the payment, and it is told so.
     mine = ok(read(client, world.owner_a, f"{net(a)}/payments/{payment['id']}"))
     assert (mine["status"], mine["decline_reason"], mine["in_own_books"]) == ("declined", "Pul kelmadi", True)
@@ -911,11 +1011,15 @@ def test_a_payment_taken_back_while_it_waits_leaves_the_recorders_books_as_they_
     withdrawn = ok(write(client, side.user, "POST", f"{net(side.shop)}/payments/{payment['id']}/withdraw"))
     assert (withdrawn["status"], withdrawn["in_own_books"]) == ("withdrawn", False)
     assert owed_to_supplier(owner, a) == {"UZS": TOTAL}
-    assert sum(amount if kind == "credit" else -amount for kind, amount in ledger(owner, b, customer[0]) if kind != "reversal") in (TOTAL, TOTAL - 50_000)  # fmt: skip
+    assert sum(
+        amount if kind == "credit" else -amount for kind, amount in ledger(owner, b, customer[0]) if kind != "reversal"
+    ) in (TOTAL, TOTAL - 50_000)
     assert reconciled(client, side, d.link)["difference"] == 0
     seen = ok(read(client, other.user, f"{net(other.shop)}/payments/{payment['id']}"))
     assert seen["status"] == "withdrawn"
-    refused(write(client, other.user, "POST", f"{net(other.shop)}/payments/{payment['id']}/confirm"), 409, "NETWORK_STATE")
+    refused(
+        write(client, other.user, "POST", f"{net(other.shop)}/payments/{payment['id']}/confirm"), 409, "NETWORK_STATE"
+    )
     assert mismatches(owner, a, b) == []
 
 
@@ -939,7 +1043,9 @@ def test_a_payment_is_checked_before_anything_is_written(
 def test_links_are_the_owners_and_the_rest_is_the_managers_by_default(
     client: TestClient, world: World, on: None, owner: psycopg.Connection
 ) -> None:
-    refused(write(client, world.manager_a, "POST", f"{net(world.shop_a)}/invites", {"as": "buyer"}), 403, "FORBIDDEN_ROLE")
+    refused(
+        write(client, world.manager_a, "POST", f"{net(world.shop_a)}/invites", {"as": "buyer"}), 403, "FORBIDDEN_ROLE"
+    )
     refused(read(client, world.seller_a, net(world.shop_a)), 403, "FORBIDDEN_ROLE")
     d = deal(client, world)
     seen = ok(read(client, world.manager_a, net(world.shop_a)))
@@ -1027,7 +1133,9 @@ def test_a_shop_that_is_no_party_gets_the_answer_a_missing_thing_gets(
     d = owing(client, world, owner)
     order_id, note_id = delivered(client, d, paid=10_000)
     payment = ok(pay(client, d.buyer, d.link, 30_000), 201)["id"]
-    draft = ok(write(client, world.owner_a, "POST", f"{net(world.shop_a)}/drafts", {"link_id": d.link, "lines": [RICE]}), 201)["id"]
+    draft = ok(
+        write(client, world.owner_a, "POST", f"{net(world.shop_a)}/drafts", {"link_id": d.link, "lines": [RICE]}), 201
+    )["id"]
     invite = ok(write(client, world.owner_b, "POST", f"{net(world.shop_b)}/invites", {"as": "buyer"}), 201)["id"]
     real = {"link": d.link, "order": order_id, "note": note_id, "payment": payment, "draft": draft, "invite": invite}
     bodies: dict[str, Any] = {
@@ -1049,13 +1157,29 @@ def test_a_shop_that_is_no_party_gets_the_answer_a_missing_thing_gets(
         answers = []
         for identifier in (real[kind], str(uuid.uuid4())):
             url = net(shop_c) + path.replace("{id}", identifier)
-            answers.append(client.request(method, url, json=bodies.get(path), headers={**as_user(owner_c), "Idempotency-Key": uuid.uuid4().hex}))  # fmt: skip
+            answers.append(
+                client.request(
+                    method,
+                    url,
+                    json=bodies.get(path),
+                    headers={**as_user(owner_c), "Idempotency-Key": uuid.uuid4().hex},
+                )
+            )
         assert [answer.status_code for answer in answers] == [404, 404], (method, path, answers[0].text)
         assert answers[0].json() == answers[1].json(), (method, path)
     # Naming the link of others in a body is no better.
-    for path, body in (("/drafts", {"link_id": d.link, "lines": [RICE]}), ("/payments", {"link_id": d.link, "amount": 10_000})):
-        response = client.post(net(shop_c) + path, json=body, headers={**as_user(owner_c), "Idempotency-Key": uuid.uuid4().hex})
-        missing = client.post(net(shop_c) + path, json={**body, "link_id": str(uuid.uuid4())}, headers={**as_user(owner_c), "Idempotency-Key": uuid.uuid4().hex})  # fmt: skip
+    for path, body in (
+        ("/drafts", {"link_id": d.link, "lines": [RICE]}),
+        ("/payments", {"link_id": d.link, "amount": 10_000}),
+    ):
+        response = client.post(
+            net(shop_c) + path, json=body, headers={**as_user(owner_c), "Idempotency-Key": uuid.uuid4().hex}
+        )
+        missing = client.post(
+            net(shop_c) + path,
+            json={**body, "link_id": str(uuid.uuid4())},
+            headers={**as_user(owner_c), "Idempotency-Key": uuid.uuid4().hex},
+        )
         assert response.status_code == missing.status_code == 422 and response.json() == missing.json()
     # Its lists are empty, and it is told nothing.
     for path in ("", "/orders", "/notes", "/payments", "/drafts"):
@@ -1081,7 +1205,11 @@ def test_a_member_of_one_side_cannot_reach_or_act_as_the_other_side(
     refused(write(client, world.owner_b, "POST", f"{net(a)}/notes/{note_id}/confirm"), 404, "NOT_FOUND")
     # Through its own shop, taking the step that is the partner's: refused, and nothing changes.
     refused(accept(client, Deal(d.supplier, d.buyer, d.link), order_id, PRICES), 409, "NETWORK_STATE")
-    refused(write(client, world.owner_a, "POST", f"{net(a)}/notes/{note_id}/correct", {"reason": "O'zim tuzataman"}), 409, "NETWORK_STATE")
+    refused(
+        write(client, world.owner_a, "POST", f"{net(a)}/notes/{note_id}/correct", {"reason": "O'zim tuzataman"}),
+        409,
+        "NETWORK_STATE",
+    )
     refused(write(client, world.owner_a, "POST", f"{net(a)}/payments/{payment}/confirm"), 409, "NETWORK_STATE")
     refused(write(client, world.owner_b, "POST", f"{net(b)}/notes/{note_id}/confirm"), 409, "NETWORK_STATE")
     assert snapshot(owner, a, b) == before
@@ -1092,14 +1220,24 @@ def test_a_member_of_one_side_cannot_reach_or_act_as_the_other_side(
     secrets = {
         "b": [str(row[0]) for row in owner.execute(
             "SELECT id FROM membership WHERE shop_id = %(s)s UNION ALL SELECT id FROM customer WHERE shop_id = %(s)s "
-            "UNION ALL SELECT id FROM catalog_item WHERE shop_id = %(s)s UNION ALL SELECT id FROM supplier WHERE shop_id = %(s)s",
+            "UNION ALL SELECT id FROM catalog_item WHERE shop_id = %(s)s "
+            "UNION ALL SELECT id FROM supplier WHERE shop_id = %(s)s",
             {"s": b}).fetchall()],
         "a": [str(row[0]) for row in owner.execute(
             "SELECT id FROM membership WHERE shop_id = %(s)s UNION ALL SELECT id FROM customer WHERE shop_id = %(s)s "
-            "UNION ALL SELECT id FROM catalog_item WHERE shop_id = %(s)s UNION ALL SELECT id FROM supplier WHERE shop_id = %(s)s",
+            "UNION ALL SELECT id FROM catalog_item WHERE shop_id = %(s)s "
+            "UNION ALL SELECT id FROM supplier WHERE shop_id = %(s)s",
             {"s": a}).fetchall()],
     }  # fmt: skip
-    for path in ("", f"/links/{d.link}", "/orders", f"/orders/{order_id}", "/notes", "/payments", f"/payments/{payment}"):
+    for path in (
+        "",
+        f"/links/{d.link}",
+        "/orders",
+        f"/orders/{order_id}",
+        "/notes",
+        "/payments",
+        f"/payments/{payment}",
+    ):
         seen_by_a = client.get(net(a) + path, headers=as_user(world.owner_a)).text + str(mine)
         seen_by_b = client.get(net(b) + path, headers=as_user(world.owner_b)).text + str(theirs)
         assert not [secret for secret in (*secrets["b"], str(b)) if secret in seen_by_a], path
@@ -1119,7 +1257,10 @@ def test_a_limited_shop_answers_what_was_sent_to_it_and_starts_nothing(
     theirs = ok(pay(client, d.supplier, d.link, 20_000), 201)["id"]
 
     def limit(shop: uuid.UUID, state: str = "limited") -> None:
-        owner.execute("UPDATE subscription SET state = %s, trial_ends = NULL, paid_through = NULL WHERE shop_id = %s", (state, shop))  # fmt: skip
+        owner.execute(
+            "UPDATE subscription SET state = %s, trial_ends = NULL, paid_through = NULL WHERE shop_id = %s",
+            (state, shop),
+        )
 
     limit(a)
     before = snapshot(owner, a, b)
@@ -1131,7 +1272,7 @@ def test_a_limited_shop_answers_what_was_sent_to_it_and_starts_nothing(
         refused(response, 402, "SUBSCRIPTION_LIMITED")
     assert snapshot(owner, a, b) == before
     # What already waits for it, it still answers: a note, a payment; and it may cancel and end.
-    ok(confirm(client, d, note_id, **new_goods({1: 16_000, 2: 14_000})))
+    ok(confirm(client, d, note_id, **goods(owner, d.buyer.shop)))
     ok(write(client, world.owner_a, "POST", f"{net(a)}/payments/{theirs}/confirm"))
     ok(write(client, world.owner_a, "POST", f"{net(a)}/orders/{waiting}/cancel", {"reason": "Obuna tugadi"}))
     assert ok(read(client, world.owner_a, net(a)))["links"][0]["state"] == "active"
@@ -1148,10 +1289,10 @@ def test_a_limited_shop_answers_what_was_sent_to_it_and_starts_nothing(
     ok(accept(client, d, again, [PRICES[0]]))
     note_id = deliver(client, d, again)
     limit(b, "suspended")
-    refused(read(client, world.owner_b, f"{net(b)}/notes"), 200, "") if False else None
     refused(write(client, world.owner_b, "POST", f"{net(b)}/links/{d.link}/end"), 403, "SHOP_SUSPENDED")
     before = snapshot(owner, a, b)
-    refused(confirm(client, d, note_id, **{"lines": []}), 409, "NETWORK_PARTNER_REFUSED")
+    rice_only = {"lines": goods(owner, a)["lines"][:1]}
+    refused(confirm(client, d, note_id, **rice_only), 409, "NETWORK_PARTNER_REFUSED")
     assert snapshot(owner, a, b) == before
 
 
@@ -1161,15 +1302,29 @@ def test_the_partners_customer_row_counts_toward_the_free_plan(
     """The supplier's row for the buyer is an ordinary customer: with the free plan full, a link is not
     accepted (BR-34), and nothing of the request changes."""
     owner.execute("UPDATE subscription SET state = 'limited', trial_ends = NULL WHERE shop_id = %s", (world.shop_a,))
-    held = owner.execute("SELECT count(*) FROM customer WHERE shop_id = %s AND status = 'active'", (world.shop_a,)).fetchone()
+    held = owner.execute(
+        "SELECT count(*) FROM customer WHERE shop_id = %s AND status = 'active'", (world.shop_a,)
+    ).fetchone()
     assert held is not None
     free_plan(int(held[0]))
     code = ok(write(client, world.owner_a, "POST", f"{net(world.shop_a)}/invites", {"as": "supplier"}), 201)["code"]
-    link = ok(write(client, world.owner_b, "POST", f"{net(world.shop_b)}/links", {"code": code, "as": "buyer"}), 201)["link"]["id"]
+    link = ok(write(client, world.owner_b, "POST", f"{net(world.shop_b)}/links", {"code": code, "as": "buyer"}), 201)[
+        "link"
+    ]["id"]
     before = snapshot(owner, world.shop_a, world.shop_b)
-    error = refused(write(client, world.owner_a, "POST", f"{net(world.shop_a)}/links/{link}/accept"), 402, "FREE_PLAN_FULL")
+    error = refused(
+        write(client, world.owner_a, "POST", f"{net(world.shop_a)}/links/{link}/accept"), 402, "FREE_PLAN_FULL"
+    )
     assert error["fields"] == {"limit": str(held[0])}
     assert snapshot(owner, world.shop_a, world.shop_b) == before
     # Naming a customer the shop already has takes no further place.
-    accepted = ok(write(client, world.owner_a, "POST", f"{net(world.shop_a)}/links/{link}/accept", {"counterpart_id": str(world.settled_customer_a)}))  # fmt: skip
+    accepted = ok(
+        write(
+            client,
+            world.owner_a,
+            "POST",
+            f"{net(world.shop_a)}/links/{link}/accept",
+            {"counterpart_id": str(world.settled_customer_a)},
+        )
+    )
     assert accepted["link"]["counterpart"] == {"kind": "customer", "id": str(world.settled_customer_a)}

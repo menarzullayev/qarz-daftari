@@ -437,6 +437,8 @@ class OrderService:
 
             async def apply() -> dict[str, Any]:
                 now = self._now()
+                if draft_id is not None and await session.network_draft(draft_id, for_update=True) is None:
+                    raise NotFound()
                 link = await session.network_link(request.link_id)
                 if link is None:
                     raise ValidationFailed({"link_id": "not a link of this shop"})
@@ -1078,6 +1080,11 @@ class NoteService:
                 link = await own_link(session, note.link_id)
                 # The link first, then each shop's own rows, the lower shop first.
                 await locked_link(session, link)
+                # Under the link's locks nothing else can answer the note: look again, so that the loser
+                # of two confirmations at once is told so before it writes anything.
+                waiting = await session.network_note(note_id)
+                if waiting is None or not network.may_answer_note(waiting.status, waiting.role):
+                    raise NetworkState()
                 supplier_id = await ensure_counterpart_in(session, actor, link, today=self._today())
                 request = await self._receipt(session, note, supplier_id, lines, method)
                 clean = clean_document(request, self._today())
