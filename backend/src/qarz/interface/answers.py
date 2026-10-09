@@ -189,3 +189,65 @@ class MyShop(Answer):
 class MyShops(Answer):
     items: list[MyShop]
     active_shop: str | None
+
+
+class ShareState(Answer):
+    """What staff are told about a customer's read-only link. The link itself is never among it."""
+
+    exists: bool
+    expired: bool
+    created_at: str | None
+    expires_at: str | None
+    last_opened_at: str | None
+
+
+class ShareContact(Answer):
+    phone: str | None
+
+
+class SharedOverdue(Answer):
+    amount: int
+    due_today: int
+
+
+class SharedLine(Answer):
+    name: str
+    qty: str
+    unit: str
+    unit_price: int
+    line_total: int
+
+
+class SharedEntry(Answer):
+    kind: str
+    amount: int
+    created_at: str
+    promised_date: str | None
+    reversed: bool
+    lines: list[SharedLine]
+    # "USD" on an entry in dollars, whose amount is then whole cents. Absent: so'm.
+    currency: str | None = None
+
+
+class SharedDollars(Answer):
+    """What the customer owes in US dollars, in whole cents: beside the so'm figures, never added to them."""
+
+    balance: int
+    overdue: SharedOverdue
+
+
+class SharedAccount(Answer):
+    """The page behind a customer's read-only link. Closed: a field added to the service's answer and not
+    declared here fails the request instead of reaching whoever holds the link."""
+
+    shop_name: str
+    shop_phone: str | None
+    first_name: str
+    lang: str
+    balance: int
+    overdue: SharedOverdue
+    # Only for a shop that works in dollars.
+    usd: SharedDollars | None = None
+    expires_at: str
+    entries: list[SharedEntry]
+    entries_total: int

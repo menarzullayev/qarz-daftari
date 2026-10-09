@@ -121,12 +121,16 @@ def test_the_answers_that_are_typed(document: dict[str, Any]) -> None:
     """Which operations name their answer field by field. The rest answer with an open object."""
     typed = sorted(f"{method.upper()} {path}" for method, path, op in _operations(document) if _is_typed(op))
     assert typed == [
+        # The page behind a customer's read-only link: closed, so nothing undeclared can reach a stranger.
+        "GET /api/v1/customer-share",
         "GET /api/v1/me/shops",
         "GET /api/v1/shops/{shop_id}",
         "GET /api/v1/shops/{shop_id}/customers",
         "GET /api/v1/shops/{shop_id}/customers/{customer_id}",
+        "GET /api/v1/shops/{shop_id}/customers/{customer_id}/share",
         "GET /api/v1/shops/{shop_id}/overview",
         "GET /api/v1/shops/{shop_id}/overview/debtors",
+        "GET /api/v1/shops/{shop_id}/share-contact",
     ]
 
 
@@ -193,6 +197,8 @@ DOLLAR_FIELDS = {
     "Debtor": ["usd"],
     "Entry": ["currency"],
     "Overview": ["usd"],
+    "SharedAccount": ["usd"],
+    "SharedEntry": ["currency"],
     "Shop": ["usd_on"],
     "StaffPaymentNotice": ["currency"],
 }

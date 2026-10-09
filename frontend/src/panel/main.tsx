@@ -7,6 +7,7 @@ import { StaffApp } from "../shared/StaffApp";
 import { initTheme } from "../shared/theme";
 import { takeLoginReturn } from "./loginReturn";
 import { PanelRoot } from "./PanelRoot";
+import { registerPanelWorker } from "./pwa/register";
 
 const root = document.getElementById("root");
 if (!root) {
@@ -23,6 +24,13 @@ initTheme();
 
 const initialLanguage = detectLanguage({ stored: readStoredLanguage() });
 const preview = import.meta.env.DEV ? previewStaffSession(window.location.search) : null;
+
+// The panel can be installed, and an installed panel must open without a connection: its service
+// worker keeps the page and its scripts, and nothing else (pwa/worker.ts). Registered once the page has
+// loaded, so it never competes with the first load.
+window.addEventListener("load", () => {
+  void registerPanelWorker({ container: navigator.serviceWorker, production: import.meta.env.PROD });
+});
 
 createRoot(root).render(
   <StrictMode>

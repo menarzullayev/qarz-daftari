@@ -15,6 +15,7 @@ export const MIN_ROLE = {
   "ledger.view": "seller",
   "customers.create": "seller",
   "customers.edit": "manager",
+  "customers.share": "manager",
   "credits.record": "seller",
   "payments.record": "seller",
   "payment_notices.decide": "seller",

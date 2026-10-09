@@ -28,7 +28,8 @@ describe("the panel's style sheet", () => {
     // The colors it combines: muted text on a card and on the page ground, hairlines between rows.
     const used = [...new Set([...css.matchAll(/var\((--qd-[\w-]+)\)/g)].map((match) => match[1] ?? ""))];
     const colors = used.filter((name) => !/^--qd-(?:space|radius|shadow|type|tracking|header)-/.test(name));
-    expect(colors.sort()).toEqual(["--qd-bg", "--qd-line", "--qd-muted", "--qd-surface"]);
+    // And the notice that there is no connection: danger text on its own soft ground, a checked pair.
+    expect(colors.sort()).toEqual(["--qd-bg", "--qd-danger", "--qd-danger-soft", "--qd-line", "--qd-muted", "--qd-surface"]);
   });
 
   it("hides the stacked table's header row from sight only, so a screen reader still has the column names", () => {

@@ -168,7 +168,7 @@ $$;
 REVOKE ALL ON FUNCTION my_accounts(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION my_accounts(uuid) TO qd_app;
 
--- Erasing a shop leaves a tombstone with nothing of the shop in it: the function of 0026 with the two
+-- Erasing a shop leaves a tombstone with nothing of the shop in it: the function of 0040 with the two
 -- new settings cleared as well.
 CREATE OR REPLACE FUNCTION erase_shop(p_shop_id uuid) RETURNS boolean
 LANGUAGE plpgsql
@@ -207,6 +207,7 @@ BEGIN
   DELETE FROM ledger_entry WHERE shop_id = p_shop_id;
   DELETE FROM import_batch WHERE shop_id = p_shop_id;
   DELETE FROM customer_link WHERE shop_id = p_shop_id;
+  DELETE FROM customer_share WHERE shop_id = p_shop_id;
   DELETE FROM customer WHERE shop_id = p_shop_id;
   DELETE FROM catalog_item WHERE shop_id = p_shop_id;
   DELETE FROM subscription_receipt WHERE shop_id = p_shop_id;
@@ -226,7 +227,7 @@ BEGIN
   -- The row stays as a tombstone with nothing of the shop left in it.
   UPDATE shop
      SET status = 'erased', name = 'erased', deletion_due = NULL, reminders_on = false, sms_on = false,
-         default_credit_limit = NULL, usd_on = false, default_credit_limit_usd = NULL
+         default_credit_limit = NULL, share_phone = NULL, usd_on = false, default_credit_limit_usd = NULL
    WHERE id = p_shop_id;
 
   IF people IS NOT NULL THEN

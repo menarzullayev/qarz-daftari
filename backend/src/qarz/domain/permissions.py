@@ -124,6 +124,17 @@ CATALOGUE: tuple[Permission, ...] = (
         _MANAGERS,
         ("customers.update", "customers.archive", "customers.unarchive"),
     ),
+    # A link shows a customer's balance to whoever holds it, for as long as it lives: making one is a
+    # decision of its own, apart from editing the customer. The phone shown on the page is read with it;
+    # changing that phone is changing the shop (`shop.edit`).
+    Permission(
+        "customers.share",
+        "customers",
+        "Mijozga o'qish havolasi va QR kod berish, uni bekor qilish",
+        "Выдавать клиенту ссылку для чтения и QR-код, отзывать её",
+        _MANAGERS,
+        ("customers.share.read", "customers.share.create", "customers.share.revoke", "shop.share_contact.read"),
+    ),
     # --- ledger ---------------------------------------------------------------------------------------
     Permission(
         "credits.record",
@@ -269,7 +280,7 @@ CATALOGUE: tuple[Permission, ...] = (
         "Do'kon nomi, tili va odatiy muddatini o'zgartirish",
         "Менять название, язык и обычный срок магазина",
         _OWNER,
-        ("shop.update",),
+        ("shop.update", "shop.share_contact.update"),
     ),
     Permission(
         "staff.manage",

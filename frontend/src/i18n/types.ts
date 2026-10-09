@@ -4,6 +4,7 @@ import type { uzImports } from "./imports/uz";
 import type { uzPanel } from "./panel/uz";
 import type { uzReceipts } from "./receipts/uz";
 import type { uzReports } from "./reports/uz";
+import type { uzShare } from "./share/uz";
 import type { uzSupport } from "./support/uz";
 import type { uz } from "./uz";
 
@@ -36,6 +37,9 @@ export type ReceiptsMessageKey = keyof typeof uzReceipts;
 /** Keys of the owner's view of support access: added by the web panel, and by the Mini App on demand. */
 export type SupportMessageKey = keyof typeof uzSupport;
 
+/** Keys of a customer's read-only link as staff see it: added when one of its sections is first shown. */
+export type ShareMessageKey = keyof typeof uzShare;
+
 /** Keys of the administrator's panel, added by the admin entry only (see `addMessages`). */
 export type AdminMessageKey = keyof typeof uzAdmin;
 
@@ -48,6 +52,7 @@ export type MessageKey =
   | ImportsMessageKey
   | ReceiptsMessageKey
   | SupportMessageKey
+  | ShareMessageKey
   | AdminMessageKey;
 
 /** Shape the Russian catalog must have: the same keys, and a plural entry wherever Uzbek has one. */
@@ -83,6 +88,11 @@ export type RuReceiptsCatalog = {
 /** And for the owner's view of support access. */
 export type RuSupportCatalog = {
   [K in SupportMessageKey]: (typeof uzSupport)[K] extends string ? string : RuPlural;
+};
+
+/** And for a customer's read-only link. */
+export type RuShareCatalog = {
+  [K in ShareMessageKey]: (typeof uzShare)[K] extends string ? string : RuPlural;
 };
 
 /** And for the administrator's catalog. */

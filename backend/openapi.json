@@ -1592,6 +1592,310 @@
         "title": "SettingsPatch",
         "type": "object"
       },
+      "ShareContact": {
+        "additionalProperties": false,
+        "properties": {
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          }
+        },
+        "required": [
+          "phone"
+        ],
+        "title": "ShareContact",
+        "type": "object"
+      },
+      "ShareContactChange": {
+        "additionalProperties": false,
+        "properties": {
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          }
+        },
+        "required": [
+          "phone"
+        ],
+        "title": "ShareContactChange",
+        "type": "object"
+      },
+      "ShareState": {
+        "additionalProperties": false,
+        "description": "What staff are told about a customer's read-only link. The link itself is never among it.",
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "exists": {
+            "title": "Exists",
+            "type": "boolean"
+          },
+          "expired": {
+            "title": "Expired",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "last_opened_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Opened At"
+          }
+        },
+        "required": [
+          "exists",
+          "expired",
+          "created_at",
+          "expires_at",
+          "last_opened_at"
+        ],
+        "title": "ShareState",
+        "type": "object"
+      },
+      "SharedAccount": {
+        "additionalProperties": false,
+        "description": "The page behind a customer's read-only link. Closed: a field added to the service's answer and not\ndeclared here fails the request instead of reaching whoever holds the link.",
+        "properties": {
+          "balance": {
+            "title": "Balance",
+            "type": "integer"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/SharedEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "entries_total": {
+            "title": "Entries Total",
+            "type": "integer"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "first_name": {
+            "title": "First Name",
+            "type": "string"
+          },
+          "lang": {
+            "title": "Lang",
+            "type": "string"
+          },
+          "overdue": {
+            "$ref": "#/components/schemas/SharedOverdue"
+          },
+          "shop_name": {
+            "title": "Shop Name",
+            "type": "string"
+          },
+          "shop_phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shop Phone"
+          },
+          "usd": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SharedDollars"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "shop_name",
+          "shop_phone",
+          "first_name",
+          "lang",
+          "balance",
+          "overdue",
+          "expires_at",
+          "entries",
+          "entries_total"
+        ],
+        "title": "SharedAccount",
+        "type": "object"
+      },
+      "SharedDollars": {
+        "additionalProperties": false,
+        "description": "What the customer owes in US dollars, in whole cents: beside the so'm figures, never added to them.",
+        "properties": {
+          "balance": {
+            "title": "Balance",
+            "type": "integer"
+          },
+          "overdue": {
+            "$ref": "#/components/schemas/SharedOverdue"
+          }
+        },
+        "required": [
+          "balance",
+          "overdue"
+        ],
+        "title": "SharedDollars",
+        "type": "object"
+      },
+      "SharedEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "integer"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/SharedLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "promised_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promised Date"
+          },
+          "reversed": {
+            "title": "Reversed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "amount",
+          "created_at",
+          "promised_date",
+          "reversed",
+          "lines"
+        ],
+        "title": "SharedEntry",
+        "type": "object"
+      },
+      "SharedLine": {
+        "additionalProperties": false,
+        "properties": {
+          "line_total": {
+            "title": "Line Total",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "qty": {
+            "title": "Qty",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "unit_price": {
+            "title": "Unit Price",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "qty",
+          "unit",
+          "unit_price",
+          "line_total"
+        ],
+        "title": "SharedLine",
+        "type": "object"
+      },
+      "SharedOverdue": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "integer"
+          },
+          "due_today": {
+            "title": "Due Today",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "amount",
+          "due_today"
+        ],
+        "title": "SharedOverdue",
+        "type": "object"
+      },
       "Shop": {
         "additionalProperties": false,
         "properties": {
@@ -3362,6 +3666,52 @@
           }
         },
         "summary": "Auth.Telegram Webapp"
+      }
+    },
+    "/api/v1/customer-share": {
+      "get": {
+        "operationId": "customer_share_view_api_v1_customer_share_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Share-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedAccount"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Customer Share.View"
       }
     },
     "/api/v1/me": {
@@ -5501,6 +5851,188 @@
           }
         },
         "summary": "Customers.Link.Create"
+      }
+    },
+    "/api/v1/shops/{shop_id}/customers/{customer_id}/share": {
+      "delete": {
+        "operationId": "customers_share_revoke_api_v1_shops__shop_id__customers__customer_id__share_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Shop Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Customer Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Customers Share Revoke Api V1 Shops  Shop Id  Customers  Customer Id  Share Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Customers.Share.Revoke"
+      },
+      "get": {
+        "operationId": "customers_share_read_api_v1_shops__shop_id__customers__customer_id__share_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Shop Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Customer Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Customers.Share.Read"
+      },
+      "post": {
+        "operationId": "customers_share_create_api_v1_shops__shop_id__customers__customer_id__share_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Shop Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Customer Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Customers Share Create Api V1 Shops  Shop Id  Customers  Customer Id  Share Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Customers.Share.Create"
       }
     },
     "/api/v1/shops/{shop_id}/customers/{customer_id}/unarchive": {
@@ -7991,6 +8523,112 @@
           }
         },
         "summary": "Reports.Period"
+      }
+    },
+    "/api/v1/shops/{shop_id}/share-contact": {
+      "get": {
+        "operationId": "shop_share_contact_read_api_v1_shops__shop_id__share_contact_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Shop Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareContact"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Shop.Share Contact.Read"
+      },
+      "put": {
+        "operationId": "shop_share_contact_update_api_v1_shops__shop_id__share_contact_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Shop Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareContactChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Shop Share Contact Update Api V1 Shops  Shop Id  Share Contact Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Shop.Share Contact.Update"
       }
     },
     "/api/v1/shops/{shop_id}/staff": {

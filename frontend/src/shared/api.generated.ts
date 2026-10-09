@@ -447,6 +447,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customer-share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Customer Share.View */
+        get: operations["customer_share_view_api_v1_customer_share_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -943,6 +960,25 @@ export interface paths {
         /** Customers.Link.Create */
         post: operations["customers_link_create_api_v1_shops__shop_id__customers__customer_id__link_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/customers/{customer_id}/share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Customers.Share.Read */
+        get: operations["customers_share_read_api_v1_shops__shop_id__customers__customer_id__share_get"];
+        put?: never;
+        /** Customers.Share.Create */
+        post: operations["customers_share_create_api_v1_shops__shop_id__customers__customer_id__share_post"];
+        /** Customers.Share.Revoke */
+        delete: operations["customers_share_revoke_api_v1_shops__shop_id__customers__customer_id__share_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1543,6 +1579,24 @@ export interface paths {
         /** Reports.Period */
         get: operations["reports_period_api_v1_shops__shop_id__reports_period_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/share-contact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Shop.Share Contact.Read */
+        get: operations["shop_share_contact_read_api_v1_shops__shop_id__share_contact_get"];
+        /** Shop.Share Contact.Update */
+        put: operations["shop_share_contact_update_api_v1_shops__shop_id__share_contact_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2273,6 +2327,103 @@ export interface components {
             sms_on?: boolean | null;
             /** Template */
             template?: number | null;
+        };
+        /** ShareContact */
+        ShareContact: {
+            /** Phone */
+            phone: string | null;
+        };
+        /** ShareContactChange */
+        ShareContactChange: {
+            /** Phone */
+            phone: string | null;
+        };
+        /**
+         * ShareState
+         * @description What staff are told about a customer's read-only link. The link itself is never among it.
+         */
+        ShareState: {
+            /** Created At */
+            created_at: string | null;
+            /** Exists */
+            exists: boolean;
+            /** Expired */
+            expired: boolean;
+            /** Expires At */
+            expires_at: string | null;
+            /** Last Opened At */
+            last_opened_at: string | null;
+        };
+        /**
+         * SharedAccount
+         * @description The page behind a customer's read-only link. Closed: a field added to the service's answer and not
+         *     declared here fails the request instead of reaching whoever holds the link.
+         */
+        SharedAccount: {
+            /** Balance */
+            balance: number;
+            /** Entries */
+            entries: components["schemas"]["SharedEntry"][];
+            /** Entries Total */
+            entries_total: number;
+            /** Expires At */
+            expires_at: string;
+            /** First Name */
+            first_name: string;
+            /** Lang */
+            lang: string;
+            overdue: components["schemas"]["SharedOverdue"];
+            /** Shop Name */
+            shop_name: string;
+            /** Shop Phone */
+            shop_phone: string | null;
+            usd?: components["schemas"]["SharedDollars"] | null;
+        };
+        /**
+         * SharedDollars
+         * @description What the customer owes in US dollars, in whole cents: beside the so'm figures, never added to them.
+         */
+        SharedDollars: {
+            /** Balance */
+            balance: number;
+            overdue: components["schemas"]["SharedOverdue"];
+        };
+        /** SharedEntry */
+        SharedEntry: {
+            /** Amount */
+            amount: number;
+            /** Created At */
+            created_at: string;
+            /** Currency */
+            currency?: string | null;
+            /** Kind */
+            kind: string;
+            /** Lines */
+            lines: components["schemas"]["SharedLine"][];
+            /** Promised Date */
+            promised_date: string | null;
+            /** Reversed */
+            reversed: boolean;
+        };
+        /** SharedLine */
+        SharedLine: {
+            /** Line Total */
+            line_total: number;
+            /** Name */
+            name: string;
+            /** Qty */
+            qty: string;
+            /** Unit */
+            unit: string;
+            /** Unit Price */
+            unit_price: number;
+        };
+        /** SharedOverdue */
+        SharedOverdue: {
+            /** Amount */
+            amount: number;
+            /** Due Today */
+            due_today: number;
         };
         /** Shop */
         Shop: {
@@ -3257,6 +3408,37 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    customer_share_view_api_v1_customer_share_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Share-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedAccount"];
                 };
             };
             /** @description Validation Error */
@@ -4529,6 +4711,110 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    customers_share_read_api_v1_shops__shop_id__customers__customer_id__share_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shop_id: string;
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    customers_share_create_api_v1_shops__shop_id__customers__customer_id__share_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    customers_share_revoke_api_v1_shops__shop_id__customers__customer_id__share_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6024,6 +6310,76 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shop_share_contact_read_api_v1_shops__shop_id__share_contact_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareContact"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shop_share_contact_update_api_v1_shops__shop_id__share_contact_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShareContactChange"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

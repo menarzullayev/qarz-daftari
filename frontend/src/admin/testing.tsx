@@ -90,10 +90,12 @@ export const platformBody = (overrides: Record<string, unknown> = {}, settings: 
     free_plan_on: false,
     free_plan_customers: 30,
     permissions_on: false,
+    customer_links_on: false,
     usd_on: false,
     ...settings,
   },
   needs_code: [
+    "customer_links_on",
     "free_plan_on",
     "online_pay_on",
     "payment_cards",

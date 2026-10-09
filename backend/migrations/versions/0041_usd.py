@@ -1,7 +1,7 @@
 """US dollars beside Uzbek so'm: a currency on every amount of a customer's debt.
 
 Revision ID: 0041
-Revises: 0039
+Revises: 0040
 """
 
 from pathlib import Path
@@ -9,7 +9,7 @@ from pathlib import Path
 from alembic import op
 
 revision = "0041"
-down_revision = "0039"
+down_revision = "0040"
 branch_labels = None
 depends_on = None
 

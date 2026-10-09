@@ -9,6 +9,8 @@ const SHEETS: readonly (readonly string[])[] = [
   ["shared", "workspace", "workspace.css"],
   ["shared", "reports", "reports.css"],
   ["panel", "panel.css"],
+  // The page behind a customer's read-only link: its own sheet, held to the same tokens.
+  ["k", "k.css"],
 ];
 
 /** A style sheet with its `prefers-reduced-motion: no-preference` blocks taken out. */
@@ -26,6 +28,7 @@ describe("the style sheets use the design tokens and nothing else", () => {
     [["shared", "workspace", "workspace.css"]],
     [["shared", "reports", "reports.css"]],
     [["panel", "panel.css"]],
+    [["k", "k.css"]],
   ])("%j: no color written out, no unknown variable, the focus ring left alone", (path) => {
     expect(styleProblems(readStyleSheet(...path), tokens)).toEqual([]);
   });

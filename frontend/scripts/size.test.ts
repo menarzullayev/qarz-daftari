@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_BUDGET_KB, checkBudget, collectInitialAssets, parseBudgetKb } from "./size.ts";
+import { CUSTOMER_PAGE_BUDGET_KB, DEFAULT_BUDGET_KB, checkBudget, collectInitialAssets, parseBudgetKb } from "./size.ts";
 
 describe("collectInitialAssets", () => {
   const html = `
@@ -58,5 +58,17 @@ describe("parseBudgetKb", () => {
     expect(parseBudgetKb(["--budget-kb=50"])).toBe(50);
     expect(() => parseBudgetKb(["--budget-kb=abc"])).toThrow(RangeError);
     expect(() => parseBudgetKb(["--budget-kb=-1"])).toThrow(RangeError);
+  });
+
+  it("reads the customer page's own budget the same way, and keeps it far under the Mini App's", () => {
+    expect(CUSTOMER_PAGE_BUDGET_KB).toBe(20);
+    const name = "--customer-page-budget-kb";
+    expect(parseBudgetKb([], name, CUSTOMER_PAGE_BUDGET_KB)).toBe(20);
+    expect(parseBudgetKb(["--budget-kb=50", `${name}=5`], name, CUSTOMER_PAGE_BUDGET_KB)).toBe(5);
+    expect(parseBudgetKb([`${name}=5`])).toBe(300);
+    expect(() => parseBudgetKb([`${name}=0`], name, CUSTOMER_PAGE_BUDGET_KB)).toThrow(RangeError);
+    // What the check then does with it: 4.4 KB passes, the staff application's 105 KB does not.
+    expect(checkBudget([4_400], CUSTOMER_PAGE_BUDGET_KB).withinBudget).toBe(true);
+    expect(checkBudget([105_000], CUSTOMER_PAGE_BUDGET_KB).withinBudget).toBe(false);
   });
 });

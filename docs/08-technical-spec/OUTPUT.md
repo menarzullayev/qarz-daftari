@@ -149,7 +149,7 @@ Expansion module F (decision 8 of 2026-10-09; business rules BR-36 to BR-43). UZ
 
 - a so'm amount is written as before, with no currency beside it;
 - an entry, a payment notice, a dispute or a date request in dollars has `"currency": "USD"` beside its amount, which is then cents;
-- where an answer has figures per customer or per shop, the dollar figures of the same names are in a `usd` object beside them, present only while the shop works in dollars: `customer.usd {balance, credit_limit}` (with `overdue` in the debtors list and on the customer's page, and `payment_history` on the page), `overview.usd`, `credit-settings.usd {default_credit_limit, limit_bounds}`, the reports' `usd` (every money section again), `me/accounts[].usd`, `me/owner-totals` items and total, reminders' `usd {amount}`;
+- where an answer has figures per customer or per shop, the dollar figures of the same names are in a `usd` object beside them, present only while the shop works in dollars: `customer.usd {balance, credit_limit}` (with `overdue` in the debtors list and on the customer's page, and `payment_history` on the page), `overview.usd`, `credit-settings.usd {default_credit_limit, limit_bounds}`, the reports' `usd` (every money section again), `me/accounts[].usd`, `me/owner-totals` items and total, reminders' `usd {amount}`, and the customer's read-only link (`GET /customer-share`: `usd {balance, overdue}`, with `currency` on its dollar entries);
 - `GET /shops/{id}` has `usd_on` only while the platform switch is on.
 
 The typed response models (`interface/answers.py`) declare these as their only fields with a default, and their routes set `response_model_exclude_unset`, so a default is never written into an answer (`tests/test_api_description.py`).

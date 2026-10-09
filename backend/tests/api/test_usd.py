@@ -651,6 +651,10 @@ def test_the_export_has_dollar_columns_only_for_a_shop_with_dollar_entries(
     file_root: Path,
     platform_on: None,
 ) -> None:
+    # The worker takes waiting jobs of any shop: those that other tests left are closed first.
+    owner.execute(
+        "UPDATE export_job SET status = 'failed', error = 'interrupted' WHERE status IN ('queued', 'running')"
+    )
     before = ask(client, world)
     assert work(worker_database_url, file_root) == 1
     plain_book = workbook(client, world, before.json()["id"])
@@ -717,3 +721,41 @@ def test_a_dispute_and_a_date_request_about_a_dollar_entry_say_so(
         f"/api/v1/me/accounts/{link}/disputes", json={"entry_id": sale["id"], "reason": "Yana bir bor"}, headers=mine
     ).status_code in (404, 409)
     assert "currency" not in other
+
+
+# --- the customer's read-only link (module B) --------------------------------------------------------------
+
+
+def test_the_public_page_shows_each_currency_by_itself(
+    client: TestClient, world: World, owner: psycopg.Connection, dollars: None
+) -> None:
+    from .test_customer_shares import make, switch, view
+
+    switch(owner)
+    today = tashkent_date(datetime.now(UTC))
+    assert record(client, world, "credit", 12_050, promised_date=str(today)).status_code == 201
+    assert record(client, world, "payment", 2_050).status_code == 201
+    token = make(client, world, world.customer_a)
+
+    # The negative case the page once had: an account with entries of two currencies must be read book
+    # by book, not handed whole to a calculation that refuses it.
+    shown = view(client, token)
+    assert shown.status_code == 200, shown.text
+    body = shown.json()
+    assert (body["balance"], body["overdue"]) == (50_000, {"amount": 0, "due_today": 0})
+    assert body["usd"] == {"balance": 10_000, "overdue": {"amount": 0, "due_today": 10_000}}
+    assert [(e["kind"], e["amount"], e.get("currency")) for e in body["entries"]] == [
+        ("payment", 2_050, "USD"),
+        ("credit", 12_050, "USD"),
+        ("credit", 50_000, None),
+    ]
+    assert body["entries_total"] == 3
+    assert 60_000 not in (body["balance"], body["usd"]["balance"]), "never a sum of so'm and cents"
+
+    # While the shop does not show dollars, the page is the so'm book alone, in the shape it always had.
+    owner.execute("UPDATE platform_setting SET value = 'false' WHERE key = 'usd_on'")
+    hidden = view(client, token)
+    assert hidden.status_code == 200, hidden.text
+    assert keys_named(hidden.json()) == set()
+    assert (hidden.json()["balance"], hidden.json()["entries_total"]) == (50_000, 1)
+    assert [e["amount"] for e in hidden.json()["entries"]] == [50_000]
