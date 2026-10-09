@@ -81,7 +81,8 @@ describe("the stock's text", () => {
 describe("the stock's code", () => {
   it("is fetched on demand: nothing outside it imports it, but for the one lazy import and the route names", () => {
     const importers = sources(SRC)
-      .filter((source) => !source.name.startsWith("shared/stock/"))
+      // The network between shops is fetched on demand as well, and builds on the stock's parts.
+      .filter((source) => !source.name.startsWith("shared/stock/") && !source.name.startsWith("shared/network/"))
       .flatMap((file) =>
         [...file.text.matchAll(/^import (?!type\b)[^;]*?from\s+["'][^"']*\/stock\/[^"']*["'];/gm)].map((match) => `${file.name}: ${match[0]}`),
       );

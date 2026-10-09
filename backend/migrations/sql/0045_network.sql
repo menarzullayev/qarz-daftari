@@ -838,7 +838,8 @@ BEGIN
 
   v_number := link.note_seq + 1;
   UPDATE network_link l SET note_seq = v_number WHERE l.id = own.link_id AND l.shop_id IN (p_shop, p_peer);
-  -- The lines of the note, by the order's line numbers.
+  -- The lines of the note. A line keeps the number it has on the order, so both sides and a later
+  -- correction name it the same way; a line of which nothing is delivered is left out.
   IF p_lines IS NULL THEN
     SELECT jsonb_agg(jsonb_build_object('line_no', n.line_no, 'qty', n.accepted_qty, 'unit_price', n.unit_price))
       INTO v_lines
@@ -870,7 +871,7 @@ BEGIN
          (p_peer, p_note, own.link_id, p_order, 'buyer', v_number, 'issued', own.currency, v_total, p_paid,
           before.id, p_reason, p_now, NULL, NULL);
   INSERT INTO network_note_line (shop_id, note_id, line_no, name, unit, qty, unit_price, line_total, item_id)
-  SELECT n.shop_id, p_note, row_number() OVER (PARTITION BY n.shop_id ORDER BY n.line_no)::smallint, n.name, n.unit,
+  SELECT n.shop_id, p_note, n.line_no, n.name, n.unit,
          w.qty, w.unit_price, round(w.qty * w.unit_price)::bigint, n.item_id
     FROM jsonb_to_recordset(v_lines) AS w(line_no smallint, qty numeric, unit_price bigint)
     JOIN network_order_line n ON n.order_id = p_order AND n.shop_id IN (p_shop, p_peer) AND n.line_no = w.line_no;

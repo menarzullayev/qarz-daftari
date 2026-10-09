@@ -1,0 +1,73 @@
+/*
+ * The network's own styles, loaded with its screens. Only the tokens of tokens.css are used, and the
+ * focus ring of shell.css is left alone; guards.test.ts holds this sheet to both.
+ */
+
+/* The lists of the section, one beside the other. */
+.net-tabs {
+  flex-wrap: wrap;
+  margin-bottom: var(--qd-space-3);
+}
+
+/* A filter beside a button: the field takes no more room than its choices need. */
+.net-filter {
+  margin: 0;
+  min-width: 11rem;
+}
+
+/* The code of an invitation, shown once: large, and easy to read out or select. */
+.net-code {
+  margin: var(--qd-space-2) 0;
+  padding: var(--qd-space-3);
+  border: 1px dashed var(--qd-line);
+  border-radius: var(--qd-radius-md);
+  background: var(--qd-surface);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* The fields of one line of an order or a note, side by side while there is room. */
+.net-line {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  align-items: end;
+  gap: var(--qd-space-2);
+}
+
+.net-line .field {
+  margin: 0;
+}
+
+/* The two books of one link in one currency. */
+.net-recon {
+  margin: var(--qd-space-3) 0;
+  padding: var(--qd-space-3);
+  border: 1px solid var(--qd-line);
+  border-radius: var(--qd-radius-lg);
+  background: var(--qd-surface);
+}
+
+/* What explains a difference between the books: one reason on a line. */
+.net-reasons {
+  margin: var(--qd-space-2) 0;
+  padding-left: var(--qd-space-5);
+}
+
+.net-reasons li {
+  margin: var(--qd-space-1) 0;
+}
+
+/* A delivery note on paper: the note alone, at the width of the page. */
+@media print {
+  .net-note {
+    margin: 0;
+    padding: 0;
+  }
+
+  .net-note .subject {
+    font-size: 1.5rem;
+  }
+}
