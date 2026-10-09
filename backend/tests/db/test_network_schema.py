@@ -696,43 +696,164 @@ def test_the_tenant_does_not_move_for_a_note_that_is_not_waiting(
         call(conn, "network_enter_peer", b, a, other)
 
 
+class Books:
+    """Both shops' books for one issued note (10 kg at 12 000 and 4.5 kg at 11 000, of which 20 000 was
+    paid on delivery), written here as the owner of the tables, the way the application writes them, so
+    that each thing `network_receipt_finish` looks at can be got wrong by itself."""
+
+    def __init__(
+        self, as_app: AppSession, owner: psycopg.Connection, buyer: Shop, supplier: Shop, *, currency: str = "UZS"
+    ) -> None:
+        self.as_app, self.owner, self.buyer, self.supplier = as_app, owner, buyer, supplier
+        self.currency = currency
+        self.pair = linked(as_app, owner, buyer, supplier)
+        if currency == "USD":
+            owner.execute("UPDATE shop SET usd_on = true WHERE id IN (%s, %s)", (buyer.shop_id, supplier.shop_id))
+        self.order = sent_order(as_app, self.pair)
+        # The supplier says which of its own items the first line is; the second is none of its items.
+        self.sold = self.item(supplier, "kg")
+        with as_app(supplier.shop_id) as conn:
+            call(
+                conn, "network_order_accept", supplier.shop_id, buyer.shop_id, self.order, supplier.member_id,
+                currency,
+                lines(
+                    {"line_no": 1, "qty": "10", "unit_price": 12_000, "item_id": str(self.sold)},
+                    {"line_no": 2, "qty": "4.5", "unit_price": 11_000},
+                ),
+                NOW,
+            )  # fmt: skip
+        self.note = uuid.uuid4()
+        with as_app(supplier.shop_id) as conn:
+            call(
+                conn, "network_note_issue", supplier.shop_id, buyer.shop_id, self.order, self.note,
+                supplier.member_id, supplier.customer_id, 20_000, None, None, NOW,
+            )  # fmt: skip
+        self.sugar = self.item(buyer, "kg")
+        self.seq = 0
+
+    def item(self, shop: Shop, unit: str, *, tracked: bool = True) -> uuid.UUID:
+        item = uuid.uuid4()
+        self.owner.execute(
+            "INSERT INTO catalog_item (id, shop_id, name, name_norm, unit, price, tracked) "
+            "VALUES (%s, %s, 'Tovar', %s, %s, 15000, %s)",
+            (item, shop.shop_id, f"tovar {item.hex[:8]}", unit, tracked),
+        )
+        return item
+
+    def move(
+        self, shop: Shop, item: uuid.UUID, kind: str, qty: str, *, line_no: int, document: uuid.UUID | None = None,
+        entry: uuid.UUID | None = None, unit_cost: int | None = None, sale_total: int | None = None,
+    ) -> uuid.UUID:  # fmt: skip
+        """One movement that continues its item's level, worth nothing: only what it moved is looked at."""
+        movement = uuid.uuid4()
+        self.owner.execute(
+            "INSERT INTO stock_movement (id, shop_id, item_id, item_seq, kind, qty, unit_cost, sale_total, "
+            "  value_delta, on_hand_after, value_after, document_id, line_no, ledger_entry_id, author_id) "
+            "SELECT %s, %s, %s, coalesce(max(l.last_seq), 0) + 1, %s, %s::numeric, %s, %s, 0, "
+            "  coalesce(max(l.on_hand), 0) + %s::numeric, coalesce(max(l.cost_value), 0), %s, %s, %s, %s "
+            "FROM stock_level l WHERE l.item_id = %s",
+            (
+                movement, shop.shop_id, item, kind, qty, unit_cost, sale_total, qty, document, line_no, entry,
+                shop.member_id, item,
+            ),
+        )  # fmt: skip
+        return movement
+
+    def undo(self, shop: Shop, movement: uuid.UUID) -> None:
+        self.owner.execute(
+            "INSERT INTO stock_movement (id, shop_id, item_id, item_seq, kind, qty, value_delta, on_hand_after, "
+            "  value_after, reverses_id, author_id) "
+            "SELECT %s, m.shop_id, m.item_id, l.last_seq + 1, 'reversal', -m.qty, 0, l.on_hand - m.qty, l.cost_value, "
+            "  m.id, %s FROM stock_movement m JOIN stock_level l ON l.item_id = m.item_id WHERE m.id = %s",
+            (uuid.uuid4(), shop.member_id, movement),
+        )
+
+    def receipt(
+        self,
+        rows: Any = None,
+        *,
+        total: int = 169_500,
+        paid: int = 20_000,
+        origin: uuid.UUID | None = None,
+        status: str = "posted",
+        moved: Any = None,
+    ) -> uuid.UUID:
+        """The buyer's receipt: `rows` are its lines as (item, quantity, unit cost, line total) and `moved`
+        what came into the stock for each as (line, item, quantity, unit cost); both are the note's when
+        left out."""
+        if rows is None:
+            rows = ((self.pair.item, "10", 12_000, 120_000), (self.sugar, "4.5", 11_000, 49_500))
+        if moved is None:
+            moved = [(number, row[0], row[1], row[2]) for number, row in enumerate(rows, start=1)]
+        document = uuid.uuid4()
+        a = self.buyer.shop_id
+        self.owner.execute(
+            "INSERT INTO stock_document (id, shop_id, kind, number, status, doc_date, supplier_id, currency, total, "
+            "  paid, draft, origin_ref, created_by) "
+            "VALUES (%s, %s, 'receipt', (SELECT coalesce(max(number), 0) + 1 FROM stock_document WHERE shop_id = %s), "
+            "  'draft', current_date, %s, %s, %s, %s, '{}', %s, %s)",
+            (
+                document, a, a, self.pair.supplier_row, self.currency, total, paid, origin or self.note,
+                self.buyer.member_id,
+            ),
+        )  # fmt: skip
+        for number, (item, qty, cost, line_total) in enumerate(rows, start=1):
+            self.owner.execute(
+                "INSERT INTO stock_document_line (shop_id, document_id, line_no, item_id, qty, unit_cost, line_total) "
+                "VALUES (%s, %s, %s, %s, %s::numeric, %s, %s)",
+                (a, document, number, item, qty, cost, line_total),
+            )
+        if status == "posted":
+            self.owner.execute(
+                "UPDATE stock_document SET status = 'posted', draft = NULL, posted_by = %s, posted_at = now() "
+                "WHERE id = %s",
+                (self.buyer.member_id, document),
+            )
+        for number, item, qty, cost in moved:
+            self.move(self.buyer, item, "receipt", qty, line_no=number, document=document, unit_cost=cost)
+        return document
+
+    def entry(self, kind: str, amount: int, customer: uuid.UUID | None = None) -> uuid.UUID:
+        entry_id = uuid.uuid4()
+        self.seq += 1
+        self.owner.execute(
+            "INSERT INTO ledger_entry (id, shop_id, customer_id, seq, kind, amount, currency, author_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            (
+                entry_id, self.supplier.shop_id, customer or self.supplier.customer_id, 100 + self.seq, kind, amount,
+                self.currency, self.supplier.member_id,
+            ),
+        )  # fmt: skip
+        return entry_id
+
+    def sale(self, moved: Any = None, amount: int = 169_500) -> uuid.UUID:
+        """The supplier's credit sale, with what left its stock as (line, item, kind, quantity, sold for):
+        the note's one counted line when left out."""
+        credit = self.entry("credit", amount)
+        if moved is None:
+            moved = ((1, self.sold, "sale", "-10", 120_000 if self.currency == "UZS" else None),)
+        for number, item, kind, qty, sold_for in moved:
+            self.move(self.supplier, item, kind, qty, line_no=number, entry=credit, sale_total=sold_for)
+        return credit
+
+    def finish(self, document: uuid.UUID, credit: uuid.UUID, payment: uuid.UUID | None) -> None:
+        a, b = self.buyer.shop_id, self.supplier.shop_id
+        with self.as_app(a) as conn:
+            call(conn, "network_receipt_finish", a, b, self.note, self.buyer.member_id, document, credit, payment, NOW)
+
+    def take_away(self, document: uuid.UUID) -> None:
+        """A receipt answers one note (a unique index), so a wrong one is removed before the next is tried."""
+        for table in ("stock_movement", "stock_document_line"):
+            self.owner.execute(f"DELETE FROM {table} WHERE document_id = %s", (document,))
+        self.owner.execute("DELETE FROM stock_document WHERE id = %s", (document,))
+
+
 def test_a_note_is_received_only_when_both_books_say_what_it_says(
     as_app: AppSession, owner: psycopg.Connection, shop_a: Shop, shop_b: Shop, switches: None
 ) -> None:
-    pair = linked(as_app, owner, shop_a, shop_b)
-    _, note = issued_note(as_app, pair, paid=20_000)
-    a, b = shop_a.shop_id, shop_b.shop_id
-
-    def document(
-        total: int = 169_500, paid: int = 20_000, origin: uuid.UUID = note, status: str = "posted"
-    ) -> uuid.UUID:
-        document_id = uuid.uuid4()
-        owner.execute(
-            "INSERT INTO stock_document (id, shop_id, kind, number, status, doc_date, supplier_id, total, paid, draft, "
-            "  origin_ref, created_by, posted_by, posted_at) "
-            "VALUES (%s, %s, 'receipt', (SELECT coalesce(max(number), 0) + 1 FROM stock_document WHERE shop_id = %s), "
-            "  %s, current_date, %s, %s, %s, %s, %s, %s, %s, now())",
-            (
-                document_id, a, a, status, pair.supplier_row, total, paid,
-                None if status == "posted" else "{}", origin, shop_a.member_id, shop_a.member_id,
-            ),
-        )  # fmt: skip
-        return document_id
-
-    def entry(kind: str, amount: int, seq: int, customer: uuid.UUID = shop_b.customer_id) -> uuid.UUID:
-        entry_id = uuid.uuid4()
-        owner.execute(
-            "INSERT INTO ledger_entry (id, shop_id, customer_id, seq, kind, amount, author_id) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-            (entry_id, b, customer, seq, kind, amount, shop_b.member_id),
-        )
-        return entry_id
-
-    def finish(document_id: uuid.UUID, credit: uuid.UUID, payment: uuid.UUID | None) -> None:
-        with as_app(a) as conn:
-            call(conn, "network_receipt_finish", a, b, note, shop_a.member_id, document_id, credit, payment, NOW)
-
-    credit, paid = entry("credit", 169_500, 1), entry("payment", 20_000, 2)
+    books = Books(as_app, owner, shop_a, shop_b)
+    note, a, b = books.note, shop_a.shop_id, shop_b.shop_id
+    credit, paid = books.sale(), books.entry("payment", 20_000)
     stranger = uuid.uuid4()
     owner.execute(
         "INSERT INTO customer (id, shop_id, display_name, name_norm) VALUES (%s, %s, 'Boshqa', 'boshqa')", (stranger, b)
@@ -740,26 +861,26 @@ def test_a_note_is_received_only_when_both_books_say_what_it_says(
     before = everything(owner)
     # A receipt answers one note, so each wrong one is tried by itself and taken away again.
     for wrong in ({"total": 169_000}, {"paid": 0}, {"origin": uuid.uuid4()}, {"status": "draft"}):
-        made = document(**wrong)  # type: ignore[arg-type]
+        made = books.receipt(**wrong)  # type: ignore[arg-type]
         with refusal("NETWORK_BOOKS_MISMATCH"):
-            finish(made, credit, paid)
-        owner.execute("DELETE FROM stock_document WHERE id = %s", (made,))
+            books.finish(made, credit, paid)
+        books.take_away(made)
     with refusal("NETWORK_BOOKS_MISMATCH"):
-        finish(uuid.uuid4(), credit, paid)
-    good = document()
+        books.finish(uuid.uuid4(), credit, paid)
+    good = books.receipt()
     for wrong_credit, wrong_paid in (
-        (entry("credit", 169_000, 3), paid),  # another amount
-        (entry("credit", 169_500, 1, stranger), paid),  # another customer's account
+        (books.sale(amount=169_000), paid),  # another amount
+        (books.entry("credit", 169_500, stranger), paid),  # another customer's account
         (paid, paid),  # not a credit sale
         (uuid.uuid4(), paid),
         (credit, None),  # what was paid on delivery is missing
-        (credit, entry("payment", 19_000, 4)),
+        (credit, books.entry("payment", 19_000)),
     ):
         with refusal("NETWORK_BOOKS_MISMATCH"):
-            finish(good, wrong_credit, wrong_paid)
+            books.finish(good, wrong_credit, wrong_paid)
     assert everything(owner) == before
 
-    finish(good, credit, paid)
+    books.finish(good, credit, paid)
     assert owner.execute(
         "SELECT shop_id, status, document_id, ledger_entry_id, decided_by FROM network_note "
         "WHERE id = %s ORDER BY role",
@@ -769,7 +890,141 @@ def test_a_note_is_received_only_when_both_books_say_what_it_says(
         ("received",)
     ]
     with refusal("NETWORK_STATE"):  # once
-        finish(good, credit, paid)
+        books.finish(good, credit, paid)
+
+
+# What the buyer's receipt may get wrong about a note's lines while its total and what was paid are still
+# the note's (migration 0047). `rows` and `moved` are those of `Books.receipt`; "rice" and "sugar" stand for
+# the buyer's two items, "litres" for an item of the buyer's that is counted in another unit.
+_WRONG_RECEIPTS: dict[str, dict[str, Any]] = {
+    "a quantity moved from one line to the other": {
+        "rows": (("rice", "10.5", 12_000, 126_000), ("sugar", "3.955", 11_000, 43_500))
+    },
+    "a price changed and the quantity changed to make up for it": {
+        "rows": (("rice", "12", 10_000, 120_000), ("sugar", "4.5", 11_000, 49_500))
+    },
+    "a line total that is another": {"rows": (("rice", "10", 12_000, 119_500), ("sugar", "4.5", 11_000, 50_000))},
+    "the lines in another order": {"rows": (("sugar", "4.5", 11_000, 49_500), ("rice", "10", 12_000, 120_000))},
+    "one line for everything": {"rows": (("rice", "1", 169_500, 169_500),)},
+    "a line too many": {
+        "rows": (("rice", "10", 12_000, 120_000), ("sugar", "4.5", 11_000, 49_500), ("sugar", "1", 0, 0))
+    },
+    "an item counted in another unit": {"rows": (("litres", "10", 12_000, 120_000), ("sugar", "4.5", 11_000, 49_500))},
+    "a line that never came into the stock": {"moved": ((1, "rice", "10", 12_000),)},
+    "a line that came in with another quantity": {"moved": ((1, "rice", "9", 12_000), (2, "sugar", "4.5", 11_000))},
+    "a line that came in at another price": {"moved": ((1, "rice", "10", 12_000), (2, "sugar", "4.5", 10_000))},
+    "a line that came in as another item": {"moved": ((1, "sugar", "10", 12_000), (2, "sugar", "4.5", 11_000))},
+    "a line that came in twice": {
+        "moved": ((1, "rice", "10", 12_000), (2, "sugar", "4.5", 11_000), (2, "sugar", "4.5", 11_000))
+    },
+}
+
+
+@pytest.mark.parametrize("wrong", sorted(_WRONG_RECEIPTS))
+def test_a_note_is_not_received_while_the_buyers_receipt_disagrees_with_it_on_any_line(
+    as_app: AppSession, owner: psycopg.Connection, shop_a: Shop, shop_b: Shop, switches: None, wrong: str
+) -> None:
+    books = Books(as_app, owner, shop_a, shop_b)
+    items = {"rice": books.pair.item, "sugar": books.sugar, "litres": books.item(shop_a, "l")}
+    credit, paid = books.sale(), books.entry("payment", 20_000)
+    given: dict[str, Any] = {}
+    for name, rows in _WRONG_RECEIPTS[wrong].items():
+        pick = 0 if name == "rows" else 1  # where a row names its item
+        given[name] = tuple((*row[:pick], items[row[pick]], *row[pick + 1 :]) for row in rows)
+    made = books.receipt(**given)
+    before = everything(owner)
+    with refusal("NETWORK_BOOKS_MISMATCH"):
+        books.finish(made, credit, paid)
+    assert everything(owner) == before, "nothing of the note, the order or the history changed"
+    # The same books with the receipt as the note says it are accepted: the refusal was that line's.
+    books.take_away(made)
+    books.finish(books.receipt(), credit, paid)
+
+
+def test_a_receipt_whose_line_was_taken_back_out_of_the_stock_does_not_answer_a_note(
+    as_app: AppSession, owner: psycopg.Connection, shop_a: Shop, shop_b: Shop, switches: None
+) -> None:
+    books = Books(as_app, owner, shop_a, shop_b)
+    credit, paid = books.sale(), books.entry("payment", 20_000)
+    made = books.receipt(moved=((1, books.pair.item, "10", 12_000),))
+    came_in = books.move(shop_a, books.sugar, "receipt", "4.5", line_no=2, document=made, unit_cost=11_000)
+    books.undo(shop_a, came_in)
+    with refusal("NETWORK_BOOKS_MISMATCH"):
+        books.finish(made, credit, paid)
+
+
+# What the supplier's stock may get wrong: each is what left it with the sale, as (line, item, kind,
+# quantity, sold for). "sold" is the supplier's counted item of line 1; line 2 is no item of the supplier's.
+_WRONG_ISSUES: dict[str, tuple[tuple[Any, ...], ...]] = {
+    "nothing left the stock": (),
+    "another quantity left": ((1, "sold", "sale", "-9", 120_000),),
+    "it left as another line": ((2, "sold", "sale", "-10", 120_000),),
+    "another item left": ((1, "other", "sale", "-10", 120_000),),
+    "it was sold for another amount": ((1, "sold", "sale", "-10", 119_000),),
+    "it left with no selling price": ((1, "sold", "sale", "-10", None),),
+    "it left twice": ((1, "sold", "sale", "-10", 120_000), (1, "sold", "sale", "-10", 120_000)),
+    "something that is no line of the note left as well": (
+        (1, "sold", "sale", "-10", 120_000),
+        (2, "other", "sale", "-4.5", 49_500),
+    ),
+    "it came in instead of leaving": ((1, "sold", "customer_return", "10", None),),
+}
+
+
+@pytest.mark.parametrize("wrong", sorted(_WRONG_ISSUES))
+def test_a_note_is_not_received_while_the_suppliers_stock_disagrees_with_it_on_any_line(
+    as_app: AppSession, owner: psycopg.Connection, shop_a: Shop, shop_b: Shop, switches: None, wrong: str
+) -> None:
+    books = Books(as_app, owner, shop_a, shop_b)
+    items = {"sold": books.sold, "other": books.item(shop_b, "kg")}
+    good, paid = books.receipt(), books.entry("payment", 20_000)
+    credit = books.sale(tuple((row[0], items[row[1]], *row[2:]) for row in _WRONG_ISSUES[wrong]))
+    before = everything(owner)
+    with refusal("NETWORK_BOOKS_MISMATCH"):
+        books.finish(good, credit, paid)
+    assert everything(owner) == before
+    books.finish(good, books.sale(), paid)
+
+
+def test_the_suppliers_issue_that_was_taken_back_does_not_answer_a_note(
+    as_app: AppSession, owner: psycopg.Connection, shop_a: Shop, shop_b: Shop, switches: None
+) -> None:
+    books = Books(as_app, owner, shop_a, shop_b)
+    good, paid, credit = books.receipt(), books.entry("payment", 20_000), books.sale(())
+    left = books.move(shop_b, books.sold, "sale", "-10", line_no=1, entry=credit, sale_total=120_000)
+    books.undo(shop_b, left)
+    with refusal("NETWORK_BOOKS_MISMATCH"):
+        books.finish(good, credit, paid)
+
+
+@pytest.mark.parametrize("change", ["tracked = false", "unit = 'dona', tracked = false", "unit = 'l'"])
+def test_only_a_counted_item_of_the_suppliers_in_the_lines_unit_has_to_leave_its_stock(
+    as_app: AppSession, owner: psycopg.Connection, shop_a: Shop, shop_b: Shop, switches: None, change: str
+) -> None:
+    """The other side of the rule: the supplier's item of a line that is not counted, or is counted in
+    another unit, moves nothing (as `sell_in` writes it), and a movement for it is a disagreement."""
+    books = Books(as_app, owner, shop_a, shop_b)
+    owner.execute(f"UPDATE catalog_item SET {change} WHERE id = %s", (books.sold,))
+    good, paid = books.receipt(), books.entry("payment", 20_000)
+    with refusal("NETWORK_BOOKS_MISMATCH"):
+        books.finish(good, books.sale(), paid)
+    books.finish(good, books.sale(()), paid)
+
+
+def test_a_dollar_note_is_compared_line_by_line_too_and_its_sale_states_no_selling_price(
+    as_app: AppSession, owner: psycopg.Connection, shop_a: Shop, shop_b: Shop, switches: None
+) -> None:
+    turn(owner, "usd_on", True)
+    try:
+        books = Books(as_app, owner, shop_a, shop_b, currency="USD")
+        good, paid = books.receipt(), books.entry("payment", 20_000)
+        with refusal("NETWORK_BOOKS_MISMATCH"):  # a selling price is so'm: a dollar sale that states one disagrees
+            books.finish(good, books.sale(((1, books.sold, "sale", "-10", 120_000),)), paid)
+        with refusal("NETWORK_BOOKS_MISMATCH"):
+            books.finish(good, books.sale(((1, books.sold, "sale", "-9", None),)), paid)
+        books.finish(good, books.sale(), paid)
+    finally:
+        turn(owner, "usd_on", False)
 
 
 # --- a delivery note does not change ------------------------------------------------------------------------
