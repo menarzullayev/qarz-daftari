@@ -205,3 +205,27 @@ def test_the_application_reads_its_own_shops_rows_and_writes_none(
         )
     assert stored(owner, shop_a) == [(mine, 25_000, None)]
     assert mismatches(owner) == []
+
+
+def test_refreshing_one_customer_does_not_read_every_shops_rows(owner: psycopg.Connection, shop_a: Shop) -> None:
+    """The refresh deletes by customer alone, so an index must lead with the customer (migration 0033).
+
+    Without one each recorded entry read the whole table: 30 ms on the load test's data, where 1 ms is due.
+    """
+    leading = owner.execute(
+        "SELECT a.attname FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0] "
+        "WHERE i.indrelid = 'open_debt'::regclass"
+    ).fetchall()
+    assert ("customer_id",) in leading
+    # And the planner can use it for exactly the statement the refresh runs, once the table is not tiny.
+    customer = uuid.uuid4()
+    owner.execute("SET enable_seqscan = off")
+    try:
+        plan = owner.execute(
+            "EXPLAIN (COSTS OFF) DELETE FROM open_debt d WHERE d.customer_id = ANY (%s::uuid[])", ([customer],)
+        ).fetchall()
+    finally:
+        owner.execute("RESET enable_seqscan")
+    text = " ".join(row[0] for row in plan)
+    assert "open_debt_customer" in text, text
+    assert "Seq Scan" not in text, text
