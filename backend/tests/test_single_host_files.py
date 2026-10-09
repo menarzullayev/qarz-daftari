@@ -245,3 +245,28 @@ def test_an_unpinned_image_is_reported() -> None:
         "postgres:latest",
         "cloudflare/cloudflared:stable",
     ]
+
+
+def _shares_a_temporary_name(script: str) -> list[str]:
+    """Lines that write a file under a name every run of the script would use, to rename it afterwards."""
+    return [line.strip() for line in script.splitlines() if re.search(r'>\s*"[^"]*\.tmp"|\bmv\b.*\.tmp"', line)]
+
+
+def test_the_check_writes_its_status_under_a_name_of_its_own() -> None:
+    """Checks run without the lock, two at a time now and then: a shared temporary name made one fail.
+
+    The proof runs twelve at once (single-host-proof.sh, "checks-at-once"); this holds the script's text.
+    """
+    job = read(SINGLE / "scripts" / "job.sh")
+    for script in sorted((SINGLE / "scripts").glob("*.sh")):
+        assert _shares_a_temporary_name(read(script)) == [], script.name
+    assert 'status="$(mktemp "$QD_STATE_DIR/.check.status.XXXXXX")"' in job
+    assert 'mv -f "$status" "$QD_STATE_DIR/check.status"' in job
+    # What the script was: both of its lines are found.
+    before = (
+        'printf \'%s %s\n\' "$code" "$(date +%s)" > "$QD_STATE_DIR/check.status.tmp"\n'
+        'mv -f "$QD_STATE_DIR/check.status.tmp" "$QD_STATE_DIR/check.status"\n'
+    )
+    assert len(_shares_a_temporary_name(before)) == 2
+    proof = read(PRODUCTION / "scripts" / "single-host-proof.sh")
+    assert "step checks-at-once 0" in proof and "/opt/qarz-single/job.sh check --quiet > /dev/null &" in proof
