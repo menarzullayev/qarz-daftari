@@ -16,6 +16,7 @@ import "./messages";
 import { OfficeProvider, useOffice } from "./office";
 import { OfficeBanner } from "./OfficeBanner";
 import { OwnerTotals } from "./OwnerTotals";
+import { OfflineNotice, useOnline } from "./pwa/OfflineNotice";
 import "./panel.css";
 import { type LoginReturn, NO_RETURN } from "./loginReturn";
 import { signInPanel, signOutPanel } from "./signIn";
@@ -202,6 +203,7 @@ function SignIn({
   takeReturn,
   ended,
   onSignedIn,
+  online,
 }: {
   fetch: Fetch;
   botUsername: string | null;
@@ -209,6 +211,8 @@ function SignIn({
   takeReturn: () => LoginReturn;
   ended: Ended | null;
   onSignedIn: (auth: ApiAuth) => void;
+  /** Whether the device has a connection: without one Telegram's button cannot even be fetched. */
+  online: boolean;
 }) {
   const { t, language } = useI18n();
   const path = useHashPath();
@@ -274,7 +278,7 @@ function SignIn({
               {t("panel.signIn.pending")}
             </p>
           ) : null}
-          {attempt.status === "pending" ? null : <LoginWidget botUsername={botUsername} language={language} />}
+          {attempt.status === "pending" || !online ? null : <LoginWidget botUsername={botUsername} language={language} />}
           <p className="hint">{t("panel.signIn.reload")}</p>
         </>
       )}
@@ -305,12 +309,26 @@ function Panel({
     return taken;
   }, []);
 
-  if (auth === null) {
-    return (
-      <SignIn fetch={fetch} botUsername={botUsername} LoginWidget={LoginWidget} takeReturn={takeReturn} ended={ended} onSignedIn={setAuth} />
-    );
-  }
-  return <SignedIn auth={auth} fetch={fetch} now={now} botUsername={botUsername} onEnded={onEnded} />;
+  const online = useOnline();
+
+  return (
+    <>
+      <OfflineNotice online={online} />
+      {auth === null ? (
+        <SignIn
+          fetch={fetch}
+          botUsername={botUsername}
+          LoginWidget={LoginWidget}
+          takeReturn={takeReturn}
+          ended={ended}
+          onSignedIn={setAuth}
+          online={online}
+        />
+      ) : (
+        <SignedIn auth={auth} fetch={fetch} now={now} botUsername={botUsername} onEnded={onEnded} />
+      )}
+    </>
+  );
 }
 
 /**

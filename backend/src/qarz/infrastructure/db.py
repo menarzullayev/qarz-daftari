@@ -57,6 +57,7 @@ from qarz.application.ports import (
     ReminderCandidate,
     ReminderSettings,
     SessionInfo,
+    ShareRecord,
     ShopSettings,
     ShopToErase,
     ShopTotals,
@@ -1345,6 +1346,83 @@ class PgTenantSession:
         ).first()
         return None if row is None else (str(row.status), row.created_at)
 
+    async def live_share(self, customer_id: UUID) -> ShareRecord | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT id, created_at, expires_at, last_opened_at FROM customer_share "
+                    "WHERE customer_id = :customer_id AND revoked_at IS NULL"
+                ),
+                {"customer_id": customer_id},
+            )
+        ).first()
+        return None if row is None else ShareRecord(row.id, row.created_at, row.expires_at, row.last_opened_at)
+
+    async def issue_share(
+        self,
+        *,
+        share_id: UUID,
+        token_hash: bytes,
+        customer_id: UUID,
+        membership_id: UUID,
+        now: datetime,
+        expires_at: datetime,
+    ) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO customer_share (id, shop_id, customer_id, token_hash, created_by, created_at, expires_at) "
+                "VALUES (:id, :shop_id, :customer_id, :token_hash, :created_by, :now, :expires_at)"
+            ),
+            {
+                "id": share_id,
+                "shop_id": self._shop_id,
+                "customer_id": customer_id,
+                "token_hash": token_hash,
+                "created_by": membership_id,
+                "now": now,
+                "expires_at": expires_at,
+            },
+        )
+
+    async def end_shares(self, customer_id: UUID, now: datetime) -> int:
+        result = await self._conn.execute(
+            text("UPDATE customer_share SET revoked_at = :now WHERE customer_id = :customer_id AND revoked_at IS NULL"),
+            {"customer_id": customer_id, "now": now},
+        )
+        return int(result.rowcount)
+
+    async def share_opened(self, share_id: UUID, now: datetime, today: date) -> bool:
+        # One statement: of two openings at the same moment only one finds the day not yet noted.
+        row = (
+            await self._conn.execute(
+                text(
+                    "UPDATE customer_share s SET last_opened_at = :now, opened_on = :today "
+                    "FROM customer_share before WHERE before.id = s.id AND s.id = :id "
+                    "RETURNING before.opened_on IS DISTINCT FROM :today AS first_today"
+                ),
+                {"id": share_id, "now": now, "today": today},
+            )
+        ).first()
+        return row is not None and bool(row.first_today)
+
+    async def customer_language(self, customer_id: UUID) -> str | None:
+        row = (await self._conn.execute(text("SELECT lang FROM customer WHERE id = :id"), {"id": customer_id})).first()
+        return None if row is None or row.lang is None else str(row.lang)
+
+    async def share_phone(self) -> str | None:
+        row = (
+            await self._conn.execute(
+                text("SELECT share_phone FROM shop WHERE id = :shop_id AND status <> 'erased'"),
+                {"shop_id": self._shop_id},
+            )
+        ).first()
+        return None if row is None or row.share_phone is None else str(row.share_phone)
+
+    async def set_share_phone(self, phone: str | None) -> None:
+        await self._conn.execute(
+            text("UPDATE shop SET share_phone = :phone WHERE id = :shop_id"), {"phone": phone, "shop_id": self._shop_id}
+        )
+
     async def waiting_links(self, since: datetime) -> list[WaitingLink]:
         rows = (
             await self._conn.execute(
@@ -1492,6 +1570,11 @@ class PgTenantSession:
         await self._conn.execute(
             text("UPDATE invitation SET status = 'cancelled' WHERE customer_id = :id AND status = 'issued'"),
             {"id": customer_id},
+        )
+        # The read-only link, if one was handed out, shows this record: it ends with the data it showed.
+        await self._conn.execute(
+            text("UPDATE customer_share SET revoked_at = :now WHERE customer_id = :id AND revoked_at IS NULL"),
+            {"id": customer_id, "now": now},
         )
         # Receipts the customer sent (BR-32): unreachable from now on, and due for deletion at once. The
         # objects themselves are deleted by the retention cleanup, which cannot run inside this transaction.
@@ -4021,6 +4104,15 @@ class PgPlatformSession:
             )
         ).first()
         return None if row is None else (row.shop_id, row.customer_id)
+
+    async def customer_share_lookup(self, token_hash: bytes, now: datetime) -> tuple[UUID, UUID, UUID, bytes] | None:
+        row = (
+            await self._conn.execute(
+                text("SELECT share_id, shop_id, customer_id, token_hash FROM customer_share_lookup(:token_hash, :now)"),
+                {"token_hash": token_hash, "now": now},
+            )
+        ).first()
+        return None if row is None else (row.share_id, row.shop_id, row.customer_id, bytes(row.token_hash))
 
     async def end_my_link(self, user_id: UUID, shop_id: UUID) -> bool:
         row = (

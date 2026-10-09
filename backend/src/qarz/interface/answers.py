@@ -156,3 +156,54 @@ class MyShop(Answer):
 class MyShops(Answer):
     items: list[MyShop]
     active_shop: str | None
+
+
+class ShareState(Answer):
+    """What staff are told about a customer's read-only link. The link itself is never among it."""
+
+    exists: bool
+    expired: bool
+    created_at: str | None
+    expires_at: str | None
+    last_opened_at: str | None
+
+
+class ShareContact(Answer):
+    phone: str | None
+
+
+class SharedOverdue(Answer):
+    amount: int
+    due_today: int
+
+
+class SharedLine(Answer):
+    name: str
+    qty: str
+    unit: str
+    unit_price: int
+    line_total: int
+
+
+class SharedEntry(Answer):
+    kind: str
+    amount: int
+    created_at: str
+    promised_date: str | None
+    reversed: bool
+    lines: list[SharedLine]
+
+
+class SharedAccount(Answer):
+    """The page behind a customer's read-only link. Closed: a field added to the service's answer and not
+    declared here fails the request instead of reaching whoever holds the link."""
+
+    shop_name: str
+    shop_phone: str | None
+    first_name: str
+    lang: str
+    balance: int
+    overdue: SharedOverdue
+    expires_at: str
+    entries: list[SharedEntry]
+    entries_total: int

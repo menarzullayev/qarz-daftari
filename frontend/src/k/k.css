@@ -1,0 +1,196 @@
+/*
+ * The page behind a customer's read-only link. Colors, type and spacing are the design tokens' and
+ * nothing else (tokens.css); the theme follows the device. Read on a phone, at arm's length, often
+ * outdoors: one column, large amounts, no decoration.
+ */
+html {
+  background: var(--qd-surface);
+  color: var(--qd-text);
+  font: var(--qd-type-body);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  box-sizing: border-box;
+  max-width: 34rem;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: var(--qd-space-4);
+}
+
+p,
+h1,
+h2,
+ul {
+  margin: 0;
+  padding: 0;
+}
+
+ul {
+  list-style: none;
+}
+
+a {
+  color: var(--qd-link);
+}
+
+.muted {
+  color: var(--qd-muted);
+}
+
+.languages {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--qd-space-2);
+  margin-bottom: var(--qd-space-4);
+}
+
+.languages__item,
+.button {
+  min-height: var(--qd-control-height);
+  padding: 0 var(--qd-space-4);
+  border: 1px solid var(--qd-border);
+  border-radius: var(--qd-radius-pill);
+  background: var(--qd-bg);
+  color: var(--qd-text);
+  font: var(--qd-type-control);
+  cursor: pointer;
+}
+
+.languages__item--current {
+  border-color: var(--qd-accent);
+  background: var(--qd-accent);
+  color: var(--qd-on-accent);
+}
+
+.shop {
+  margin-bottom: var(--qd-space-4);
+}
+
+.shop__name {
+  font: var(--qd-type-subject);
+}
+
+.shop__phone {
+  margin-top: var(--qd-space-1);
+  color: var(--qd-muted);
+}
+
+.summary,
+.entries,
+.message {
+  margin-bottom: var(--qd-space-4);
+  padding: var(--qd-space-4);
+  border: 1px solid var(--qd-line);
+  border-radius: var(--qd-radius-lg);
+  background: var(--qd-bg);
+  box-shadow: var(--qd-shadow-sm);
+}
+
+.summary__greeting,
+.message__title {
+  margin-bottom: var(--qd-space-3);
+  font: var(--qd-type-heading);
+}
+
+.summary__label {
+  color: var(--qd-muted);
+  font: var(--qd-type-label);
+}
+
+.summary__amount {
+  font: var(--qd-type-amount-lg);
+  letter-spacing: var(--qd-tracking-tight);
+}
+
+.summary__amount--clear {
+  color: var(--qd-success);
+}
+
+.summary__overdue,
+.summary__due {
+  margin-top: var(--qd-space-2);
+  padding: var(--qd-space-2) var(--qd-space-3);
+  border-radius: var(--qd-radius-sm);
+}
+
+.summary__overdue {
+  background: var(--qd-danger-soft);
+  color: var(--qd-danger);
+}
+
+.summary__due {
+  background: var(--qd-warning-soft);
+  color: var(--qd-warning);
+}
+
+.entries__title {
+  margin-bottom: var(--qd-space-2);
+  font: var(--qd-type-heading);
+}
+
+.entry {
+  padding: var(--qd-space-3) 0;
+  border-top: 1px solid var(--qd-line);
+}
+
+.entry:first-child {
+  border-top: 0;
+}
+
+.entry__head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--qd-space-3);
+  font: var(--qd-type-control);
+}
+
+.entry__amount {
+  font: var(--qd-type-amount);
+  white-space: nowrap;
+}
+
+.entry__amount--paid {
+  color: var(--qd-success);
+}
+
+.entry__meta,
+.entry__lines {
+  color: var(--qd-muted);
+  font: var(--qd-type-small);
+}
+
+.entry__lines {
+  margin-top: var(--qd-space-1);
+}
+
+.entry__tag {
+  display: inline-block;
+  margin-top: var(--qd-space-1);
+  padding: 0 var(--qd-space-2);
+  border-radius: var(--qd-radius-pill);
+  background: var(--qd-surface-2);
+  font: var(--qd-type-caption);
+}
+
+.entry--reversed .entry__amount {
+  color: var(--qd-muted);
+  text-decoration: line-through;
+}
+
+.message .button {
+  margin-top: var(--qd-space-3);
+}
+
+.foot {
+  color: var(--qd-muted);
+  font: var(--qd-type-small);
+}
+
+.foot p + p {
+  margin-top: var(--qd-space-1);
+}

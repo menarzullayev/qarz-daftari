@@ -29,6 +29,7 @@ EXPECTED: dict[str, tuple[set[Role], bool]] = {
     "ledger.view": ({S, M, OWN}, False),
     "customers.create": ({S, M, OWN}, False),
     "customers.edit": ({M, OWN}, False),
+    "customers.share": ({M, OWN}, False),
     "credits.record": ({S, M, OWN}, False),
     "payments.record": ({S, M, OWN}, False),
     "payment_notices.decide": ({S, M, OWN}, False),

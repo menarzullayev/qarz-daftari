@@ -6,14 +6,20 @@
  * Code loaded later through a dynamic import is not referenced there and is not counted. Telegram's own
  * script is loaded from telegram.org, is not part of the build, and is listed but not counted.
  *
+ * The page behind a customer's read-only link (/k/) has a budget of its own, far smaller: it is opened
+ * by a shop's customer on a phone, and must never come to carry the staff application. 20 KB compressed
+ * holds it to its own few modules and the design tokens.
+ *
  * Usage: `npm run size` (builds first). `node scripts/size.ts --budget-kb=1` after a build shows the
- * check failing; that is the negative check for this script.
+ * check failing; that is the negative check for this script. `--customer-page-budget-kb=1` does the
+ * same for the customer's page.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 
 export const DEFAULT_BUDGET_KB = 300;
+export const CUSTOMER_PAGE_BUDGET_KB = 20;
 const BYTES_PER_KB = 1024;
 
 export type InitialAssets = {
@@ -63,12 +69,12 @@ export function checkBudget(sizes: readonly number[], budgetKb: number): BudgetR
   return { totalBytes, budgetBytes, withinBudget: totalBytes <= budgetBytes };
 }
 
-export function parseBudgetKb(args: readonly string[]): number {
-  const option = args.find((arg) => arg.startsWith("--budget-kb="));
+export function parseBudgetKb(args: readonly string[], name = "--budget-kb", fallback = DEFAULT_BUDGET_KB): number {
+  const option = args.find((arg) => arg.startsWith(`${name}=`));
   if (option === undefined) {
-    return DEFAULT_BUDGET_KB;
+    return fallback;
   }
-  const value = Number(option.slice("--budget-kb=".length));
+  const value = Number(option.slice(name.length + 1));
   if (!Number.isFinite(value) || value <= 0) {
     throw new RangeError(`invalid budget: ${option}`);
   }
@@ -101,13 +107,18 @@ function measureEntry(distDir: string, entry: string): { totalBytes: number; lin
 function main(): void {
   const budgetKb = parseBudgetKb(process.argv.slice(2));
   const distDir = resolve(import.meta.dirname, "..", "dist");
+  const customerPageBudgetKb = parseBudgetKb(process.argv.slice(2), "--customer-page-budget-kb", CUSTOMER_PAGE_BUDGET_KB);
   let appBytes = 0;
-  for (const entry of ["app", "panel", "admin"]) {
+  let customerPageBytes = 0;
+  for (const entry of ["app", "panel", "admin", "k"]) {
     const { totalBytes, lines } = measureEntry(distDir, entry);
     console.log(`${entry}: ${kb(totalBytes)} KB gzip (initial JS + CSS)`);
     console.log(lines.join("\n"));
     if (entry === "app") {
       appBytes = totalBytes;
+    }
+    if (entry === "k") {
+      customerPageBytes = totalBytes;
     }
   }
   const result = checkBudget([appBytes], budgetKb);
@@ -116,6 +127,12 @@ function main(): void {
     process.exit(1);
   }
   console.log(`OK: staff Mini App first load is ${kb(result.totalBytes)} KB gzip, budget is ${budgetKb} KB`);
+  const customerPage = checkBudget([customerPageBytes], customerPageBudgetKb);
+  if (!customerPage.withinBudget) {
+    console.error(`FAIL: the customer's page is ${kb(customerPage.totalBytes)} KB gzip, budget is ${customerPageBudgetKb} KB`);
+    process.exit(1);
+  }
+  console.log(`OK: the customer's page is ${kb(customerPage.totalBytes)} KB gzip, budget is ${customerPageBudgetKb} KB`);
 }
 
 if (import.meta.main) {

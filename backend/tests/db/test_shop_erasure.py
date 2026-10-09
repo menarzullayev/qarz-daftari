@@ -56,6 +56,12 @@ def fill(owner: psycopg.Connection, shop: Shop) -> uuid.UUID:
             (shop.shop_id, shop.customer_id, linked),
         ),
         (
+            "INSERT INTO customer_share (id, shop_id, customer_id, token_hash, created_by, expires_at) "
+            "VALUES (gen_random_uuid(), %s, %s, sha256(gen_random_uuid()::text::bytea), %s, "
+            "now() + interval '90 days')",
+            (shop.shop_id, shop.customer_id, shop.member_id),
+        ),
+        (
             "INSERT INTO reminder (id, shop_id, customer_id, kind, channel, amount, sent_on) "
             "VALUES (gen_random_uuid(), %s, %s, 'auto', 'telegram', 100, current_date)",
             (shop.shop_id, shop.customer_id),

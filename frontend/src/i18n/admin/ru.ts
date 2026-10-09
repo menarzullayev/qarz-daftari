@@ -157,6 +157,7 @@ export const ruAdmin: RuAdminCatalog = {
   "admin.setting.free_plan_on": "Бесплатный тариф включён (SMS только платящим магазинам)",
   "admin.setting.free_plan_customers": "Клиентов на бесплатном тарифе (на магазин)",
   "admin.setting.permissions_on": "Отдельные разрешения для сотрудников включены",
+  "admin.setting.customer_links_on": "Ссылка и QR-код для клиента (без Telegram) включены",
 
   "admin.audit.filters": "Фильтры аудита",
   "admin.audit.at": "Время",
