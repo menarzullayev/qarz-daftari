@@ -168,6 +168,7 @@ export const enAdmin: PartialCatalog<typeof uzAdmin, EnPlural> = {
   "admin.setting.customer_links_on": "Customer link and QR code (without Telegram) are on",
   "admin.setting.usd_on": "Dollars (USD) are on",
   "admin.setting.cash_book_on": "Cash book (income and expense book) is on",
+  "admin.setting.stock_on": "Stock, goods receipts and suppliers are on",
 
   "admin.audit.filters": "Audit filters",
   "admin.audit.at": "Time",

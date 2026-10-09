@@ -59,6 +59,13 @@ class CashEntryOfLedger(AppError):
     code = "CASH_ENTRY_OF_LEDGER"
 
 
+class CashEntryOfStock(AppError):
+    """The entry is money the stock paid out (a payment to a supplier, a purchase, a refund): it is
+    cancelled by cancelling that payment or that document."""
+
+    code = "CASH_ENTRY_OF_STOCK"
+
+
 class CashEntryCancelled(AppError):
     code = "CASH_ENTRY_CANCELLED"
 
@@ -120,10 +127,20 @@ def entry_body(record: CashEntryRecord, *, names: bool) -> dict[str, Any]:
         "day": record.day.isoformat(),
         "created_at": record.created_at.isoformat(),
         "author_id": str(record.author_id),
-        "source": "manual" if record.ledger_entry_id is None else "ledger",
+        "source": _source(record),
         "customer": customer,
         "cancelled": cancelled,
     }
+
+
+def _source(record: CashEntryRecord) -> str:
+    """Who wrote the entry: a person, the customers' ledger, or the stock. Only the first is
+    cancelled in the cash book itself."""
+    if record.ledger_entry_id is not None:
+        return "ledger"
+    if record.supplier_entry_id is not None or record.stock_document_id is not None:
+        return "stock"
+    return "manual"
 
 
 def line_body(line: Line) -> dict[str, Any]:
@@ -398,6 +415,8 @@ class CashBookService:
                     raise NotFound()
                 if record.ledger_entry_id is not None:
                     raise CashEntryOfLedger()
+                if record.supplier_entry_id is not None or record.stock_document_id is not None:
+                    raise CashEntryOfStock()
                 if record.cancelled_at is not None or not await session.cancel_cash_entry(
                     entry_id, by=actor.membership_id, reason=why, now=self._now()
                 ):

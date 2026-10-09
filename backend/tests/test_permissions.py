@@ -39,6 +39,13 @@ EXPECTED: dict[str, tuple[set[Role], bool]] = {
     "promises.change": ({M, OWN}, False),
     "disputes.decide": ({M, OWN}, False),
     "goods.edit": ({M, OWN}, False),
+    "stock.view": ({S, M, OWN}, False),
+    "stock.receive": ({M, OWN}, False),
+    "stock.adjust": ({M, OWN}, False),
+    "stock.costs.view": ({M, OWN}, False),
+    "suppliers.view": ({M, OWN}, False),
+    "suppliers.manage": ({M, OWN}, False),
+    "suppliers.pay": ({M, OWN}, False),
     "reminders.send": ({M, OWN}, False),
     "reports.view": ({M, OWN}, False),
     "reports.export": ({M, OWN}, False),
@@ -139,6 +146,8 @@ def test_the_defaults_of_an_operations_permissions_are_the_role_table(op: Operat
 
 
 def test_the_operations_opened_by_more_than_one_permission() -> None:
+    """Each is one route that does different things by what is sent, and the service asks for the
+    permission the request needs; or a list that everyone who works with it reads."""
     several = {op.name for op in shop_operations() if len(permissions.permissions_of_operation(op.name)) > 1}
     assert several == {
         # A credit sale needs one permission and a payment the other: the service asks for it.
@@ -148,6 +157,18 @@ def test_the_operations_opened_by_more_than_one_permission() -> None:
         # The list of categories is what everyone who works with the cash book chooses from: reading,
         # recording and arranging each open it, and there is nothing finer to ask inside.
         "cash.categories.list",
+        # A stock document is opened by receiving and by adjusting; the service asks for the one its
+        # kind needs (tests/api/test_stock_documents.py). Reading them is open to either.
+        "stock.documents.list",
+        "stock.documents.read",
+        "stock.documents.create",
+        "stock.documents.update",
+        "stock.documents.post",
+        "stock.documents.cancel",
+        # A payment to a supplier needs one permission and an opening balance the other
+        # (tests/api/test_suppliers.py).
+        "suppliers.entries.create",
+        "suppliers.entries.cancel",
     }, "a service must ask for the one the request needs"
 
 

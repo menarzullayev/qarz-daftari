@@ -170,6 +170,7 @@ export const tgAdmin: PartialCatalog<typeof uzAdmin> = {
   "admin.setting.customer_links_on": "Пайванд ва QR код барои мизоҷ (бе Telegram) фаъол аст",
   "admin.setting.usd_on": "Доллар (USD) фаъол аст",
   "admin.setting.cash_book_on": "Касса (дафтари воридот ва хароҷот) фаъол аст",
+  "admin.setting.stock_on": "Анбор, воридоти мол ва таъминкунандагон фаъоланд",
 
   "admin.audit.filters": "Филтрҳои аудит",
   "admin.audit.at": "Вақт",

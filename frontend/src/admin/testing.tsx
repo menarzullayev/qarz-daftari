@@ -93,6 +93,7 @@ export const platformBody = (overrides: Record<string, unknown> = {}, settings: 
     customer_links_on: false,
     usd_on: false,
     cash_book_on: false,
+    stock_on: false,
     ...settings,
   },
   needs_code: [
@@ -105,6 +106,7 @@ export const platformBody = (overrides: Record<string, unknown> = {}, settings: 
     "price_uzs",
     "review_group",
     "sms_on",
+    "stock_on",
     "trial_on",
     "usd_on",
   ],

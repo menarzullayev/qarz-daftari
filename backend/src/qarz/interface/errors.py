@@ -73,7 +73,19 @@ _STATUS = {
     "IMPORT_UNDO_REFUSED": 409,
     "SUBSCRIPTION_RECEIPT_NOT_ALLOWED": 409,
     "RECEIPT_ALREADY_DECIDED": 409,
+    "STOCK_INSUFFICIENT": 409,
+    "STOCK_ALREADY_USED": 409,
+    "COST_CURRENCY_MISMATCH": 409,
+    "ENTRY_OF_DOCUMENT": 409,
+    "BARCODE_TAKEN": 409,
+    "ITEM_NOT_COUNTABLE": 409,
+    "DOCUMENT_NOT_DRAFT": 409,
+    "DOCUMENT_CANCELLED": 409,
+    "SUPPLIER_NAME_TAKEN": 409,
+    "SUPPLIER_ARCHIVED": 409,
+    "SUPPLIER_HAS_BALANCE": 409,
     "CASH_ENTRY_OF_LEDGER": 409,
+    "CASH_ENTRY_OF_STOCK": 409,
     "CASH_ENTRY_CANCELLED": 409,
     "CASH_CATEGORY_ARCHIVED": 409,
     "CASH_CATEGORY_NAME_TAKEN": 409,
@@ -150,12 +162,34 @@ _MESSAGES = {
         "CASH_ENTRY_OF_LEDGER": (
             "Bu yozuv mijozning to'lovi. Uni bekor qilish uchun mijoz sahifasida o'sha to'lovni bekor qiling."
         ),
+        "CASH_ENTRY_OF_STOCK": (
+            "Bu yozuvni ombor yozgan (ta'minotchiga to'lov, tovar xaridi yoki qaytarish). "
+            "Uni bekor qilish uchun o'sha to'lovni yoki hujjatni bekor qiling."
+        ),
         "CASH_ENTRY_CANCELLED": "Bu kassa yozuvi allaqachon bekor qilingan.",
         "CASH_CATEGORY_ARCHIVED": "Bu toifa arxivda. Boshqa toifani tanlang yoki uni arxivdan chiqaring.",
         "CASH_CATEGORY_NAME_TAKEN": "Shu nomli toifa allaqachon bor (arxivda bo'lishi ham mumkin).",
         "CASH_CATEGORY_FIXED": "Mijozlar to'lovi tushadigan toifani arxivlab yoki o'chirib bo'lmaydi.",
         "CASH_CATEGORY_IN_USE": "Bu toifada yozuvlar bor, uni o'chirib bo'lmaydi. Arxivlash mumkin.",
         "ONLINE_PAY_OFF": "Onlayn to'lov hozircha yoqilmagan. Karta orqali to'lash: /obuna",
+        "STOCK_INSUFFICIENT": "Omborda bu tovar yetarli emas. Avval kirim yozing yoki miqdorni kamaytiring.",
+        "STOCK_ALREADY_USED": (
+            "Bekor qilib bo'lmaydi: bu tovarlar ombordan allaqachon chiqib ketgan. "
+            "Ta'minotchiga qaytarish yoki hisobdan chiqarish yozing."
+        ),
+        "COST_CURRENCY_MISMATCH": (
+            "Bu tovarning tannarxi boshqa valyutada yuritiladi. Qoldiq tugagach, boshqa valyutada kirim qilish mumkin."
+        ),
+        "ENTRY_OF_DOCUMENT": "Bu yozuvni hujjat yaratgan. Uni bekor qilish uchun hujjatning o'zini bekor qiling.",
+        "BARCODE_TAKEN": "Bu shtrix-kod boshqa tovarga biriktirilgan.",
+        "ITEM_NOT_COUNTABLE": (
+            "Bu tovarni omborda hisoblab bo'lmaydi: avval uni ko'rib chiqing va ombor o'lchov birligini tanlang."
+        ),
+        "DOCUMENT_NOT_DRAFT": "Bu hujjat allaqachon o'tkazilgan yoki bekor qilingan.",
+        "DOCUMENT_CANCELLED": "Bu hujjat allaqachon bekor qilingan.",
+        "SUPPLIER_NAME_TAKEN": "Shu nomli ta'minotchi bor (arxivda bo'lishi ham mumkin).",
+        "SUPPLIER_ARCHIVED": "Bu ta'minotchi arxivda. Avval arxivdan chiqaring.",
+        "SUPPLIER_HAS_BALANCE": "Hisob-kitobi yopilmagan ta'minotchini arxivlab bo'lmaydi.",
         "RATE_LIMITED": "So'rovlar juda ko'p. Biroz kutib, qayta urinib ko'ring.",
         "TIMEOUT": "So'rov juda uzoq davom etdi va to'xtatildi. Hech narsa saqlanmadi. Qayta urinib ko'ring.",
         "ERROR": "Xatolik yuz berdi.",
@@ -230,12 +264,34 @@ _MESSAGES = {
         "CASH_ENTRY_OF_LEDGER": (
             "Эта запись — оплата клиента. Чтобы отменить её, отмените эту оплату на странице клиента."
         ),
+        "CASH_ENTRY_OF_STOCK": (
+            "Эту запись сделал склад (оплата поставщику, закупка товара или возврат). "
+            "Чтобы отменить её, отмените саму оплату или документ."
+        ),
         "CASH_ENTRY_CANCELLED": "Эта запись кассы уже отменена.",
         "CASH_CATEGORY_ARCHIVED": "Эта статья в архиве. Выберите другую или верните её из архива.",
         "CASH_CATEGORY_NAME_TAKEN": "Статья с таким названием уже есть (возможно, в архиве).",
         "CASH_CATEGORY_FIXED": "Статью, в которую попадают оплаты клиентов, нельзя архивировать или удалить.",
         "CASH_CATEGORY_IN_USE": "В этой статье есть записи, удалить её нельзя. Можно архивировать.",
         "ONLINE_PAY_OFF": "Онлайн-оплата пока не включена. Оплата переводом на карту: /obuna",
+        "STOCK_INSUFFICIENT": "На складе недостаточно этого товара. Сначала запишите приход или уменьшите количество.",
+        "STOCK_ALREADY_USED": (
+            "Отменить нельзя: эти товары уже ушли со склада. Оформите возврат поставщику или списание."
+        ),
+        "COST_CURRENCY_MISMATCH": (
+            "Себестоимость этого товара ведётся в другой валюте. "
+            "Приход в другой валюте возможен, когда остаток закончится."
+        ),
+        "ENTRY_OF_DOCUMENT": "Эту запись создал документ. Чтобы отменить её, отмените сам документ.",
+        "BARCODE_TAKEN": "Этот штрихкод уже привязан к другому товару.",
+        "ITEM_NOT_COUNTABLE": (
+            "Этот товар нельзя учитывать на складе: сначала проверьте его и выберите складскую единицу измерения."
+        ),
+        "DOCUMENT_NOT_DRAFT": "Этот документ уже проведён или отменён.",
+        "DOCUMENT_CANCELLED": "Этот документ уже отменён.",
+        "SUPPLIER_NAME_TAKEN": "Поставщик с таким названием уже есть (возможно, он в архиве).",
+        "SUPPLIER_ARCHIVED": "Этот поставщик в архиве. Сначала верните его из архива.",
+        "SUPPLIER_HAS_BALANCE": "Поставщика с незакрытыми расчётами нельзя отправить в архив.",
         "RATE_LIMITED": "Слишком много запросов. Подождите немного и повторите.",
         "TIMEOUT": "Запрос выполнялся слишком долго и был остановлен. Ничего не сохранено. Повторите попытку.",
         "ERROR": "Произошла ошибка.",

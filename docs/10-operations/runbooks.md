@@ -839,3 +839,16 @@ quiet with no chat configured, and stays owed while Telegram fails. In container
 firing alert in the worker's table, the failed attempt to send it was recorded (every way out of the
 stack is closed), and it stopped when the figure was fresh again. **Not proven:** a message arriving in
 a real Telegram chat, the Cloudflare notification, and any of the steps above on the real machine.
+
+## Stock (expansion module I)
+
+Turning it on: the administrator's panel, setting `stock_on` (asks for the second factor). Nothing is migrated or backfilled: every item starts not counted, and a shop counts an item by receiving it or by turning its counting on. Turning it off hides the module and stops sales from moving stock; what was recorded stays, cancelling a sale made while it was on still puts its goods back, and the owner's export still carries the stock sheets.
+
+If a shop doubts a quantity or a supplier's balance, compare the kept figures with their ledgers as the database owner (the functions are granted to no application role):
+
+```sql
+SELECT * FROM stock_level_mismatches('<shop id>');      -- empty when what is on hand equals the sum of the movements
+SELECT * FROM supplier_balance_mismatches('<shop id>'); -- empty when what is owed equals the sum of the entries
+```
+
+Both must be empty: the figures are written only by the triggers `stock_movement_apply` and `supplier_entry_apply`. A row here means someone changed a table by hand; nothing in the application can. Do not correct `stock_level` or `supplier_balance` by hand either: a wrong quantity is corrected by a stocktake, a wrong receipt or payment by cancelling it.

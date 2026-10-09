@@ -48,7 +48,23 @@ refusals, permission names).
 | transfer (method) | o'tkazma | ótkerme | |
 | direction (in / out) | yo'nalish | baǵıt | |
 | to copy earlier payments in | ko'chirish | kóshiriw | The same verb as moving a due date. |
-| stock | ombor (tovar qoldig'i) | sklad | Russian loan, the everyday word; not yet in the texts. |
+| stock (the store of goods) | ombor | sklad | Russian loan, the everyday word. The bot command stays `/ombor`. |
+| stock on hand | qoldiq | qaldıq | The same word as the cash balance. "Az qaldı" = running low; "minusta" = below zero. |
+| goods receipt (purchase) | kirim (ombor) | kiris | The same word as cash income; "Tovar kirisi" where the two could be confused. |
+| supplier | ta'minotchi | támiyinlewshi | "Qarızımız" = what we owe; "esap-kitap" = the account with a supplier. |
+| cost price | tannarx | ózine túser baha | Calque of the standard term; long for a column, a reviewer may prefer a shorter form. |
+| selling price | sotish narxi | satıw bahası | Sale: satıw (a sale on credit to a customer stays nesiye / sawda). |
+| profit / loss | foyda / zarar | payda / zıyan | |
+| value (of stock) | qiymat | qun | |
+| return | qaytarish | qaytarıw | "Qarıydardan qaytarıw", "Támiyinlewshige qaytarıw". |
+| write-off | hisobdan chiqarish | esaptan shıǵarıw | |
+| stocktake | inventarizatsiya | inventarizaciya | |
+| barcode | shtrix-kod | shtrix-kod | |
+| stock document / delivery note | ombor hujjati | sklad hújjeti | A paper delivery note (nakladnoy) is not in the texts yet; when it appears it is "nakladnoy". |
+| draft / posted / cancelled | qoralama / o'tkazilgan / bekor qilingan | qaralama / ótkerilgen / biykarlanǵan | To post: ótkeriw (also "to transfer"; context tells them apart). |
+| movement (of stock) | harakat | háreket | The same word as an action in the activity log. |
+| tracked in stock | omborda hisoblanadi | skladta esaplanadı | |
+| low stock level | kam qoldi chegarasi | az qaldı shegarası | |
 | counter code | peshtaxta kodi | prilavka kodı | Everyday Russian loan for the shop counter. The permission label says "kassa kodı" as the source does. |
 | balance (remaining) | qolgan qarz | qalǵan qarız | |
 | opening debt | boshlang'ich qarz | baslanǵısh qarız | |

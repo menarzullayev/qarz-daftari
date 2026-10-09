@@ -32,6 +32,8 @@ export const ACTION_GROUPS = [
   "subscription",
   "export",
   "support_access",
+  "stock",
+  "supplier",
 ] as const;
 type ActionGroup = (typeof ACTION_GROUPS)[number];
 

@@ -51,6 +51,9 @@ class CashEntryRecord:
     cancelled_at: datetime | None
     cancelled_by: UUID | None
     cancel_reason: str | None
+    # Set on an entry the stock wrote (module I): a payment to a supplier, or a document's money.
+    supplier_entry_id: UUID | None = None
+    stock_document_id: UUID | None = None
 
 
 @dataclass(frozen=True)

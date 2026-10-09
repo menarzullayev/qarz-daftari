@@ -167,6 +167,7 @@ export const kaaAdmin: PartialCatalog<typeof uzAdmin> = {
   "admin.setting.customer_links_on": "Qarıydar ushın silteme hám QR kod (Telegramsız) qosılǵan",
   "admin.setting.usd_on": "Dollar (USD) qosılǵan",
   "admin.setting.cash_book_on": "Kassa (kiris hám shıǵıs dápteri) qosılǵan",
+  "admin.setting.stock_on": "Sklad, kiris hám támiyinlewshiler qosılǵan",
 
   "admin.audit.filters": "Audit filtrleri",
   "admin.audit.at": "Waqıt",

@@ -19,6 +19,7 @@ from qarz.domain.access import Capability
 from qarz.domain.catalog import check_price, item_name, normalize_unit
 from qarz.domain.names import normalize_name
 from qarz.domain.promise import tashkent_date
+from qarz.domain.stock import UNIT_KEYS
 
 LIST_CATALOG = operation("catalog.list", Capability.RECORD)
 CREATE_ITEM = operation("catalog.create", Capability.MANAGE)
@@ -233,6 +234,14 @@ class CatalogService:
             async def apply() -> dict[str, Any]:
                 if await session.get_catalog_item(item_id, for_update=True) is None:
                     raise NotFound()
+                if clean_unit is not None:
+                    # A counted item keeps a unit the stock knows, and the unit its quantities are in.
+                    counted = await session.stock_item(item_id, for_update=False)
+                    if counted is not None and counted.tracked and clean_unit != counted.unit:
+                        if clean_unit not in UNIT_KEYS:
+                            raise ValidationFailed({"unit": "a stock-counted item keeps one of the stock units"})
+                        if counted.last_seq:
+                            raise ValidationFailed({"unit": "the unit cannot change once the item has stock movements"})
                 name_norm = normalize_name(clean_name) if clean_name is not None else None
                 updated = await session.update_catalog_item(
                     item_id, name=clean_name, name_norm=name_norm, unit=clean_unit, price=clean_price

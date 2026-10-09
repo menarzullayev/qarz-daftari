@@ -50,6 +50,7 @@ _SYSTEM_CATEGORY = _CATEGORY_SELECT + "WHERE shop_id = :shop_id AND system_key =
 _ENTRY_SELECT = (
     "SELECT e.id, e.direction, e.method, e.currency, e.amount, e.category_id, c.name AS category_name, e.note, "
     "e.day, e.created_at, e.author_id, e.ledger_entry_id, e.cancelled_at, e.cancelled_by, e.cancel_reason, "
+    "e.supplier_entry_id, e.stock_document_id, "
     "l.customer_id, p.display_name AS customer_name "
     "FROM cash_entry e JOIN cash_category c ON c.id = e.category_id "
     "LEFT JOIN ledger_entry l ON l.id = e.ledger_entry_id "
@@ -86,6 +87,8 @@ def _entry(row: Any) -> CashEntryRecord:
         cancelled_at=row.cancelled_at,
         cancelled_by=row.cancelled_by,
         cancel_reason=row.cancel_reason,
+        supplier_entry_id=row.supplier_entry_id,
+        stock_document_id=row.stock_document_id,
     )
 
 
@@ -324,6 +327,8 @@ class CashStatements:
                 "AND (e.created_at AT TIME ZONE 'Asia/Tashkent')::date >= :since "
                 "AND NOT EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id) "
                 "AND NOT EXISTS (SELECT 1 FROM cash_entry c WHERE c.ledger_entry_id = e.id) "
+                # A payment that a return of goods wrote lowered the debt with goods, not money (module I).
+                "AND NOT EXISTS (SELECT 1 FROM stock_document d WHERE d.ledger_entry_id = e.id) "
                 "ON CONFLICT DO NOTHING"
             ),
             {"shop_id": self._shop_id, "category_id": category_id, "since": since or _FIRST_DAY, "now": now},

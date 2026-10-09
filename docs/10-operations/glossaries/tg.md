@@ -58,7 +58,22 @@ refusals, permission names).
 | goods (lines of a sale) | tovarlar | молҳо | Singular «мол». |
 | product (catalog item) | mahsulot | маҳсулот | |
 | catalog | katalog | каталог | |
-| stock | — | захираи мол | Not used in the texts yet (the product keeps no stock); reserved. |
+| stock (the module, the storeroom) | ombor | анбор | Replaces the reserved «захираи мол». «Анбори файлҳо» (the file store) is the same word on purpose. |
+| quantity on hand | qoldiq | бақия | The same word as the cash balance. «Кам мондааст» = running low; «ҳад» = the low threshold; «дар минус» = below zero. |
+| receipt of goods (purchase coming in) | kirim | воридоти мол, воридот | The same root as cash income, as in Uzbek. «Қабули мол» was the alternative. |
+| purchase on credit from a supplier | qarzga olingan tovar | моли ба қарз гирифташуда | |
+| supplier | ta'minotchi | таъминкунанда | Plural «таъминкунандагон». What the shop owes them is «қарзи мо»; the account is «ҳисобу китоб»; an advance is «пешакӣ пардохт шудааст». |
+| cost price | tannarx | арзиши аслӣ | «Арзиши аслии миёна» = average cost. Selling price = «нархи фурӯш». |
+| profit / loss | foyda / zarar | фоида / зарар | |
+| return (of goods) | qaytarish | баргардонидан | «Баргардонидан аз мизоҷ», «баргардонидан ба таъминкунанда». |
+| write-off | hisobdan chiqarish | аз ҳисоб баровардан | Reasons: «вайрон шудааст», «мӯҳлаташ гузаштааст», «гум шудааст», «барои эҳтиёҷи худ». |
+| stocktake | inventarizatsiya | инвентаризатсия | Its correcting movement is «ислоҳи инвентаризатсия». |
+| barcode | shtrix-kod | штрих-код | |
+| stock document (delivery note, return, write-off) | hujjat | ҳуҷҷат | «Ҳуҷҷати анбор». There is no separate word for a delivery note: it is the document of kind «воридоти мол». |
+| draft | qoralama | сиёҳнавис | |
+| to post a document / posted | o'tkazish / o'tkazilgan | ба қайд гирифтан / ба қайд гирифта шудааст | Not «гузаронидан» (used for moving a due date) and not «тасдиқ кардан» (confirm, approve a receipt). |
+| stock movement | harakat | ҳаракат | |
+| to attach a barcode to an item | biriktirish | вобаста кардан | The same verb as attaching a waiting person to a customer. |
 | unit of measure | o'lchov birligi, birlik | воҳиди ченак, воҳид | |
 | amount | summa | маблағ | |
 | total | jami | ҳамагӣ | |
@@ -97,7 +112,7 @@ refusals, permission names).
 ## Conventions
 
 - **Never translated:** the product name `Qarz Daftari`, bot commands (`/obuna`, `/til`, `/dokon`,
-  `/yordam`, `/kassa`, `/qarzim`, `/uzish`, `/ochirish`, `/start`), `Telegram`, `SMS`, `QR`, `PDF`, `Excel`, `CSV`,
+  `/yordam`, `/kassa`, `/ombor`, `/qarzim`, `/uzish`, `/ochirish`, `/start`), `Telegram`, `SMS`, `QR`, `PDF`, `Excel`, `CSV`,
   `UUID`, file extensions, and the language autonyms (`O'zbekcha`, `Русский`, `Ўзбекча`, `Тоҷикӣ`,
   `Qaraqalpaqsha`, `English`).
 - **Typed examples stay Uzbek.** The chat parser reads Uzbek and Russian input only, so the example

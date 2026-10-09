@@ -20,7 +20,23 @@ export type WorkspaceRoute =
   | { screen: "catalog" }
   | { screen: "reminders" }
   | { screen: "subscription" }
-  | { screen: "shopSettings" };
+  | { screen: "shopSettings" }
+  | { screen: "stock"; view: StockView };
+
+/** The screens of the stock, its documents and the suppliers; their code is loaded apart (module I). */
+export type StockView =
+  | { name: "items" }
+  | { name: "item"; itemId: string }
+  | { name: "receipt" }
+  | { name: "report" }
+  | { name: "documents" }
+  | { name: "newDocument"; kind: StockDocumentKind }
+  | { name: "document"; documentId: string }
+  | { name: "suppliers" }
+  | { name: "supplier"; supplierId: string };
+
+export const STOCK_DOCUMENT_KINDS = ["receipt", "customer_return", "supplier_return", "write_off", "stocktake"] as const;
+export type StockDocumentKind = (typeof STOCK_DOCUMENT_KINDS)[number];
 
 export type WorkspaceMatch = {
   route: WorkspaceRoute;
@@ -33,6 +49,10 @@ export type WorkspaceMatch = {
 const ID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const CUSTOMER = new RegExp(`^/customers/(${ID})$`, "i");
 const ENTRY = new RegExp(`^/customers/(${ID})/(credit|payment)$`, "i");
+const STOCK_ITEM = new RegExp(`^/stock/items/(${ID})$`, "i");
+const STOCK_DOCUMENT = new RegExp(`^/stock-documents/(${ID})$`, "i");
+const NEW_STOCK_DOCUMENT = /^\/stock-documents\/new\/([a-z_]+)$/;
+const SUPPLIER = new RegExp(`^/suppliers/(${ID})$`, "i");
 const ADD_GOODS = new RegExp(`^/customers/(${ID})/entries/(${ID})/goods$`, "i");
 
 /** The data screen for a route path, or null when the path is not one of them. */
@@ -75,6 +95,10 @@ export function matchWorkspaceRoute(path: string): WorkspaceMatch | null {
     case "/shop-settings":
       return { route: { screen: "shopSettings" }, sectionPath: "/shop-settings", titleKey: "nav.shopSettings" };
   }
+  const stock = matchStockRoute(path);
+  if (stock) {
+    return stock;
+  }
   const customer = CUSTOMER.exec(path);
   if (customer?.[1]) {
     return {
@@ -99,6 +123,47 @@ export function matchWorkspaceRoute(path: string): WorkspaceMatch | null {
       sectionPath: "/customers",
       titleKey: "goods.later.title",
     };
+  }
+  return null;
+}
+
+/**
+ * The stock's screens. A path is matched whether or not the stock is switched on: who may open it is
+ * decided by the navigation section it belongs to, which is absent while the stock is off.
+ */
+function matchStockRoute(path: string): WorkspaceMatch | null {
+  const stock = (view: StockView, sectionPath: string, titleKey: MessageKey): WorkspaceMatch => ({
+    route: { screen: "stock", view },
+    sectionPath,
+    titleKey,
+  });
+  switch (path) {
+    case "/stock":
+      return stock({ name: "items" }, "/stock", "nav.stock");
+    case "/stock/receipt":
+      return stock({ name: "receipt" }, "/stock", "nav.stock");
+    case "/stock/report":
+      return stock({ name: "report" }, "/stock", "nav.stock");
+    case "/stock-documents":
+      return stock({ name: "documents" }, "/stock-documents", "nav.stockDocuments");
+    case "/suppliers":
+      return stock({ name: "suppliers" }, "/suppliers", "nav.suppliers");
+  }
+  const item = STOCK_ITEM.exec(path);
+  if (item?.[1]) {
+    return stock({ name: "item", itemId: item[1] }, "/stock", "nav.stock");
+  }
+  const document = STOCK_DOCUMENT.exec(path);
+  if (document?.[1]) {
+    return stock({ name: "document", documentId: document[1] }, "/stock-documents", "nav.stockDocuments");
+  }
+  const kind = STOCK_DOCUMENT_KINDS.find((known) => known === NEW_STOCK_DOCUMENT.exec(path)?.[1]);
+  if (kind) {
+    return stock({ name: "newDocument", kind }, "/stock-documents", "nav.stockDocuments");
+  }
+  const supplier = SUPPLIER.exec(path);
+  if (supplier?.[1]) {
+    return stock({ name: "supplier", supplierId: supplier[1] }, "/suppliers", "nav.suppliers");
   }
   return null;
 }

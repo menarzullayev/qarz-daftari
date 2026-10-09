@@ -267,6 +267,7 @@ describe("responses", () => {
       activeShop: SHOP_ID,
       permissionsOn: false,
       cashBookOn: false,
+      stockOn: false,
     });
     const named = fakeServer(() =>
       ok({ items: [{ shop_id: SHOP_ID, name: "Baraka", role: "seller", membership_id: "m-1" }], active_shop: null }),

@@ -108,7 +108,23 @@ words, no exclamation mark unless the source has one, “curly quotes” where U
 | direction | yo'nalish | Income or expense. |
 | cancel (a cash book entry) | kassa yozuvini bekor qilish | A cash book entry is "cancelled" with a reason and stays in the book; a ledger entry is "reversed". |
 | copy earlier payments | avvalgi to'lovlarni ko'chirish | The one-time copy of old customer payments into the cash book. |
-| stock | ombor qoldig'i, qoldiq | Not in the texts yet; kept for when it appears. |
+| stock | ombor | The goods the shop holds and the section that tracks them (`/ombor` stays as typed). "In stock" for *qoldiq* of an item; "stock on record" for *hisobdagi qoldiq*. |
+| goods receipt | kirim (ombor) | Goods coming into stock: the purchase document and its movement. Always two words, so it is not taken for a payment "receipt" (*chek*) or cash book "income" (*kirim*). |
+| supplier | ta'minotchi | Who the shop buys goods from. "We owe" / "our debt" for *qarzimiz*; "account" for *hisob-kitob*. |
+| bought on credit | qarzga olingan | Goods taken from a supplier without paying in full. A customer's side stays "credit sale". |
+| cost price | tannarx | What the shop paid for an item. "Average cost price" for *o'rtacha tannarx*. |
+| selling price | sotish narxi | |
+| profit / loss | foyda / zarar | |
+| return | qaytarish | "Return from customer" and "return to supplier" as document kinds; "returned by customer", "returned to supplier" as movements. |
+| write-off | hisobdan chiqarish | Goods taken out of stock as damaged, expired, lost or for own use. Verb: "write off". |
+| stocktake | inventarizatsiya | Counting the goods; "stocktake correction" for the movement it makes. |
+| barcode | shtrix-kod | One word. |
+| stock document | ombor hujjati | A goods receipt, return, write-off or stocktake. A paper delivery note (*nakladnoy*, *yuk xati*) is not in the texts yet; when it appears it is "delivery note", and the record made from it is a "goods receipt". |
+| draft / posted / cancelled | qoralama / o'tkazilgan / bekor qilingan | States of a stock document. Verb "post" for *o'tkazish*. A document and a supplier entry are "cancelled"; the movement that undoes another is a "reversal". |
+| movement | harakat | One change of an item's stock. |
+| tracked (in stock) | omborda hisoblanadi, hisobdagi | An item whose stock is counted. |
+| running low, low stock level | kam qoldi, kam qoldi chegarasi | |
+| below zero | minusda | Stock that went negative. |
 
 ## Kept as in the source
 

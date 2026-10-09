@@ -23,20 +23,22 @@ its wording as expected.
 
 ## What there is to review
 
-About 1 860 texts for each of Tajik, Karakalpak and English, all complete on 2026-10-09 (`npm run
-i18n:missing` in `frontend/`, `python scripts/i18n_missing.py` in `backend/`: nothing missing).
+About 2 300 texts for each of Tajik, Karakalpak and English, the cash book and the stock included, all
+complete on 2026-10-09 (`npm run i18n:missing` in `frontend/`, `python scripts/i18n_missing.py` in
+`backend/`: nothing missing).
 
 | Where a person sees it | Files (`xx` is `tg`, `kaa` or `en`) | Texts |
 |---|---|---|
-| Mini App and web panel, every screen | `frontend/src/i18n/xx.ts` | 587 |
-| Web panel's own screens (staff, activity, deletion, permissions) | `frontend/src/i18n/panel/xx.ts` | 201 |
+| Mini App and web panel, every screen | `frontend/src/i18n/xx.ts` | 598 |
+| Web panel's own screens (staff, activity, deletion, permissions) | `frontend/src/i18n/panel/xx.ts` | 225 |
 | Import, export, reports, subscription receipts, customer link, support access | `frontend/src/i18n/{imports,exports,reports,receipts,share,support}/xx.ts` | 127, 46, 66, 29, 26, 25 |
-| Administrator's panel | `frontend/src/i18n/admin/xx.ts` | 296 |
+| Cash book; stock, its documents and suppliers | `frontend/src/i18n/{cash,stock}/xx.ts` | 100, 235 |
+| Administrator's panel | `frontend/src/i18n/admin/xx.ts` | 298 |
 | The customer's page behind a read-only link | `frontend/src/k/xx.ts` | 52 |
-| The bot: replies, notifications, reminders, operations alerts | `backend/src/qarz/application/texts_xx.py`, `CHAT` | 264 |
-| Export workbook | same file, `EXPORT` | 38 |
-| Refusals of the API | same file, `ERRORS` | 63 |
-| Names of permissions | same file, `PERMISSIONS` | 36 |
+| The bot: replies, notifications, reminders, operations alerts | `backend/src/qarz/application/texts_xx.py`, `CHAT` | 277 |
+| Export workbook | same file, `EXPORT` | 79 |
+| Refusals of the API | same file, `ERRORS` | 81 |
+| Names of permissions | same file, `PERMISSIONS` | 52 |
 
 SMS reminders are not in the list: they exist in Uzbek and Russian only, because each wording must be
 registered with the provider (runbook 12). A customer of any other language gets the Uzbek SMS.
@@ -151,12 +153,14 @@ nothing missing.
 
 ## When the remaining modules are merged
 
-The cash book, the stock, the suppliers and the network between shops add their texts in Uzbek and
-Russian only. Until the final pass those screens read Uzbek in the four new languages (Cyrillic Uzbek
-for `uz-Cyrl`, which needs no pass). The final pass:
+The cash book (module H) and the stock with its suppliers (module I) were merged while this module was
+built and are translated. The network between shops (module J) adds its texts in Uzbek and Russian
+only: until the final pass its screens read Uzbek in the four new languages (Cyrillic Uzbek for
+`uz-Cyrl`, which needs no pass). The names the server gives to stock units and write-off reasons are in
+Uzbek and Russian only and read Uzbek elsewhere. The final pass:
 
 1. Run `npm run i18n:missing -- --keys` and `python scripts/i18n_missing.py --keys`; translate every
-   key listed, with the glossaries (cash book and stock are already in them).
+   key listed, with the glossaries.
 2. Add the new brands, codes and wrongly written words that the scripts print for `uz-Cyrl` to the
    rules' tables.
 3. If the customer's page gained messages: `npm run i18n:k`.

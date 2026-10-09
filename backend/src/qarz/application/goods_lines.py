@@ -19,6 +19,7 @@ from qarz.application.currencies import NOT_IN_DOLLARS, UZS
 from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import operation
 from qarz.application.ports import CatalogItemRecord, GoodsLineRecord, Membership, TenantSession
+from qarz.application.stock_moves import draw_for_sale
 from qarz.domain import permissions
 from qarz.domain.access import Capability
 from qarz.domain.catalog import check_price, item_name, normalize_unit
@@ -266,6 +267,7 @@ async def add_lines_in(
     require_sum(lines, entry.amount)
 
     stored = await store_lines_in(session, actor, entry_id, lines)
+    stock_warnings = await draw_for_sale(session, actor, entry_id, stored, now=now)
     await session.record_activity(
         membership_id=actor.membership_id,
         action="ledger.lines_added",
@@ -273,4 +275,9 @@ async def add_lines_in(
         subject_id=customer_id,
     )
     await session.record_measure(kind="lines_added", entry_ref=entry_id, amount=entry.amount, promised=None)
-    return {"entry": {"id": str(entry_id), "amount": entry.amount, "lines": [line_body(line) for line in stored]}}
+    body: dict[str, Any] = {
+        "entry": {"id": str(entry_id), "amount": entry.amount, "lines": [line_body(line) for line in stored]}
+    }
+    if stock_warnings:
+        body["stock_warnings"] = stock_warnings
+    return body
