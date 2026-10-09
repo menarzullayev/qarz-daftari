@@ -8,9 +8,12 @@ from typing import Any
 
 import psycopg
 import pytest
+from fastapi.testclient import TestClient
 
-from qarz.application.auth import AuthService
+from qarz.application.auth import SIGNED_DATA_MAX_AGE, WEB_LOGIN_MAX_AGE, WEBAPP_SESSION, AuthService
 from qarz.infrastructure.db import Database
+from qarz.infrastructure.settings import Settings
+from qarz.interface.http import create_app
 from tests.test_telegram_auth import login_data, webapp_init_data
 
 from .conftest import TEST_BOT_TOKEN, WEBHOOK_SECRET, SessionClient
@@ -30,7 +33,8 @@ def _fresh(**kwargs: Any) -> str:
     # is accepted only once (tests/api/test_security_review.py, finding 9), so two sign-ins of one person
     # in one second must not be the same data here either.
     kwargs.setdefault("extra", {"query_id": f"AAE{next(_launches)}"})
-    return webapp_init_data(token=TEST_BOT_TOKEN, auth_date=datetime.now(UTC) - timedelta(seconds=30), **kwargs)
+    kwargs.setdefault("auth_date", datetime.now(UTC) - timedelta(seconds=30))
+    return webapp_init_data(token=TEST_BOT_TOKEN, **kwargs)
 
 
 def _fresh_login(tg_id: int) -> dict[str, object]:
@@ -39,8 +43,9 @@ def _fresh_login(tg_id: int) -> dict[str, object]:
     # login is dated five seconds before the one before it. (One second was not enough: the clock had
     # moved on by the time of the second login, and once in some dozens of runs both fell into the same
     # second, where the second login is rightly refused as a repeat.) The cycle keeps the data young
-    # enough to be accepted however many logins the module has made.
-    signed_at = datetime.now(UTC) - timedelta(seconds=30 + 5 * (next(_launches) % 200))
+    # enough to be accepted however many logins the module has made: web login data is accepted for
+    # five minutes, and the oldest made here is under four.
+    signed_at = datetime.now(UTC) - timedelta(seconds=30 + 5 * (next(_launches) % 40))
     return login_data(tg_id, token=TEST_BOT_TOKEN, auth_date=signed_at)
 
 
@@ -53,7 +58,11 @@ def _cookie(token: str) -> dict[str, str]:
 
 
 def _web_session(app: SessionClient, tg_id: int) -> tuple[str, str]:
-    response = app.http.post(LOGIN, json=_fresh_login(tg_id))
+    return _web_session_with(app, _fresh_login(tg_id))
+
+
+def _web_session_with(app: SessionClient, data: dict[str, object]) -> tuple[str, str]:
+    response = app.http.post(LOGIN, json=data)
     assert response.status_code == 200, response.text
     token = response.cookies.get("qd_session") or response.headers["set-cookie"].split("qd_session=")[1].split(";")[0]
     return token, response.json()["csrf_token"]
@@ -300,7 +309,10 @@ def test_signing_out_everywhere_ends_every_session_of_the_person_on_every_device
     phone, tablet = _app_token(session_client, me), _app_token(session_client, me)
     laptop, laptop_csrf = _web_session(session_client, me)
     office, office_csrf = _web_session(session_client, me)
-    for headers in (_bearer(phone), _bearer(tablet), _cookie(laptop), _cookie(office)):
+    # Signing in at the office ended the web session on the laptop (a person has one web session); the
+    # Mini App sessions and the newer web session are the ones still open.
+    assert http.get(ME, headers=_cookie(laptop)).status_code == 401
+    for headers in (_bearer(phone), _bearer(tablet), _cookie(office)):
         assert http.get(ME, headers=headers).status_code == 200
 
     done = http.post(EVERYWHERE, headers=_bearer(phone))
@@ -463,3 +475,179 @@ def test_the_service_says_how_many_sessions_it_ended(session_client: SessionClie
             await database.dispose()
 
     assert asyncio.run(three_times()) == (0, 3, 0)
+
+
+# --- one web session a person, and web login data accepted for minutes (security review, finding 9) ----
+
+
+def _open(owner: psycopg.Connection, tg_id: int) -> list[str]:
+    """The kinds of the person's sessions that are still open, oldest first."""
+    return [kind for kind, ended in _sessions(owner, tg_id) if not ended]
+
+
+def test_a_new_web_sign_in_ends_the_persons_earlier_web_session(
+    session_client: SessionClient, owner: psycopg.Connection
+) -> None:
+    """In this browser after a reload, or in another: the older web session answers as a signed-out one
+    does, to reads and to writes with its own CSRF token. The person's Mini App session is left alone."""
+    http, me = session_client.http, 5_400_001
+    phone = _app_token(session_client, me)
+    laptop, laptop_csrf = _web_session(session_client, me)
+    assert http.get(ME, headers=_cookie(laptop)).status_code == 200
+
+    office, office_csrf = _web_session(session_client, me)
+    http.cookies.clear()
+
+    refused = http.get(ME, headers=_cookie(laptop))
+    assert refused.status_code == 401 and refused.json()["error"]["code"] == "UNAUTHENTICATED"
+    changed = http.patch(ME, json={"lang": "ru"}, headers={**_cookie(laptop), "X-CSRF-Token": laptop_csrf})
+    assert changed.status_code == 401
+    assert http.get(ME, headers=_cookie(office)).status_code == 200
+    kept = http.patch(ME, json={"lang": "ru"}, headers={**_cookie(office), "X-CSRF-Token": office_csrf})
+    assert kept.status_code == 200
+    assert http.get(ME, headers=_bearer(phone)).status_code == 200, "a Mini App session and a web session coexist"
+    assert _sessions(owner, me) == [("webapp", False), ("web", True), ("web", False)]
+
+
+def test_a_web_sign_in_ends_nobody_elses_web_session(session_client: SessionClient, owner: psycopg.Connection) -> None:
+    http, me, other = session_client.http, 5_400_002, 5_400_003
+    theirs, their_csrf = _web_session(session_client, other)
+    _web_session(session_client, me)
+    _web_session(session_client, me)
+    http.cookies.clear()
+    assert _open(owner, me) == ["web"]
+    assert _sessions(owner, other) == [("web", False)]
+    kept = http.patch(ME, json={"lang": "ru"}, headers={**_cookie(theirs), "X-CSRF-Token": their_csrf})
+    assert kept.status_code == 200
+
+
+def test_a_mini_app_sign_in_ends_no_session_of_either_kind(
+    session_client: SessionClient, owner: psycopg.Connection
+) -> None:
+    """Only the web has one session a person: the Mini App is opened on a phone and a tablet alike."""
+    http, me = session_client.http, 5_400_004
+    web, _ = _web_session(session_client, me)
+    http.cookies.clear()
+    phone, tablet = _app_token(session_client, me), _app_token(session_client, me)
+    for headers in (_cookie(web), _bearer(phone), _bearer(tablet)):
+        assert http.get(ME, headers=headers).status_code == 200
+    assert _sessions(owner, me) == [("web", False), ("webapp", False), ("webapp", False)]
+
+
+def test_a_refused_web_sign_in_ends_nothing(session_client: SessionClient, owner: psycopg.Connection) -> None:
+    """Data that is forged, too old, or used before signs nobody in and therefore ends nobody's session."""
+    http, me = session_client.http, 5_400_005
+    used = _fresh_login(me)
+    web, _ = _web_session_with(session_client, used)
+    http.cookies.clear()
+
+    forged = {**_fresh_login(me), "hash": "0" * 64}
+    old = login_data(me, token=TEST_BOT_TOKEN, auth_date=datetime.now(UTC) - WEB_LOGIN_MAX_AGE - timedelta(seconds=20))
+    for data in (forged, old, used):
+        assert http.post(LOGIN, json=data).status_code == 401
+    assert _sessions(owner, me) == [("web", False)]
+    assert http.get(ME, headers=_cookie(web)).status_code == 200
+
+
+def test_two_web_sign_ins_of_one_person_at_once_leave_one_web_session(
+    session_client: SessionClient, app_database_url: str, owner: psycopg.Connection
+) -> None:
+    """Neither may miss the session the other is making: they go one after the other in the database."""
+    me, at = 5_400_006, datetime.now(UTC) - timedelta(seconds=30)
+    _app_token(session_client, me)  # the person exists, as they do at any sign-in but the first
+    logins = [login_data(me, token=TEST_BOT_TOKEN, auth_date=at - timedelta(seconds=n)) for n in range(8)]
+
+    async def together() -> None:
+        database = Database(app_database_url)
+        try:
+            service = AuthService(database, TEST_BOT_TOKEN)
+            await asyncio.gather(*(service.sign_in_web(dict(data)) for data in logins))
+        finally:
+            await database.dispose()
+
+    asyncio.run(together())
+    assert len(_sessions(owner, me)) == 9, "every sign-in was accepted"
+    assert _open(owner, me) == ["webapp", "web"]
+
+
+def test_web_login_data_is_accepted_for_five_minutes_and_mini_app_data_for_an_hour(
+    session_client: SessionClient,
+) -> None:
+    """The age is measured from the moment Telegram signed, by the server's clock."""
+    http, me = session_client.http, 5_400_007
+    now = datetime.now(UTC)
+    assert timedelta(0) < WEB_LOGIN_MAX_AGE < SIGNED_DATA_MAX_AGE, "the web login is given less than the Mini App"
+
+    young = login_data(me, token=TEST_BOT_TOKEN, auth_date=now - WEB_LOGIN_MAX_AGE + timedelta(seconds=30))
+    stale = login_data(me, token=TEST_BOT_TOKEN, auth_date=now - WEB_LOGIN_MAX_AGE - timedelta(seconds=30))
+    refused = http.post(LOGIN, json=stale)
+    assert refused.status_code == 401 and "set-cookie" not in refused.headers
+    assert refused.json()["error"]["code"] == "UNAUTHENTICATED"
+    assert http.post(LOGIN, json=young).status_code == 200
+    http.cookies.clear()
+
+    # The same age, and far more, is still accepted from the Mini App.
+    as_old = _fresh(tg_id=me, auth_date=now - WEB_LOGIN_MAX_AGE - timedelta(seconds=30))
+    older = _fresh(tg_id=me, auth_date=now - SIGNED_DATA_MAX_AGE + timedelta(minutes=2))
+    too_old = _fresh(tg_id=me, auth_date=now - SIGNED_DATA_MAX_AGE - timedelta(minutes=2))
+    assert http.post(WEBAPP, json={"init_data": as_old}).status_code == 200
+    assert http.post(WEBAPP, json={"init_data": older}).status_code == 200
+    assert http.post(WEBAPP, json={"init_data": too_old}).status_code == 401
+
+
+def test_used_web_login_data_is_remembered_for_as_long_as_it_would_be_accepted(
+    session_client: SessionClient, owner: psycopg.Connection
+) -> None:
+    """Not for the Mini App's hour: the record of a web login may go once the data is too old anyway."""
+    me, signed_at = 5_400_008, datetime.now(UTC) - timedelta(seconds=40)
+    known = {bytes(row[0]) for row in owner.execute("SELECT payload_hash FROM signin_replay").fetchall()}
+    data = login_data(me, token=TEST_BOT_TOKEN, auth_date=signed_at)
+    assert session_client.http.post(LOGIN, json=data).status_code == 200
+    session_client.http.cookies.clear()
+    rows = owner.execute("SELECT payload_hash, expires_at FROM signin_replay").fetchall()
+    kept = [expires for digest, expires in rows if bytes(digest) not in known]
+    assert len(kept) == 1
+    until = signed_at.replace(microsecond=0) + WEB_LOGIN_MAX_AGE
+    assert until < kept[0] <= until + timedelta(minutes=10)
+    # Within that time a repeat is refused.
+    session_client.clock.offset = WEB_LOGIN_MAX_AGE - timedelta(seconds=60)
+    assert session_client.http.post(LOGIN, json=data).status_code == 401
+
+
+def test_the_age_accepted_for_web_login_data_is_a_setting_that_cannot_exceed_the_hour(
+    app_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert Settings().web_login_max_age_seconds == WEB_LOGIN_MAX_AGE.total_seconds() == 300
+    monkeypatch.setenv("QD_WEB_LOGIN_MAX_AGE_SECONDS", "90")
+    assert Settings().web_login_max_age_seconds == 90
+    for bad in ("0", "-5", "3601", "soon"):
+        monkeypatch.setenv("QD_WEB_LOGIN_MAX_AGE_SECONDS", bad)
+        with pytest.raises(ValueError):
+            Settings()
+
+    database = Database(app_database_url)
+    for age in (timedelta(0), timedelta(seconds=-1), SIGNED_DATA_MAX_AGE + timedelta(seconds=1)):
+        with pytest.raises(ValueError):
+            AuthService(database, TEST_BOT_TOKEN, web_login_max_age=age)
+    AuthService(database, TEST_BOT_TOKEN, web_login_max_age=SIGNED_DATA_MAX_AGE)
+
+    # The configured age is the one applied: with 90 seconds, two minutes is too old and one is not.
+    auth = AuthService(database, TEST_BOT_TOKEN, web_login_max_age=timedelta(seconds=90))
+    now, me = datetime.now(UTC), 5_400_009
+    with TestClient(create_app(database.reachable, database, auth=auth)) as http:
+        two_minutes = login_data(me, token=TEST_BOT_TOKEN, auth_date=now - timedelta(seconds=120))
+        one_minute = login_data(me, token=TEST_BOT_TOKEN, auth_date=now - timedelta(seconds=60))
+        assert http.post(LOGIN, json=two_minutes).status_code == 401
+        assert http.post(LOGIN, json=one_minute).status_code == 200
+        http.portal.call(database.dispose)  # type: ignore[union-attr]
+
+
+def test_a_mini_app_session_still_lasts_twelve_hours_beside_a_web_session(session_client: SessionClient) -> None:
+    """Session lifetimes are as they were: what was shortened is the age of the login data, not these."""
+    http, me = session_client.http, 5_400_010
+    phone = _app_token(session_client, me)
+    web, _ = _web_session(session_client, me)
+    http.cookies.clear()
+    session_client.clock.offset = WEBAPP_SESSION + timedelta(minutes=1)
+    assert http.get(ME, headers=_bearer(phone)).status_code == 401
+    assert http.get(ME, headers=_cookie(web)).status_code == 200

@@ -1359,8 +1359,9 @@ class PlatformSession(Protocol):
 
     async def revoke_session(self, token_hash: bytes, now: datetime) -> None: ...
 
-    async def revoke_user_sessions(self, user_id: UUID, now: datetime) -> int:
-        """End every session of this person that is still open, of both kinds. Returns how many it ended."""
+    async def revoke_user_sessions(self, user_id: UUID, now: datetime, *, kind: str | None = None) -> int:
+        """End every session of this person that is still open: of both kinds, or of the one named.
+        Returns how many it ended."""
         ...
 
     async def platform_setting(self, key: str) -> Any | None: ...
@@ -1397,7 +1398,9 @@ class PlatformSession(Protocol):
         """When the admin session with this hash ends, if it is this user's, not revoked and not over."""
         ...
 
-    async def revoke_admin_sessions(self, user_id: UUID, now: datetime) -> None: ...
+    async def revoke_admin_sessions(self, user_id: UUID, now: datetime) -> int:
+        """End the administrator sessions of this person that are still open. Returns how many it ended."""
+        ...
 
     async def add_admin_audit(
         self,
@@ -1604,7 +1607,7 @@ class PlatformSession(Protocol):
     async def link_customer(
         self, token_hash: bytes, user_id: UUID, consent_version: int, name: str | None
     ) -> tuple[str, UUID | None, UUID | None]:
-        """Outcome (linked, waiting, already, taken, invalid), shop, and customer when linked."""
+        """Outcome (linked, waiting, already, taken, full, invalid), shop, and customer when linked."""
         ...
 
     async def my_accounts(self, user_id: UUID) -> list[CustomerAccount]: ...

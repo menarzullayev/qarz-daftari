@@ -208,7 +208,7 @@ def create_app(
                     counted.answered(user_id, shop_id)
                 return response
 
-        add_auth_routes(app, auth, current_user)
+        add_auth_routes(app, auth, current_user, None if admin is None else admin.end_sessions_of)
         add_shop_routes(app, ShopService(storage), current_user)
         add_staff_routes(app, StaffService(storage), current_user)
         add_link_routes(app, LinkService(storage, now), current_user)

@@ -496,6 +496,112 @@ def test_signing_out_of_the_ordinary_session_leaves_the_admin_session_useless(
     assert deployed.get(SETTINGS, headers=both).status_code == 401
 
 
+def _again(deployed: TestClient, tg_id: int) -> dict[str, str]:
+    """The same person signs in once more, with launch data signed a little earlier than the first."""
+    signed = datetime.now(UTC) - timedelta(seconds=40 + uuid.uuid4().int % 600)
+    init_data = webapp_init_data(token=TEST_BOT_TOKEN, auth_date=signed, tg_id=tg_id)
+    response = deployed.post("/api/v1/auth/telegram-webapp", json={"init_data": init_data})
+    assert response.status_code == 200, response.text
+    return {"Authorization": f"Bearer {response.json()['token']}"}
+
+
+def _admin_sessions(owner: psycopg.Connection, user_id: uuid.UUID) -> list[bool]:
+    """Whether each administrator session of the person was ended, oldest first."""
+    rows = owner.execute(
+        "SELECT revoked_at IS NOT NULL FROM admin_session WHERE user_id = %s ORDER BY created_at, id", (user_id,)
+    ).fetchall()
+    return [bool(ended) for (ended,) in rows]
+
+
+def test_signing_out_everywhere_ends_the_persons_admin_session_too(
+    deployed: TestClient, owner: psycopg.Connection, admin_env: AdminEnv
+) -> None:
+    """An admin session has hours of its own. Left open, it would work again as soon as the person signed
+    in again in the same browser (security review, finding 9)."""
+    tg_id = _tg()
+    user_id, bearer = _signed_in(deployed, owner, tg_id)
+    secret = make_admin(owner, admin_env, user_id)
+    ordinary = {"Authorization": f"Bearer {bearer}"}
+    opened = deployed.post(SESSION, json={"code": fresh_code(admin_env, secret)}, headers=ordinary)
+    cookie = {"Cookie": f"{ADMIN_COOKIE}={admin_cookie(opened)}"}
+    assert deployed.get(SETTINGS, headers={**ordinary, **cookie}).status_code == 200
+
+    assert deployed.post("/api/v1/auth/sign-out-everywhere", headers=ordinary).status_code == 204
+    assert _admin_sessions(owner, user_id) == [True]
+    assert deployed.get(SETTINGS, headers={**ordinary, **cookie}).status_code == 401
+
+    # Signed in again, with the admin cookie the browser still holds: an ordinary user and no administrator.
+    back = _again(deployed, tg_id)
+    assert deployed.get("/api/v1/me", headers=back).status_code == 200
+    assert deployed.get(SETTINGS, headers={**back, **cookie}).status_code == 404
+    assert deployed.get(AUTH, headers={**back, **cookie}).json()["elevated"] is False
+    # It is in the audit log, told apart from a session the administrator closed in the panel.
+    closed = owner.execute(
+        "SELECT detail FROM admin_audit WHERE admin_id = %s AND action = 'admin.session_closed'", (user_id,)
+    ).fetchall()
+    assert closed == [({"by": "sign_out_everywhere"},)]
+    # The second factor opens a new one as before.
+    reopened = deployed.post(SESSION, json={"code": fresh_code(admin_env, secret)}, headers=back)
+    assert reopened.status_code == 201
+    assert _admin_sessions(owner, user_id) == [True, False]
+
+
+def test_an_ordinary_sign_out_leaves_the_admin_session_and_signing_out_everywhere_ends_only_ones_own(
+    deployed: TestClient, owner: psycopg.Connection, admin_env: AdminEnv
+) -> None:
+    """What ends an admin session is signing out everywhere, by its own administrator: not a plain
+    sign-out (the session is then unusable, as before, and the browser's next sign-in finds it), and not
+    another person's request."""
+    mine_tg, theirs_tg = _tg(), _tg()
+    me, my_bearer = _signed_in(deployed, owner, mine_tg)
+    them, their_bearer = _signed_in(deployed, owner, theirs_tg)
+    my_secret, their_secret = make_admin(owner, admin_env, me), make_admin(owner, admin_env, them)
+    mine, theirs = ({"Authorization": f"Bearer {token}"} for token in (my_bearer, their_bearer))
+    my_cookie = {
+        "Cookie": f"{ADMIN_COOKIE}="
+        + admin_cookie(deployed.post(SESSION, json={"code": fresh_code(admin_env, my_secret)}, headers=mine))
+    }
+    their_cookie = {
+        "Cookie": f"{ADMIN_COOKIE}="
+        + admin_cookie(deployed.post(SESSION, json={"code": fresh_code(admin_env, their_secret)}, headers=theirs))
+    }
+    audit_before = owner.execute("SELECT count(*) FROM admin_audit WHERE admin_id = %s", (them,)).fetchone()
+
+    assert deployed.post("/api/v1/auth/sign-out", headers=mine).status_code == 204
+    assert _admin_sessions(owner, me) == [False]
+    back = _again(deployed, mine_tg)
+    assert deployed.get(SETTINGS, headers={**back, **my_cookie}).status_code == 200
+
+    assert deployed.post("/api/v1/auth/sign-out-everywhere", headers=back).status_code == 204
+    assert (_admin_sessions(owner, me), _admin_sessions(owner, them)) == ([True], [False])
+    assert deployed.get(SETTINGS, headers={**theirs, **their_cookie}).status_code == 200
+    assert owner.execute("SELECT count(*) FROM admin_audit WHERE admin_id = %s", (them,)).fetchone() == audit_before
+
+
+def test_signing_out_everywhere_writes_nothing_about_someone_who_is_no_administrator(
+    deployed: TestClient, owner: psycopg.Connection, admin_env: AdminEnv
+) -> None:
+    """Anyone signed in may ask; for most there is no admin session to end and no audit row to write. A
+    repeat by an administrator finds nothing left and writes no second row."""
+    user_id, bearer = _signed_in(deployed, owner, _tg())
+    assert (
+        deployed.post("/api/v1/auth/sign-out-everywhere", headers={"Authorization": f"Bearer {bearer}"}).status_code
+        == 204
+    )
+    assert owner.execute("SELECT count(*) FROM admin_audit WHERE admin_id = %s", (user_id,)).fetchone() == (0,)
+    assert deployed.get("/api/v1/me", headers={"Authorization": f"Bearer {bearer}"}).status_code == 401
+
+    tg_id = _tg()
+    admin_id, admin_bearer = _signed_in(deployed, owner, tg_id)
+    secret = make_admin(owner, admin_env, admin_id)
+    ordinary = {"Authorization": f"Bearer {admin_bearer}"}
+    assert deployed.post(SESSION, json={"code": fresh_code(admin_env, secret)}, headers=ordinary).status_code == 201
+    assert deployed.post("/api/v1/auth/sign-out-everywhere", headers=ordinary).status_code == 204
+    assert deployed.post("/api/v1/auth/sign-out-everywhere", headers=_again(deployed, tg_id)).status_code == 204
+    closed = "SELECT count(*) FROM admin_audit WHERE admin_id = %s AND action = 'admin.session_closed'"
+    assert owner.execute(closed, (admin_id,)).fetchone() == (1,)
+
+
 def test_from_the_web_panel_an_admin_write_needs_the_csrf_token(
     deployed: TestClient, owner: psycopg.Connection, admin_env: AdminEnv
 ) -> None:

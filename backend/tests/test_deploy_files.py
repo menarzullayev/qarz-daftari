@@ -172,6 +172,93 @@ def test_only_the_proxy_publishes_ports(compose: str) -> None:
     assert "ports:" in block(compose, "  proxy:")
 
 
+# --- one API process (security review, P39-2) -----------------------------------------------------------
+#
+# The rate limits' counters live in the API process's memory (interface/rate_limit.py), so the limits are
+# what the settings say only while one process serves the API. A second process, however it is started,
+# would allow every user and every shop the full rate again.
+
+COMPOSE_FILES = ("compose.yml", "compose.single-host.yml", "compose.local.yml")
+
+
+def api_process_problems(dockerfile: str, compose_files: dict[str, str]) -> list[str]:
+    """Every way the deployment files could start the API as more than one process."""
+    problems: list[str] = []
+    texts = {"Dockerfile": dockerfile, **compose_files}
+    for name, text in texts.items():
+        code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+        if "--workers" in code:
+            problems.append(f"{name}: --workers")
+        # uvicorn reads this variable as its number of worker processes.
+        if "WEB_CONCURRENCY" in code:
+            problems.append(f"{name}: WEB_CONCURRENCY")
+    for name, text in compose_files.items():
+        if "  api:" not in text.splitlines():
+            continue
+        api = block(text, "  api:")
+        for key in ("command:", "entrypoint:", "replicas:", "scale:"):
+            if re.search(rf"^\s+{key}", api, flags=re.MULTILINE):
+                problems.append(f"{name}: api {key}")
+    return problems
+
+
+@pytest.fixture(scope="module")
+def api_files() -> tuple[str, dict[str, str]]:
+    dockerfile = (BACKEND / "Dockerfile").read_text(encoding="utf-8")
+    return dockerfile, {name: (PRODUCTION / name).read_text(encoding="utf-8") for name in COMPOSE_FILES}
+
+
+def test_the_api_is_deployed_as_one_process(api_files: tuple[str, dict[str, str]]) -> None:
+    dockerfile, compose_files = api_files
+    assert api_process_problems(dockerfile, compose_files) == []
+    # The image's own command is what runs: uvicorn, which serves with one process unless told otherwise.
+    assert 'CMD ["uvicorn", "qarz.interface.asgi:build", "--factory"' in dockerfile
+    assert any("  api:" in text.splitlines() for text in compose_files.values())
+
+
+@pytest.mark.parametrize(
+    ("where", "old", "new", "problem"),
+    [
+        (
+            "Dockerfile",
+            '"--no-server-header", \\',
+            '"--no-server-header", "--workers", "4", \\',
+            "Dockerfile: --workers",
+        ),
+        ("Dockerfile", "\nCMD [", "\nENV WEB_CONCURRENCY=4\nCMD [", "Dockerfile: WEB_CONCURRENCY"),
+        (
+            "compose.yml",
+            "  api:\n",
+            "  api:\n    environment:\n      WEB_CONCURRENCY: 2\n",
+            "compose.yml: WEB_CONCURRENCY",
+        ),
+        (
+            "compose.yml",
+            "  api:\n",
+            '  api:\n    command: ["gunicorn", "qarz.interface.asgi:build"]\n',
+            "compose.yml: api command:",
+        ),
+        (
+            "compose.single-host.yml",
+            "  api:\n",
+            "  api:\n    deploy:\n      replicas: 2\n",
+            "compose.single-host.yml: api replicas:",
+        ),
+        ("compose.local.yml", "  api:\n", "  api:\n    scale: 2\n", "compose.local.yml: api scale:"),
+    ],
+    ids=["workers flag", "workers variable in the image", "workers variable", "another command", "replicas", "scale"],
+)
+def test_a_second_api_process_is_reported(
+    api_files: tuple[str, dict[str, str]], where: str, old: str, new: str, problem: str
+) -> None:
+    dockerfile, compose_files = api_files
+    texts = {"Dockerfile": dockerfile, **compose_files}
+    assert texts[where].count(old) >= 1, "the text to change is in the file"
+    texts[where] = texts[where].replace(old, new, 1)
+    changed_dockerfile = texts.pop("Dockerfile")
+    assert api_process_problems(changed_dockerfile, texts) == [problem]
+
+
 def _runtime_requirements() -> ModuleType:
     path = BACKEND / "scripts" / "runtime_requirements.py"
     spec = importlib.util.spec_from_file_location("runtime_requirements", path)

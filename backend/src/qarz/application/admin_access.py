@@ -268,6 +268,31 @@ class AdminAccess:
             raise refusal
         return IssuedAdminSession(token, expires)
 
+    async def end_sessions_of(self, user_id: UUID) -> int:
+        """End the administrator sessions of a person who signs out everywhere (security review, finding 9).
+
+        An admin session cannot be used without an ordinary session, but it has hours of its own: left
+        open, it would work again as soon as the person signed in again in the same browser. Whoever
+        asks is anyone who is signed in, so nothing is checked and nothing is refused: a person who is
+        no administrator has no such session, and one who was taken off the allow-list may still end
+        theirs. The audit row is written only when a session was ended. Returns how many were.
+        """
+        now = self._now()
+        async with self._storage.platform() as session:
+            ended = await session.revoke_admin_sessions(user_id, now)
+            if ended:
+                await session.add_admin_audit(
+                    admin_id=user_id,
+                    action="admin.session_closed",
+                    target_type="admin",
+                    target_id=str(user_id),
+                    shop_id=None,
+                    reason=None,
+                    detail={"by": "sign_out_everywhere"},
+                    now=now,
+                )
+        return ended
+
     async def close_session(self, user_id: UUID) -> None:
         now = self._now()
         async with self._storage.platform() as session:

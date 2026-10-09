@@ -14,7 +14,7 @@ Conventions: timestamps stored in UTC and shown in Tashkent time (UTC+5). Money 
 |---|---|---|
 | Telegram chat | `POST /tg/webhook` | Secret header from Telegram; sender is `from.id` of the update |
 | Staff Mini App, customer Mini App page | `/app/` static files; API under `/api/v1` | Telegram launch data sent once to `POST /api/v1/auth/telegram-webapp`, validated by signature and age (at most 1 hour); returns a bearer session valid 12 hours |
-| Web panel | `/panel/` static files; API under `/api/v1` | Telegram Login data to `POST /api/v1/auth/telegram-login`, validated by signature; sets an HTTP-only, same-site session cookie valid 14 days; write calls require a CSRF token |
+| Web panel | `/panel/` static files; API under `/api/v1` | Telegram Login data to `POST /api/v1/auth/telegram-login`, validated by signature and age (at most 5 minutes); sets an HTTP-only, same-site session cookie valid 14 days; a person has one web session, so a new sign-in ends the earlier one; write calls require a CSRF token |
 | Admin panel | `/admin/` static files; API under `/api/admin/v1` | Telegram Login, allow-list check, then a time-based code; session valid 8 hours; changes to price, card number, and switches ask for the code again |
 | Payment providers | `POST /pay/click`, `POST /pay/payme` | Provider signature; endpoints answer "disabled" while the switch is off (ADR-019) |
 | Health | `GET /healthz` | None; reveals only up or down |

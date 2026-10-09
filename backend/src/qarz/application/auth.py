@@ -27,6 +27,10 @@ UPDATE_ME = self_operation("me.update")
 
 LANGUAGES = ("uz", "ru")
 SIGNED_DATA_MAX_AGE = timedelta(hours=1)
+# The web login's signed data is accepted for a few minutes only (security review, finding 9): the widget
+# signs at the moment of the press and the browser posts it at once, so anything older was kept by
+# somebody. A Mini App's launch data keeps the hour: the app is opened once and may stay open.
+WEB_LOGIN_MAX_AGE = timedelta(minutes=5)
 # A record of a used payload must outlive the last instant at which the payload itself would still be
 # accepted; the margin covers a difference between this server's clock and the database's.
 REPLAY_MARGIN = timedelta(minutes=5)
@@ -54,12 +58,24 @@ class IssuedSession:
 
 
 class AuthService:
-    def __init__(self, storage: Storage, bot_token: str, now: Callable[[], datetime] | None = None) -> None:
+    def __init__(
+        self,
+        storage: Storage,
+        bot_token: str,
+        now: Callable[[], datetime] | None = None,
+        *,
+        web_login_max_age: timedelta = WEB_LOGIN_MAX_AGE,
+    ) -> None:
         if not bot_token:
             raise ValueError("a bot token is required to verify Telegram signatures")
+        # Never longer than a Mini App's launch data is accepted: a setting may shorten the age, or
+        # lengthen it up to what it was before, and nothing beyond.
+        if not timedelta(0) < web_login_max_age <= SIGNED_DATA_MAX_AGE:
+            raise ValueError("the age accepted for web login data must be positive and at most one hour")
         self._storage = storage
         self._bot_token = bot_token
         self._now = now or (lambda: datetime.now(UTC))
+        self._web_login_max_age = web_login_max_age
 
     async def sign_in_webapp(self, init_data: str) -> IssuedSession:
         now = self._now()
@@ -70,7 +86,7 @@ class AuthService:
         token = secrets.token_urlsafe(32)
         expires = now + WEBAPP_SESSION
         async with self._storage.platform() as session:
-            await self._use_once(session, "webapp", identity)
+            await self._use_once(session, "webapp", identity, SIGNED_DATA_MAX_AGE)
             user_id = await session.ensure_user(identity.tg_id, _language(identity.language_code))
             await session.create_session(
                 token_hash=_hash(token), user_id=user_id, kind="webapp", csrf_hash=None, now=now, expires_at=expires
@@ -80,28 +96,33 @@ class AuthService:
     async def sign_in_web(self, data: dict[str, Any]) -> IssuedSession:
         now = self._now()
         try:
-            identity = verify_login_data(data, self._bot_token, now, SIGNED_DATA_MAX_AGE)
+            identity = verify_login_data(data, self._bot_token, now, self._web_login_max_age)
         except InvalidTelegramData as error:
             raise Unauthenticated() from error
         token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         expires = now + WEB_SESSION
         async with self._storage.platform() as session:
-            await self._use_once(session, "web", identity)
+            await self._use_once(session, "web", identity, self._web_login_max_age)
+            # `ensure_user` writes the person's row, which holds it until this transaction ends: two web
+            # sign-ins of one person at once go one after the other, and the later one ends the earlier.
             user_id = await session.ensure_user(identity.tg_id, "uz")
+            # One web session a person (security review, finding 9): signing in on the web ends the web
+            # sessions the person had, in this browser or another. Mini App sessions are left alone.
+            await session.revoke_user_sessions(user_id, now, kind="web")
             await session.create_session(
                 token_hash=_hash(token), user_id=user_id, kind="web", csrf_hash=_hash(csrf), now=now, expires_at=expires
             )
         return IssuedSession(token, expires, csrf)
 
     @staticmethod
-    async def _use_once(session: PlatformSession, kind: str, identity: TelegramIdentity) -> None:
+    async def _use_once(session: PlatformSession, kind: str, identity: TelegramIdentity, max_age: timedelta) -> None:
         """Refuse signed data that was accepted before (security review, finding 9).
 
         In the transaction that creates the session: a payload is either recorded with its session or not
         at all. A second use is answered exactly as a wrong signature is; the session the first use made
         is not touched.
         """
-        expires = identity.auth_date + SIGNED_DATA_MAX_AGE + REPLAY_MARGIN
+        expires = identity.auth_date + max_age + REPLAY_MARGIN
         if not await session.use_signed_data(_replay_key(kind, identity), expires):
             raise Unauthenticated()
 

@@ -295,6 +295,21 @@ of exposure, and treat it as runbook 11.
    the user or the shop is over its rate.
 6. Tell shops when it is a general outage (the notice text is the founder's; none is written yet).
 
+**"The panel asked me to sign in again."** Three things end a web session before its 14 days, and each is
+meant:
+
+- The person signed in to the panel somewhere else. A person has one web session: a sign-in in another
+  browser, or in this one after the page was loaded again, ends the earlier one. The Mini App is not
+  affected, and the panel is not affected by the Mini App.
+- The person, on any device, pressed "sign out everywhere". That ends every session of theirs and, for
+  an administrator, the admin session too: the second factor is asked again after the next sign-in.
+- **Nobody can sign in to the panel at all, and the Mini App still works:** the server's clock. The
+  web login's signed data is accepted for five minutes after Telegram signed it
+  (`QD_WEB_LOGIN_MAX_AGE_SECONDS`, 300), and not at all when it is dated more than a minute ahead; the
+  Mini App's is given an hour. A clock some minutes off therefore stops the panel first. The log shows
+  `bad_sign_in` for each refusal. Set the clock right (runbook 14, step 7). Only if the clock is right
+  and the widget's data is still refused as too old, raise the setting, up to 3600, and restart the API.
+
 **On the single host (changed by the founder on 2026-10-08, DEC-070)** there is one more layer in front, and one machine behind it:
 
 - `/healthz` from outside gives **no answer at all, or Cloudflare's own error page** (error 1033 or
@@ -559,7 +574,11 @@ The wordings themselves are agent drafts awaiting the founder's review (DEC-035)
 1. The owner starts the bot, opens a shop and gets the trial (if `trial_on`).
 2. Staff: the owner invites sellers and managers from the panel; each accepts in the bot.
 3. The counter code: printed and placed where customers can scan it; each customer agrees to the consent
-   text before anything is shown to them. **The consent text has had no legal review.**
+   text before anything is shown to them. **The consent text has had no legal review.** A shop's
+   waiting list holds a hundred people who came in the last 24 hours; while it is full the bot tells the
+   next person so and keeps nothing about them. Staff make room by attaching or dismissing those who
+   wait. A list filled by strangers means the code got out: replace the counter code (the old one stops
+   working at once), dismiss the entries, and print the new one.
 4. The paper ledger: download the import template from the panel, fill it (name, phone, amount, promised
    date, note; at most 2 000 rows a file), upload it, read the preview, and apply. Rows that match more
    than one existing customer block the import until the file is corrected. An applied import can be

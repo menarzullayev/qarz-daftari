@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     eskiz_email: str = Field(default="", repr=False)
     eskiz_password: str = Field(default="", repr=False)
     eskiz_sender: str = ""
+    # The oldest signed data the web login accepts, in seconds (security review, finding 9): from 1 to
+    # 3600, which is what a Mini App's launch data is given. The widget signs at the moment of the press,
+    # so a few minutes cover a slow connection and a clock that is a little off.
+    web_login_max_age_seconds: int = Field(default=300, ge=1, le=3600)
     # API rate limits for signed-in callers: a steady rate per minute and the burst allowed above it.
     rate_user_per_minute: int = 120
     rate_user_burst: int = 60
