@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 
+import { withMessages } from "../../i18n/catalog";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { MessageKey } from "../../i18n/types";
 import { groupedCard, type Subscription } from "../api";
@@ -32,7 +33,7 @@ const MODE_TEXT: Readonly<Record<ShopMode, MessageKey>> = {
 };
 
 // Sending a receipt is done now and then, by the owner alone: its code and text are loaded on demand.
-const ReceiptSection = lazy(() => import("../receipts/ReceiptSection"));
+const ReceiptSection = lazy(() => withMessages(import("../receipts/ReceiptSection")));
 
 type Copied = "idle" | "done" | "failed";
 const COPY_LABELS: Readonly<Record<Copied, MessageKey>> = {

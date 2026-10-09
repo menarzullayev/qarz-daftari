@@ -200,19 +200,31 @@ function messageNodes(doc: Document, language: Language, kind: "gone" | "limited
   return [box];
 }
 
+/**
+ * The language picker: a native list with a label, so that six languages take the room of one and the
+ * phone shows its own chooser. Each language is named in itself and marked with its own `lang`.
+ */
 function languageNodes(doc: Document, language: Language, onChoose: (language: Language) => void): HTMLElement {
-  const nav = el(doc, "nav", "languages");
-  nav.setAttribute("aria-label", say(language, "lang.choose"));
+  const box = el(doc, "div", "languages");
+  const label = el(doc, "label", "languages__label", say(language, "lang.choose"));
+  const picker = el(doc, "select", "languages__picker");
+  picker.id = "language";
+  label.htmlFor = picker.id;
   for (const code of LANGUAGES) {
-    const button = el(doc, "button", code === language ? "languages__item languages__item--current" : "languages__item");
-    button.type = "button";
-    button.lang = code;
-    button.textContent = say(language, `lang.${code}`);
-    button.setAttribute("aria-pressed", code === language ? "true" : "false");
-    button.addEventListener("click", () => onChoose(code));
-    nav.append(button);
+    const option = el(doc, "option", null, say(language, `lang.${code}`));
+    option.value = code;
+    option.lang = code;
+    option.selected = code === language;
+    picker.append(option);
   }
-  return nav;
+  picker.addEventListener("change", () => {
+    const code = normalizeLanguage(picker.value);
+    if (code !== null) {
+      onChoose(code);
+    }
+  });
+  box.append(label, picker);
+  return box;
 }
 
 /**
@@ -237,6 +249,7 @@ export async function startPage(options: PageOptions): Promise<void> {
   const draw = (): void => {
     const current = language();
     doc.documentElement.lang = current;
+    doc.documentElement.dir = "ltr"; // every language of the page is written left to right
     doc.title = say(current, "page.title");
     const nodes: HTMLElement[] = [
       languageNodes(doc, current, (code) => {
@@ -247,6 +260,8 @@ export async function startPage(options: PageOptions): Promise<void> {
           // Storage refused (private mode): the choice still holds for this page.
         }
         draw();
+        // The page was drawn again, picker included: whoever chose with a keyboard stays on it.
+        root.querySelector<HTMLSelectElement>(".languages__picker")?.focus();
       }),
     ];
     if (outcome === "loading") {

@@ -1,0 +1,63 @@
+import type { MessageKey } from "./messages";
+
+/**
+ * Uzbek Cyrillic text of the page behind a customer's read-only link.
+ *
+ * Written by `npm run i18n:k` from `uz.ts` and the rules of `../i18n/uzCyrillic.ts`: do not edit it by
+ * hand. A word that comes out wrong is corrected in the rules' tables and this file written again. A key
+ * that is absent here reads Uzbek in Latin script.
+ */
+export const uzCyrl: Partial<Record<MessageKey, string>> = {
+  "page.title": "Менинг қарзим",
+  "lang.uz": "O'zbekcha",
+  "lang.ru": "Русский",
+  "lang.uz-Cyrl": "Ўзбекча",
+  "lang.tg": "Тоҷикӣ",
+  "lang.kaa": "Qaraqalpaqsha",
+  "lang.en": "English",
+  "lang.choose": "Тил",
+  "state.loading": "Юкланмоқда…",
+  "gone.title": "Ҳавола ишламаяпти",
+  "gone.body": "Ҳаволанинг муддати тугаган, у бекор қилинган ёки нотўғри кўчирилган. Дўкондан янги ҳавола сўранг.",
+  "limited.title": "Жуда кўп уриниш",
+  "limited.body": "Бир дақиқадан сўнг саҳифани қайта очинг.",
+  "offline.title": "Уланиб бўлмади",
+  "offline.body": "Интернетни текшириб, қайта уриниб кўринг.",
+  "action.retry": "Қайта уриниш",
+  "greeting": "{name}, бу сизнинг ҳисобингиз",
+  "greeting.noName": "Бу сизнинг ҳисобингиз",
+  "shop.phone": "Дўкон телефони: ",
+  "balance.owed": "Қарзингиз",
+  "balance.none": "Қарзингиз йўқ",
+  "balance.credit": "Ортиқча тўловингиз",
+  "overdue": "Шундан муддати ўтгани: {amount}",
+  "dueToday": "Бугун тўланиши керак: {amount}",
+  "entries.title": "Ёзувлар",
+  "entries.empty": "Ҳозирча ёзув йўқ.",
+  "entries.shown": "Охирги {shown} та ёзув кўрсатилган, жами {total} та.",
+  "kind.credit": "Насия",
+  "kind.opening": "Бошланғич қарз",
+  "kind.payment": "Тўлов",
+  "kind.reversal": "Бекор қилиш ёзуви",
+  "kind.other": "Ёзув",
+  "entry.promised": "Тўлаш муддати: {date}",
+  "entry.reversed": "Бекор қилинган",
+  "line": "{name} — {qty} {unit} × {price} = {total}",
+  "money": "{amount} сўм",
+  "date": "{year}-йил {day}-{month}",
+  "foot.readOnly": "Бу саҳифа фақат ўқиш учун. Хато кўрсангиз, дўконга мурожаат қилинг.",
+  "foot.expires": "Ҳавола {date} гача амал қилади.",
+  "foot.secret": "Бу ҳавола фақат сиз учун: уни бошқаларга юборманг.",
+  "month.1": "январь",
+  "month.2": "февраль",
+  "month.3": "март",
+  "month.4": "апрель",
+  "month.5": "май",
+  "month.6": "июнь",
+  "month.7": "июль",
+  "month.8": "август",
+  "month.9": "сентябрь",
+  "month.10": "октябрь",
+  "month.11": "ноябрь",
+  "month.12": "декабрь",
+};

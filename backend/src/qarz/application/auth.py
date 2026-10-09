@@ -11,6 +11,7 @@ from uuid import UUID
 from qarz.application.errors import Unauthenticated, ValidationFailed
 from qarz.application.operations import public_operation, self_operation
 from qarz.application.ports import PlatformSession, SessionInfo, Storage
+from qarz.domain import languages
 from qarz.domain.telegram_auth import (
     InvalidTelegramData,
     TelegramIdentity,
@@ -25,7 +26,6 @@ SIGN_OUT_EVERYWHERE = self_operation("auth.sign_out_everywhere")
 READ_ME = self_operation("me.read")
 UPDATE_ME = self_operation("me.update")
 
-LANGUAGES = ("uz", "ru")
 SIGNED_DATA_MAX_AGE = timedelta(hours=1)
 # The web login's signed data is accepted for a few minutes only (security review, finding 9): the widget
 # signs at the moment of the press and the browser posts it at once, so anything older was kept by
@@ -44,10 +44,6 @@ def _hash(token: str) -> bytes:
 
 def _replay_key(kind: str, identity: TelegramIdentity) -> bytes:
     return hashlib.sha256(f"{kind}:{identity.signature}".encode("ascii")).digest()
-
-
-def _language(code: str | None) -> str:
-    return "ru" if (code or "").lower().startswith("ru") else "uz"
 
 
 @dataclass(frozen=True)
@@ -87,7 +83,7 @@ class AuthService:
         expires = now + WEBAPP_SESSION
         async with self._storage.platform() as session:
             await self._use_once(session, "webapp", identity, SIGNED_DATA_MAX_AGE)
-            user_id = await session.ensure_user(identity.tg_id, _language(identity.language_code))
+            user_id = await session.ensure_user(identity.tg_id, languages.from_telegram(identity.language_code))
             await session.create_session(
                 token_hash=_hash(token), user_id=user_id, kind="webapp", csrf_hash=None, now=now, expires_at=expires
             )
@@ -160,8 +156,8 @@ class AuthService:
         return {"id": str(user_id), "lang": lang}
 
     async def update_me(self, user_id: UUID, lang: str) -> dict[str, Any]:
-        if lang not in LANGUAGES:
-            raise ValidationFailed({"lang": "must be uz or ru"})
+        if not languages.is_language(lang):
+            raise ValidationFailed({"lang": languages.ALLOWED})
         async with self._storage.platform() as session:
             await session.set_user_language(user_id, lang)
         return {"id": str(user_id), "lang": lang}

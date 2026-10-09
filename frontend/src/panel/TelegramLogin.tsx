@@ -7,6 +7,19 @@ import "./messages";
 /** Telegram's Login Widget. It is the panel's only third-party script and is added on this screen only. */
 export const WIDGET_SRC = "https://telegram.org/js/telegram-widget.js?22";
 
+/**
+ * The language Telegram's button is written in. The widget is Telegram's and speaks Telegram's
+ * languages: Uzbek for the readers it has nothing closer for.
+ */
+export const WIDGET_LANGUAGE: Readonly<Record<Language, string>> = {
+  uz: "uz",
+  "uz-Cyrl": "uz",
+  ru: "ru",
+  tg: "uz",
+  kaa: "uz",
+  en: "en",
+};
+
 export type LoginWidgetProps = {
   botUsername: string;
   language: Language;
@@ -47,7 +60,7 @@ export function TelegramLogin({ botUsername, language }: LoginWidgetProps) {
     script.src = WIDGET_SRC;
     script.setAttribute("data-telegram-login", botUsername);
     script.setAttribute("data-size", "large");
-    script.setAttribute("data-lang", language);
+    script.setAttribute("data-lang", WIDGET_LANGUAGE[language]);
     script.setAttribute("data-auth-url", authUrl());
     script.addEventListener("error", () => setFailed(true));
     container.append(script);

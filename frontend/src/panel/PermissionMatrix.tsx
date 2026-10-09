@@ -53,7 +53,8 @@ function Matrix({
   );
   const pending = save.state.status === "pending";
   const byKey = new Map(held.permissions.map((permission) => [permission.key, permission]));
-  const name = (label: Label) => (language === "ru" ? label.ru : label.uz);
+  // The server names a permission in the languages it has; a reader of another one is shown Uzbek.
+  const name = (label: Label) => label[language] ?? label.uz;
   const changes = changesFor(held, ticked);
   const stored = changesFor(held, tickedOf(held));
   const dirty = JSON.stringify(changes) !== JSON.stringify(stored);

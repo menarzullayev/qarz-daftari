@@ -15,7 +15,7 @@ export type UzPlural = { other: string };
 /** Russian needs three forms: 1 клиент, 2 клиента, 5 клиентов. */
 export type RuPlural = { one: string; few: string; many: string };
 
-export type Message = string | UzPlural | RuPlural;
+export type Message = string | UzPlural | RuPlural | EnPlural;
 
 /** Keys of the main catalog, which every entry point loads. */
 export type CoreMessageKey = keyof typeof uz;
@@ -110,7 +110,35 @@ export type RuAdminCatalog = {
   [K in AdminMessageKey]: (typeof uzAdmin)[K] extends string ? string : RuPlural;
 };
 
-export const LANGUAGES = ["uz", "ru"] as const;
+/**
+ * The languages of the interface, as BCP 47 tags, in the order the picker shows them. `uz` (Uzbek in
+ * Latin script) is the source: it defines the keys, and every other language falls back to it. `uz-Cyrl`
+ * has no catalog of its own: it is `uz` transliterated (see `uzCyrillic.ts`).
+ */
+export const LANGUAGES = ["uz", "uz-Cyrl", "ru", "tg", "kaa", "en"] as const;
 export type Language = (typeof LANGUAGES)[number];
+
+/** The direction each language is written in, for `<html dir>`. All six are written left to right. */
+export const DIRECTIONS: Readonly<Record<Language, "ltr" | "rtl">> = {
+  uz: "ltr",
+  "uz-Cyrl": "ltr",
+  ru: "ltr",
+  tg: "ltr",
+  kaa: "ltr",
+  en: "ltr",
+};
+
+/** English has two forms: 1 customer, 5 customers. */
+export type EnPlural = { one: string; other: string };
+
+/**
+ * Shape of a catalog that may trail behind Uzbek: Tajik, Karakalpak and English. No key that Uzbek does
+ * not have, and a plural entry wherever Uzbek has one; a key that is absent reads Uzbek at run time
+ * (`translate`). `Plural` is the language's own set of forms: one form for Tajik and Karakalpak, whose
+ * nouns do not change after a number, and two for English.
+ */
+export type PartialCatalog<Source, Plural = UzPlural> = {
+  readonly [K in keyof Source]?: Source[K] extends string ? string : Plural;
+};
 
 export type MessageParams = Readonly<Record<string, string | number>>;

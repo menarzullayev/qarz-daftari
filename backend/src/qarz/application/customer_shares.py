@@ -35,7 +35,7 @@ from qarz.application.operations import link_operation, operation
 from qarz.application.ports import ShareRecord, Storage
 from qarz.application.shops import require_member
 from qarz.domain import customer_share as rules
-from qarz.domain import ledger
+from qarz.domain import languages, ledger
 from qarz.domain.access import Capability
 from qarz.domain.goods import format_qty
 from qarz.domain.promise import tashkent_date
@@ -46,8 +46,6 @@ REVOKE_SHARE = operation("customers.share.revoke", Capability.MANAGE)
 READ_SHARE_CONTACT = operation("shop.share_contact.read", Capability.MANAGE)
 SET_SHARE_CONTACT = operation("shop.share_contact.update", Capability.ADMINISTER_SHOP)
 VIEW_SHARED_ACCOUNT = link_operation("customer_share.view")
-
-LANGUAGES = ("uz", "ru")
 
 
 def _redact(body: dict[str, Any]) -> dict[str, Any]:
@@ -252,7 +250,7 @@ class CustomerShareService:
                 "shop_name": settings.name,
                 "shop_phone": await session.share_phone(),
                 "first_name": rules.first_name(customer.display_name),
-                "lang": language if language in LANGUAGES else LANGUAGES[0],
+                "lang": language if languages.is_language(language) else languages.DEFAULT,
                 "balance": ledger.balance(entries),
                 "overdue": {"amount": status.overdue_amount, "due_today": status.due_today_amount},
                 # Whole cents, beside the so'm figures and never added to them.

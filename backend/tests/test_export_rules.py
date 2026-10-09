@@ -105,7 +105,8 @@ def test_sheet_names_fit_a_workbook_and_differ_from_each_other() -> None:
 
 def test_words_fall_back_as_the_export_needs() -> None:
     assert word("uz", "kind_credit") == "Nasiya" and word("ru", "kind_credit") == "Продажа в долг"
-    assert word("en", "yes") == "Ha", "an unknown language reads Uzbek"
+    assert word("kk", "yes") == "Ha", "an unknown language reads Uzbek"
+    assert word("en", "yes") == "Yes" and word("uz-Cyrl", "yes") == "Ҳа"
     assert word("uz", "actor_something_new", "something_new") == "something_new"
     with pytest.raises(KeyError):
         word("uz", "no_such_key")

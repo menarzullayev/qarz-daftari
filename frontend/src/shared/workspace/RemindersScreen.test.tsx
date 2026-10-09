@@ -103,23 +103,20 @@ describe("reminder settings (REQ-042)", () => {
     expect(server.writes()[0]?.body).toEqual({ on: true });
   });
 
-  it("shows each wording in both languages exactly as the server sent it, with an example filled in", async () => {
+  it("shows each wording in the reader's language exactly as the server sent it, with an example filled in", async () => {
     await open(shop());
     expect(wordings()).toEqual(
       [1, 2, 3].flatMap((id) => [
         `${id}: «Ziyo market»: Ali Valiyev, bugun 45\u00a0000 so'm to'lash kuni.`,
-        `${id}: «Ziyo market»: Али Валиев, сегодня срок оплаты 45\u00a0000 сум.`,
         `${id}: «Ziyo market»: Ali Valiyev, 45\u00a0000 so'm qarzning to'lash muddati o'tgan.`,
-        `${id}: «Ziyo market»: Али Валиев, срок оплаты долга 45\u00a0000 сум прошёл.`,
       ]),
     );
     expect(wordings().some((text) => /[{}]/.test(text))).toBe(false);
-    expect(Array.from(document.querySelectorAll(".wording"), (node) => node.getAttribute("lang")).slice(0, 4)).toEqual([
-      "uz",
-      "ru",
-      "uz",
-      "ru",
-    ]);
+    // One wording for each moment, in the reader's language: the server's other languages are not listed.
+    expect(Array.from(document.querySelectorAll(".wording"), (node) => node.getAttribute("lang"))).toEqual(
+      Array.from({ length: 6 }, () => "uz"),
+    );
+    expect(wordings().some((text) => /\p{Script=Cyrillic}/u.test(text))).toBe(false);
     expect(screen.getAllByText("To'lash kunida")).toHaveLength(3);
     expect(screen.getAllByText("Muddati o'tganda")).toHaveLength(3);
   });
@@ -131,13 +128,16 @@ describe("reminder settings (REQ-042)", () => {
     expect(wordings()[0]).toBe("1: «Baraka savdo»: Ali Valiyev, bugun 45\u00a0000 so'm to'lash kuni.");
   });
 
-  it("is in Russian when that is the language, with the same two wordings", async () => {
+  it("is in Russian when that is the language, with the Russian wordings", async () => {
     await open(shop(), "owner", "ru");
     expect(screen.getByRole("heading", { level: 2, name: "Настройки напоминаний" })).toBeTruthy();
     expect(wordings().slice(0, 2)).toEqual([
       "1: «Ziyo market»: Али Валиев, сегодня срок оплаты 45\u00a0000 сум.",
-      "1: «Ziyo market»: Ali Valiyev, bugun 45\u00a0000 so'm to'lash kuni.",
+      "1: «Ziyo market»: Али Валиев, срок оплаты долга 45\u00a0000 сум прошёл.",
     ]);
+    expect(Array.from(document.querySelectorAll(".wording"), (node) => node.getAttribute("lang"))).toEqual(
+      Array.from({ length: 6 }, () => "ru"),
+    );
     expect(screen.getByLabelText("Отправлять также по SMS")).toBeTruthy();
   });
 

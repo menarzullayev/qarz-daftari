@@ -1,7 +1,15 @@
-"""Words of the export workbook in Uzbek and Russian (ADR-021: interface text lives in catalogs).
+"""Words of the export workbook (ADR-021: interface text lives in catalogs).
 
-Uzbek defines the keys; `tests/test_export_texts.py` requires Russian to mirror them, list for list.
+Uzbek defines the keys; `tests/test_export_texts.py` requires Russian to mirror them, list for list. The
+other languages may trail behind and read Uzbek where they do (`qarz.application.chat_texts` says how).
 """
+
+from collections.abc import Mapping
+from functools import cache
+
+from qarz.application import texts_en, texts_kaa, texts_tg
+from qarz.domain import languages
+from qarz.domain.uz_cyrillic import to_cyrillic
 
 UZ: dict[str, str | tuple[str, ...]] = {
     "sheet_summary": "Hisobot",
@@ -180,19 +188,44 @@ RU: dict[str, str | tuple[str, ...]] = {
     "no": "Нет",
 }
 
-CATALOGS = {"uz": UZ, "ru": RU}
+# Uzbek Cyrillic entries written by hand; the rest is the Uzbek entry transliterated (see `_entry`).
+UZ_CYRILLIC: dict[str, str | tuple[str, ...]] = {}
+
+# What each language has of its own. Uzbek and Russian are complete; the others may lack keys.
+CATALOGS: Mapping[str, Mapping[str, str | tuple[str, ...]]] = {
+    "uz": UZ,
+    languages.UZ_CYRILLIC: UZ_CYRILLIC,
+    "ru": RU,
+    "tg": texts_tg.EXPORT,
+    "kaa": texts_kaa.EXPORT,
+    "en": texts_en.EXPORT,
+}
+
+
+@cache
+def _entry(lang: str, key: str) -> str | tuple[str, ...] | None:
+    """A language's own entry; without one the Uzbek entry, transliterated for Uzbek Cyrillic."""
+    own = CATALOGS.get(lang, UZ).get(key)
+    if own is not None:
+        return own
+    source = UZ.get(key)
+    if source is None or lang != languages.UZ_CYRILLIC:
+        return source
+    return to_cyrillic(source) if isinstance(source, str) else tuple(to_cyrillic(title) for title in source)
 
 
 def word(lang: str, key: str, fallback: str | None = None) -> str:
-    """One word or phrase. An unknown language reads Uzbek; an unknown key reads `fallback` when given."""
-    value = CATALOGS.get(lang, UZ).get(key, fallback)
+    """One word or phrase. A language without it reads Uzbek; an unknown key reads `fallback` when given."""
+    value = _entry(lang, key)
+    if value is None:
+        value = fallback
     if not isinstance(value, str):
         raise KeyError(key)
     return value
 
 
 def header(lang: str, key: str) -> tuple[str, ...]:
-    value = CATALOGS.get(lang, UZ)[key]
-    if isinstance(value, str):
+    value = _entry(lang, key)
+    if value is None or isinstance(value, str):
         raise KeyError(key)
     return value

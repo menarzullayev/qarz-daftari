@@ -72,7 +72,7 @@ RULES: dict[Currency, CurrencyRules] = {
         max_entry=100_000_000,
         min_limit=1_000,
         max_limit=10_000_000_000,
-        units={"uz": "so'm", "ru": "сум"},
+        units={"uz": "so'm", "uz-Cyrl": "сўм", "ru": "сум", "tg": "сӯм", "kaa": "swm", "en": "soum"},
     ),
     Currency.USD: CurrencyRules(
         code=Currency.USD,
@@ -81,7 +81,7 @@ RULES: dict[Currency, CurrencyRules] = {
         max_entry=1_000_000,  # 10 000.00 $
         min_limit=100,  # 1.00 $
         max_limit=100_000_000,  # 1 000 000.00 $
-        units={"uz": "$", "ru": "$"},
+        units={"uz": "$"},
     ),
 }
 

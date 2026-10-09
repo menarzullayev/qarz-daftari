@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
 import { useI18n } from "../i18n/I18nProvider";
-import { LANGUAGES, type MessageKey } from "../i18n/types";
+import { LANGUAGES, type Language, type MessageKey } from "../i18n/types";
 import { NavIcon } from "./icons";
 import { Link } from "./router";
 import { ThemeToggle } from "./ThemeToggle";
@@ -41,22 +41,39 @@ type ShellProps = {
   children?: ReactNode;
 };
 
-function LanguageSwitcher() {
+/** One shell to a page, so one picker: a fixed name keeps the markup the same from one render to the next. */
+const PICKER_ID = "qd-language";
+
+const isLanguage = (code: string): code is Language => LANGUAGES.some((language) => language === code);
+
+/**
+ * The language picker: a native list, so that six languages take the room of one, the phone shows its
+ * own chooser, and a keyboard or a screen reader needs nothing explained. Each language is named in
+ * itself and marked with its own `lang`, so that it is read aloud as that language.
+ */
+function LanguagePicker() {
   const { language, setLanguage, t } = useI18n();
   return (
-    <div className="language" role="group" aria-label={t("shell.language")}>
-      {LANGUAGES.map((code) => (
-        <button
-          key={code}
-          type="button"
-          className="language__option"
-          lang={code}
-          aria-pressed={language === code}
-          onClick={() => setLanguage(code)}
-        >
-          {t(`lang.${code}`)}
-        </button>
-      ))}
+    <div className="language">
+      <label className="visually-hidden" htmlFor={PICKER_ID}>
+        {t("shell.language")}
+      </label>
+      <select
+        id={PICKER_ID}
+        className="input language__picker"
+        value={language}
+        onChange={(event) => {
+          if (isLanguage(event.target.value)) {
+            setLanguage(event.target.value);
+          }
+        }}
+      >
+        {LANGUAGES.map((code) => (
+          <option key={code} value={code} lang={code}>
+            {t(`lang.${code}`)}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -119,7 +136,7 @@ export function Shell({
         </div>
         <div className="shell__tools">
           <ThemeToggle />
-          <LanguageSwitcher />
+          <LanguagePicker />
         </div>
       </header>
 

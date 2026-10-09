@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
 
+import { withMessages } from "../../i18n/catalog";
 import { useI18n, type Translate } from "../../i18n/I18nProvider";
 import { LANGUAGES } from "../../i18n/types";
 import type { ApiError, ShopSettings, ShopSettingsPatch } from "../api";
@@ -38,7 +39,7 @@ export function parsePromiseDays(input: string): number | null {
 
 // The phone a shop shows on the page behind a customer's read-only link: behind a platform switch, so
 // its code is fetched apart and shows nothing until the server has said the switch is on.
-const ShareContactSection = onDemand(() => import("../share/ShareContactSection"));
+const ShareContactSection = onDemand(() => withMessages(import("../share/ShareContactSection")));
 
 type FieldErrors = { name: string | null; days: string | null };
 const NO_ERRORS: FieldErrors = { name: null, days: null };

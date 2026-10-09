@@ -38,7 +38,14 @@ possible. The founder's decisions stand.
 | H | Cash book | F, G | `cash_book_on` | 0042 | | |
 | I | Stock | F, G | `stock_on` | 0043 | | |
 | J | Suppliers and the network between shops | I | `network_on` | 0044 | | |
-| E | Four more languages | all texts final | - | - | | |
+| E | Four more languages | all texts final (built before H, I, J: see below) | - | 0044 (the number is assigned at merge) | | |
+
+Module E was built while H, I and J were still being written, so it does not wait for their texts: a key
+that Tajik, Karakalpak or English lacks reads Uzbek at run time, Uzbek Cyrillic is generated from Uzbek,
+and the tests of the four new languages check what is there and not what is missing. A final pass after
+H, I and J are merged translates the rest and makes completeness strict
+(`docs/08-technical-spec/OUTPUT.md`, "Languages"; `docs/10-operations/translation-review.md`). Tajik and
+Karakalpak were written by a model and need a native speaker's review before they are announced.
 
 ## Rules every module follows
 

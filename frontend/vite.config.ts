@@ -89,5 +89,7 @@ export default defineConfig({
   },
   test: {
     include: ["src/**/*.test.ts", "src/**/*.test.tsx", "scripts/**/*.test.ts"],
+    // Russian text is at hand in every test file; see the file for why.
+    setupFiles: ["scripts/testLanguages.ts"],
   },
 });

@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { I18nProvider } from "../../i18n/I18nProvider";
 import { catalogs } from "../../i18n/catalog";
-import { LANGUAGES, type Language } from "../../i18n/types";
 import { accountBody, accountEntryBody, fakeServer, LINK_ID, ok } from "../../testing/fakeServer";
 import { createApi } from "../api";
 import { AccountScreen } from "./AccountScreen";
@@ -21,6 +20,10 @@ afterEach(cleanup);
  * seller's note on an entry and who wrote the entry (REQ-045).
  */
 const HISTORY = { on_time_percent: 67, on_time_amount: 200000, due_amount: 300000, longest_delay_days: 9 };
+
+// The two languages every text exists in; the others may trail behind and read Uzbek (i18n/check.ts).
+const LANGUAGES = ["uz", "ru"] as const;
+type Language = (typeof LANGUAGES)[number];
 
 const TITLE: Record<Language, string> = { uz: "To'lov tarixingiz", ru: "Ваша история оплат" };
 

@@ -630,6 +630,13 @@ it, `{amount}` an amount such as `70 000 so'm` or `1 250 000 сум`: digits in 
 ordinary spaces, then the currency word of the language. How Eskiz wants a variable part written in a
 template is not in its document: ask Eskiz when registering.
 
+**Uzbek and Russian only.** The product speaks six languages, and an SMS speaks two: a wording may be sent
+only after Eskiz has approved it, and only these four are registered. A customer whose language (or whose
+shop's language) is Uzbek Cyrillic, Tajik, Karakalpak or English is sent the Uzbek text, whole, with the
+Uzbek currency word. No other language has an SMS text in the code, and the same test fails if one is
+added. To send SMS in another language: write its two texts, register them here and with Eskiz, and add
+the language to `qarz.domain.languages.SMS_LANGUAGES`.
+
 | Text | Language | Template |
 |---|---|---|
 | `sms_due_today` | uz | `{shop}: {name}, bugun {amount} to'lash kuni. Rahmat.` |

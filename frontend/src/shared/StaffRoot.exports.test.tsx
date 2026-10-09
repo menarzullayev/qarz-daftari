@@ -99,13 +99,13 @@ describe("exports and support access stay out of the Mini App's first load (NFR-
       .flatMap((file) => staticImports(file.text).filter((specifier) => /(^|\/)exports\//.test(specifier)).map((specifier) => `${file.name}: ${specifier}`));
     expect(offenders).toEqual([]);
     const app = sources().find((source) => source.name === "shared/StaffApp.tsx")?.text ?? "";
-    expect(app).toContain('lazy(() => import("./exports/ExportsScreen"))');
+    expect(app).toContain('lazy(() => withMessages(import("./exports/ExportsScreen")))');
   });
 
   it("loads the import screen and the owner's subscription receipts on demand too: nothing imports them except through import()", () => {
     for (const [folder, importer, line] of [
-      ["imports", "shared/StaffApp.tsx", 'lazy(() => import("./imports/ImportScreen"))'],
-      ["receipts", "shared/workspace/SubscriptionScreen.tsx", 'lazy(() => import("../receipts/ReceiptSection"))'],
+      ["imports", "shared/StaffApp.tsx", 'lazy(() => withMessages(import("./imports/ImportScreen")))'],
+      ["receipts", "shared/workspace/SubscriptionScreen.tsx", 'lazy(() => withMessages(import("../receipts/ReceiptSection")))'],
     ] as const) {
       const own = new RegExp(`^(shared/${folder}/|i18n/${folder}/)`);
       const offenders = sources()
@@ -125,7 +125,7 @@ describe("exports and support access stay out of the Mini App's first load (NFR-
       .sort();
     expect(importers).toEqual(["panel/OfficeBanner.tsx", "panel/PanelRoot.tsx", "panel/office.tsx"]);
     const app = sources().find((source) => source.name === "shared/StaffApp.tsx")?.text ?? "";
-    expect(app).toContain('lazy(() => import("./support/SupportAccessSection"))');
+    expect(app).toContain('lazy(() => withMessages(import("./support/SupportAccessSection")))');
   });
 
   it("would notice a static import, and lets a type-only one and an import() pass", () => {

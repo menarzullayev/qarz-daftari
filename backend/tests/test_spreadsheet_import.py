@@ -28,6 +28,7 @@ from qarz.domain.imports import (
     plan_token,
     read_xlsx,
 )
+from qarz.domain.languages import LANGUAGES
 from qarz.domain.names import normalize_name
 
 TODAY = date(2026, 10, 7)
@@ -89,7 +90,16 @@ HEAD_ROW = '<row r="1">' + inline("A1", "Ism") + inline("B1", "Qarz summasi") + 
 def test_the_template_has_the_five_columns_and_no_rows() -> None:
     assert read_xlsx(template("uz")) == [(1, HEAD)]
     assert read_xlsx(template("ru")) == [(1, ["Имя", "Телефон", "Сумма долга", "Срок оплаты", "Примечание"])]
-    assert read_xlsx(template("en")) == read_xlsx(template("uz")), "an unknown language gets the Uzbek template"
+    assert read_xlsx(template("kk")) == read_xlsx(template("uz")), "an unknown language gets the Uzbek template"
+    assert read_xlsx(template("en")) == [(1, ["Name", "Phone", "Debt amount", "Due date", "Note"])]
+    assert read_xlsx(template("uz-Cyrl")) == [(1, ["Исм", "Телефон", "Қарз суммаси", "Тўлаш муддати", "Изоҳ"])]
+    for lang in LANGUAGES:
+        assert len(imports.TEMPLATE_HEADERS[lang]) == 5, lang
+        assert parse(template(lang), TODAY) is FileProblem.NO_ROWS, f"the {lang} titles are recognised too"
+    # A title is compared without its case, its "*" and its extra spaces; a title nobody published is unknown.
+    assert imports.header_form("  Qarz   SUMMASI* ") == "qarz summasi"
+    assert imports.header_form("Qarz summasi") in imports._COLUMN_OF
+    assert imports.header_form("Qarz summas1") not in imports._COLUMN_OF
     assert parse(template("uz"), TODAY) is FileProblem.NO_ROWS
     assert parse(template("ru"), TODAY) is FileProblem.NO_ROWS, "the Russian titles are recognised too"
     with zipfile.ZipFile(io.BytesIO(template("uz"))) as made:
