@@ -337,6 +337,37 @@ def test_staff_can_dismiss_a_waiting_person(client: TestClient, world: World, ow
     assert get(client, world.seller_a, f"{shop(world)}/waiting").json() == {"items": []}
 
 
+def test_a_person_is_told_when_the_shops_waiting_list_is_full_and_gets_on_once_staff_make_room(
+    client: TestClient, world: World, owner: psycopg.Connection
+) -> None:
+    """A hundred people wait at most (security review, finding 13). The one who finds the list full is
+    told so in their language and nothing is kept about them; staff see the full list and can clear it."""
+    start = counter_code(client, world)
+    # Shop A's list has one person waiting already; ninety-nine more fill it.
+    owner.execute(
+        "WITH people AS (INSERT INTO app_user (id, tg_id) "
+        "  SELECT gen_random_uuid(), %s + n FROM generate_series(1, 99) n RETURNING id) "
+        "INSERT INTO customer_link (id, shop_id, user_id, status, consent_text_v, consent_at, waiting_name) "
+        "SELECT gen_random_uuid(), %s, id, 'waiting', 2, now(), 'Someone' FROM people",
+        (uuid.uuid4().int % 10**11 * 1000, world.shop_a),
+    )
+    uzbek, russian = person(client, owner, "Bahrom"), person(client, owner, "Sardor", "ru")
+    assert agree(uzbek, start).text == say("uz", "waiting_full", shop="Shop A")
+    assert agree(russian, start).text == say("ru", "waiting_full", shop="Shop A")
+    assert "Shop A" in say("uz", "waiting_full", shop="Shop A") != say("ru", "waiting_full", shop="Shop A")
+    assert links(owner, uzbek.tg_id) == [] and links(owner, russian.tg_id) == []
+    listed = get(client, world.seller_a, f"{shop(world)}/waiting").json()["items"]
+    assert len(listed) == 100
+
+    # Another shop's counter still takes them, and a dismissal in this one makes room for one.
+    code_b = post(client, world.owner_b, f"/api/v1/shops/{world.shop_b}/counter-code").json()["start"]
+    assert agree(russian, code_b).text == say("ru", "waiting_ok", shop="Shop B")
+    assert post(client, world.seller_a, f"{shop(world)}/waiting/{world.waiting_a}/dismiss").status_code == 200
+    assert agree(uzbek, start).text == say("uz", "waiting_ok", shop="Shop A")
+    assert agree(russian, start).text == say("ru", "waiting_full", shop="Shop A")
+    assert [row[2] for row in links(owner, uzbek.tg_id)] == ["waiting"]
+
+
 # --- notifications (REQ-012, REQ-015) -------------------------------------------------------------------
 
 

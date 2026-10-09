@@ -6,6 +6,7 @@ the user it is given. The chat checks the same things first; these tests remove 
 
 import datetime
 import hashlib
+import threading
 import uuid
 from typing import Any
 
@@ -325,3 +326,127 @@ def test_the_subscription_review_function_is_for_the_worker_role_and_lists_only_
     assert set(listed("2060-03-13")) == {shop_a.shop_id, shop_b.shop_id}  # B: seven days before the 20th
     owner.execute("UPDATE subscription SET state = 'limited' WHERE shop_id = %s", (shop_a.shop_id,))
     assert set(listed("2060-03-09")) == set(), "a shop already limited is not listed again"
+
+
+# --- a full waiting list (security review, finding 13; migration 0034) --------------------------------
+
+WAITING_CAP = 100
+
+
+def _waiters(owner: psycopg.Connection, shop: Shop, count: int, age: str = "1 minute") -> None:
+    """Put `count` new people on the shop's waiting list, as if each had agreed `age` ago."""
+    owner.execute(
+        "WITH people AS (INSERT INTO app_user (id, tg_id) "
+        "  SELECT gen_random_uuid(), %s + n FROM generate_series(1, %s) n RETURNING id) "
+        "INSERT INTO customer_link "
+        "  (id, shop_id, user_id, status, consent_text_v, consent_at, waiting_name, created_at) "
+        "SELECT gen_random_uuid(), %s, id, 'waiting', 2, now(), 'Someone', now() - %s::interval FROM people",
+        (uuid.uuid4().int % 10**11 * 1000, count, shop.shop_id, age),
+    )
+
+
+def _waiting(owner: psycopg.Connection, shop: Shop) -> int:
+    row = owner.execute(
+        "SELECT count(*) FROM customer_link WHERE shop_id = %s AND status = 'waiting'", (shop.shop_id,)
+    ).fetchone()
+    assert row is not None
+    return int(row[0])
+
+
+def _arrive(as_app: AppSession, digest: bytes, user: uuid.UUID) -> Any:
+    with as_app(None) as app:
+        return app.execute(
+            "SELECT outcome, shop_id, customer_id FROM link_customer(%s, %s, 2::smallint, 'Late')", (digest, user)
+        ).fetchone()
+
+
+def test_a_shops_waiting_list_is_full_at_a_hundred_and_only_that_shops(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop, shop_b: Shop
+) -> None:
+    last, late = _user(owner), _user(owner)
+    code_a, code_b = _code(owner, shop_a, "counter"), _code(owner, shop_b, "counter")
+    _waiters(owner, shop_a, WAITING_CAP - 1)
+
+    assert _arrive(as_app, code_a, last) == ("waiting", shop_a.shop_id, None), "the hundredth place is a place"
+    assert _arrive(as_app, code_a, late) == ("full", shop_a.shop_id, None)
+    assert _waiting(owner, shop_a) == WAITING_CAP
+    # Nothing is kept about the person who found the list full, and asking again changes nothing.
+    assert _arrive(as_app, code_a, late) == ("full", shop_a.shop_id, None)
+    assert owner.execute("SELECT count(*) FROM customer_link WHERE user_id = %s", (late,)).fetchone() == (0,)
+    # Somebody already on the list is told so, not that it is full.
+    assert _arrive(as_app, code_a, last) == ("already", shop_a.shop_id, None)
+    # The cap is each shop's own: the same person waits at another counter.
+    assert _arrive(as_app, code_b, late) == ("waiting", shop_b.shop_id, None)
+    assert (_waiting(owner, shop_a), _waiting(owner, shop_b)) == (WAITING_CAP, 1)
+
+
+def test_a_place_freed_by_staff_is_a_place_again(owner: psycopg.Connection, as_app: AppSession, shop_a: Shop) -> None:
+    """Attaching a person or dismissing them takes them off the list, and the next person gets on."""
+    first, second, third = _user(owner), _user(owner), _user(owner)
+    code = _code(owner, shop_a, "counter")
+    _waiters(owner, shop_a, WAITING_CAP)
+    assert _arrive(as_app, code, first) == ("full", shop_a.shop_id, None)
+
+    dismissed, attached = owner.execute(
+        "SELECT id FROM customer_link WHERE shop_id = %s AND status = 'waiting' ORDER BY id LIMIT 2", (shop_a.shop_id,)
+    ).fetchall()
+    owner.execute(
+        "UPDATE customer_link SET status = 'ended', ended_at = now(), waiting_name = NULL WHERE id = %s", dismissed
+    )
+    assert _arrive(as_app, code, first) == ("waiting", shop_a.shop_id, None)
+    assert _arrive(as_app, code, second) == ("full", shop_a.shop_id, None)
+    owner.execute(
+        "UPDATE customer_link SET status = 'active', customer_id = %s, waiting_name = NULL WHERE id = %s",
+        (shop_a.customer_id, attached[0]),
+    )
+    assert _arrive(as_app, code, second) == ("waiting", shop_a.shop_id, None)
+    assert _arrive(as_app, code, third) == ("full", shop_a.shop_id, None)
+
+
+def test_entries_that_left_the_list_a_day_ago_take_no_place(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+) -> None:
+    """The list staff see holds a day's entries (BR-16); the cap counts what is on that list."""
+    me, late = _user(owner), _user(owner)
+    code = _code(owner, shop_a, "counter")
+    _waiters(owner, shop_a, WAITING_CAP, age="25 hours")
+    _waiters(owner, shop_a, WAITING_CAP - 1, age="23 hours")
+    assert _arrive(as_app, code, me) == ("waiting", shop_a.shop_id, None)
+    assert _arrive(as_app, code, late) == ("full", shop_a.shop_id, None)
+
+
+def test_a_personal_link_connects_while_the_waiting_list_is_full(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+) -> None:
+    """The cap is on the counter code, which anyone may hold; a link staff issued for one record is not
+    held up by it."""
+    me = _user(owner)
+    _waiters(owner, shop_a, WAITING_CAP)
+    assert _arrive(as_app, _code(owner, shop_a, "counter"), _user(owner)) == ("full", shop_a.shop_id, None)
+    assert _arrive(as_app, _code(owner, shop_a, "customer"), me) == ("linked", shop_a.shop_id, shop_a.customer_id)
+
+
+def test_two_people_arriving_at_once_do_not_both_take_the_last_place(
+    owner: psycopg.Connection, as_app: AppSession, shop_a: Shop
+) -> None:
+    """Through two codes of the shop, so that nothing but the function's own lock orders them: the second
+    waits for the first to finish and then finds the list full."""
+    first, second = _user(owner), _user(owner)
+    one, other = _code(owner, shop_a, "counter"), _code(owner, shop_a, "counter")
+    _waiters(owner, shop_a, WAITING_CAP - 1)
+    answers: list[Any] = []
+
+    def arrive_second() -> None:
+        answers.append(_arrive(as_app, other, second))
+
+    late = threading.Thread(target=arrive_second)
+    with as_app(None) as app:
+        took = app.execute("SELECT outcome FROM link_customer(%s, %s, 2::smallint, 'A')", (one, first)).fetchone()
+        late.start()
+        late.join(timeout=1.5)
+        assert late.is_alive() and answers == [], "the second waits while the first has not finished"
+    late.join(timeout=30)
+    assert not late.is_alive()
+    assert took == ("waiting",)
+    assert answers == [("full", shop_a.shop_id, None)]
+    assert _waiting(owner, shop_a) == WAITING_CAP

@@ -3,6 +3,8 @@
 Run with:  uvicorn qarz.interface.asgi:build --factory
 """
 
+from datetime import timedelta
+
 from fastapi import FastAPI
 
 from qarz.application.admin_access import AdminAccess
@@ -25,7 +27,13 @@ def build(settings: Settings | None = None) -> FastAPI:
     configure_logging()
     database = Database(settings.database_url, statement_timeout_ms=settings.statement_timeout_ms)
     # Without a bot token no Telegram signature can be verified, so no API is served at all.
-    auth = AuthService(database, settings.bot_token) if settings.bot_token else None
+    auth = (
+        AuthService(
+            database, settings.bot_token, web_login_max_age=timedelta(seconds=settings.web_login_max_age_seconds)
+        )
+        if settings.bot_token
+        else None
+    )
     # No allow-list or no key for the second-factor secrets: nobody can be an administrator, so that side
     # of the API does not exist. A malformed list or key refuses to start instead.
     allowed = settings.admin_allow_list()

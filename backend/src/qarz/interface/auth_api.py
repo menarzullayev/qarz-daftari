@@ -18,6 +18,8 @@ from qarz.application.auth import (
 )
 
 CurrentUser = Callable[..., Awaitable[UUID]]
+# Ends the administrator sessions of a person; given only where the administrators' side is served.
+EndAdminSessions = Callable[[UUID], Awaitable[int]]
 
 SESSION_COOKIE = "qd_session"
 CSRF_HEADER = "X-CSRF-Token"
@@ -71,7 +73,9 @@ class MePatch(BaseModel):
     lang: str
 
 
-def add_auth_routes(app: FastAPI, auth: AuthService, current_user: CurrentUser) -> None:
+def add_auth_routes(
+    app: FastAPI, auth: AuthService, current_user: CurrentUser, end_admin_sessions: EndAdminSessions | None = None
+) -> None:
     user = Annotated[UUID, Depends(current_user)]
 
     @app.post("/api/v1/auth/telegram-webapp", name=SIGN_IN_WEBAPP.name)
@@ -105,6 +109,10 @@ def add_auth_routes(app: FastAPI, auth: AuthService, current_user: CurrentUser) 
         # Like sign-out: no Idempotency-Key, because a repeat finds nothing left to end, and the same
         # answer whether one session was ended or ten. The caller's own session ends with the others,
         # so the cookie of a web session is cleared too.
+        # The person's administrator sessions end as well, and first: they are another role's rows and
+        # another transaction, and if that one fails nothing has been ended and the person asks again.
+        if end_admin_sessions is not None:
+            await end_admin_sessions(user_id)
         await auth.sign_out_everywhere(user_id)
         response.delete_cookie(SESSION_COOKIE, path="/api")
 

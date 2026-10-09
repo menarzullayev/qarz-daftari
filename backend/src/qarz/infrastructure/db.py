@@ -2929,11 +2929,15 @@ class PgPlatformSession:
             {"token_hash": token_hash, "now": now},
         )
 
-    async def revoke_user_sessions(self, user_id: UUID, now: datetime) -> int:
-        # Named by the person, never by a token: Mini App and web sessions alike, on every device.
+    async def revoke_user_sessions(self, user_id: UUID, now: datetime, *, kind: str | None = None) -> int:
+        # Named by the person, never by a token: Mini App and web sessions alike, on every device, unless
+        # one kind is named.
         result = await self._conn.execute(
-            text("UPDATE user_session SET revoked_at = :now WHERE user_id = :user_id AND revoked_at IS NULL"),
-            {"user_id": user_id, "now": now},
+            text(
+                "UPDATE user_session SET revoked_at = :now WHERE user_id = :user_id AND revoked_at IS NULL "
+                "AND (CAST(:kind AS text) IS NULL OR kind = :kind)"
+            ),
+            {"user_id": user_id, "now": now, "kind": kind},
         )
         return int(result.rowcount)
 
@@ -3029,11 +3033,12 @@ class PgPlatformSession:
         ).first()
         return None if row is None else row.expires_at
 
-    async def revoke_admin_sessions(self, user_id: UUID, now: datetime) -> None:
-        await self._conn.execute(
+    async def revoke_admin_sessions(self, user_id: UUID, now: datetime) -> int:
+        result = await self._conn.execute(
             text("UPDATE admin_session SET revoked_at = :now WHERE user_id = :user_id AND revoked_at IS NULL"),
             {"user_id": user_id, "now": now},
         )
+        return int(result.rowcount)
 
     async def add_admin_audit(
         self,

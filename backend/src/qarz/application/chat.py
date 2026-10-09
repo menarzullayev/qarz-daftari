@@ -642,6 +642,7 @@ class ChatService:
             "waiting": "waiting_ok",
             "already": "link_already",
             "taken": "link_taken",
+            "full": "waiting_full",
         }
         await replies.show(say(lang, texts.get(outcome, "link_invalid"), shop=shop_name))
 

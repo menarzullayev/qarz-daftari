@@ -101,6 +101,10 @@ UZ = {
         "Qarzingizni ko'rish: /qarzim"
     ),
     "waiting_ok": "✅ So'rovingiz «{shop}» do'koniga yuborildi. Sotuvchi sizni daftardagi yozuvingizga ulaydi.",
+    "waiting_full": (
+        "«{shop}» do'konida ulanishni kutayotganlar ro'yxati hozir to'la. "
+        "Sotuvchidan ro'yxatni ko'rib chiqishni so'rang yoki keyinroq qayta urinib ko'ring."
+    ),
     "link_invalid": "Bu havola yaroqsiz yoki muddati o'tgan. Do'kondan yangisini so'rang.",
     "link_taken": "Bu hisob boshqa Telegram hisobiga ulangan. Do'konga murojaat qiling.",
     "link_already": "Siz bu do'konga allaqachon ulangansiz yoki ulanishni kutyapsiz. Qarzingiz: /qarzim",
@@ -436,6 +440,10 @@ RU = {
         "Посмотреть долг: /qarzim"
     ),
     "waiting_ok": "✅ Запрос отправлен в магазин «{shop}». Продавец подключит вас к вашей записи в книге.",
+    "waiting_full": (
+        "В магазине «{shop}» список ожидающих подключения сейчас заполнен. "
+        "Попросите продавца просмотреть список или попробуйте позже."
+    ),
     "link_invalid": "Эта ссылка недействительна или устарела. Попросите в магазине новую.",
     "link_taken": "Этот счёт подключён к другому аккаунту Telegram. Обратитесь в магазин.",
     "link_already": "Вы уже подключены к этому магазину или ждёте подключения. Ваш долг: /qarzim",
