@@ -115,6 +115,7 @@ CREATE INDEX stock_document_recent ON stock_document (shop_id, created_at DESC, 
 CREATE INDEX stock_document_by_kind ON stock_document (shop_id, kind, created_at DESC, id DESC);
 CREATE INDEX stock_document_supplier ON stock_document (supplier_id, created_at DESC) WHERE supplier_id IS NOT NULL;
 CREATE INDEX stock_document_ledger_entry ON stock_document (ledger_entry_id) WHERE ledger_entry_id IS NOT NULL;
+CREATE INDEX stock_document_cash_entry ON stock_document (cash_entry_id) WHERE cash_entry_id IS NOT NULL;
 
 -- A document moves one way: draft, then posted, then cancelled; a draft may also be cancelled (thrown
 -- away). Once posted, nothing of what it says may change: only the cancellation is added.
@@ -203,6 +204,7 @@ CREATE TABLE supplier_entry (
   FOREIGN KEY (shop_id, document_id) REFERENCES stock_document (shop_id, id)
 );
 CREATE INDEX supplier_entry_document ON supplier_entry (document_id) WHERE document_id IS NOT NULL;
+CREATE INDEX supplier_entry_cash_entry ON supplier_entry (cash_entry_id) WHERE cash_entry_id IS NOT NULL;
 CREATE INDEX supplier_entry_shop_time ON supplier_entry (shop_id, created_at);
 
 -- What the shop owes each supplier in each currency: the sum of the entries that stand, kept by the

@@ -778,6 +778,23 @@ class StockQueries:
         ).all()
         return [_entry(row) for row in rows]
 
+    async def supplier_entry_of_cash_entry(self, cash_entry_id: UUID) -> SupplierEntryRecord | None:
+        row = (
+            await self._conn.execute(
+                text(f"SELECT {_ENTRY_COLUMNS} {_ENTRY_FROM} WHERE e.cash_entry_id = :cash"), {"cash": cash_entry_id}
+            )
+        ).first()
+        return None if row is None else _entry(row)
+
+    async def document_of_cash_entry(self, cash_entry_id: UUID) -> DocumentRecord | None:
+        row = (
+            await self._conn.execute(
+                text(f"SELECT {_DOCUMENT_COLUMNS} FROM stock_document d WHERE d.cash_entry_id = :cash"),
+                {"cash": cash_entry_id},
+            )
+        ).first()
+        return None if row is None else _document(row)
+
     # --- the owner's export -----------------------------------------------------------------------
 
     async def stock_recorded(self) -> bool:

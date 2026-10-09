@@ -352,6 +352,14 @@ class StockSession(Protocol):
 
     async def standing_supplier_entries_of_document(self, document_id: UUID) -> list[SupplierEntryRecord]: ...
 
+    async def supplier_entry_of_cash_entry(self, cash_entry_id: UUID) -> SupplierEntryRecord | None:
+        """The payment to a supplier that a cash-book entry was written with, if it was."""
+        ...
+
+    async def document_of_cash_entry(self, cash_entry_id: UUID) -> DocumentRecord | None:
+        """The document whose money, paid at once, a cash-book entry is, if it is one's."""
+        ...
+
     # --- the owner's export -----------------------------------------------------------------------
 
     async def stock_recorded(self) -> bool:

@@ -162,6 +162,58 @@ The typed response models (`interface/answers.py`) declare these as their only f
 
 **Not in dollars yet** (BR-43), each refused or left out and tested as such: goods lines on a dollar sale (`VALIDATION`, `not available in dollars yet`); spreadsheet import (so'm only; a currency column is an unknown column); SMS reminders (state so'm only); the weekly product metrics (so'm events only); subscription prices and payments.
 
+## Stock, purchases and suppliers
+
+Expansion module I (decision 6 of 2026-10-09; business rules BR-60 to BR-74). Behind the platform switch `stock_on` (off by default, asks for the second factor). With the switch off every route below answers 404 to everyone, before the caller is asked who they are; nothing reads or writes the tables of migration 0043; the catalog, a sale and its reversal answer exactly as before (`tests/api/test_stock.py`).
+
+**Model.** Migration 0043 adds eight tenant tables, each with `shop_id`, forced row-level security and the usual policy:
+
+| Table | What it is | Application role |
+|---|---|---|
+| `catalog_item` (+ `tracked`, `low_stock`) | Whether an item is counted and the quantity it runs low at. Existing items are not counted. | as before |
+| `catalog_barcode` | A barcode of an item; unique per shop | insert, delete |
+| `stock_movement` | The stock ledger: one row per movement, numbered per item | insert only |
+| `stock_level` | Per item: on hand, value at cost, cost currency, last cost, last sale. The sum of the movements. | read only |
+| `stock_document`, `stock_document_line` | What a person fills in; the lines of a posted document | insert; the document's state columns; lines insert only |
+| `supplier` | Name, phone, note, status; `linked_shop_id` for module J (unused) | insert, update of its own fields |
+| `supplier_entry` | A supplier's account | insert only |
+| `supplier_balance` | Per supplier and currency: what the shop owes. The sum of the entries that stand. | read only |
+
+Quantities are `numeric(14,3)`: three decimals, the scale of goods lines. Money is whole minor units in `bigint` with a `currency` column, as everywhere (see Currencies). Nothing is a float.
+
+The two kept figures cannot differ from their ledgers: `stock_level` and `supplier_balance` are written only by `SECURITY DEFINER` triggers on insert into `stock_movement` and `supplier_entry`. The stock trigger refuses a movement that does not continue its item's level (the next number, and the figures after it equal to the level plus what it moved), so a movement computed from a level that is no longer current, or computed wrongly, cannot be stored; it also refuses a second cost currency while value is held, and a reversal that is not the same item and quantity the other way. `stock_level_mismatches(shop)` and `supplier_balance_mismatches(shop)` list any difference (granted to no role; the API tests assert them empty after every scenario, and `tests/db/test_stock_schema.py` shows they find one). A posted document only gains its cancellation (`stock_document_guard`), and lines are written only while their document is being posted.
+
+**Cost rule.** One place: `qarz.domain.stock` (pure functions; BR-62 to BR-66). The application locks the item (its catalog row), asks the domain what the movement does to the level, and inserts the movement with the figures after it; the database checks them. Each movement keeps its signed quantity, the change of value, the cost attributed to the quantity moved, and the level after it. Summary of what moves the average: a receipt (weighted in); cancelling a receipt (weighted back out). What leaves it where it was: sales, write-offs, returns to suppliers, customers' returns, stocktake corrections, and their cancellations at the cost they left with.
+
+**Negative stock.** Allowed for sales with a warning (`stock_warnings` in the sale's answer, to its author only); refused (`STOCK_INSUFFICIENT`, 409) when the shop turned on `refuse_negative`. Never for write-offs and returns to suppliers.
+
+**Sales.** `qarz.application.stock_moves.draw_for_sale` is called after the goods lines of a credit sale are stored (with the sale, or added later); `before_entry_reversed` when a ledger entry is reversed. Both are no-ops for a shop with nothing counted. The second runs whatever the switch says, so goods sold while the stock was on come back when their sale is cancelled. Goods lines on a dollar sale stay refused (BR-43): selling prices are so'm.
+
+**Documents.** `receipt`, `supplier_return`, `customer_return`, `write_off`, `stocktake`; `draft -> posted -> cancelled` (a draft may be cancelled too). Numbered per shop and kind. A draft's lines live in the document (`draft`, JSON) and are written to `stock_document_line` when it is posted. Cancelling a posted document reverses its movements first; if any incoming one cannot be taken back (`STOCK_ALREADY_USED`, 409) nothing is changed. A customer's return writes a payment entry of the customers' ledger and its movements point at it; reversing that entry directly is refused (`ENTRY_OF_DOCUMENT`).
+
+**Suppliers.** Entry kinds `purchase`, `opening`, `payment`, `return`, `reversal`. A payment and an opening balance are recorded directly; the rest by documents. While the cash book is on (`cash_book_on`, module H), a payment is also an expense of the cash book in the same transaction and cancelling one cancels the other (`qarz.application.stock_cash`); with it off the payment is in the supplier's account alone.
+
+**API** (under `/api/v1/shops/{id}`; writes are idempotent by `Idempotency-Key`):
+
+| Route | Operation | Permission |
+|---|---|---|
+| `GET stock/settings`, `PUT stock/settings` | units, reasons, currencies, `refuse_negative` | `stock.view`; `settings.edit` |
+| `GET stock/items`, `GET stock/items/{item}`, `GET stock/lookup?code=`, `GET stock/items/{item}/movements` | counted items (or `filter=all`, `low`), one item, by barcode, its movements | `stock.view` |
+| `PATCH stock/items/{item}` | counted or not, unit, low-stock threshold, barcodes | `goods.edit` |
+| `GET stock/report?days=` | value at cost per currency, at selling price, margin, not sold in N days, sold below cost, running low | `stock.costs.view` |
+| `GET/POST stock/documents`, `GET/PUT stock/documents/{doc}`, `POST .../post`, `POST .../cancel` | documents | `stock.receive` or `stock.adjust`, then by kind: receipts and returns to suppliers need `stock.receive`; write-offs, stocktakes and customers' returns need `stock.adjust`; paying a supplier on a receipt also needs `suppliers.pay` |
+| `GET suppliers`, `GET suppliers/{supplier}` | list with balances and totals; the account | `suppliers.view` |
+| `POST suppliers`, `PUT suppliers/{supplier}`, `POST .../archive`, `POST .../unarchive` | the list | `suppliers.manage` |
+| `POST suppliers/{supplier}/entries`, `POST .../entries/{entry}/cancel` | a payment (`suppliers.pay`) or an opening balance (`suppliers.manage`); its cancellation with a reason | by kind |
+
+Cost figures (`cost` of an item and of a movement; `currency`, `total`, `paid`, `unit_cost`, `line_total` of a receipt or a return to a supplier) are absent, not null, for a member without `stock.costs.view`; the author of a draft reads back the prices they typed. Lists are paged by key through indexes of their own (`tests/db/test_stock_schema.py` holds each read to its index under row-level security).
+
+**Barcodes.** Stored validated (BR-74). `GET stock/lookup` answers the item or 404. Scanning is the client's: a keyboard-wedge scanner types into the lookup field; the browser's `BarcodeDetector` where it exists; manual entry always.
+
+**Elsewhere.** Every write is in the shop's activity log (`stock.*`, `supplier.*`). `erase_shop` deletes the eight tables and resets the shop's setting. The owner's export gains five sheets (stock, movements, documents, suppliers, supplier accounts) for a shop that has any of it and is unchanged for one that has none. The bot answers `/ombor` with what runs low, to a member who holds `stock.view`, while the switch is on.
+
+**For module J** (the network between shops): `supplier.linked_shop_id` and `stock_document.origin_ref` are there, nullable and unused; nothing assumes a supplier is not a shop of the platform.
+
 ## Events
 
 Domain events are raised and handled inside the command's transaction; effects on the outside world go through the outbox (ADR-007).
@@ -234,7 +286,14 @@ Behind the platform switch `permissions_on` (off by default, asks for the second
 | Ledger | `entries.cancel` | - | Yes | Yes | Reverse an entry |
 | Ledger | `promises.change` | - | Yes | Yes | Change a promised date; list, accept, decline date requests |
 | Ledger | `disputes.decide` | - | Yes | Yes | List and decline disputes |
-| Goods | `goods.edit` | - | Yes | Yes | Create, change, hide catalog items; review learned ones |
+| Goods | `goods.edit` | - | Yes | Yes | Create, change, hide catalog items; review learned ones; an item's stock settings and barcodes |
+| Stock | `stock.view` | Yes | Yes | Yes | Stock settings; counted items, one item, by barcode; an item's movements |
+| Stock | `stock.receive` | - | Yes | Yes | Stock documents; receipts and returns to suppliers (asked inside the operation) |
+| Stock | `stock.adjust` | - | Yes | Yes | Stock documents; write-offs, stocktakes and customers' returns (asked inside the operation) |
+| Stock | `stock.costs.view` | - | Yes | Yes | The stock report; cost and margin in every other answer |
+| Suppliers | `suppliers.view` | - | Yes | Yes | Suppliers with balances; a supplier's account |
+| Suppliers | `suppliers.manage` | - | Yes | Yes | Add, change, archive suppliers; an opening balance and its cancellation |
+| Suppliers | `suppliers.pay` | - | Yes | Yes | A payment to a supplier and its cancellation; paying at once on a receipt |
 | Reminders | `reminders.send` | - | Yes | Yes | Send a reminder; list unreachable customers |
 | Reports | `reports.view` | - | Yes | Yes | Period and overdue reports |
 | Reports | `reports.export` | - | Yes | Yes | Request, list, download exports |
@@ -252,7 +311,7 @@ Behind the platform switch `permissions_on` (off by default, asks for the second
 | Fixed | `support.manage` | - | - | Yes | See and end support access to the shop |
 | Fixed | `shop.delete` | - | - | Yes | Request, cancel, read the deletion of the shop |
 
-Recording an entry (`ledger.entry.create`) is the one operation opened by two permissions: holding either passes its gate, and the service then asks for the one the entry needs. Accepting a customer's payment notice needs `payment_notices.decide` only.
+Recording an entry (`ledger.entry.create`) is opened by two permissions: holding either passes its gate, and the service then asks for the one the entry needs. The same holds for the stock's documents (`stock.receive`, `stock.adjust`: by the kind of document) and for recording on a supplier's account (`suppliers.manage`, `suppliers.pay`: an opening balance or a payment). Accepting a customer's payment notice needs `payment_notices.decide` only.
 
 **Enforcement.** `qarz.application.authorization.may` is the one place the application decides. `require_member` (every shop operation of the API and of the bot) goes through it by the operation's permission; so do the checks inside a service (`require_permission`), the choice of which staff the bot tells about a payment notice, a dispute or a date request (`holders`), and whether the bot offers the "reverse" button. The membership, its changes and the switch are read together in one statement inside each request's own transaction, never cached: a change of permissions, of the role or of the switch applies to the member's next request. A refusal is `FORBIDDEN_PERMISSION` naming the permission while the switch is on, and `FORBIDDEN_ROLE` naming the role while it is off, as before.
 

@@ -5,8 +5,10 @@ refused. Documents are in test_stock_documents.py, suppliers in test_suppliers.p
 role and as an outsider, is in the authorization suite.
 """
 
+import threading
 import uuid
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import psycopg
@@ -17,7 +19,7 @@ from qarz.application.operations import all_operations
 
 from .conftest import World, as_user, set_overrides, switch_permissions_on
 from .test_chat import chat_of
-from .test_customers_ledger import key, new_customer, read, record, reverse, shop, write
+from .test_customers_ledger import another_client, key, new_customer, read, record, reverse, shop, write
 from .test_goods_lines import add, chosen, sell, typed
 
 pytestmark = pytest.mark.db
@@ -482,6 +484,58 @@ def test_goods_sold_while_the_stock_was_on_come_back_even_after_it_is_switched_o
     assert later.status_code == 201, "off: a sale takes nothing"
     switch(owner)
     assert item_of(client, world, rice)["on_hand"] == "10"
+    assert mismatches(owner, world) == []
+
+
+def test_two_writers_to_one_item_at_once_take_turns_and_the_books_add_up(
+    client: TestClient, world: World, on: None, owner: psycopg.Connection, app_database_url: str
+) -> None:
+    """A sale and a receipt of the same items at the same moment, each naming them in the opposite order:
+    every movement continues the level the one before it left, neither waits for the other in a ring,
+    and with the shop refusing sales beyond stock two sales of the last unit cannot both go through."""
+    rice = counted_item(client, world, "Guruch", 15_000, "kg")
+    tea = counted_item(client, world, "Choy", 8_000)
+    receive(client, world, [line(rice, "100", 10_000), line(tea, "100", 5_000)])
+    customers = [new_customer(client, world, "Vali"), new_customer(client, world, "G'ani")]
+    with another_client(app_database_url) as second:
+        for _ in range(5):
+            barrier = threading.Barrier(2)
+
+            def sale(barrier: threading.Barrier = barrier) -> int:
+                barrier.wait(timeout=10)
+                lines = [chosen(rice, "1", 15_000), chosen(tea, "1", 8_000)]
+                return int(sell(client, world, customers[0], lines).status_code)
+
+            def receipt(barrier: threading.Barrier = barrier) -> int:
+                barrier.wait(timeout=10)
+                body = {"kind": "receipt", "post": True, "lines": [line(tea, "2", 6_000), line(rice, "2", 11_000)]}
+                headers = {**as_user(world.manager_a), **key()}
+                return int(second.post(f"{stock(world)}/documents", json=body, headers=headers).status_code)
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                first, other = pool.submit(sale), pool.submit(receipt)
+                assert (first.result(), other.result()) == (201, 201)
+        assert [item_of(client, world, item)["on_hand"] for item in (rice, tea)] == ["105", "105"]
+        assert [row["seq"] for row in movements(client, world, rice)] == list(range(11, 0, -1))
+
+        # The last unit: the shop refuses sales beyond stock, and two sellers reach for it at once.
+        assert (
+            write(client, world.manager_a, "PUT", f"{stock(world)}/settings", {"refuse_negative": True}).status_code
+            == 200
+        )
+        last = counted_item(client, world, "Oxirgi")
+        receive(client, world, [line(last, "1", 1_000)])
+        barrier = threading.Barrier(2)
+
+        def reach(pair: tuple[TestClient, str]) -> int:
+            which, customer = pair
+            barrier.wait(timeout=10)
+            return int(sell(which, world, customer, [chosen(last, "1", 5_000)]).status_code)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            statuses = sorted(pool.map(reach, ((client, customers[0]), (second, customers[1]))))
+        assert statuses == [201, 409]
+        assert item_of(client, world, last)["on_hand"] == "0"
     assert mismatches(owner, world) == []
 
 
