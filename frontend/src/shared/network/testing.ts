@@ -15,7 +15,7 @@ export const OWN_ITEM_ID = "44444444-4444-4444-8444-444444444441";
 export const STOCK_DOCUMENT_ID = "88888888-8888-4888-8888-888888888881";
 
 /** A code as the server issues one. Not a real credential. */
-export const CODE = "QD-7H2K-9XWM-41";
+export const CODE = "NW-7H2K-9XWM-41";
 
 /** An active link in which this shop is the buyer. */
 export function linkBody(overrides: Record<string, unknown> = {}) {

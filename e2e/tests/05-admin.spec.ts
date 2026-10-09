@@ -1,6 +1,6 @@
 import { outbox } from "../support/chat.ts";
 import { expect, goTo, openMiniApp, signInOnWeb, test } from "../support/fixtures.ts";
-import { lit, sql, sqlValue, stack } from "../support/stack.ts";
+import { BRAND_NAME, lit, sql, sqlValue, stack } from "../support/stack.ts";
 import { newPerson, personWithId, totpCode } from "../support/telegram.ts";
 
 /** Words that would tell a stranger what this address is. */
@@ -50,7 +50,7 @@ test("an administrator enrols the second factor, suspends a shop with a reason, 
   await test.step("enrolment: the secret is shown once, and the code computed from it opens the session", async () => {
     await page.getByRole("button", { name: "Maxfiy kalit yaratish" }).click();
     const uri = await page.getByText(/^otpauth:\/\/totp\//).innerText();
-    expect(new URL(uri).searchParams.get("issuer")).toBe("Qarz Daftari");
+    expect(new URL(uri).searchParams.get("issuer")).toBe(BRAND_NAME);
     await page.getByLabel("6 xonali kod").fill(totpCode(uri));
     await page.getByRole("button", { name: "Tasdiqlash" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Do'konlar" })).toBeVisible();

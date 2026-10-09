@@ -1,4 +1,4 @@
-# Qarz Daftari on the application host: proxy, API, worker, and the one-shot migration.
+# The application host: proxy, API, worker, and the one-shot migration.
 #
 # NOT here, by design (ADR-014, ADR-015, ADR-020): PostgreSQL and the file store. They live on the
 # database hosts; these services reach them through QD_DATABASE_URL, QD_ADMIN_DATABASE_URL,

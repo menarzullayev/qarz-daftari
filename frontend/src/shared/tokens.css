@@ -1,5 +1,5 @@
 /*
- * Design tokens of Qarz Daftari. This is the only style sheet that may hold a color value; every other
+ * Design tokens of the product. This is the only style sheet that may hold a color value; every other
  * one uses the variables (the style sheet tests refuse a hex or rgb() anywhere else).
  *
  * Themes: light is the default. Dark applies when <html data-theme="dark">, or when the device asks for

@@ -54,6 +54,7 @@ from qarz.application.subscription_receipts import SubscriptionReceiptService
 from qarz.application.suppliers import SupplierService
 from qarz.application.support_access import SupportAccessService
 from qarz.application.telegram_updates import UpdateProcessor
+from qarz.domain import brand
 from qarz.interface.account_api import add_account_routes
 from qarz.interface.admin_api import add_admin_routes
 from qarz.interface.auth_api import SessionAuthenticator, add_auth_routes
@@ -142,7 +143,7 @@ def create_app(
     """
     if admin is not None and admin_storage is None:
         raise ValueError("the administrators' side needs its own storage")
-    app = FastAPI(title="Qarz Daftari", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title=brand.NAME, docs_url=None, redoc_url=None, openapi_url=None)
 
     @app.get("/healthz")
     async def healthz(response: Response) -> dict[str, str]:

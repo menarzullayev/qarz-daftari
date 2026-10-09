@@ -1,6 +1,6 @@
 # Monday to Saturday 01:30 Tashkent time; on Sunday the full backup runs instead.
 [Unit]
-Description=Qarz Daftari: daily differential database backup (pgBackRest) (schedule)
+Description=qarz: daily differential database backup (pgBackRest) (schedule)
 
 [Timer]
 OnCalendar=Mon..Sat *-*-* 01:30:00 Asia/Tashkent

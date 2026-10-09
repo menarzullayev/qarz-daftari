@@ -6,7 +6,7 @@ A key that is absent here reads Uzbek at run time.
 
 CHAT: dict[str, str] = {
     "welcome_new": (
-        "Assalawma áleykum! Qarz Daftari — dúkandaǵı nesiye esabı.\n"
+        "Assalawma áleykum! {brand} — {tagline}.\n"
         "Baslaw ushın dúkan ashıń. Xızmetker bolsańız, dúkan iyesi jibergen silteme arqalı kiriń."
     ),
     "welcome_staff": (
@@ -119,7 +119,7 @@ CHAT: dict[str, str] = {
     "error": "Qátelik júz berdi. Qaytadan urınıp kóriń.",
     "TIMEOUT": "Júdá uzaq dawam etti hám toqtatıldı. Hesh nárse jazılmadı. Qaytadan urınıp kóriń.",
     "consent_v2": (
-        "{shop} dúkanı sizdiń nesiye sawdalarıńızdı hám tólemlerińizdi Qarz Daftari xızmeti arqalı "
+        "{shop} dúkanı sizdiń nesiye sawdalarıńızdı hám tólemlerińizdi {brand} xızmeti arqalı "
         "júrgizedi. Saqlanatuǵın maǵlıwmatlar: dúkan sizdi qalay ataǵanı, telefon nomerińiz (eger bergen "
         "bolsańız), Telegram akkauntıńız identifikatorı, nesiye hám tólem jazbaları, alınǵan ónimler. "
         "Maqset: qarız esabın siz de kórip turıwıńız hám eskertiwler jiberiw. Maǵlıwmatlar tek sizge "
@@ -408,7 +408,7 @@ CHAT: dict[str, str] = {
     "SUBSCRIPTION_RECEIPT_NOT_ALLOWED": ("Kórip shıǵılmaǵan cheklerińiz júdá kóp. Administrator juwabın kútiń."),
     "currency": "swm",
     # The operations alerts (DEC-078).
-    "ops_title": "⚠️ Qarz Daftari: sistema qadaǵalawı",
+    "ops_title": "⚠️ {brand}: sistema qadaǵalawı",
     "ops_firing": "🔴 Baslandı:",
     "ops_reminder": "🟠 Ele de dawam etpekte:",
     "ops_resolved": "🟢 Dúzeldi:",
@@ -417,14 +417,14 @@ CHAT: dict[str, str] = {
     "ops_more": "…jáne {count} eskertiw keyingi xabarda.",
     "ops_footer": "Ne islew kerek: runbook 16 (docs/10-operations/runbooks.md).",
     "ops_test": (
-        "✅ Qarz Daftari: SÍNAQ eskertiwi ({at}).\n"
+        "✅ {brand}: SÍNAQ eskertiwi ({at}).\n"
         "Bul haqıyqıy nasazlıq emes. Sistema qadaǵalawı xabarları usı chatqa jetip keliwin tekseriw ushın jiberildi."
     ),
     "ops_db_down": (
-        "🔴 Qarz Daftari: jumısshı process maǵlıwmatlar bazasına jalǵana almay atır ({since} waqtınan berli).\n"
+        "🔴 {brand}: jumısshı process maǵlıwmatlar bazasına jalǵana almay atır ({since} waqtınan berli).\n"
         "Qadaǵalaw jaǵdayı saqlanbay atır, basqa tekseriwler toqtaǵan. Runbook 16."
     ),
-    "ops_db_up": "🟢 Qarz Daftari: maǵlıwmatlar bazası jáne islep tur ({since} — {until}).",
+    "ops_db_up": "🟢 {brand}: maǵlıwmatlar bazası jáne islep tur ({since} — {until}).",
     "ops_rule_ErrorRateHigh": "sorawlardıń 2% ten kóbi server qátesi menen tamamlanıp atır",
     "ops_rule_OutboxOld": "xabarlar jiberilmey atır: gezektegi xabar 10 minuttan kóp kútpekte",
     "ops_rule_RemindersNotRunning": "eskertiwler jumısı bir saattan berli tamamlanbaǵan",

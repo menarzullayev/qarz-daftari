@@ -5,7 +5,7 @@ import type { RuCatalog } from "./types";
  * entry is required a compile error. Month names are in the genitive case, as dates need them.
  */
 export const ru: RuCatalog = {
-  "app.name": "Qarz Daftari",
+  "app.name": "{brand}",
   "entry.app": "Рабочее место сотрудников",
   "entry.panel": "Панель управления",
   "entry.admin": "Управление платформой",

@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 import psycopg
 import pytest
@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from qarz.application.admin_access import ADMIN_SESSION, AdminAccess
 from qarz.application.auth import AuthService
-from qarz.domain import totp
+from qarz.domain import brand, totp
 from qarz.infrastructure.db import Database
 from qarz.interface.http import create_app
 from tests.test_telegram_auth import login_data, webapp_init_data
@@ -98,7 +98,7 @@ def test_the_first_sign_in_of_an_allow_listed_person_enrols_a_secret_shown_once(
     response = client.post(ENROL, headers={**as_user(world.stranger), **key})
     assert response.status_code == 201, response.text
     uri = response.json()["otpauth_uri"]
-    assert uri.startswith(f"otpauth://totp/Qarz%20Daftari%3Aadmin-{tg_id}?secret=")
+    assert uri.startswith(f"otpauth://totp/{quote(brand.NAME)}%3Aadmin-{tg_id}?secret=")
     secret = _secret_of(uri)
     assert len(secret) == 20
 

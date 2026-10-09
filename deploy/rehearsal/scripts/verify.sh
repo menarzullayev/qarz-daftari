@@ -38,7 +38,7 @@ expect_exit() {
 }
 
 main() {
-    echo "Qarz Daftari local rehearsal, run $RUN_ID"
+    echo "Local rehearsal, run $RUN_ID"
     echo "docker $(docker version --format '{{.Server.Version}}'), compose $(docker compose version --short)"
     echo "$(pg_sql pg-primary 'select version()')"
     echo "$(dc exec -T pg-primary pgbackrest version)"

@@ -6,6 +6,7 @@ import { AdminApp } from "../admin/AdminApp";
 import { translate } from "../i18n/catalog";
 import { LANGUAGE_STORAGE_KEY } from "../i18n/detect";
 import type { Language } from "../i18n/types";
+import { BRAND_NAME } from "./brand";
 import type { Role } from "./navigation";
 import { StaffApp } from "./StaffApp";
 
@@ -88,7 +89,7 @@ describe("staff shell", () => {
       .getAllByRole("link")
       .filter((link) => link.getAttribute("aria-current") === "page");
     expect(current.map((link) => link.textContent)).toEqual(["Hisobotlar"]);
-    expect(document.title).toBe("Hisobotlar — Qarz Daftari");
+    expect(document.title).toBe(`Hisobotlar — ${BRAND_NAME}`);
   });
 
   it("moves focus to the screen after a route change and from the skip button", () => {

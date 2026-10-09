@@ -1,0 +1,24 @@
+{
+  "name": "HisoBox",
+  "short_name": "HisoBox",
+  "tagline": {
+    "uz": "Do'koningiz hisobi bir joyda",
+    "ru": "Учёт вашего магазина в одном месте",
+    "tg": "Ҳисоби мағозаи шумо дар як ҷо",
+    "kaa": "Dúkanıńızdıń esabı bir jerde",
+    "en": "Your shop's books in one place"
+  },
+  "mark": {
+    "about": "A prototype mark, not a registered logo: a bold letter of rounded blocks on a rounded square. The ground is the accent color and the blocks the color of text on it (frontend/src/shared/tokens.css).",
+    "canvas": 96,
+    "corner": 22,
+    "blocks": [
+      { "x": 22, "y": 22, "w": 20, "h": 52, "r": 5 },
+      { "x": 54, "y": 22, "w": 20, "h": 52, "r": 5 },
+      { "x": 38, "y": 40, "w": 20, "h": 16, "r": 3 }
+    ]
+  },
+  "former": [
+    { "name": "Qarz Daftari", "initials": "QD" }
+  ]
+}

@@ -13,13 +13,13 @@ from functools import cache
 
 from qarz.application import texts_en, texts_kaa, texts_tg
 from qarz.application.ops_texts import OPS_RU, OPS_UZ
-from qarz.domain import languages
+from qarz.domain import brand, languages
 from qarz.domain.money import Currency, format_money
 from qarz.domain.uz_cyrillic import to_cyrillic
 
 UZ = {
     "welcome_new": (
-        "Assalomu alaykum! Qarz Daftari — do'kondagi nasiya hisobi.\n"
+        "Assalomu alaykum! {brand} — {tagline}.\n"
         "Boshlash uchun do'kon oching. Xodim bo'lsangiz, do'kon egasi yuborgan havola orqali kiring."
     ),
     "welcome_staff": (
@@ -164,7 +164,7 @@ UZ = {
     "error": "Xatolik yuz berdi. Qaytadan urinib ko'ring.",
     "TIMEOUT": "Juda uzoq davom etdi va to'xtatildi. Hech narsa yozilmadi. Qaytadan urinib ko'ring.",
     "consent_v2": (
-        "{shop} do'koni sizning nasiya xaridlaringiz va to'lovlaringizni Qarz Daftari xizmati orqali "
+        "{shop} do'koni sizning nasiya xaridlaringiz va to'lovlaringizni {brand} xizmati orqali "
         "yuritadi. Saqlanadigan ma'lumotlar: do'kon sizni qanday nomlagani, telefon raqamingiz (agar bergan "
         "bo'lsangiz), Telegram hisobingiz identifikatori, nasiya va to'lov yozuvlari, olingan mahsulotlar. "
         "Maqsad: qarz hisobini siz ham ko'rib turishingiz va eslatmalar yuborish. Ma'lumotlar faqat sizga "
@@ -460,7 +460,7 @@ UZ = {
 
 RU = {
     "welcome_new": (
-        "Здравствуйте! Qarz Daftari — учёт продаж в долг в магазине.\n"
+        "Здравствуйте! {brand} — {tagline}.\n"
         "Чтобы начать, откройте магазин. Если вы сотрудник, войдите по ссылке от владельца магазина."
     ),
     "welcome_staff": (
@@ -598,7 +598,7 @@ RU = {
     "error": "Произошла ошибка. Попробуйте ещё раз.",
     "TIMEOUT": "Это заняло слишком много времени и было остановлено. Ничего не записано. Попробуйте ещё раз.",
     "consent_v2": (
-        "Магазин {shop} ведёт учёт ваших покупок в долг и оплат через сервис Qarz Daftari. Хранятся: как "
+        "Магазин {shop} ведёт учёт ваших покупок в долг и оплат через сервис {brand}. Хранятся: как "
         "магазин вас записал, ваш номер телефона (если вы его дали), идентификатор вашего аккаунта "
         "Telegram, записи о долгах и оплатах, купленные товары. Цель: чтобы вы тоже видели свой долг, и для "
         "отправки напоминаний. Данные видны только вам и сотрудникам этого магазина и не передаются другим "
@@ -904,6 +904,14 @@ LANGUAGE_NAMES = {
 }
 
 
+def tagline(lang: str) -> str:
+    """One line on what the product is, in a language; in Uzbek where the brand does not have it."""
+    own = brand.TAGLINES.get(lang)
+    if own is not None:
+        return own
+    return to_cyrillic(brand.TAGLINES["uz"]) if lang == languages.UZ_CYRILLIC else brand.TAGLINES["uz"]
+
+
 @cache
 def template(lang: str, key: str) -> str:
     """The wording of `key` in a language, before its values are filled in.
@@ -911,11 +919,15 @@ def template(lang: str, key: str) -> str:
     A language's own text first. Without one, Uzbek: transliterated for Uzbek Cyrillic, as it is for
     every other language and for a language the service does not know. A key that Uzbek does not have
     is a mistake in the code and raises `KeyError`.
+
+    No text writes the product's name: it says `{brand}`, and `{tagline}` for the line on what the
+    product is, and both are filled in here from `qarz.domain.brand`, after the transliteration, so the
+    name is in Latin letters in every language without the rules knowing it.
     """
     own = CATALOGS.get(lang, UZ).get(key)
-    if own is not None:
-        return own
-    return to_cyrillic(UZ[key]) if lang == languages.UZ_CYRILLIC else UZ[key]
+    if own is None:
+        own = to_cyrillic(UZ[key]) if lang == languages.UZ_CYRILLIC else UZ[key]
+    return own.replace(brand.TAGLINE_PLACEHOLDER, tagline(lang)).replace(brand.PLACEHOLDER, brand.NAME)
 
 
 def say(lang: str, key: str, **values: object) -> str:

@@ -3,8 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="description" content="Qarz Daftari — do'konning nasiya daftari: mijozlarning qarzi, to'lovlar va to'lash muddati eslatmalari." />
-    <title>Qarz Daftari</title>
+    <meta name="description" content="{brand} — {tagline}. Nasiya, kassa, ombor va ta'minotchilar hisobi." />
+    <title>{brand}</title>
+    <!-- The brand's mark in the browser's tab: the same file the panel's manifest lists
+         (scripts/pwaIcons.ts writes it from the brand's definition). -->
+    <link rel="icon" type="image/svg+xml" href="/panel/icons/icon.svg" />
     <!-- Telegram's official Mini App bridge. It is the only third-party script in the project and must
          load before the application; the panel and admin pages do not include it. -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>

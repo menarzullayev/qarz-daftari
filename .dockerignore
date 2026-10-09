@@ -5,3 +5,5 @@
 frontend/node_modules
 frontend/dist
 !deploy/production/nginx
+# The product's name: the one file both sides read (frontend/src/shared/brand.ts imports it by path).
+!backend/src/qarz/domain/brand.json

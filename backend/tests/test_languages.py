@@ -162,7 +162,7 @@ def test_bot_commands_and_the_products_name_are_left_as_uzbek_has_them(lang: str
     import re
 
     def kept(text: str) -> list[str]:
-        return sorted(re.findall(r"(?:^|[\s(])(/[a-z_]+)", text)) + sorted(re.findall("Qarz Daftari", text))
+        return sorted(re.findall(r"(?:^|[\s(])(/[a-z_]+)", text)) + sorted(re.findall(r"\{brand\}", text))
 
     for key, text in TRAILING[lang].CHAT.items():
         assert kept(text) == kept(UZ[key]), key
@@ -249,7 +249,8 @@ def test_every_chat_text_can_be_said_in_every_language() -> None:
         for key, source in UZ.items():
             said = template(lang, key)
             assert said.strip(), (lang, key)
-            assert _fields(said) == _fields(source), (lang, key)
+            # The name and the line on the product are filled in already (qarz.domain.brand).
+            assert _fields(said) == _fields(source) - {"brand", "tagline"}, (lang, key)
             said.format(**dict.fromkeys(_fields(source), "x"))
 
 

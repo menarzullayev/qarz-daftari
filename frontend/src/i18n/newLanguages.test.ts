@@ -80,7 +80,7 @@ describe("the catalogs that may trail behind Uzbek", () => {
   });
 
   it.each(cases)("$name leaves bot commands and the product's name as Uzbek has them", ({ source, partial }) => {
-    const kept = (text: string) => [...text.matchAll(/(?:^|[\s(])(\/[a-z_]+)|Qarz Daftari/g)].map((found) => found[1] ?? found[0]).sort();
+    const kept = (text: string) => [...text.matchAll(/(?:^|[\s(])(\/[a-z_]+)|\{brand\}/g)].map((found) => found[1] ?? found[0]).sort();
     for (const [key, entry] of Object.entries(partial)) {
       const original = (source ?? {})[key];
       if (typeof entry === "string" && typeof original === "string") {

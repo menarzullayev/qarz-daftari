@@ -7,6 +7,9 @@ WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
+# The product's name is read by both sides from one file of the backend's package; the front end imports
+# it by its path from the repository's root, so it is put at that same path here.
+COPY backend/src/qarz/domain/brand.json /backend/src/qarz/domain/brand.json
 # Public, build-time setting: the bot whose Telegram Login widget and deep links the pages use. It is
 # part of the shipped script, so it is not a secret. Empty: the panel shows no sign-in widget.
 ARG VITE_BOT_USERNAME=""

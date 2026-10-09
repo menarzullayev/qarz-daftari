@@ -5,7 +5,7 @@ A key that is absent here reads Uzbek at run time.
 
 CHAT: dict[str, str] = {
     "welcome_new": (
-        "Hello! Qarz Daftari keeps track of credit sales in your shop.\nOpen a shop to start. If you are a staff "
+        "Hello! {brand} — {tagline}.\nOpen a shop to start. If you are a staff "
         "member, come in through the link the shop owner sent."
     ),
     "welcome_staff": (
@@ -115,7 +115,7 @@ CHAT: dict[str, str] = {
     "error": "Something went wrong. Try again.",
     "TIMEOUT": "It took too long and was stopped. Nothing was recorded. Try again.",
     "consent_v2": (
-        "The shop {shop} keeps your credit purchases and payments through the Qarz Daftari service. Data that is "
+        "The shop {shop} keeps your credit purchases and payments through the {brand} service. Data that is "
         "kept: the name the shop gave you, your phone number (if you gave it), the identifier of your Telegram "
         "account, credit sale and payment entries, the products you took. Purpose: so that you too can see the "
         "debt account, and to send reminders. The data is seen only by you and by the staff of this shop, and is "
@@ -412,7 +412,7 @@ CHAT: dict[str, str] = {
     ),
     "currency": "soum",
     # The operations alerts (DEC-078).
-    "ops_title": "⚠️ Qarz Daftari: system monitoring",
+    "ops_title": "⚠️ {brand}: system monitoring",
     "ops_firing": "🔴 Started:",
     "ops_reminder": "🟠 Still going on:",
     "ops_resolved": "🟢 Fixed:",
@@ -421,14 +421,14 @@ CHAT: dict[str, str] = {
     "ops_more": "…more alerts in the next message: {count}.",
     "ops_footer": "What to do: runbook 16 (docs/10-operations/runbooks.md).",
     "ops_test": (
-        "✅ Qarz Daftari: TEST alert ({at}).\nThis is not a real fault. It was sent to check that system "
+        "✅ {brand}: TEST alert ({at}).\nThis is not a real fault. It was sent to check that system "
         "monitoring messages reach this chat."
     ),
     "ops_db_down": (
-        "🔴 Qarz Daftari: the worker cannot connect to the database (since {since}).\nThe monitoring state is not "
+        "🔴 {brand}: the worker cannot connect to the database (since {since}).\nThe monitoring state is not "
         "being saved and the other checks have stopped. Runbook 16."
     ),
-    "ops_db_up": "🟢 Qarz Daftari: the database is working again ({since} — {until}).",
+    "ops_db_up": "🟢 {brand}: the database is working again ({since} — {until}).",
     "ops_rule_ErrorRateHigh": "more than 2% of requests end with a server error",
     "ops_rule_OutboxOld": "messages are not going out: the next message has waited more than 10 minutes",
     "ops_rule_RemindersNotRunning": "the reminders job has not finished for an hour",

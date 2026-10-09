@@ -1,6 +1,6 @@
 # The single-host deployment
 
-The whole service on one computer, reached through a Cloudflare Tunnel, with its backups in a Cloudflare
+The whole service (HisoBox, formerly Qarz Daftari) on one computer, reached through a Cloudflare Tunnel, with its backups in a Cloudflare
 R2 bucket. This is the **current deployment** by the founder's decision of 2026-10-08 (DEC-070): there is
 no budget for servers, so the service runs on a Windows 11 machine with Docker Desktop that he already
 has, behind NAT, started by hand when it goes down. The two-server design (`README.md` in this directory,

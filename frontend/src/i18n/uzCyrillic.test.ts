@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { BRAND_NAME } from "../shared/brand";
 import { placeholdersOf } from "./catalog";
 import type { Message } from "./types";
 import { BRANDS, CODES, PRODUCT, STEMS, toCyrillic, UPPER_WORDS, WORDS } from "./uzCyrillic";
@@ -14,7 +15,6 @@ import { BRANDS, CODES, PRODUCT, STEMS, toCyrillic, UPPER_WORDS, WORDS } from ".
  */
 type Fixture = {
   brands: string[];
-  product: string;
   codes: string[];
   upper_words: string[];
   words: Record<string, string>;
@@ -49,7 +49,7 @@ describe("the shared cases", () => {
 
   it("has the same tables as the server's twin", () => {
     expect([...BRANDS].sort()).toEqual(fixture.brands);
-    expect(PRODUCT).toBe(fixture.product);
+    expect(PRODUCT).toBe(BRAND_NAME);
     expect([...CODES].sort()).toEqual(fixture.codes);
     expect([...UPPER_WORDS].sort()).toEqual(fixture.upper_words);
     expect(WORDS).toEqual(fixture.words);
@@ -66,7 +66,7 @@ describe("what is never touched", () => {
     ["https://t.me/qarz_bot?start=abc", "a link"],
     ["yordam@qarz.uz", "an e-mail address"],
     ["@qarz_bot", "a Telegram name"],
-    ["Qarz Daftari", "the product's name"],
+    [BRAND_NAME, "the product's name"],
     ["Telegram", "a brand"],
     ["Excel", "a brand"],
     ["SMS", "a code"],

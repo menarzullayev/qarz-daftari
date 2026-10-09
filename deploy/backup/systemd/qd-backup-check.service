@@ -1,6 +1,6 @@
 # Runs on the standby server. Output goes to the journal: journalctl -u qd-backup-check.service
 [Unit]
-Description=Qarz Daftari: age of the newest backup and of the newest archived WAL segment
+Description=qarz: age of the newest backup and of the newest archived WAL segment
 Documentation=https://github.com/menarzullayev/qarz-daftari/blob/main/deploy/backup/README.md
 After=network-online.target postgresql.service
 Wants=network-online.target

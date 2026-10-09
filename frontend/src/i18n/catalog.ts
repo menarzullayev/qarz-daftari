@@ -1,3 +1,4 @@
+import { BRAND_NAME } from "../shared/brand";
 import type { EnPlural, Language, Message, MessageKey, MessageParams, RuPlural } from "./types";
 import { LANGUAGES } from "./types";
 import { uz } from "./uz";
@@ -223,6 +224,14 @@ export function enPluralCategory(count: number): keyof EnPlural {
 
 const PLACEHOLDER = /\{(\w+)\}/g;
 
+/**
+ * What a text may name without being given it. No catalog writes the product's name: a text says
+ * `{brand}`, in every language, and it is filled in here from the one place the name is written. Uzbek
+ * Cyrillic is made from the Uzbek text before this, and its rules never touch a placeholder, so the
+ * name stays in Latin letters without the rules being told.
+ */
+const BUILT_IN: Readonly<Record<string, string>> = { brand: BRAND_NAME };
+
 /** Names of the `{param}` placeholders in a template, without duplicates, sorted. */
 export function placeholdersOf(template: string): string[] {
   return [...new Set([...template.matchAll(PLACEHOLDER)].map((match) => match[1] ?? ""))].sort();
@@ -230,7 +239,7 @@ export function placeholdersOf(template: string): string[] {
 
 function interpolate(key: string, template: string, params: MessageParams): string {
   return template.replace(PLACEHOLDER, (_whole, name: string) => {
-    const value = params[name];
+    const value = params[name] ?? BUILT_IN[name];
     if (value === undefined) {
       throw new Error(`message "${key}" needs the parameter "${name}"`);
     }
