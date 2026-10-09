@@ -13,6 +13,7 @@ from qarz.application.ports import Storage
 from qarz.application.shops import require_member
 from qarz.domain.access import Capability
 from qarz.domain.cash import SWITCH as CASH_SWITCH
+from qarz.domain.network import SWITCH as NETWORK_SWITCH
 from qarz.domain.stock import SWITCH as STOCK_SWITCH
 
 LIST_MY_SHOPS = self_operation("me.shops.list")
@@ -46,6 +47,15 @@ class AccountService:
         """Whether the stock is on (expansion module I). Said in a header, and only when it is on."""
         async with self._storage.platform() as session:
             return await session.platform_setting(STOCK_SWITCH) is True
+
+    async def network_on(self) -> bool:
+        """Whether the network between shops is on (expansion module J), which needs the stock as well.
+        Said in a header, and only when it is on."""
+        async with self._storage.platform() as session:
+            return (
+                await session.platform_setting(NETWORK_SWITCH) is True
+                and await session.platform_setting(STOCK_SWITCH) is True
+            )
 
     async def my_shops(self, user_id: UUID) -> dict[str, Any]:
         async with self._storage.platform() as session:

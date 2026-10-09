@@ -79,6 +79,15 @@ _STATUS = {
     "SUPPLIER_NAME_TAKEN": 409,
     "SUPPLIER_ARCHIVED": 409,
     "SUPPLIER_HAS_BALANCE": 409,
+    "NETWORK_STATE": 409,
+    "NETWORK_INVITE_INVALID": 404,
+    "NETWORK_LINK_EXISTS": 409,
+    "NETWORK_TOO_MANY_INVITES": 409,
+    "NETWORK_PARTNER_UNAVAILABLE": 409,
+    "NETWORK_COUNTERPART_INVALID": 409,
+    "NETWORK_CURRENCY": 409,
+    "NETWORK_BOOKS_MISMATCH": 409,
+    "NETWORK_PARTNER_REFUSED": 409,
     "CASH_ENTRY_OF_LEDGER": 409,
     "CASH_ENTRY_OF_STOCK": 409,
     "CASH_ENTRY_CANCELLED": 409,
@@ -185,6 +194,21 @@ _MESSAGES = {
         "SUPPLIER_NAME_TAKEN": "Shu nomli ta'minotchi bor (arxivda bo'lishi ham mumkin).",
         "SUPPLIER_ARCHIVED": "Bu ta'minotchi arxivda. Avval arxivdan chiqaring.",
         "SUPPLIER_HAS_BALANCE": "Hisob-kitobi yopilmagan ta'minotchini arxivlab bo'lmaydi.",
+        "NETWORK_STATE": ("Bu amalni hozir bajarib bo'lmaydi: holat o'zgargan yoki bu qadam hamkor tomonniki."),
+        "NETWORK_INVITE_INVALID": "Taklif kodi yaroqsiz yoki muddati o'tgan. Hamkordan yangi kod so'rang.",
+        "NETWORK_LINK_EXISTS": "Bu do'kon bilan shunday aloqa allaqachon bor yoki javob kutilmoqda.",
+        "NETWORK_TOO_MANY_INVITES": "Ochiq taklif kodlari juda ko'p. Avval eskilarini bekor qiling.",
+        "NETWORK_PARTNER_UNAVAILABLE": "Hamkor do'kon hozir mavjud emas.",
+        "NETWORK_COUNTERPART_INVALID": (
+            "Hamkor uchun ta'minotchi yoki mijoz yozuvi mos emas. Faol va boshqa hamkorga bog'lanmagan yozuvni tanlang."
+        ),
+        "NETWORK_CURRENCY": "Ikki do'kondan biri bu valyutada ishlamaydi.",
+        "NETWORK_BOOKS_MISMATCH": (
+            "Daftardagi yozuv hujjatga mos kelmadi. Hech narsa saqlanmadi, qayta urinib ko'ring."
+        ),
+        "NETWORK_PARTNER_REFUSED": (
+            "Hamkorning daftari bu yozuvni qabul qila olmadi. Hech narsa saqlanmadi. Hamkor bilan bog'laning."
+        ),
         "RATE_LIMITED": "So'rovlar juda ko'p. Biroz kutib, qayta urinib ko'ring.",
         "TIMEOUT": "So'rov juda uzoq davom etdi va to'xtatildi. Hech narsa saqlanmadi. Qayta urinib ko'ring.",
         "ERROR": "Xatolik yuz berdi.",
@@ -287,6 +311,20 @@ _MESSAGES = {
         "SUPPLIER_NAME_TAKEN": "Поставщик с таким названием уже есть (возможно, он в архиве).",
         "SUPPLIER_ARCHIVED": "Этот поставщик в архиве. Сначала верните его из архива.",
         "SUPPLIER_HAS_BALANCE": "Поставщика с незакрытыми расчётами нельзя отправить в архив.",
+        "NETWORK_STATE": ("Сейчас это действие недоступно: состояние изменилось или этот шаг делает партнёр."),
+        "NETWORK_INVITE_INVALID": "Код приглашения недействителен или устарел. Попросите у партнёра новый.",
+        "NETWORK_LINK_EXISTS": "Такая связь с этим магазином уже есть или ожидает ответа.",
+        "NETWORK_TOO_MANY_INVITES": "Слишком много открытых кодов приглашения. Сначала отзовите старые.",
+        "NETWORK_PARTNER_UNAVAILABLE": "Магазин партнёра сейчас недоступен.",
+        "NETWORK_COUNTERPART_INVALID": (
+            "Запись поставщика или клиента для партнёра не подходит. "
+            "Выберите активную запись, не связанную с другим партнёром."
+        ),
+        "NETWORK_CURRENCY": "Один из двух магазинов не работает в этой валюте.",
+        "NETWORK_BOOKS_MISMATCH": "Запись в учёте не совпала с документом. Ничего не сохранено, повторите попытку.",
+        "NETWORK_PARTNER_REFUSED": (
+            "Учёт партнёра не смог принять эту запись. Ничего не сохранено. Свяжитесь с партнёром."
+        ),
         "RATE_LIMITED": "Слишком много запросов. Подождите немного и повторите.",
         "TIMEOUT": "Запрос выполнялся слишком долго и был остановлен. Ничего не сохранено. Повторите попытку.",
         "ERROR": "Произошла ошибка.",

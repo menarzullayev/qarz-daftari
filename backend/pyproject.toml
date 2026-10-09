@@ -56,6 +56,7 @@ ignore = [
 "src/qarz/infrastructure/db.py" = ["S608"]
 "src/qarz/infrastructure/db_stock.py" = ["S608"]
 "src/qarz/infrastructure/db_cash.py" = ["S608"]
+"src/qarz/infrastructure/db_network.py" = ["S608"]
 
 [tool.mypy]
 python_version = "3.12"

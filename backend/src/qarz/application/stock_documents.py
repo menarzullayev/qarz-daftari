@@ -480,6 +480,49 @@ async def _add_item(session: TenantSession, actor: Membership, new: CleanNewItem
     return created.item_id
 
 
+async def write_in(
+    session: TenantSession,
+    actor: Membership,
+    clean: CleanDocument,
+    currency: str,
+    *,
+    now: datetime,
+    origin_ref: UUID | None = None,
+) -> UUID:
+    """Write a checked document as a draft, inside a transaction the caller has opened and authorized.
+
+    `origin_ref` is for the network between shops (module J): the delivery note of the supplier that a
+    receipt answers. The caller then posts it with `post_in`, like any other.
+    """
+    resolved = await _resolve(session, actor, clean, now=now)
+    document_id = uuid4()
+    await session.insert_document(
+        document_id=document_id,
+        kind=clean.kind,
+        number=await session.next_document_number(clean.kind),
+        doc_date=clean.doc_date,
+        supplier_id=clean.supplier_id,
+        customer_id=clean.customer_id,
+        currency=currency,
+        total=clean.total,
+        paid=clean.paid,
+        reason=clean.reason,
+        note=clean.note,
+        draft=_draft(resolved, clean.method),
+        created_by=actor.membership_id,
+        created_at=now,
+        origin_ref=origin_ref,
+    )
+    await session.record_activity(
+        membership_id=actor.membership_id,
+        action="stock.document_created",
+        subject_type="stock_document",
+        subject_id=document_id,
+        detail={"kind": clean.kind},
+    )
+    return document_id
+
+
 async def _lock_for(session: TenantSession, document_id: UUID) -> DocumentRecord:
     """The document under its lock. The customer of a customer's return is locked first, in the order
     every write to a customer's account takes its locks, so the two can never wait for each other."""
@@ -805,31 +848,7 @@ class DocumentService:
 
             async def apply() -> dict[str, Any]:
                 now = self._now()
-                resolved = await _resolve(session, actor, clean, now=now)
-                document_id = uuid4()
-                await session.insert_document(
-                    document_id=document_id,
-                    kind=clean.kind,
-                    number=await session.next_document_number(clean.kind),
-                    doc_date=clean.doc_date,
-                    supplier_id=clean.supplier_id,
-                    customer_id=clean.customer_id,
-                    currency=currency,
-                    total=clean.total,
-                    paid=clean.paid,
-                    reason=clean.reason,
-                    note=clean.note,
-                    draft=_draft(resolved, clean.method),
-                    created_by=actor.membership_id,
-                    created_at=now,
-                )
-                await session.record_activity(
-                    membership_id=actor.membership_id,
-                    action="stock.document_created",
-                    subject_type="stock_document",
-                    subject_id=document_id,
-                    detail={"kind": clean.kind},
-                )
+                document_id = await write_in(session, actor, clean, currency, now=now)
                 if post:
                     document = await post_in(session, actor, document_id, now=now)
                 else:
