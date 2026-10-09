@@ -1,4 +1,4 @@
-import { expect, goTo, signInOnWeb, test } from "../support/fixtures.ts";
+import { DESKTOP, expect, expectNoSidewaysScroll, goTo, PHONE, signInOnWeb, TABLET, test } from "../support/fixtures.ts";
 import { lit, sql, sqlValue, stack } from "../support/stack.ts";
 import { newPerson, personWithId, totpCode } from "../support/telegram.ts";
 
@@ -7,14 +7,24 @@ import { newPerson, personWithId, totpCode } from "../support/telegram.ts";
  * the web panel, in the real browser, through the proxy and under its policies; the `watch` fixture
  * fails the journey on any Content-Security-Policy violation. Before this journey nothing of the
  * stock's screens had been drawn by a browser: it is their proof.
+ *
+ * It ends with a sale for cash, without a customer: the goods leave the stock, the money is in the cash
+ * book, and the sale taken back undoes both. For that the cash book is switched on as well.
  */
 
 const SWITCH = "stock_on";
+/** The cash book's switch: with it on, a sale for cash is also an entry of income. */
+const CASH_BOOK = "cash_book_on";
+const SWITCH_LABELS = [
+  [SWITCH, "Ombor, kirim va ta'minotchilar yoqilgan"],
+  [CASH_BOOK, "Kassa (kirim va chiqim daftari) yoqilgan"],
+] as const;
 const NAV = "Asosiy menyu";
 /** A real EAN-13 with a right check digit. */
 const EAN = "4006381333931";
 
-const switchedOn = () => sql(`SELECT value::text FROM platform_setting WHERE key = ${lit(SWITCH)}`)[0]?.[0] === "true";
+const isOn = (key: string) => sql(`SELECT value::text FROM platform_setting WHERE key = ${lit(key)}`)[0]?.[0] === "true";
+const switchedOn = () => isOn(SWITCH);
 
 /** The next allow-listed identifier nobody has enrolled a second factor for: it can be enrolled once. */
 function freshAdministrator() {
@@ -26,7 +36,7 @@ function freshAdministrator() {
   return personWithId(id, "Admin");
 }
 
-test("the stock: a receipt on credit from a supplier, a barcode, a sale that takes goods out, and the report", async ({ page, chat }) => {
+test("the stock: a receipt on credit from a supplier, a barcode, a sale that takes goods out, the report, and a sale for cash", async ({ page, chat }) => {
   // Three sign-ins, one of them an administrator's after a pause for the proxy's sign-in limit.
   test.setTimeout(150_000);
   const owner = newPerson("Olim");
@@ -60,14 +70,24 @@ test("the stock: a receipt on credit from a supplier, a barcode, a sale that tak
       await expect(page.getByRole("heading", { level: 1, name: "Sahifa topilmadi" })).toBeVisible();
 
       const unknown = await page.request.get("/api/v1/no-such-route");
-      for (const path of [`/api/v1/shops/${shopId}/stock/settings`, `/api/v1/shops/${shopId}/stock/items`, `/api/v1/shops/${shopId}/suppliers`]) {
+      for (const path of [
+        `/api/v1/shops/${shopId}/stock/settings`,
+        `/api/v1/shops/${shopId}/stock/items`,
+        `/api/v1/shops/${shopId}/stock/sales`,
+        `/api/v1/shops/${shopId}/suppliers`,
+      ]) {
         const answer = await page.request.get(path);
         expect(answer.status(), path).toBe(404);
         expect(await answer.json(), path).toEqual(await unknown.json());
       }
     });
+  }
 
-    await test.step("an administrator turns the switch on, with a code of the second factor", async () => {
+  // The stock's switch and the cash book's: both off on a fresh stack; on one that an earlier run of the
+  // suite left, whichever is still off.
+  const off = SWITCH_LABELS.filter(([key]) => !isOn(key));
+  if (off.length > 0) {
+    await test.step("an administrator turns the stock on, and the cash book with it, with a code of the second factor", async () => {
       const admin = freshAdministrator();
       // Signing in, the administrators' status, enrolling and passing the factor all count against the
       // proxy's sign-in limit by address (30 a minute, burst 10), and the journeys before this one have
@@ -81,14 +101,16 @@ test("the stock: a receipt on credit from a supplier, a barcode, a sale that tak
       await expect(page.getByRole("heading", { level: 1, name: "Do'konlar" })).toBeVisible();
 
       await goTo(page, "/settings");
-      const box = page.getByLabel("Ombor, kirim va ta'minotchilar yoqilgan");
-      await expect(box).not.toBeChecked();
-      await box.check();
+      for (const [, label] of off) {
+        const box = page.getByLabel(label);
+        await expect(box).not.toBeChecked();
+        await box.check();
+      }
       // A code is accepted once, and the one of this half-minute opened the session: the next one.
       await page.getByLabel("Autentifikator kodi").fill(totpCode(uri, new Date(Date.now() + 30_000)));
       await page.getByRole("button", { name: "Saqlash" }).click();
       await expect(page.getByText("Sozlamalar saqlandi. O'zgarganlari:")).toBeVisible();
-      expect(switchedOn()).toBe(true);
+      expect(SWITCH_LABELS.map(([key]) => isOn(key))).toEqual([true, true]);
     });
   }
 
@@ -207,6 +229,123 @@ test("the stock: a receipt on credit from a supplier, a barcode, a sale that tak
     await expect(fact("Hisobdagi tovarlar")).toHaveText("1");
     // 7.5 kg at the selling price of 15 000 so'm.
     await expect(fact("Sotish narxida qiymati")).toHaveText("112 500 so'm");
+  });
+
+  const cashBook = () =>
+    sql(
+      `SELECT e.direction, e.method, e.amount::text, c.name, e.note, (e.cancelled_at IS NOT NULL)::text
+         FROM cash_entry e JOIN cash_category c ON c.id = e.category_id WHERE e.shop_id = ${lit(shopId)} ORDER BY e.created_at`,
+    );
+
+  await test.step("a sale for cash, without a customer, takes a kilogram and a half out and puts its money in the cash book", async () => {
+    await nav().getByRole("link", { name: "Ombor", exact: true }).click();
+    await page.getByRole("link", { name: "Naqd savdo", exact: true }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Naqd savdo" })).toBeVisible();
+    // The barcode as a scanner types it: the item is a line at once, one of it at its own price.
+    const find = page.getByLabel("Tovar: shtrix-kodni skanerlang yoki nom yozing");
+    await find.click();
+    await find.pressSequentially(EAN, { delay: 5 });
+    await find.press("Enter");
+    const qty = page.getByLabel(`«${itemName}»: miqdor (kg)`);
+    await expect(qty).toHaveValue("1");
+    await expect(page.getByLabel(`«${itemName}»: bir birlik narxi, so'm`)).toHaveValue("15000");
+    // The same code again adds to the line: a tenth of a kilogram for a weighed good.
+    await find.pressSequentially(EAN, { delay: 5 });
+    await find.press("Enter");
+    await expect(qty).toHaveValue("1,1");
+    await page.getByRole("button", { name: `«${itemName}»: ko'paytirish` }).click();
+    await expect(qty).toHaveValue("1,2");
+    await qty.fill("1,5");
+    await expect(page.locator(".sale-total")).toHaveText("Jami 22 500 so'm");
+    // The shop keeps a cash book, and the form says where the money goes.
+    await expect(page.getByText("Savdo kassaga kirim bo'lib yoziladi.")).toBeVisible();
+
+    // The form with a line in it is no wider than a phone's, a tablet's or a desktop's window.
+    const window = page.viewportSize();
+    for (const [name, size] of [["phone", PHONE], ["tablet", TABLET], ["desktop", DESKTOP]] as const) {
+      await page.setViewportSize(size);
+      await expectNoSidewaysScroll(page, `/panel/#/stock/sale with a line at ${name} width (${size.width}px)`);
+    }
+    if (window) {
+      await page.setViewportSize(window);
+    }
+
+    await page.getByRole("button", { name: "Sotish" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Naqd savdo № 1 yozildi." })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Naqd savdo № 1 yozildi." })).toContainText("22 500 so'm");
+    await expect(page.getByText("Kassaga kirim bo'lib yozildi.")).toBeVisible();
+    // The owner sees what the goods cost: a kilogram and a half bought at 10 000.
+    await expect(fact("Tannarx")).toHaveText("15 000 so'm");
+    await expect(fact("Foyda")).toHaveText("7 500 so'm");
+    await expect(fact("Kim sotdi")).toHaveText("Men");
+
+    expect(movements()).toEqual([
+      ["receipt", "10", "10"],
+      ["sale", "-2.5", "7.5"],
+      ["sale", "-1.5", "6"],
+    ]);
+    expect(onHand()).toEqual([["6", "60000"]]);
+    expect(sql(`SELECT kind, status, number::text, total::text, paid::text, method FROM stock_document WHERE shop_id = ${lit(shopId)} AND kind = 'sale'`)).toEqual([
+      ["sale", "posted", "1", "22500", "22500", "cash"],
+    ]);
+    // The money: one entry of income, under the stock's own category, that says which sale it is.
+    expect(cashBook()).toEqual([["income", "cash", "22500", "Ombor: naqd savdo", "Naqd savdo № 1", "false"]]);
+    // No customer and no debt: the customer's account is what the sale on credit left.
+    expect(sqlValue(`SELECT count(*)::text FROM ledger_entry WHERE shop_id = ${lit(shopId)}`)).toBe("2");
+    expect(sqlValue(`SELECT count(*)::text FROM stock_level_mismatches(${lit(shopId)}::uuid)`)).toBe("0");
+  });
+
+  await test.step("the sale is in the day's list, in the cash book, among the item's movements and in the report", async () => {
+    await page.getByRole("link", { name: "Naqd savdolar", exact: true }).click();
+    const list = page.getByRole("table", { name: "Naqd savdolar" });
+    const row = list.getByRole("row").filter({ hasText: "Naqd savdo № 1" });
+    await expect(row).toContainText(`${itemName} 1,5 kg`);
+    await expect(row).toContainText("22 500 so'm");
+    await expect(row).toContainText("Men");
+    await expect(fact("Savdolar soni")).toHaveText("1");
+    await expect(fact("Jami tushum")).toHaveText("22 500 so'm");
+
+    await nav().getByRole("link", { name: "Kassa", exact: true }).click();
+    const entries = page.getByRole("list", { name: "Yozuvlar" }).or(page.getByRole("table", { name: "Yozuvlar" }));
+    await expect(entries).toContainText("Naqd savdo № 1");
+    await expect(entries).toContainText("Ombor: naqd savdo");
+    await expect(entries).toContainText("22 500 so'm");
+
+    // An item's movements name the sale and lead to its own page, not to the documents'.
+    await nav().getByRole("link", { name: "Ombor", exact: true }).click();
+    await page.getByRole("table", { name: "Ombordagi tovarlar" }).getByRole("link", { name: itemName }).click();
+    const moved = page.getByRole("table", { name: "Harakatlar" }).getByRole("row").filter({ hasText: "Naqd savdo № 1" });
+    await expect(moved).toContainText("-1,5 kg");
+    await moved.getByRole("link", { name: "Naqd savdo № 1" }).click();
+    await expect(page.getByRole("heading", { level: 2, name: /Naqd savdo № 1/ })).toBeVisible();
+
+    await goTo(page, "/stock/report");
+    // On credit and for cash together: 2.5 + 1.5 kg for 37 500 + 22 500, bought at 10 000 a kilogram.
+    const sold = page.getByRole("table", { name: "30 kun ichida sotilganlar" }).getByRole("row").filter({ hasText: itemName });
+    await expect(sold.getByRole("cell")).toHaveText(["4 kg", "60 000 so'm", "40 000 so'm", "20 000 so'm", "1,5 kg", "22 500 so'm"]);
+    await expect(fact("Savdolar soni")).toHaveText("1");
+    await expect(fact("Jami tushum")).toHaveText("22 500 so'm");
+  });
+
+  await test.step("the sale taken back, with a reason: the goods are in the stock again and the cash entry is cancelled", async () => {
+    await goTo(page, "/stock/sales");
+    await page.getByRole("table", { name: "Naqd savdolar" }).getByRole("link", { name: "Naqd savdo № 1" }).click();
+    await page.getByRole("button", { name: "Savdoni bekor qilish" }).click();
+    const form = page.getByRole("group", { name: "Nima uchun bekor qilinmoqda?" });
+    // No reason, no request.
+    await form.getByRole("button", { name: "Savdoni bekor qilish" }).click();
+    await expect(page.getByText("Sababni yozing: 1 dan 200 tagacha belgi.")).toBeVisible();
+    expect(sqlValue(`SELECT status FROM stock_document WHERE shop_id = ${lit(shopId)} AND kind = 'sale'`)).toBe("posted");
+    await form.getByRole("textbox", { name: "Nima uchun bekor qilinmoqda?" }).fill("xato urilgan");
+    await form.getByRole("button", { name: "Savdoni bekor qilish" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Savdo bekor qilindi." })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: /Naqd savdo № 1/ })).toContainText("Bekor qilingan");
+    await expect(page.getByRole("button", { name: "Savdoni bekor qilish" })).toHaveCount(0);
+
+    expect(onHand()).toEqual([["7.5", "75000"]]);
+    expect(sql(`SELECT status, cancel_reason FROM stock_document WHERE shop_id = ${lit(shopId)} AND kind = 'sale'`)).toEqual([["cancelled", "xato urilgan"]]);
+    expect(cashBook()).toEqual([["income", "cash", "22500", "Ombor: naqd savdo", "Naqd savdo № 1", "true"]]);
+    expect(sqlValue(`SELECT count(*)::text FROM stock_level_mismatches(${lit(shopId)}::uuid)`)).toBe("0");
   });
 
   await test.step("the proxy lets the staff's page use the camera, and no page outside the staff's", async () => {
