@@ -1,4 +1,4 @@
-"""A customer's read-only link in the database (migration 0039), without the application in between.
+"""A customer's read-only link in the database (migration 0040), without the application in between.
 
 The lookup answers for a live link and for nothing else; the table is one shop's at a time; and the
 roles can do to it only what their code does.
