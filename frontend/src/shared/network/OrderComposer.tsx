@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { useI18n } from "../../i18n/I18nProvider";
+import { ApiError } from "../api";
 import { useLoad, useSubmit } from "../hooks";
 import { Link, navigate } from "../router";
 import { NotFoundScreen } from "../screens";
@@ -44,8 +45,35 @@ function Composer({ links, draft }: { links: readonly NetLink[]; draft: Draft | 
   const [saved, setSaved] = useState(false);
   const [finding, setFinding] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // The draft a first attempt made when its sending then failed. The same attempt again repeats its two
+  // keys, and the server answers both from what it stored. A CHANGED attempt has a new key: it writes
+  // over that draft instead of making a second one beside it, unless the draft is gone (it was sent
+  // after all, and the answer was lost), in which case it is a new order like any other.
+  const made = useRef<{ key: string; id: string } | null>(null);
+  const write = async (job: Job, key: string): Promise<Draft> => {
+    if (job.draftId !== null) {
+      return network.updateDraft(job.draftId, job.input, key);
+    }
+    const earlier = made.current;
+    if (earlier !== null && earlier.key !== key) {
+      try {
+        return await network.updateDraft(earlier.id, job.input, key);
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 404) {
+          throw error;
+        }
+        // No such draft any more. Each write has a key of its own, so the new draft's is a derived one.
+        const again = await network.createDraft(job.input, `${key}-new`);
+        made.current = { key, id: again.id };
+        return again;
+      }
+    }
+    const created = await network.createDraft(job.input, key);
+    made.current = { key, id: created.id };
+    return created;
+  };
   const save = useSubmit(async (job: Job, key) => {
-    const kept = job.draftId === null ? await network.createDraft(job.input, key) : await network.updateDraft(job.draftId, job.input, key);
+    const kept = await write(job, key);
     if (job.send) {
       // A second write of the same action: its key is made from the first, so a retry repeats both.
       const order = await network.sendDraft(kept.id, `${key}-send`);

@@ -57,6 +57,7 @@ export const SETTING_RULES: Readonly<Record<string, SettingRule>> = {
   usd_on: { kind: "switch" },
   cash_book_on: { kind: "switch" },
   stock_on: { kind: "switch" },
+  network_on: { kind: "switch" },
 };
 
 export type Parsed = { ok: true; value: SettingValue } | { ok: false };

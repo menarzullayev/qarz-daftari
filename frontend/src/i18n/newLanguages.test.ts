@@ -4,14 +4,14 @@ import { checkPartialCatalog, hasNoProblems, missingKeys } from "./check";
 import type { Message } from "./types";
 
 /**
- * Tajik, Karakalpak and English may trail behind Uzbek (see `check.ts`): while other work adds Uzbek and
- * Russian text, a key that one of them lacks reads Uzbek and is not a mistake. So this test checks what
- * they have, in every catalog there is, and does not ask that they have everything. `npm run
- * i18n:missing` lists what is absent; a final pass fills it and then makes completeness part of this
- * test (docs/10-operations/translation-review.md).
+ * Tajik, Karakalpak and English against Uzbek (see `check.ts`): what each has is right (no unknown key,
+ * the right kind of entry, Uzbek's placeholders, no empty text), and, since the last module of the
+ * expansion was merged, each has everything: a key Uzbek has and one of them lacks fails this test and
+ * CI's `npm run i18n:missing -- --strict` (docs/10-operations/translation-review.md). At run time such a
+ * key still reads Uzbek, so a slip is the wrong language and never a blank.
  *
- * The catalogs are found, not listed: a new catalog directory is checked the day it gets a file in one
- * of these languages, without a line being added here.
+ * The catalogs are found, not listed: a new catalog directory is held to this the day it gets its
+ * Uzbek file, without a line being added here.
  */
 type Catalog = Readonly<Record<string, Message>>;
 type Module = Record<string, Catalog>;
@@ -21,10 +21,12 @@ type Trailing = keyof typeof PLURAL_FORMS;
 const TRAILING = Object.keys(PLURAL_FORMS) as Trailing[];
 
 const modules = import.meta.glob<Module>(["./{uz,ru,tg,kaa,en}.ts", "./*/{uz,ru,tg,kaa,en}.ts"], { eager: true });
+/** The customer's page has a catalog of its own, with its own test of what it says; here it is only asked to be whole. */
+const pageModules = import.meta.glob<Module>("../k/{uz,tg,kaa,en}.ts", { eager: true });
 
 /** "./panel/tg.ts" → ["panel", "tg"]; the main catalog's directory is "". */
 function place(path: string): [string, string] {
-  const parts = path.replace(/^\.\//, "").replace(/\.ts$/, "").split("/");
+  const parts = path.replace(/^\.\.?\//, "").replace(/\.ts$/, "").split("/");
   return parts.length === 1 ? ["", parts[0] ?? ""] : [parts[0] ?? "", parts[1] ?? ""];
 }
 
@@ -85,6 +87,46 @@ describe("the catalogs that may trail behind Uzbek", () => {
         expect(kept(entry), key).toEqual(kept(original));
       }
     }
+  });
+});
+
+const whole = new Map(catalogs);
+for (const [path, module] of Object.entries(pageModules)) {
+  const [directory, language] = place(path);
+  const ofDirectory = whole.get(directory) ?? new Map<string, Catalog>();
+  ofDirectory.set(language, only(module, path));
+  whole.set(directory, ofDirectory);
+}
+
+/** Every catalog there is, in each of the three languages: the file may be absent, which is "lacks everything". */
+const complete = [...whole.entries()].flatMap(([directory, byLanguage]) =>
+  TRAILING.map((language) => ({
+    name: `${directory || "main"} in ${language}`,
+    source: byLanguage.get("uz") ?? {},
+    partial: byLanguage.get(language) ?? {},
+  })),
+);
+
+describe("completeness: every text exists in Tajik, Karakalpak and English", () => {
+  it("looks at every catalog, the network's and the customer's page among them", () => {
+    expect([...whole.keys()]).toEqual(expect.arrayContaining(["", "network", "stock", "cash", "panel", "k"]));
+    expect(complete.length).toBe(whole.size * TRAILING.length);
+    for (const [directory, byLanguage] of whole) {
+      expect(Object.keys(byLanguage.get("uz") ?? {}).length, `${directory || "main"} has Uzbek text`).toBeGreaterThan(0);
+    }
+  });
+
+  it.each(complete)("$name lacks no key that Uzbek has", ({ source, partial }) => {
+    expect(missingKeys(source, partial)).toEqual([]);
+  });
+
+  it("would fail for a key that only Uzbek and Russian were given, and for a catalog with no file", () => {
+    const network = catalogs.get("network");
+    const uz = network?.get("uz") ?? {};
+    const tg = network?.get("tg") ?? {};
+    expect(Object.keys(uz).length).toBeGreaterThan(200);
+    expect(missingKeys({ ...uz, "net.added.later": "Yangi matn" }, tg)).toEqual(["net.added.later"]);
+    expect(missingKeys(uz, {}).length).toBe(Object.keys(uz).length);
   });
 });
 

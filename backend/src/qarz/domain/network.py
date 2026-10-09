@@ -25,7 +25,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Final
 
-from qarz.domain import stock
+from qarz.domain import catalog, stock
 from qarz.domain.money import Currency, rules
 
 # The platform setting that turns the network on (off by default). It also needs the stock (`stock_on`).
@@ -66,7 +66,10 @@ INVITE_LIFETIME: Final = timedelta(hours=48)
 MAX_OPEN_INVITES: Final = 10
 
 MAX_LINES: Final = 100
-MAX_LINE_NAME: Final = 120
+# The name of a line is the catalogue's own rule for the name of a good, and no longer: the buyer may take
+# a delivered line into its catalogue as a new item under exactly this name, so a name the catalogue would
+# refuse (longer than it allows, or without a letter or a digit) is refused when the order is written.
+MAX_LINE_NAME: Final = catalog.MAX_NAME_LENGTH
 MAX_NOTE: Final = 200
 MIN_REASON: Final = 3
 MAX_REASON: Final = 200
@@ -169,10 +172,7 @@ def reason(raw: str) -> str:
 
 
 def line_name(raw: str) -> str:
-    cleaned = " ".join(raw.split())
-    if not 1 <= len(cleaned) <= MAX_LINE_NAME:
-        raise ValueError(f"between 1 and {MAX_LINE_NAME} characters")
-    return cleaned
+    return catalog.item_name(raw)
 
 
 def unit(raw: str) -> str:

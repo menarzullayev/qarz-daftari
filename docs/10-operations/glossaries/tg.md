@@ -99,6 +99,17 @@ refusals, permission names).
 | to save | saqlash | нигоҳ доштан | Not «сабт кардан», which would collide with «сабт» (entry). |
 | to review | ko'rib chiqish | дида баромадан | |
 | to accept / to decline | qabul qilish / rad etish | қабул кардан / рад кардан | |
+| partner (another shop of the service) | hamkor | шарик | Plural «шарикон»; the section is «Шарикон». This shop is «мо», the other «шарик»; nobody of either is named. |
+| partnership (the link between two shops) | hamkorlik, aloqa | шарикӣ | Asking for one is «дархости шарикӣ»; ending one is «қатъ кардан» (not «бекор кардан», which cancels an order). |
+| buyer (a shop's role in a partnership) | xaridor | харидор | A customer of the shop stays «мизоҷ». |
+| order (to a supplier) | buyurtma | фармоиш | An unsent one is a «сиёҳнавис», as a stock document's draft. |
+| delivery note | yuk xati | борхат | To issue one: «борхат додан». A stock document of kind receipt stays «воридот». |
+| to confirm (a delivery note, a payment) | tasdiqlash | тасдиқ кардан | The same verb as approving a receipt. A note is rejected and an order or a payment declined with the one verb «рад кардан». |
+| to correct (a delivery note) | tuzatish | ислоҳ кардан | |
+| invitation code | taklif kodi | коди даъват | |
+| reconciliation | hisob-kitobni solishtirish | муқоисаи ҳисобу китоб | «Дафтари худамон» = our own books; «бақияи мувофиқашуда» = the balance both sides confirmed. |
+| to take back (a recorded payment, an invitation) | qaytarib olish | бозпас гирифтан | |
+| line (of an order or a note) | qator | сатр | |
 | to approve (a receipt) | tasdiqlash | тасдиқ кардан | |
 | administrator | administrator | администратор | «Маъмурияти хизмат» = the service's administration in messages to owners. |
 | support access | yordam uchun kirish | дастрасӣ барои кумак | |

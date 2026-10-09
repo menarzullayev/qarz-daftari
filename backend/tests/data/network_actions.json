@@ -1,0 +1,32 @@
+{
+  "about": "Every action the network between shops writes into a shop's activity log, and every kind of thing such an action is about. backend/tests/test_network_actions.py holds this list to the code (the functions of the migrations and the application); frontend/src/panel/networkActivity.test.ts holds the panel's names to this list, in every language. Add an action here and both fail until it is written and named.",
+  "actions": [
+    "network.invite_created",
+    "network.invite_revoked",
+    "network.link_accepted",
+    "network.link_declined",
+    "network.link_ended",
+    "network.link_requested",
+    "network.note_corrected",
+    "network.note_issued",
+    "network.note_received",
+    "network.note_rejected",
+    "network.order_accepted",
+    "network.order_cancelled",
+    "network.order_declined",
+    "network.order_draft_dropped",
+    "network.order_drafted",
+    "network.order_sent",
+    "network.payment_confirmed",
+    "network.payment_declined",
+    "network.payment_recorded",
+    "network.payment_withdrawn"
+  ],
+  "subjects": [
+    "network_invite",
+    "network_link",
+    "network_note",
+    "network_order",
+    "network_payment"
+  ]
+}

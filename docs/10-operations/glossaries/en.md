@@ -121,6 +121,15 @@ words, no exclamation mark unless the source has one, “curly quotes” where U
 | barcode | shtrix-kod | One word. |
 | stock document | ombor hujjati | A goods receipt, return, write-off or stocktake. A paper delivery note (*nakladnoy*, *yuk xati*) is not in the texts yet; when it appears it is "delivery note", and the record made from it is a "goods receipt". |
 | draft / posted / cancelled | qoralama / o'tkazilgan / bekor qilingan | States of a stock document. Verb "post" for *o'tkazish*. A document and a supplier entry are "cancelled"; the movement that undoes another is a "reversal". |
+| partner | hamkor | Another shop of the service this shop is linked with. The section is "Partners". This shop is "we", the other "the partner"; nobody of either is named. |
+| partnership | hamkorlik, aloqa | The link between two shops: "partnership request", "end partnership". Not "link", which stays a URL. Connecting by a code is "join with a code". |
+| buyer | xaridor | A shop's role in a partnership ("We are the buyer"). A customer of the shop stays "customer". |
+| order | buyurtma | What the buyer sends to its supplier; an unsent one is a "draft". An order is accepted or declined by the supplier and cancelled by the buyer. |
+| delivery note | yuk xati | What the supplier issues for an accepted order. The buyer confirms or rejects it; the supplier corrects it with a new one. "No. {number}" for *№*. |
+| confirm | tasdiqlash | Of a delivery note and of a payment the partner recorded. A note is "rejected"; an order, a payment and a request are "declined". |
+| invitation code | taklif kodi | The code one shop hands another outside the service. |
+| reconciliation | hisob-kitobni solishtirish | "Reconcile accounts" as the heading. "Our own books" for *o'z daftarimiz*; "the agreed debt" for what both sides confirmed. |
+| take back | qaytarib olish | Of a payment this shop recorded and of an invitation. |
 | movement | harakat | One change of an item's stock. |
 | tracked (in stock) | omborda hisoblanadi, hisobdagi | An item whose stock is counted. |
 | running low, low stock level | kam qoldi, kam qoldi chegarasi | |
