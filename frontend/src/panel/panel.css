@@ -209,3 +209,23 @@
     min-width: 0;
   }
 }
+
+/* ---------- A member's permissions: one box each, grouped by area ---------- */
+
+.matrix__group {
+  padding: var(--qd-space-3) var(--qd-space-4);
+  border: 1px solid var(--qd-line);
+  border-radius: var(--qd-radius-lg);
+  background: var(--qd-bg);
+}
+
+.matrix__group > legend {
+  padding: 0 var(--qd-space-1);
+}
+
+/* Where the answer of a box comes from, in words beside it: the state is never told by colour. */
+.matrix__state {
+  margin-left: auto;
+  color: var(--qd-muted);
+  font: var(--qd-type-small);
+}

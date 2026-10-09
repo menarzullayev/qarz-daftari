@@ -17,6 +17,7 @@ from uuid import UUID, uuid5
 from qarz.application import idempotency
 from qarz.application.admin_receipts import CHAT as DECIDED_IN_CHAT
 from qarz.application.admin_receipts import AdminReceiptService, ReceiptAlreadyDecided
+from qarz.application.authorization import may
 from qarz.application.chat_texts import CONSENT_VERSION, LANGUAGE_NAMES, day, money, say
 from qarz.application.customer_account import CustomerAccountService
 from qarz.application.customers import CREATE_CUSTOMER, create_customer_in, require_writable
@@ -30,7 +31,14 @@ from qarz.application.date_requests import (
 from qarz.application.date_requests import accept_in as accept_date_request_in
 from qarz.application.date_requests import decline_in as decline_date_request_in
 from qarz.application.disputes import DECLINE_DISPUTE, DisputeService, decline_in
-from qarz.application.errors import AlreadyMember, AppError, ForbiddenRole, NotFound, ValidationFailed
+from qarz.application.errors import (
+    AlreadyMember,
+    AppError,
+    ForbiddenPermission,
+    ForbiddenRole,
+    NotFound,
+    ValidationFailed,
+)
 from qarz.application.files import FileService
 from qarz.application.group_receipts import GroupReceiptService
 from qarz.application.ledger_service import (
@@ -40,6 +48,7 @@ from qarz.application.ledger_service import (
     append_entry_in,
     choose_promise_in,
     clean_entry,
+    require_kind,
     reverse_entry_in,
 )
 from qarz.application.links import COUNTER_PREFIX, PERSONAL_PREFIX
@@ -51,8 +60,7 @@ from qarz.application.shops import ShopService, require_member
 from qarz.application.staff import StaffService, token_hash
 from qarz.application.subscription import SubscriptionService
 from qarz.application.subscription_receipts import REVIEW_GROUP, SubscriptionReceiptService
-from qarz.domain import platform_settings
-from qarz.domain.access import Capability, allows
+from qarz.domain import permissions, platform_settings
 from qarz.domain.chat_entry import ParsedEntry, ParseError, ParseErrorCode, parse_amount, parse_entry
 from qarz.domain.disputes import clean_reason
 from qarz.domain.ledger import EntryKind
@@ -1602,6 +1610,8 @@ class ChatService:
     # --- entries -------------------------------------------------------------------------------------
 
     def _error_text(self, lang: str, error: AppError) -> str:
+        if isinstance(error, ForbiddenPermission):
+            return say(lang, "forbidden_permission")
         if isinstance(error, ForbiddenRole):
             return say(lang, "forbidden")
         if isinstance(error, NotFound):
@@ -1616,7 +1626,13 @@ class ChatService:
         except KeyError:
             return say(lang, "error")
 
-    def _saved(self, lang: str, shop: MyShop, body: dict[str, Any]) -> tuple[str, Keyboard]:
+    async def _may_cancel(self, shop: MyShop, user_id: UUID) -> bool:
+        """Whether to offer the button that reverses an entry: asked of the shop now, like the press itself."""
+        async with self._storage.tenant(shop.shop_id) as tenant:
+            member = await tenant.active_membership(user_id)
+            return member is not None and may(member, permissions.ENTRIES_CANCEL)
+
+    def _saved(self, lang: str, shop: MyShop, body: dict[str, Any], may_cancel: bool) -> tuple[str, Keyboard]:
         entry, customer = body["entry"], body["customer"]
         entry_hex = UUID(entry["id"]).hex
         values = {
@@ -1638,7 +1654,7 @@ class ChatService:
                 text = "\n".join([text, say(lang, "limit_warning", limit=limit, balance=owed)])
         else:
             text = say(lang, "payment_saved", **values)
-        if allows(shop.role, Capability.MANAGE):
+        if may_cancel:
             keyboard.append([(say(lang, "reverse"), callback("rv", entry_hex))])
         return text, keyboard
 
@@ -1655,6 +1671,7 @@ class ChatService:
     ) -> dict[str, Any]:
         """Record the entry, creating the customer first when asked to, as one idempotent write."""
         actor = await require_member(session, incoming.user_id, RECORD_ENTRY)
+        require_kind(actor, kind)
         if new_name is not None:
             await require_member(session, incoming.user_id, CREATE_CUSTOMER)
         clean_entry(kind.value, amount, note, None)
@@ -1735,7 +1752,7 @@ class ChatService:
             return
 
         if saved is not None:
-            text, keyboard = self._saved(lang, shop, saved)
+            text, keyboard = self._saved(lang, shop, saved, await self._may_cancel(shop, incoming.user_id))
             await replies.send(text, keyboard)
             return
 
@@ -1828,7 +1845,8 @@ class ChatService:
         except AppError as error:
             await replies.show(self._error_text(lang, error))
             return
-        text, keyboard = self._saved(lang, shops[shop_id], saved)
+        shop = shops[shop_id]
+        text, keyboard = self._saved(lang, shop, saved, await self._may_cancel(shop, incoming.user_id))
         await replies.show(text, keyboard)
 
     async def _shop_of_entry(self, user_id: UUID, shops: list[MyShop], entry_id: UUID) -> MyShop | None:
@@ -1884,7 +1902,8 @@ class ChatService:
             text = say(lang, "promise_closed") if error.code == "PROMISE_ALREADY_SET" else self._error_text(lang, error)
             await replies.send(text)
             if error.code == "PROMISE_ALREADY_SET":
-                await replies.buttons(self._reverse_only(lang, shop, entry_id))
+                may_cancel = await self._may_cancel(shop, incoming.user_id)
+                await replies.buttons(self._reverse_only(lang, may_cancel, entry_id))
             return
         text = say(
             lang,
@@ -1895,11 +1914,12 @@ class ChatService:
             balance=money(lang, body["customer"]["balance"]),
             date=day(chosen),
         )
-        await replies.show(text, self._reverse_only(lang, shop, entry_id))
+        may_cancel = await self._may_cancel(shop, incoming.user_id)
+        await replies.show(text, self._reverse_only(lang, may_cancel, entry_id))
 
     @staticmethod
-    def _reverse_only(lang: str, shop: MyShop, entry_id: UUID) -> Keyboard:
-        if not allows(shop.role, Capability.MANAGE):
+    def _reverse_only(lang: str, may_cancel: bool, entry_id: UUID) -> Keyboard:
+        if not may_cancel:
             return []
         return [[(say(lang, "reverse"), callback("rv", entry_id.hex))]]
 

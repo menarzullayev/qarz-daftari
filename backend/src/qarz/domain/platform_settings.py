@@ -48,6 +48,8 @@ SETTINGS: dict[str, Setting] = {
     "sms_on": Setting("switch", False, needs_code=True),
     "sms_monthly_quota": Setting("number", 0, 0, 100_000),
     "online_pay_on": Setting("switch", False, needs_code=True),
+    # Separate permissions per member of staff (expansion module G). Off: roles alone decide, as before.
+    "permissions_on": Setting("switch", False, needs_code=True),
 }
 
 

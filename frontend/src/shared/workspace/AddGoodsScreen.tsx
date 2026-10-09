@@ -5,7 +5,7 @@ import type { CustomerDetail, Entry, NewLine } from "../api";
 import { formatDateTime, formatMoney } from "../format";
 import { goodsWindowOpen } from "../goods";
 import { useLoad, useSubmit } from "../hooks";
-import { canManage, type Role } from "../navigation";
+import { may, type Viewer } from "../permissions";
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
 import { useWorkspace } from "./context";
@@ -26,12 +26,13 @@ export function canAddGoods(entry: Entry, now: Date): boolean {
 }
 
 /**
- * Who is offered "add goods": the entry's author, a manager or an owner, as the server requires. When
+ * Who is offered "add goods": the entry's author, and whoever may add to another member's sale (a
+ * manager or an owner by role), as the server requires. When
  * the server names neither the author nor the signed-in person's membership the rule cannot be applied
  * here, so the action is offered and the server's refusal is shown.
  */
-export function mayAddGoods(entry: Entry, viewer: { role: Role; membershipId: string | null }): boolean {
-  if (canManage(viewer.role) || viewer.membershipId === null || entry.authorId === null) {
+export function mayAddGoods(entry: Entry, viewer: Viewer & { membershipId: string | null }): boolean {
+  if (may(viewer, "entries.others") || viewer.membershipId === null || entry.authorId === null) {
     return true;
   }
   return entry.authorId.toLowerCase() === viewer.membershipId.toLowerCase();
@@ -122,7 +123,7 @@ function AddGoodsForm({ customer, entry }: { customer: CustomerDetail; entry: En
 
 /** Adds goods, once, to a credit sale that was recorded as an amount only (REQ-038). */
 export function AddGoodsScreen({ customerId, entryId }: { customerId: string; entryId: string }) {
-  const { api, now, role, membershipId } = useWorkspace();
+  const { api, now, role, permissions, membershipId } = useWorkspace();
   const { t } = useI18n();
   const { state, reload } = useLoad((signal) => api.readCustomer(customerId, signal), [api, customerId]);
 
@@ -141,7 +142,7 @@ export function AddGoodsScreen({ customerId, entryId }: { customerId: string; en
   return (
     <>
       <h2 className="subject">{customer.displayName}</h2>
-      {open && mayAddGoods(entry, { role, membershipId }) ? (
+      {open && mayAddGoods(entry, { role, permissions, membershipId }) ? (
         <AddGoodsForm customer={customer} entry={entry} />
       ) : (
         <>

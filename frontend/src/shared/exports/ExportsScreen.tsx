@@ -4,9 +4,8 @@ import { useI18n, type Translate } from "../../i18n/I18nProvider";
 import { type ApiError, isAbort, toApiError } from "../api";
 import { useSubmit } from "../hooks";
 import { type Column, useDesktop } from "../layout";
-import { canManage } from "../navigation";
 import { NotFoundScreen } from "../screens";
-import { useWorkspace } from "../workspace/context";
+import { useMay, useWorkspace } from "../workspace/context";
 import { Empty, errorText, Failure, formatInstant, Loading } from "../workspace/parts";
 import {
   DAILY_LIMIT,
@@ -293,8 +292,9 @@ function Exports({ pollMs }: { pollMs: number }) {
  */
 export default function ExportsScreen({ pollMs = POLL_MS, after = null }: { pollMs?: number; after?: ReactNode }) {
   const { role, shopMode } = useWorkspace();
+  const can = useMay();
   const { t } = useI18n();
-  if (!canManage(role)) {
+  if (!can("reports.export")) {
     return <NotFoundScreen />;
   }
   return (

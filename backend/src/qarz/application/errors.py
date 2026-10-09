@@ -31,6 +31,27 @@ class ForbiddenRole(AppError):
         self.needed = needed
 
 
+class ForbiddenPermission(ForbiddenRole):
+    """The caller is a member of the shop but does not hold the permission the operation needs.
+
+    Raised in the place of ForbiddenRole while the per-member permissions are on: the role alone no
+    longer says what is missing. It is a ForbiddenRole, so whatever refuses by role refuses this too.
+    """
+
+    code = "FORBIDDEN_PERMISSION"
+
+    def __init__(self, permission: str, needed: Role) -> None:
+        AppError.__init__(self, {"permission": permission})
+        self.needed = needed
+        self.permission = permission
+
+
+class BeyondOwnPermissions(AppError):
+    """A member who manages staff tried to act on someone, or give something, above their own rights."""
+
+    code = "BEYOND_OWN_PERMISSIONS"
+
+
 class ValidationFailed(AppError):
     code = "VALIDATION"
 

@@ -15,6 +15,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from qarz.application import idempotency, notify, removal
+from qarz.application.authorization import may, require_permission
 from qarz.application.credit import LimitReached
 from qarz.application.customers import (
     MAX_PAGE,
@@ -25,7 +26,7 @@ from qarz.application.customers import (
     require_viewable,
     require_writable,
 )
-from qarz.application.errors import AppError, ForbiddenRole, NotFound, ValidationFailed
+from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.goods_lines import (
     ADD_LINES,
     CleanLine,
@@ -50,8 +51,8 @@ from qarz.application.ports import (
     TenantSession,
 )
 from qarz.application.shops import require_member
-from qarz.domain import ledger
-from qarz.domain.access import Capability, Role, allows
+from qarz.domain import ledger, permissions
+from qarz.domain.access import Capability
 from qarz.domain.credit import LimitOutcome, check_limit, effective_limit
 from qarz.domain.date_requests import (
     PromiseChangeRefusal,
@@ -294,6 +295,12 @@ def clean_sale(
     return checked[0], checked[1], total, cleaned
 
 
+def require_kind(actor: Membership, kind: EntryKind) -> None:
+    """Recording an entry is one operation with two permissions: a credit sale needs one, a payment the other."""
+    wanted = permissions.CREDITS_RECORD if kind is EntryKind.CREDIT else permissions.PAYMENTS_RECORD
+    require_permission(actor, wanted)
+
+
 async def append_entry_in(
     session: TenantSession,
     actor: Membership,
@@ -331,7 +338,7 @@ async def append_entry_in(
         outcome = check_limit(
             limit,
             balance,
-            may_manage=allows(actor.role, Capability.MANAGE),
+            may_manage=may(actor, permissions.ENTRIES_OVER_LIMIT),
             sellers_may_exceed=credit.sellers_may_exceed,
         )
         if outcome is not LimitOutcome.WITHIN and limit is not None:
@@ -494,8 +501,8 @@ async def choose_promise_in(
     row = next((candidate for candidate in account if candidate.entry.id == entry_id), None)
     if row is None:
         raise NotFound()
-    if row.author_id != actor.membership_id and not allows(actor.role, Capability.MANAGE):
-        raise ForbiddenRole(Role.MANAGER)
+    if row.author_id != actor.membership_id:
+        require_permission(actor, permissions.ENTRIES_OTHERS)
 
     entry = row.entry
     reversed_ids = {other.entry.reverses_id for other in account}
@@ -669,6 +676,7 @@ class LedgerService:
             actor = await require_member(session, user_id, RECORD_ENTRY)
             key = idempotency.validate_key(request_key)
             entry_kind, text, total, goods = clean_sale(kind, amount, note, promised_date, lines)
+            require_kind(actor, entry_kind)
             await require_writable(session, self._today(), new_credit=entry_kind is EntryKind.CREDIT)
 
             async def apply() -> dict[str, Any]:

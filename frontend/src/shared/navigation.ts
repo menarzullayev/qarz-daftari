@@ -1,4 +1,5 @@
 import type { MessageKey } from "../i18n/types";
+import { type Held, mayAny, type PermissionKey } from "./permissions";
 
 /** One destination in a navigation list. The label is a catalog key, never text. */
 export type NavItem = {
@@ -25,35 +26,40 @@ export function canManage(role: Role): boolean {
   return RANK[role] >= RANK.manager;
 }
 
-type StaffSection = NavItem & { minRole: Role };
+/** A section opens for whoever holds any one of `needs`. */
+type StaffSection = NavItem & { needs: readonly PermissionKey[] };
 
 /**
- * Sections of the staff workspace and the lowest role that may open each (REQ-033). A manager can do
- * everything a seller can; an owner can do everything. This list only decides what the interface
- * offers: the server checks the role on every call and is the authority.
+ * Sections of the staff workspace and the permissions that open each (REQ-033; the server's catalogue).
+ * By role alone a manager can do everything a seller can and an owner everything; the owner may then
+ * change that for one member, and the server says what the member holds. This list only decides what
+ * the interface offers: the server checks every call and is the authority.
  */
 const STAFF_SECTIONS: readonly StaffSection[] = [
-  { id: "overview", path: "/", labelKey: "nav.overview", minRole: "seller" },
-  { id: "customers", path: "/customers", labelKey: "nav.customers", minRole: "seller" },
-  { id: "newEntry", path: "/new", labelKey: "nav.newEntry", minRole: "seller" },
+  { id: "overview", path: "/", labelKey: "nav.overview", needs: ["ledger.view"] },
+  { id: "customers", path: "/customers", labelKey: "nav.customers", needs: ["ledger.view"] },
+  { id: "newEntry", path: "/new", labelKey: "nav.newEntry", needs: ["credits.record", "payments.record"] },
   // A seller reads the catalog to pick goods; only a manager or an owner changes it (REQ-039).
-  { id: "catalog", path: "/catalog", labelKey: "nav.catalog", minRole: "seller" },
-  { id: "reminders", path: "/reminders", labelKey: "nav.reminders", minRole: "manager" },
-  { id: "reports", path: "/reports", labelKey: "nav.reports", minRole: "manager" },
-  { id: "disputes", path: "/disputes", labelKey: "nav.disputes", minRole: "manager" },
-  { id: "importExport", path: "/import-export", labelKey: "nav.importExport", minRole: "manager" },
-  { id: "staff", path: "/staff", labelKey: "nav.staff", minRole: "owner" },
-  { id: "activityLog", path: "/activity", labelKey: "nav.activityLog", minRole: "owner" },
-  { id: "subscription", path: "/subscription", labelKey: "nav.subscription", minRole: "owner" },
-  // A manager reads the settings; only the owner changes them (the server: READ_SHOP, ADMINISTER_SHOP).
-  { id: "shopSettings", path: "/shop-settings", labelKey: "nav.shopSettings", minRole: "manager" },
+  { id: "catalog", path: "/catalog", labelKey: "nav.catalog", needs: ["ledger.view"] },
+  { id: "reminders", path: "/reminders", labelKey: "nav.reminders", needs: ["reminders.send", "settings.view"] },
+  { id: "reports", path: "/reports", labelKey: "nav.reports", needs: ["reports.view"] },
+  { id: "disputes", path: "/disputes", labelKey: "nav.disputes", needs: ["disputes.decide"] },
+  { id: "importExport", path: "/import-export", labelKey: "nav.importExport", needs: ["imports.run", "reports.export"] },
+  { id: "staff", path: "/staff", labelKey: "nav.staff", needs: ["staff.manage"] },
+  { id: "activityLog", path: "/activity", labelKey: "nav.activityLog", needs: ["activity.view"] },
+  { id: "subscription", path: "/subscription", labelKey: "nav.subscription", needs: ["subscription.manage"] },
+  // A manager reads the settings; only the owner changes them (the server: settings.view, shop.edit).
+  { id: "shopSettings", path: "/shop-settings", labelKey: "nav.shopSettings", needs: ["settings.view"] },
 ];
 
 export const STAFF_SECTION_IDS: readonly string[] = STAFF_SECTIONS.map((section) => section.id);
 
-/** Exactly the sections the role may open, in display order. */
-export function staffSections(role: Role): NavItem[] {
-  return STAFF_SECTIONS.filter((section) => RANK[role] >= RANK[section.minRole]).map(
+/**
+ * Exactly the sections the member may open, in display order: by what the server said they hold, or by
+ * the role alone when it said nothing (`permissions` absent or null).
+ */
+export function staffSections(role: Role, permissions?: Held): NavItem[] {
+  return STAFF_SECTIONS.filter((section) => mayAny({ role, permissions }, section.needs)).map(
     ({ id, path, labelKey }) => ({ id, path, labelKey }),
   );
 }

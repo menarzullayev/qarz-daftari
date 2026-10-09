@@ -6,10 +6,9 @@ import { LANGUAGES, type Language } from "../../i18n/types";
 import type { ApiError, ReminderSettings, ReminderSettingsPatch, ReminderTemplate } from "../api";
 import { formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
-import { canManage } from "../navigation";
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
-import { useWorkspace } from "./context";
+import { useMay, useWorkspace } from "./context";
 import { Empty, errorText, Failure, FieldError, Loading } from "./parts";
 
 /** The amount an example reminder mentions, in whole UZS. */
@@ -296,8 +295,8 @@ function Unreachable() {
  * nothing and asks the server nothing.
  */
 export function RemindersScreen() {
-  const { role } = useWorkspace();
-  if (!canManage(role)) {
+  const can = useMay();
+  if (!can("reminders.send") && !can("settings.view")) {
     return <NotFoundScreen />;
   }
   return (

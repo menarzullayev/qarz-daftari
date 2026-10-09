@@ -168,6 +168,78 @@ Authorization is evaluated in the application for every command, then enforced a
 
 In limited mode the credit-sale and import capabilities are refused for every role; in suspended mode only owner viewing and export remain (domain rules BR-29, BR-30).
 
+### Access model: roles as presets, permissions per member (expansion module G)
+
+Behind the platform switch `permissions_on` (off by default, asks for the second factor). With the switch off the table above is the whole rule and nothing below applies: stored per-member changes are ignored, the four routes below answer 404, and no answer of any other route differs.
+
+**Model.** A role is a preset: it gives a member a default set of permissions. The owner may change that set for one member, permission by permission: grant what the role does not give, or deny what it does. What a member holds is decided in one function, `qarz.domain.permissions.effective`:
+
+- the owner holds every permission, always; a shop has exactly one owner, and nothing stored can reduce the owner's rights (the database refuses to store a change for an owner);
+- anyone else holds the defaults of their role, plus what was granted, minus what was denied;
+- a *fixed* permission follows the role alone and can be neither granted nor denied;
+- a suspended or removed member holds nothing: they are not a member for any check;
+- a stored key the catalogue does not know is ignored.
+
+**Catalogue.** One list, `qarz.domain.permissions.CATALOGUE`. Each permission has a stable key, a group for the staff screen, an Uzbek and a Russian label, the roles that hold it by default, the operations it opens, and whether it is fixed. With nothing changed for a member, every permission opens each of its operations to exactly the roles of the table above (a test holds the two equal for every operation).
+
+| Group | Key | Seller | Manager | Owner | Opens |
+|---|---|---|---|---|---|
+| Customers | `ledger.view` | Yes | Yes | Yes | Customers, balances, overview, catalog list, counter code, waiting list, credit rule |
+| Customers | `customers.create` | Yes | Yes | Yes | Add a customer, create their link, attach or dismiss a waiting person |
+| Customers | `customers.edit` | - | Yes | Yes | Edit, limit, archive, unarchive |
+| Ledger | `credits.record` | Yes | Yes | Yes | A credit sale; the one-tap promised date and goods lines of one's own sale |
+| Ledger | `payments.record` | Yes | Yes | Yes | A payment |
+| Ledger | `payment_notices.decide` | Yes | Yes | Yes | List, accept, decline a customer's payment notice; its receipt |
+| Ledger | `entries.others` | - | Yes | Yes | The promised date and goods lines of another member's sale (asked inside the operation) |
+| Ledger | `entries.over_limit` | - | Yes | Yes | A sale above the credit limit (asked inside the operation; the shop's "sellers may exceed" still applies) |
+| Ledger | `entries.cancel` | - | Yes | Yes | Reverse an entry |
+| Ledger | `promises.change` | - | Yes | Yes | Change a promised date; list, accept, decline date requests |
+| Ledger | `disputes.decide` | - | Yes | Yes | List and decline disputes |
+| Goods | `goods.edit` | - | Yes | Yes | Create, change, hide catalog items; review learned ones |
+| Reminders | `reminders.send` | - | Yes | Yes | Send a reminder; list unreachable customers |
+| Reports | `reports.view` | - | Yes | Yes | Period and overdue reports |
+| Reports | `reports.export` | - | Yes | Yes | Request, list, download exports |
+| Reports | `imports.run` | - | Yes | Yes | Template, upload, preview, apply, undo, discard |
+| Shop | `settings.view` | - | Yes | Yes | Read the shop's settings and reminder settings |
+| Shop | `settings.edit` | - | Yes | Yes | Credit rule, reminder settings, rotate the counter code |
+| Shop | `shop.edit` | - | - | Yes | Name, language, default promise days |
+| Shop | `staff.manage` | - | - | Yes | List staff; invite, suspend, restore, remove; list and cancel invitations |
+| Shop | `activity.view` | - | - | Yes | The activity log |
+| Fixed | `membership.own` | Yes | Yes | Yes | Read one's own permissions |
+| Fixed | `ownership.receive` | - | Yes | Yes | Read, accept, decline an ownership transfer (only the named manager may answer) |
+| Fixed | `permissions.manage` | - | - | Yes | Read the catalogue; read and set a member's permissions |
+| Fixed | `ownership.transfer` | - | - | Yes | Start or cancel an ownership transfer |
+| Fixed | `subscription.manage` | - | - | Yes | Subscription, receipts, online order |
+| Fixed | `support.manage` | - | - | Yes | See and end support access to the shop |
+| Fixed | `shop.delete` | - | - | Yes | Request, cancel, read the deletion of the shop |
+
+Recording an entry (`ledger.entry.create`) is the one operation opened by two permissions: holding either passes its gate, and the service then asks for the one the entry needs. Accepting a customer's payment notice needs `payment_notices.decide` only.
+
+**Enforcement.** `qarz.application.authorization.may` is the one place the application decides. `require_member` (every shop operation of the API and of the bot) goes through it by the operation's permission; so do the checks inside a service (`require_permission`), the choice of which staff the bot tells about a payment notice, a dispute or a date request (`holders`), and whether the bot offers the "reverse" button. The membership, its changes and the switch are read together in one statement inside each request's own transaction, never cached: a change of permissions, of the role or of the switch applies to the member's next request. A refusal is `FORBIDDEN_PERMISSION` naming the permission while the switch is on, and `FORBIDDEN_ROLE` naming the role while it is off, as before.
+
+Checks that stay by role on purpose, and why:
+
+- the fixed permissions above: by definition the role alone;
+- the owner as a person: who the owner is (notices to the owner, the administrator's reassignment, "one owner per shop", `me.owner_totals`, the totals of shops a person owns) is a fact about the shop, not something a member may be allowed;
+- BR-30: in a suspended shop only the owner still looks at the data;
+- ownership transfer: the target must be an active manager, and only that manager answers;
+- who may be invited or given a role: manager or seller, never owner.
+
+In the database nothing decides what a member may do by role: the functions that read `role` look up who the owner is, and the policies are by tenant only. What the database adds for this module is in migration 0041: the member's changes live in two arrays on the `membership` row (so authorization is still one indexed read of one row, under the row-level security the role itself is under, with no new right for any database role); an owner's row cannot carry changes; a key cannot be granted and denied at once and must have the shape of a key; and a trigger clears the changes when the role changes, when the member is removed and when a removed member joins again.
+
+**Escalation.** Only the owner reads or sets permissions (`permissions.manage` is fixed). A member the owner gave `staff.manage` acts on sellers only, never on themselves, never on a role, and never on a seller, or an invitation, that would hold something they do not hold themselves (`BEYOND_OWN_PERMISSIONS`). Each change of permissions is written to the shop's activity log as `staff.permissions_changed` with the member's changes before and after it.
+
+**API.** `GET /shops/{id}/permissions` (catalogue, owner), `GET` and `PUT /shops/{id}/staff/{membership}/permissions` (one member's permissions with the source of each answer; set replaces the member's changes as a whole, is idempotent, and two empty lists are the role's defaults), `GET /shops/{id}/permissions/mine` (every member: what they hold, for a client to decide what to offer). While the switch is on, `GET /me/shops` carries the header `X-Qarz-Permissions: on`; a client asks for `permissions/mine` only then, and otherwise offers by role as before. The server remains the authority either way.
+
+**Adding permissions (later modules: cash book, stock, suppliers).** The steps are in the docstring of `qarz.domain.permissions`; in short:
+
+1. add a `Group` to `GROUPS` if the module is a new area;
+2. add one `Permission` per real distinction to `CATALOGUE`, naming the operations it opens;
+3. register the operations as usual, with a capability whose roles are the permission's defaults;
+4. describe each operation in `tests/api/test_authorization_suite.py` (`CALLS`, `ALLOWED_ROLES`) and add the key to the hand-written tables in `tests/test_permissions.py` and `frontend/src/shared/permissions.ts`.
+
+Nothing else: `require_member` enforces the new permission, the permission matrix of `tests/api/test_permissions.py` covers every new operation for every role and override state, overrides are stored by key with no migration, and the staff screen draws the new group from the catalogue the API returns. `tests/test_permissions.py` fails for an operation without a permission, and such an operation is refused to everyone at run time.
+
 ## Security
 
 | Area | Control |

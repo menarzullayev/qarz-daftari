@@ -50,6 +50,7 @@ export const SETTING_RULES: Readonly<Record<string, SettingRule>> = {
   sms_on: { kind: "switch" },
   sms_monthly_quota: { kind: "number", low: 0, high: 100_000 },
   online_pay_on: { kind: "switch" },
+  permissions_on: { kind: "switch" },
 };
 
 export type Parsed = { ok: true; value: SettingValue } | { ok: false };

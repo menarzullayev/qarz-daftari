@@ -4,10 +4,9 @@ import { useI18n } from "../../i18n/I18nProvider";
 import type { MessageKey } from "../../i18n/types";
 import { formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
-import { canManage } from "../navigation";
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
-import { useWorkspace } from "./context";
+import { useMay, useWorkspace } from "./context";
 import { Confirm, Empty, Failure, formatInstant, Loading, ReasonForm } from "./parts";
 
 type Panel = { kind: "reverse" | "decline"; id: string } | null;
@@ -129,6 +128,6 @@ function OpenDisputes() {
  * their navigation, and this screen calls nothing for them.
  */
 export function DisputesScreen() {
-  const { role } = useWorkspace();
-  return canManage(role) ? <OpenDisputes /> : <NotFoundScreen />;
+  const can = useMay();
+  return can("disputes.decide") ? <OpenDisputes /> : <NotFoundScreen />;
 }

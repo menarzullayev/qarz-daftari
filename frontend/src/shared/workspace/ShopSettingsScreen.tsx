@@ -4,7 +4,7 @@ import { useI18n, type Translate } from "../../i18n/I18nProvider";
 import { LANGUAGES } from "../../i18n/types";
 import type { ApiError, ShopSettings, ShopSettingsPatch } from "../api";
 import { useLoad, useSubmit } from "../hooks";
-import type { Role } from "../navigation";
+import { may, type Viewer } from "../permissions";
 import { NotFoundScreen } from "../screens";
 import { useWorkspace } from "./context";
 import { errorText, Failure, FieldError, Loading } from "./parts";
@@ -14,12 +14,15 @@ export const MAX_SHOP_NAME = 80;
 export const MIN_PROMISE_DAYS = 1;
 export const MAX_PROMISE_DAYS_SETTING = 365;
 
-/** A manager reads the settings; only the owner changes them. A seller has no such section. */
-export function settingsAccess(role: Role): "edit" | "read" | "none" {
-  if (role === "owner") {
+/**
+ * By role a manager reads the settings, only the owner changes them, and a seller has no such section;
+ * what the server said the member holds decides when it said anything.
+ */
+export function settingsAccess(viewer: Viewer): "edit" | "read" | "none" {
+  if (may(viewer, "shop.edit")) {
     return "edit";
   }
-  return role === "manager" ? "read" : "none";
+  return may(viewer, "settings.view") ? "read" : "none";
 }
 
 /** A whole number of days within the bounds, or null. "30.5", "1e2" and "30 kun" are not days. */
@@ -221,7 +224,7 @@ function Settings({ editable }: { editable: boolean }) {
  * seller is shown nothing and asks the server nothing.
  */
 export function ShopSettingsScreen() {
-  const { role } = useWorkspace();
-  const access = settingsAccess(role);
+  const { role, permissions } = useWorkspace();
+  const access = settingsAccess({ role, permissions });
   return access === "none" ? <NotFoundScreen /> : <Settings editable={access === "edit"} />;
 }

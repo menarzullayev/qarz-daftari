@@ -197,10 +197,13 @@ export function StaffRoutes({
   const role = session?.role;
   const membershipId = session?.membershipId ?? null;
   const shopName = session?.shopName;
+  const permissions = session?.permissions;
   const workspace = useMemo(
     () =>
-      api && role ? { api, role, membershipId, botUsername, now, shopName, shopMode, shops, reloadSession } : null,
-    [api, role, membershipId, botUsername, now, shopName, shopMode, shops, reloadSession],
+      api && role
+        ? { api, role, permissions, membershipId, botUsername, now, shopName, shopMode, shops, reloadSession }
+        : null,
+    [api, role, permissions, membershipId, botUsername, now, shopName, shopMode, shops, reloadSession],
   );
 
   if (!session) {
@@ -218,7 +221,7 @@ export function StaffRoutes({
     );
   }
 
-  const sections = staffSections(session.role);
+  const sections = staffSections(session.role, session.permissions);
   const primaryCount = primaryTabCount(sections);
   const overflow = sections.slice(primaryCount);
   const match = matchWorkspaceRoute(path);

@@ -53,7 +53,7 @@ describe("reasons and codes", () => {
 describe("platform settings, by type and range", () => {
   it("knows the eight settings of the platform", () => {
     expect(Object.keys(SETTING_RULES).sort()).toEqual(
-      ["online_pay_on", "payment_cards", "price_uzs", "review_group", "sms_monthly_quota", "sms_on", "trial_days", "trial_on"].sort(),
+      ["online_pay_on", "payment_cards", "permissions_on", "price_uzs", "review_group", "sms_monthly_quota", "sms_on", "trial_days", "trial_on"].sort(),
     );
   });
 
