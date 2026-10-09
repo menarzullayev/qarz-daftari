@@ -53,6 +53,22 @@ export const uzPanel = {
   "staff.names.hint":
     "Xodim roli va a'zolik kodi bilan ko'rsatiladi: server xodimning ismini bermaydi. Shu kod amallar jurnalida ham chiqadi.",
   "staff.owner.fixed": "Egalik faqat do'konni o'tkazish orqali o'zgaradi.",
+  "staff.ownerOnly": "Buni faqat do'kon egasi o'zgartira oladi.",
+  "staff.permissions": "Ruxsatlar",
+  "permissions.title": "{member}: ruxsatlar",
+  "permissions.hint":
+    "«{role}» roli odatiy ruxsatlarni beradi. Har birini shu xodim uchun alohida yoqish yoki o'chirish mumkin. O'zgarish xodimning keyingi amalidan boshlab kuchga kiradi.",
+  "permissions.fixed.hint":
+    "Obuna, do'konni o'chirish, egalikni o'tkazish va ruxsatlarni boshqarish faqat do'kon egasida qoladi: ularni hech kimga berib bo'lmaydi.",
+  "permissions.state.role": "rol bo'yicha",
+  "permissions.state.granted": "qo'shimcha berilgan",
+  "permissions.state.denied": "olib qo'yilgan",
+  "permissions.save": "Ruxsatlarni saqlash",
+  "permissions.reset": "Rolning odatiy ruxsatlariga qaytarish",
+  "permissions.reset.confirm":
+    "{member} uchun barcha o'zgartirishlar bekor qilinib, «{role}» rolining odatiy ruxsatlari qaytarilsinmi?",
+  "permissions.saved": "Saqlandi. Xodimning keyingi amalidan boshlab kuchga kiradi.",
+  "permissions.close": "Yopish",
   "staff.makeManager": "Menejer qilish",
   "staff.makeSeller": "Sotuvchi qilish",
   "staff.suspend": "To'xtatib qo'yish",

@@ -1,19 +1,19 @@
-"""A customer's secret read-only link, and the phone a shop shows on it.
+"""Separate permissions per member of staff: the owner's per-member changes, kept on the membership.
 
-Revision ID: 0040
-Revises: 0039
+Revision ID: 0039
+Revises: 0038
 """
 
 from pathlib import Path
 
 from alembic import op
 
-revision = "0040"
-down_revision = "0039"
+revision = "0039"
+down_revision = "0038"
 branch_labels = None
 depends_on = None
 
-_SQL = Path(__file__).resolve().parent.parent / "sql" / "0040_customer_share.sql"
+_SQL = Path(__file__).resolve().parent.parent / "sql" / "0039_member_permissions.sql"
 
 
 def upgrade() -> None:

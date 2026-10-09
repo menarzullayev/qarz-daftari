@@ -6,9 +6,8 @@ import { formatMoney } from "../format";
 import { parsePrice } from "../goods";
 import { usePagedList, useSubmit } from "../hooks";
 import { useDesktop } from "../layout";
-import { canManage } from "../navigation";
 import { cleanItemName, itemNameProblem, MAX_ITEM_NAME, MAX_UNIT_INPUT, priceMessage } from "./catalogRules";
-import { useWorkspace } from "./context";
+import { useMay, useWorkspace } from "./context";
 import { Badge, Empty, errorText, Failure, FieldError, Loading, LoadMore } from "./parts";
 
 /** How long typing must pause before the list is searched again. */
@@ -273,10 +272,11 @@ type Panel = { kind: "create" } | { kind: "edit"; id: string } | { kind: "merge"
  * (REQ-041): a goods line keeps its own name and price.
  */
 export function CatalogScreen() {
-  const { api, role } = useWorkspace();
+  const { api } = useWorkspace();
+  const can = useMay();
   const { t, language } = useI18n();
   const desktop = useDesktop();
-  const mayManage = canManage(role);
+  const mayManage = can("goods.edit");
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
   const [view, setView] = useState<View>("active");

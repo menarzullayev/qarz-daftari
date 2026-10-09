@@ -39,6 +39,8 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
         "RATE_LIMITED",  # the API's limit; the chat is not called through the API
         "NOT_FOUND",  # said as "not_found"
         "FORBIDDEN_ROLE",  # said as "forbidden"
+        "FORBIDDEN_PERMISSION",  # said as "forbidden_permission"
+        "BEYOND_OWN_PERMISSIONS",  # staff are managed in the panel, not in the chat
         "VALIDATION",  # said with the field's own hint
         "IDEMPOTENCY_KEY_REUSED",  # keys come from update identifiers, never from a person
         "ALREADY_MEMBER",  # said as "already_member"

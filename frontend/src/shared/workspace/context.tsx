@@ -2,12 +2,18 @@ import { createContext, useContext, type ReactNode } from "react";
 
 import type { ShopApi, ShopMembership } from "../api";
 import type { Role } from "../navigation";
+import { type Held, may, type PermissionKey } from "../permissions";
 import type { ShopMode } from "./shopMode";
 
 /** What every data screen of the staff workspace needs: the active shop's API, the role, and a clock. */
 export type Workspace = {
   api: ShopApi;
   role: Role;
+  /**
+   * What the server said the person may do here, while the permission matrix is on; absent or null when
+   * it keeps to roles. Screens ask `useMay`, never this set.
+   */
+  permissions?: Held | undefined;
   /** The signed-in person's membership in the active shop; null when the server did not say. */
   membershipId: string | null;
   /** The bot whose deep links connect customers; null when the build does not name one. */
@@ -28,6 +34,15 @@ const WorkspaceContext = createContext<Workspace | null>(null);
 
 export function WorkspaceProvider({ value, children }: { value: Workspace; children: ReactNode }) {
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
+}
+
+/**
+ * Whether to offer something to the signed-in member: by the permissions the server named, or by the
+ * role when it named none. The server refuses the call whatever the interface shows.
+ */
+export function useMay(): (permission: PermissionKey) => boolean {
+  const { role, permissions } = useWorkspace();
+  return (permission) => may({ role, permissions }, permission);
 }
 
 export function useWorkspace(): Workspace {

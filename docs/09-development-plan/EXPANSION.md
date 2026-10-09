@@ -32,9 +32,9 @@ possible. The founder's decisions stand.
 | Id | Module | Depends on | Switch (platform setting) | Migration | Merged | Agent time |
 |---|---|---|---|---|---|---|
 | A | Free plan (30 customers) and SMS for paying shops | - | `free_plan_on` | 0038 | | |
-| B | Customer link and QR; installable web app | - | `customer_links_on` | 0039 | | |
-| F | USD beside UZS | - | `usd_on` | 0040 | | |
-| G | Permission matrix | - | `permissions_on` | 0041 | | |
+| B | Customer link and QR; installable web app | - | `customer_links_on` | 0040 | | |
+| F | USD beside UZS | - | `usd_on` | 0041 | | |
+| G | Permission matrix | - | `permissions_on` | 0039 | | |
 | H | Cash book | F, G | `cash_book_on` | 0042 | | |
 | I | Stock | F, G | `stock_on` | 0043 | | |
 | J | Suppliers and the network between shops | I | `network_on` | 0044 | | |

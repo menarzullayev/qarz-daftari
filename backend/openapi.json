@@ -1195,6 +1195,38 @@
         "title": "Overdue",
         "type": "object"
       },
+      "Overrides": {
+        "additionalProperties": false,
+        "description": "The member's whole set of changes: what is granted beyond the role and what is denied despite it.",
+        "properties": {
+          "denied": {
+            "items": {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Denied",
+            "type": "array"
+          },
+          "granted": {
+            "items": {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Granted",
+            "type": "array"
+          }
+        },
+        "required": [
+          "granted",
+          "denied"
+        ],
+        "title": "Overrides",
+        "type": "object"
+      },
       "Overview": {
         "additionalProperties": false,
         "properties": {
@@ -7825,6 +7857,90 @@
         "summary": "Payment Notices.Receipt"
       }
     },
+    "/api/v1/shops/{shop_id}/permissions": {
+      "get": {
+        "operationId": "permissions_catalogue_api_v1_shops__shop_id__permissions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Shop Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Permissions Catalogue Api V1 Shops  Shop Id  Permissions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Permissions.Catalogue"
+      }
+    },
+    "/api/v1/shops/{shop_id}/permissions/mine": {
+      "get": {
+        "operationId": "permissions_mine_api_v1_shops__shop_id__permissions_mine_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Shop Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Permissions Mine Api V1 Shops  Shop Id  Permissions Mine Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Permissions.Mine"
+      }
+    },
     "/api/v1/shops/{shop_id}/reminders": {
       "get": {
         "operationId": "reminders_settings_read_api_v1_shops__shop_id__reminders_get",
@@ -8624,6 +8740,134 @@
           }
         },
         "summary": "Staff.Update"
+      }
+    },
+    "/api/v1/shops/{shop_id}/staff/{membership_id}/permissions": {
+      "get": {
+        "operationId": "permissions_member_read_api_v1_shops__shop_id__staff__membership_id__permissions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Shop Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "membership_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Membership Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Permissions Member Read Api V1 Shops  Shop Id  Staff  Membership Id  Permissions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Permissions.Member.Read"
+      },
+      "put": {
+        "operationId": "permissions_member_set_api_v1_shops__shop_id__staff__membership_id__permissions_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Shop Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "membership_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Membership Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Overrides"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Permissions Member Set Api V1 Shops  Shop Id  Staff  Membership Id  Permissions Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Permissions.Member.Set"
       }
     },
     "/api/v1/shops/{shop_id}/subscription": {

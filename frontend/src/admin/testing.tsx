@@ -89,10 +89,11 @@ export const platformBody = (overrides: Record<string, unknown> = {}, settings: 
     online_pay_on: false,
     free_plan_on: false,
     free_plan_customers: 30,
+    permissions_on: false,
     customer_links_on: false,
     ...settings,
   },
-  needs_code: ["customer_links_on", "free_plan_on", "online_pay_on", "payment_cards", "price_uzs", "review_group", "sms_on", "trial_on"],
+  needs_code: ["customer_links_on", "free_plan_on", "online_pay_on", "payment_cards", "permissions_on", "price_uzs", "review_group", "sms_on", "trial_on"],
   changed: { price_uzs: { by: ADMIN_ID, at: "2026-10-01T05:00:00+00:00" } },
   ...overrides,
 });

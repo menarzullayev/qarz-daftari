@@ -2,9 +2,8 @@ import { useState } from "react";
 
 import { useI18n } from "../../i18n/I18nProvider";
 import { useLoad, useSubmit } from "../hooks";
-import { canManage } from "../navigation";
 import { Link } from "../router";
-import { useWorkspace } from "./context";
+import { useMay, useWorkspace } from "./context";
 import { Confirm, errorText, Failure, formatInstant, Loading } from "./parts";
 import { StartCode } from "./StartCode";
 
@@ -14,9 +13,10 @@ import { StartCode } from "./StartCode";
  * replaces it only after confirming that the printed one stops working.
  */
 export function CounterCodeScreen() {
-  const { api, role } = useWorkspace();
+  const { api } = useWorkspace();
+  const can = useMay();
   const { t, language } = useI18n();
-  const mayManage = canManage(role);
+  const mayManage = can("settings.edit");
   const { state, reload } = useLoad((signal) => api.readCounterCode(signal), [api]);
   const rotate = useSubmit((_action: "rotate", key) => api.rotateCounterCode(key));
   const [confirming, setConfirming] = useState(false);

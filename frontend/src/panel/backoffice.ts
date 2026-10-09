@@ -1,4 +1,4 @@
-import { type Page, reading, type ShopApi } from "../shared/api";
+import { type Page, reading, type ShopApi, toApiError } from "../shared/api";
 import { isRole, type Role } from "../shared/navigation";
 
 /**
@@ -89,6 +89,59 @@ function transfer(value: unknown): Transfer {
   };
 }
 
+/** A name in the two languages the server keeps every label in. */
+export type Label = { uz: string; ru: string };
+
+/** One permission of the server's catalogue. `fixed`: it follows the role and cannot be changed. */
+export type CataloguePermission = { key: string; label: Label; roles: string[]; fixed: boolean };
+export type CatalogueGroup = { key: string; label: Label; permissions: CataloguePermission[] };
+
+/** What one member may do. `source`: "role", "granted" or "denied"; `byRole`: what the role alone gives. */
+export type MemberPermission = { key: string; allowed: boolean; source: string; byRole: boolean; fixed: boolean };
+export type MemberPermissions = { membershipId: string; role: string; permissions: MemberPermission[] };
+
+function label(value: unknown): Label {
+  const body = record(value);
+  return { uz: text(body["uz"]), ru: text(body["ru"]) };
+}
+
+function catalogue(value: unknown): CatalogueGroup[] {
+  return list(record(value)["groups"], (group) => {
+    const body = record(group);
+    return {
+      key: text(body["key"]),
+      label: label(body["label"]),
+      permissions: list(body["permissions"], (item) => {
+        const permission = record(item);
+        return {
+          key: text(permission["key"]),
+          label: label(permission["label"]),
+          roles: list(permission["roles"], text),
+          fixed: permission["fixed"] === true,
+        };
+      }),
+    };
+  });
+}
+
+function memberPermissions(value: unknown): MemberPermissions {
+  const body = record(value);
+  return {
+    membershipId: text(body["membership_id"]),
+    role: text(body["role"]),
+    permissions: list(body["permissions"], (item) => {
+      const permission = record(item);
+      return {
+        key: text(permission["key"]),
+        allowed: permission["allowed"] === true,
+        source: text(permission["source"]),
+        byRole: permission["default"] === true,
+        fixed: permission["fixed"] === true,
+      };
+    }),
+  };
+}
+
 function pendingTransfer(value: unknown): Transfer | null {
   const pending = record(value)["pending"];
   return pending === null || pending === undefined ? null : transfer(pending);
@@ -170,6 +223,41 @@ export function backoffice(api: ShopApi) {
 
     removeMember(membershipId: string, idempotencyKey: string): Promise<Member> {
       return send({ method: "DELETE", path: `${staff}/${segment(membershipId)}`, idempotencyKey, read: member });
+    },
+
+    /**
+     * The permissions the owner can set one by one, grouped by area; null when the server keeps to roles
+     * (the route exists only while the permission matrix is switched on).
+     */
+    permissionCatalogue(signal?: AbortSignal): Promise<CatalogueGroup[] | null> {
+      return send({ method: "GET", path: `${base}/permissions`, signal, read: catalogue }).catch((error: unknown) => {
+        if (toApiError(error).status === 404) {
+          return null;
+        }
+        throw error;
+      });
+    },
+
+    memberPermissions(membershipId: string, signal?: AbortSignal): Promise<MemberPermissions> {
+      return send({ method: "GET", path: `${staff}/${segment(membershipId)}/permissions`, signal, read: memberPermissions });
+    },
+
+    /**
+     * Replaces the member's changes as a whole: what is granted beyond the role and what is denied
+     * despite it. Two empty lists are the role's defaults.
+     */
+    setMemberPermissions(
+      membershipId: string,
+      changes: { granted: readonly string[]; denied: readonly string[] },
+      idempotencyKey: string,
+    ): Promise<MemberPermissions> {
+      return send({
+        method: "PUT",
+        path: `${staff}/${segment(membershipId)}/permissions`,
+        body: changes,
+        idempotencyKey,
+        read: memberPermissions,
+      });
     },
 
     /** The offer that waits for an answer, if any. Managers and the owner may read it (REQ-036). */

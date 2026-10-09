@@ -35,6 +35,7 @@ def test_the_settings_are_the_ones_the_administrator_controls() -> None:
         "online_pay_on",
         "free_plan_on",
         "free_plan_customers",
+        "permissions_on",
         "customer_links_on",
     }
     assert "card_number" not in SETTINGS, "the single card became the list"
@@ -52,6 +53,7 @@ def test_defaults_when_nothing_is_stored() -> None:
         "online_pay_on": False,
         "free_plan_on": False,
         "free_plan_customers": 30,
+        "permissions_on": False,
         "customer_links_on": False,
     }
 
@@ -80,6 +82,11 @@ def test_how_many_customers_the_free_plan_holds_is_nothing_while_it_is_off() -> 
         assert free_plan_customers(off, 50) is None
 
 
+def test_the_permission_matrix_is_off_until_an_administrator_turns_it_on() -> None:
+    assert SETTINGS["permissions_on"].default is False
+    assert effective("permissions_on", "true") is False, "only the JSON true turns it on"
+
+
 def test_price_card_and_switches_need_a_code() -> None:
     """Specification: "changes to price, card number, and switches ask for the code again"."""
     assert {key for key in SETTINGS if needs_code(key)} == {
@@ -88,6 +95,7 @@ def test_price_card_and_switches_need_a_code() -> None:
         "trial_on",
         "sms_on",
         "online_pay_on",
+        "permissions_on",
         "customer_links_on",
         "review_group",
         "free_plan_on",
@@ -97,7 +105,7 @@ def test_price_card_and_switches_need_a_code() -> None:
     assert not needs_code("free_plan_customers")
 
 
-@pytest.mark.parametrize("key", ["trial_on", "sms_on", "online_pay_on", "customer_links_on"])
+@pytest.mark.parametrize("key", ["trial_on", "sms_on", "online_pay_on", "permissions_on", "customer_links_on"])
 def test_a_switch_is_true_or_false_and_nothing_else(key: str) -> None:
     assert validate(key, True) is True
     assert validate(key, False) is False

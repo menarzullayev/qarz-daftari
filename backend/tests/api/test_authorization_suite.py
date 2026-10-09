@@ -49,6 +49,7 @@ from .conftest import (
     current_file_root,
     elevate,
     make_admin,
+    switch_permissions_on,
 )
 
 pytestmark = pytest.mark.db
@@ -276,7 +277,27 @@ def _open_support(owner: psycopg.Connection, world: World) -> None:
     )
 
 
+def _permissions_on(owner: psycopg.Connection, world: World) -> None:
+    """The permission matrix exists only while its switch is on; off, its routes answer 404 to everyone
+    (tests/api/test_permissions.py)."""
+    switch_permissions_on(owner)
+
+
 CALLS: dict[str, Call] = {
+    "permissions.catalogue": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/permissions", prepare=_permissions_on),
+    "permissions.mine": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/permissions/mine", prepare=_permissions_on),
+    "permissions.member.read": Call(
+        "GET",
+        lambda w, shop: f"/api/v1/shops/{shop}/staff/{w.seller_a_membership}/permissions",
+        prepare=_permissions_on,
+    ),
+    "permissions.member.set": Call(
+        "PUT",
+        lambda w, shop: f"/api/v1/shops/{shop}/staff/{w.seller_a_membership}/permissions",
+        {"granted": ["reports.view"], "denied": ["payments.record"]},
+        True,
+        prepare=_permissions_on,
+    ),
     "shop.support_access.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/support-access"),
     "shop.support_access.end": Call(
         "POST",
@@ -660,6 +681,12 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     # Specification, resources table: the subscription, its receipts and their outcomes are the owner's.
     "shop.subscription.receipts.submit": {Role.OWNER},
     "shop.subscription.receipts.list": {Role.OWNER},
+    # Expansion decision 10: the owner sets each member's permissions; nobody else reads or changes them.
+    "permissions.catalogue": {Role.OWNER},
+    "permissions.member.read": {Role.OWNER},
+    "permissions.member.set": {Role.OWNER},
+    # Every member learns what they themselves may do; a client uses it to decide what to offer.
+    "permissions.mine": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "overview.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "overview.debtors": {Role.SELLER, Role.MANAGER, Role.OWNER},
     # Specification, resources table: "reports and exports: manager, owner" (REQ-046).
@@ -804,7 +831,9 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID, *, shared: bool = True
         ).fetchone(),
         owner.execute("SELECT count(*) FROM reminder WHERE shop_id = %s", (shop,)).fetchone(),
         owner.execute(
-            "SELECT id, user_id, role, status FROM membership WHERE shop_id = %s ORDER BY id", (shop,)
+            "SELECT id, user_id, role, status, permissions_granted, permissions_denied FROM membership "
+            "WHERE shop_id = %s ORDER BY id",
+            (shop,),
         ).fetchall(),
         owner.execute(
             "SELECT token_hash, status, role FROM invitation WHERE shop_id = %s ORDER BY token_hash", (shop,)
@@ -969,8 +998,12 @@ def test_staff_are_allowed_or_refused_by_role(
     else:
         assert response.status_code == 403, response.text
         error = response.json()["error"]
-        assert error["code"] == "FORBIDDEN_ROLE"
-        assert error["fields"] == {"needed_role": min(ALLOWED_ROLES[op_name], key=ROLE_ORDER.index).value}
+        if call.prepare is _permissions_on:
+            # The switch is on for these three: the refusal names the permission, not a role.
+            assert (error["code"], error["fields"]) == ("FORBIDDEN_PERMISSION", {"permission": "permissions.manage"})
+        else:
+            assert error["code"] == "FORBIDDEN_ROLE"
+            assert error["fields"] == {"needed_role": min(ALLOWED_ROLES[op_name], key=ROLE_ORDER.index).value}
         assert _snapshot(owner, world.shop_a) == before, "a refused call must change nothing"
 
 
