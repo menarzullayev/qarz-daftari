@@ -820,8 +820,8 @@ def test_approval_extends_the_paid_period_and_tells_the_owner(
 
     response = approve(client, admin, receipt)
     assert response.status_code == 200, response.text
-    # Nothing was paid before: one month from today, today being the first paid day.
-    until = add_months(today(admin_env), 1) - timedelta(days=1)
+    # The shop is on trial: the month follows the trial's last day, so none of its days are lost.
+    until = add_months(subscription(owner, world.shop_a)[1], 1)
     body = response.json()
     assert body == {
         "id": receipt,
@@ -935,7 +935,7 @@ def test_the_administrator_may_correct_the_months_and_note_why(
     receipt = sent_ok(client, world.owner_a, world.shop_a, 300_000, 3)
     response = approve(client, admin, receipt, {"months": 2, "reason": "  200 000 kelib   tushgan "})
     assert response.status_code == 200, response.text
-    until = add_months(today(admin_env), 2) - timedelta(days=1)
+    until = add_months(subscription(owner, world.shop_a)[1], 2)
     assert (response.json()["months"], response.json()["stated_months"]) == (2, 3)
     assert subscription(owner, world.shop_a)[2] == until
     assert audit(owner, receipt)[0][4] == "200 000 kelib tushgan"

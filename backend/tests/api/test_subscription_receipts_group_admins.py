@@ -136,7 +136,7 @@ def test_a_telegram_administrator_of_the_review_group_approves_there(
 
     answer, sent = press(client, owner, presser, group, press_of(receipt, "sra"))
 
-    until = add_months(today(admin_env), 3) - timedelta(days=1)
+    until = add_months(subscription(owner, world.shop_a)[1], 3)
     # The group sees the outcome on the announcement, which loses its buttons. The presser is not
     # written to: the bot cannot write to someone who never started it.
     assert sent == [closed(group, say("uz", "a_receipt_approved", shop="Shop A", months=3, date=day(until)))]

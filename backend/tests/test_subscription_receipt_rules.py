@@ -194,13 +194,43 @@ def test_the_bot_offers_periods_at_the_price_times_the_months() -> None:
 def test_a_payment_extends_the_period_and_makes_the_shop_active_unless_it_is_suspended(
     state: str, paid_through: date | None, months: int, expected: tuple[str, date, str | None]
 ) -> None:
-    assert after_payment(state, paid_through, TODAY, months) == expected
+    assert after_payment(state, None, paid_through, TODAY, months) == expected
 
 
 @pytest.mark.parametrize("months", [0, -1, MAX_MONTHS + 1])
 def test_a_payment_for_no_months_or_too_many_is_an_error(months: int) -> None:
     with pytest.raises(ValueError):
-        after_payment(ACTIVE, None, TODAY, months)
+        after_payment(ACTIVE, None, None, TODAY, months)
+
+
+@pytest.mark.parametrize(
+    ("state", "trial_ends", "paid_through", "months", "until"),
+    [
+        # The trial still runs: the months follow its last day, so paying early costs none of its days.
+        (TRIAL, D(2026, 11, 5), None, 1, D(2026, 12, 5)),
+        (TRIAL, D(2026, 10, 7), None, 1, D(2026, 11, 7)),  # its last day is today
+        (TRIAL, D(2026, 10, 31), None, 4, D(2027, 2, 28)),
+        # A paid-through date later than the trial's last day is the one that counts.
+        (TRIAL, D(2026, 10, 20), D(2026, 12, 1), 1, D(2027, 1, 1)),
+        # The trial ended yesterday: nothing of it is left, the months start today.
+        (TRIAL, D(2026, 10, 6), None, 1, D(2026, 11, 6)),
+        # Only a shop on trial is owed the trial's days: an old trial date left on an active, limited or
+        # suspended shop adds nothing.
+        (ACTIVE, D(2026, 12, 31), D(2026, 10, 20), 1, D(2026, 11, 20)),
+        (LIMITED, D(2026, 12, 31), None, 1, D(2026, 11, 6)),
+        (SUSPENDED, D(2026, 12, 31), None, 1, D(2026, 11, 6)),
+    ],
+)
+def test_months_paid_during_the_trial_are_counted_from_its_last_day(
+    state: str, trial_ends: date, paid_through: date | None, months: int, until: date
+) -> None:
+    assert after_payment(state, trial_ends, paid_through, TODAY, months)[1] == until
+
+
+def test_paying_on_the_first_day_of_a_trial_is_not_the_same_as_not_paying() -> None:
+    """The defect this rule replaces: thirty days of trial and one month paid ended on the same day."""
+    trial_ends = TODAY + timedelta(days=30)
+    assert after_payment(TRIAL, trial_ends, None, TODAY, 1)[1] > trial_ends
 
 
 # --- the form ---------------------------------------------------------------------------------------------

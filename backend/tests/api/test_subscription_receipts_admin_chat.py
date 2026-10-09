@@ -106,7 +106,7 @@ def test_approve_from_the_chat_does_what_the_panel_does_and_says_where_it_came_f
 ) -> None:
     trial_ends = subscription(owner, world.shop_a)[1]
     said = reviewer.press(press_of(receipt, "sra"))
-    until = add_months(today(admin_env), 3) - timedelta(days=1)
+    until = add_months(subscription(owner, world.shop_a)[1], 3)
     assert said.text == say("uz", "a_receipt_approved", shop="Shop A", months=3, date=day(until))
     # The message that carried the buttons is replaced by the outcome: no buttons are left on it.
     assert said.payloads[0]["method"] == "editMessageText"
@@ -314,7 +314,7 @@ def test_an_administrator_approves_from_the_review_group(
     receipt = sent_ok(client, world.owner_a, world.shop_a, 300_000, 3, unique_image()[0])
     sent = press_in_group(client, owner, reviewer.tg_id, group, press_of(receipt, "sra"))
 
-    until = add_months(today(admin_env), 3) - timedelta(days=1)
+    until = add_months(subscription(owner, world.shop_a)[1], 3)
     outcome = say("uz", "a_receipt_approved", shop="Shop A", months=3, date=day(until))
     # The group's announcement is replaced by the outcome, without buttons; the administrator is told in
     # their own chat with a new message, because the pressed message is not there.
