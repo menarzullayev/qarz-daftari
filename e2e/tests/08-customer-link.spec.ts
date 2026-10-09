@@ -117,8 +117,16 @@ test("a customer without Telegram reads their debt through a secret link, until 
     await expect(visitor.locator(".entry")).toContainText("Nasiya");
     await expect(visitor.locator(".entry")).toContainText("To'lash muddati:");
     await expect(visitor.getByText("Bu sahifa faqat o'qish uchun.")).toBeVisible();
-    // Nothing to press but the two languages, and nothing of the staff's application.
-    await expect(visitor.getByRole("button")).toHaveText(["O'zbekcha", "Русский"]);
+    // Nothing to press, nothing to change but the language (one of six), and nothing of the staff's application.
+    await expect(visitor.getByRole("button")).toHaveCount(0);
+    await expect(visitor.getByRole("combobox", { name: "Til" }).getByRole("option")).toHaveText([
+      "O'zbekcha",
+      "Ўзбекча",
+      "Русский",
+      "Тоҷикӣ",
+      "Qaraqalpaqsha",
+      "English",
+    ]);
     await expect(visitor.getByRole("navigation", { name: "Asosiy menyu" })).toHaveCount(0);
 
     // One request, to one address that holds no secret, without a cookie.
@@ -144,9 +152,15 @@ test("a customer without Telegram reads their debt through a secret link, until 
   });
 
   await test.step("the reader changes the language, and the server is not asked again", async () => {
-    await visitor.getByRole("button", { name: "Русский" }).click();
+    await visitor.getByRole("combobox", { name: "Til" }).selectOption("ru");
     await expect(visitor.getByRole("heading", { level: 1 })).toHaveText("Ali, это ваш счёт");
     await expect(visitor.locator(".summary__amount")).toHaveText("45 000 сум");
+    // Uzbek in Cyrillic script is written by rule from the Uzbek text; the page carries it, as it carries all six.
+    await visitor.getByRole("combobox", { name: "Язык" }).selectOption("uz-Cyrl");
+    await expect(visitor.getByRole("heading", { level: 1 })).toHaveText("Ali, бу сизнинг ҳисобингиз");
+    await expect(visitor.locator("html")).toHaveAttribute("lang", "uz-Cyrl");
+    await visitor.getByRole("combobox", { name: "Тил" }).selectOption("ru");
+    await expect(visitor.getByRole("heading", { level: 1 })).toHaveText("Ali, это ваш счёт");
     expect(asked).toHaveLength(1);
   });
 

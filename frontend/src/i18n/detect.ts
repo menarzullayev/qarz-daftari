@@ -3,13 +3,33 @@ import { LANGUAGES, type Language } from "./types";
 export const DEFAULT_LANGUAGE: Language = "uz";
 export const LANGUAGE_STORAGE_KEY = "qd.language";
 
-/** Maps "ru", "RU", "ru-RU", "uz-Latn" to a supported language; anything else is not supported. */
+/**
+ * Maps a language tag to a supported language: "ru", "RU", "ru-RU" and "uz-Latn" by their first part,
+ * "uz-Cyrl", "uz_Cyrl" and "uz-Cyrl-UZ" to Uzbek in Cyrillic script. Anything else is not supported.
+ */
 export function normalizeLanguage(code: string | null | undefined): Language | null {
   if (typeof code !== "string") {
     return null;
   }
-  const primary = code.trim().toLowerCase().split(/[-_]/)[0];
+  const [primary, ...rest] = code.trim().toLowerCase().split(/[-_]/);
+  if (primary === "uz" && rest.includes("cyrl")) {
+    return "uz-Cyrl";
+  }
   return LANGUAGES.find((language) => language === primary) ?? null;
+}
+
+/**
+ * The language a person starts in, from the language of their Telegram interface. Telegram reports
+ * Kazakh ("kk") but has no Karakalpak: a Kazakh interface starts in Karakalpak, its closest relative
+ * here. The same table as the server's (`qarz.domain.languages.from_telegram`). A language with no
+ * counterpart is not guessed: the caller falls back to Uzbek.
+ */
+export function languageFromTelegram(code: string | null | undefined): Language | null {
+  const known = normalizeLanguage(code);
+  if (known !== null) {
+    return known;
+  }
+  return typeof code === "string" && code.trim().toLowerCase().split(/[-_]/)[0] === "kk" ? "kaa" : null;
 }
 
 export type LanguageSources = {
@@ -22,7 +42,7 @@ export type LanguageSources = {
 /** Order: explicit choice, then the Telegram interface language, then Uzbek. */
 export function detectLanguage(sources: LanguageSources): Language {
   return (
-    normalizeLanguage(sources.stored) ?? normalizeLanguage(sources.telegramLanguageCode) ?? DEFAULT_LANGUAGE
+    normalizeLanguage(sources.stored) ?? languageFromTelegram(sources.telegramLanguageCode) ?? DEFAULT_LANGUAGE
   );
 }
 

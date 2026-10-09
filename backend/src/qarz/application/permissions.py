@@ -16,15 +16,16 @@ with the member's changes before and after it.
 from typing import Any
 from uuid import UUID
 
-from qarz.application import idempotency
+from qarz.application import idempotency, texts_en, texts_kaa, texts_tg
 from qarz.application.authorization import SWITCH, effective_of
 from qarz.application.errors import NotFound, ValidationFailed
 from qarz.application.operations import operation
 from qarz.application.ports import MemberRecord, Storage, TenantSession
 from qarz.application.shops import refuse_suspended, require_member
 from qarz.application.staff import OwnerMembershipFixed
-from qarz.domain import permissions
+from qarz.domain import languages, permissions
 from qarz.domain.access import Capability, Role
+from qarz.domain.uz_cyrillic import to_cyrillic
 
 READ_CATALOGUE = operation("permissions.catalogue", Capability.ADMINISTER_SHOP)
 READ_MEMBER_PERMISSIONS = operation("permissions.member.read", Capability.ADMINISTER_SHOP)
@@ -40,16 +41,27 @@ async def _require_switch(session: TenantSession) -> None:
         raise NotFound()
 
 
+# What Tajik, Karakalpak and English call the groups ("group.<key>") and the permissions ("<key>").
+_NAMES = {"tg": texts_tg.PERMISSIONS, "kaa": texts_kaa.PERMISSIONS, "en": texts_en.PERMISSIONS}
+
+
+def label(key: str, uz: str, ru: str) -> dict[str, str]:
+    """A name in every language that has it. A reader whose language is absent is shown the Uzbek one."""
+    names = {"uz": uz, languages.UZ_CYRILLIC: to_cyrillic(uz), "ru": ru}
+    names.update({lang: own[key] for lang, own in _NAMES.items() if key in own})
+    return names
+
+
 def catalogue_body() -> dict[str, Any]:
     return {
         "groups": [
             {
                 "key": group.key,
-                "label": {"uz": group.uz, "ru": group.ru},
+                "label": label(f"group.{group.key}", group.uz, group.ru),
                 "permissions": [
                     {
                         "key": permission.key,
-                        "label": {"uz": permission.uz, "ru": permission.ru},
+                        "label": label(permission.key, permission.uz, permission.ru),
                         "roles": [role.value for role in _ROLES if role in permission.roles],
                         "fixed": permission.fixed,
                     }

@@ -1,9 +1,14 @@
 """One error shape for the whole API, with the message in the caller's language (REQ-N01)."""
 
+from functools import cache
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from qarz.application import texts_en, texts_kaa, texts_tg
 from qarz.application.errors import AppError
+from qarz.domain import languages
+from qarz.domain.uz_cyrillic import to_cyrillic
 
 _STATUS = {
     "UNAUTHENTICATED": 401,
@@ -294,13 +299,25 @@ _MESSAGES = {
 }
 
 
+# What Tajik, Karakalpak and English have of their own; Uzbek Cyrillic is made from the Uzbek text.
+_PARTIAL = {"tg": texts_tg.ERRORS, "kaa": texts_kaa.ERRORS, "en": texts_en.ERRORS}
+
+
+@cache
+def message_text(lang: str, code: str) -> str:
+    """The wording of a refusal in a language; in Uzbek where the language does not have it."""
+    source = _MESSAGES["uz"][code]
+    if lang == languages.UZ_CYRILLIC:
+        return to_cyrillic(source)
+    return _MESSAGES.get(lang, _PARTIAL.get(lang, {})).get(code, source)
+
+
 # The messages that name a number the refusal carries in its fields.
 _WITH_FIELDS = {"FREE_PLAN_FULL": ("limit",)}
 
 
 def error_response(code: str, lang: str, fields: dict[str, str] | None = None) -> JSONResponse:
-    messages = _MESSAGES.get(lang, _MESSAGES["uz"])
-    message = messages.get(code, messages["ERROR"])
+    message = message_text(lang, code if code in _MESSAGES["uz"] else "ERROR")
     if code in _WITH_FIELDS:
         message = message.format(**{name: (fields or {}).get(name, "") for name in _WITH_FIELDS[code]})
     body = {"error": {"code": code, "message": message, "fields": fields or {}}}

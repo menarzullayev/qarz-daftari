@@ -408,9 +408,9 @@ class ChatService:
             else:
                 await replies.send(say(lang, "welcome_staff", shop=shop.name))
         elif command == "/til":
-            await replies.send(
-                say(lang, "lang_prompt"), [[(name, callback("lang", code)) for code, name in LANGUAGE_NAMES.items()]]
-            )
+            # Two to a row: six names do not fit one row of a phone.
+            choices = [(name, callback("lang", code)) for code, name in LANGUAGE_NAMES.items()]
+            await replies.send(say(lang, "lang_prompt"), [choices[at : at + 2] for at in range(0, len(choices), 2)])
         elif command == "/dokon":
             shops = await session.my_memberships(incoming.user_id)
             if shops:

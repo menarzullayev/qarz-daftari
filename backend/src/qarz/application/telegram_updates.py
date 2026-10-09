@@ -11,16 +11,18 @@ from dataclasses import dataclass
 from typing import Any
 
 from qarz.application.chat import ChatService, Incoming, Replies
-from qarz.application.chat_texts import CATALOGS, say
+from qarz.application.chat_texts import say
 from qarz.application.ports import Storage, TelegramChatMembers, TelegramFiles
+from qarz.domain import languages
 from qarz.domain.files import MAX_FILE_BYTES
 from qarz.domain.subscription_receipts import decides_in_review_group
 
 
 def _language(stored: str | None, telegram_code: str | None) -> str:
-    if stored in CATALOGS:
+    """The person's own choice when there is one; otherwise what Telegram's interface language suggests."""
+    if stored is not None and languages.is_language(stored):
         return stored
-    return "ru" if (telegram_code or "").lower().startswith("ru") else "uz"
+    return languages.from_telegram(telegram_code)
 
 
 def _is_id(value: object) -> bool:

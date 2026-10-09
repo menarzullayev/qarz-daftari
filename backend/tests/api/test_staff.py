@@ -113,7 +113,7 @@ def test_the_trial_follows_the_platform_switch(
         owner.execute("DELETE FROM platform_setting WHERE key IN ('trial_on', 'trial_days')")
 
 
-@pytest.mark.parametrize("body", [{"name": "", "lang": "uz"}, {"name": "x" * 81}, {"name": "Ok", "lang": "en"}, {}])
+@pytest.mark.parametrize("body", [{"name": "", "lang": "uz"}, {"name": "x" * 81}, {"name": "Ok", "lang": "de"}, {}])
 def test_invalid_shops_are_not_created(
     client: TestClient, world: World, owner: psycopg.Connection, body: dict[str, Any]
 ) -> None:

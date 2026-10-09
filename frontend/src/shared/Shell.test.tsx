@@ -162,24 +162,21 @@ describe("routing", () => {
   });
 });
 
-describe("language switcher", () => {
+describe("language picker", () => {
   it("switches every text, the lang attribute, and persists the choice", () => {
     renderStaff("seller", "uz");
     expect(document.documentElement.lang).toBe("uz");
-    const uzButton = screen.getByRole("button", { name: "O'zbekcha" });
-    const ruButton = screen.getByRole("button", { name: "Русский" });
-    expect(uzButton.getAttribute("aria-pressed")).toBe("true");
-    expect(ruButton.getAttribute("aria-pressed")).toBe("false");
-    expect(ruButton.getAttribute("lang")).toBe("ru");
+    const picker = screen.getByRole<HTMLSelectElement>("combobox", { name: "Til" });
+    expect(picker.value).toBe("uz");
+    expect(within(picker).getByRole("option", { name: "Русский" }).getAttribute("lang")).toBe("ru");
     expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBeNull();
 
-    fireEvent.click(ruButton);
+    fireEvent.change(picker, { target: { value: "ru" } });
 
     expect(document.documentElement.lang).toBe("ru");
     expect(navLabels()).toEqual(["Обзор", "Клиенты", "Новая запись", "Каталог"]);
     expect(heading()).toBe("Обзор");
-    expect(screen.getByRole("group", { name: "Язык" })).toBeTruthy();
-    expect(ruButton.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Язык" }).value).toBe("ru");
     expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("ru");
     expect(screen.queryByText("Mijozlar")).toBeNull();
   });

@@ -1,11 +1,23 @@
 // @vitest-environment jsdom
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { cyrillicOf, fileText } from "../../scripts/kCyrillic.ts";
 import { ACCOUNT_PATH, type Fetch, loadAccount, readAccount, readToken, TOKEN_HEADER } from "./account";
-import { CATALOGS, dayOfDate, dayOfInstant, dollars, LANGUAGES, type MessageKey, money, normalizeLanguage, say } from "./messages";
+import {
+  CATALOGS,
+  dayOfDate,
+  dayOfInstant,
+  dollars,
+  LANGUAGES,
+  type MessageKey,
+  money,
+  normalizeLanguage,
+  say,
+  wording,
+} from "./messages";
 import { knownLanguage, LANGUAGE_STORAGE_KEY, startPage } from "./page";
 
 const TOKEN = "Zm9vYmFyLXNoYXJlLXRva2VuLTAxMjM0NTY3ODktYWJ";
@@ -78,6 +90,16 @@ async function open(
 const button = (root: HTMLElement, name: string) =>
   [...root.querySelectorAll("button")].find((candidate) => candidate.textContent === name);
 
+/** Chooses a language in the page's picker, as a reader does. The page is drawn again after it. */
+function choose(root: HTMLElement, code: string): void {
+  const picker = root.querySelector("select");
+  if (picker === null) {
+    throw new Error("the page has no language picker");
+  }
+  picker.value = code;
+  picker.dispatchEvent(new Event("change"));
+}
+
 afterEach(() => {
   document.body.replaceChildren();
   document.documentElement.lang = "";
@@ -124,7 +146,7 @@ describe("the secret", () => {
   it("is written to no storage and shown nowhere on the page", async () => {
     const storage = memory();
     const root = await open(server(json(ACCOUNT)).fetch, { storage });
-    button(root, "Русский")?.click();
+    choose(root, "ru");
     expect([...storage.kept.values()].join(" ")).not.toContain(TOKEN);
     expect(root.innerHTML).not.toContain(TOKEN);
     expect(JSON.stringify({ ...window.localStorage, ...window.sessionStorage })).not.toContain(TOKEN);
@@ -158,10 +180,19 @@ describe("what the page shows", () => {
     expect(document.title).toBe("Mening qarzim");
   });
 
-  it("has nothing to press but the two languages: the page can only be read", async () => {
+  it("has nothing to change but the language: the page can only be read", async () => {
     const root = await open(server(json(ACCOUNT)).fetch);
-    expect([...root.querySelectorAll("button")].map((node) => node.textContent)).toEqual(["O'zbekcha", "Русский"]);
-    expect(root.querySelectorAll("input, textarea, select, form")).toHaveLength(0);
+    expect(root.querySelectorAll("button")).toHaveLength(0);
+    expect([...root.querySelectorAll("select option")].map((node) => node.textContent)).toEqual([
+      "O'zbekcha",
+      "Ўзбекча",
+      "Русский",
+      "Тоҷикӣ",
+      "Qaraqalpaqsha",
+      "English",
+    ]);
+    expect(root.querySelectorAll("select")).toHaveLength(1);
+    expect(root.querySelectorAll("input, textarea, form")).toHaveLength(0);
     expect([...root.querySelectorAll("a")].map((node) => node.getAttribute("href"))).toEqual(["tel:+998901234567"]);
   });
 
@@ -260,6 +291,59 @@ describe("when there is no account to show", () => {
 });
 
 describe("the language", () => {
+  it.each([
+    ["uz-Cyrl", "Ali, бу сизнинг ҳисобингиз", "30 000 сўм", "Менинг қарзим"],
+    ["en", "Ali, this is your account", "30 000 soum", "My debt"],
+  ])("is drawn in %s from the first word to the last", async (lang, greeting, amount, title) => {
+    const root = await open(server(json({ ...ACCOUNT, lang })).fetch);
+    expect(root.querySelector("h1")?.textContent).toBe(greeting);
+    expect(root.querySelector(".summary__amount")?.textContent?.replaceAll(String.fromCharCode(160), " ")).toBe(amount);
+    expect(document.documentElement.lang).toBe(lang);
+    expect(document.documentElement.dir).toBe("ltr");
+    expect(document.title).toBe(title);
+    expect(root.querySelector("select")?.value).toBe(lang);
+  });
+
+  it.each(["tg", "kaa"])("is drawn in %s when the shop keeps that language for the customer", async (lang) => {
+    const root = await open(server(json({ ...ACCOUNT, lang })).fetch);
+    expect(document.documentElement.lang).toBe(lang);
+    expect(root.querySelector("select")?.value).toBe(lang);
+    expect(root.querySelector("h1")?.textContent).toContain("Ali");
+    expect(root.querySelector("h1")?.textContent).not.toBe("Ali, bu sizning hisobingiz");
+  });
+
+  it("is Uzbek for a language the page does not have", async () => {
+    const root = await open(server(json({ ...ACCOUNT, lang: "kk" })).fetch);
+    expect(root.querySelector("h1")?.textContent).toBe("Ali, bu sizning hisobingiz");
+    expect(document.documentElement.lang).toBe("uz");
+  });
+
+  it("names the picker for those who do not see it, and each language in its own language", async () => {
+    const root = await open(server(json(ACCOUNT)).fetch);
+    const picker = root.querySelector("select");
+    const label = root.querySelector("label");
+    expect(label?.textContent).toBe("Til");
+    expect(label?.htmlFor).toBe(picker?.id);
+    expect(picker?.id).not.toBe("");
+    expect([...root.querySelectorAll("option")].map((option) => [option.value, option.lang])).toEqual(
+      LANGUAGES.map((code) => [code, code]),
+    );
+    choose(root, "en");
+    expect(root.querySelector("label")?.textContent).toBe("Language");
+  });
+
+  it("keeps the keyboard on the picker after the page is drawn again in the language chosen", async () => {
+    const root = await open(server(json(ACCOUNT)).fetch);
+    document.body.append(root);
+    const before = root.querySelector("select");
+    before?.focus();
+    choose(root, "tg");
+    const after = root.querySelector("select");
+    expect(after).not.toBe(before);
+    expect(document.activeElement).toBe(after);
+    expect(after?.value).toBe("tg");
+  });
+
   it("is the one the shop keeps for the customer when the reader has chosen none", async () => {
     const root = await open(server(json({ ...ACCOUNT, lang: "ru" })).fetch);
     expect(root.querySelector("h1")?.textContent).toBe("Ali, это ваш счёт");
@@ -275,20 +359,24 @@ describe("the language", () => {
       browserLanguages: ["ru-RU"],
     });
     expect(stored.querySelector("h1")?.textContent).toBe("Ali, bu sizning hisobingiz");
-    const browser = await open(server(json(ACCOUNT)).fetch, { browserLanguages: ["en-US", "ru-RU"] });
+    const browser = await open(server(json(ACCOUNT)).fetch, { browserLanguages: ["de-DE", "ru-RU"] });
     expect(browser.querySelector("h1")?.textContent).toBe("Ali, это ваш счёт");
-    expect(knownLanguage(null, ["en-US", "de"])).toBeNull();
+    expect(knownLanguage(null, ["de-DE", "fr"])).toBeNull();
+    expect(knownLanguage(null, ["de", "uz-Cyrl-UZ", "ru"])).toBe("uz-Cyrl");
+    expect(knownLanguage(null, ["tg-TJ"])).toBe("tg");
+    expect(knownLanguage(memory({ [LANGUAGE_STORAGE_KEY]: "kaa" }), ["en-US"])).toBe("kaa");
   });
 
   it("changes on request without asking the server again, and is remembered", async () => {
     const storage = memory();
     const api = server(json(ACCOUNT));
     const root = await open(api.fetch, { storage });
-    button(root, "Русский")?.click();
+    choose(root, "ru");
     expect(root.querySelector("h1")?.textContent).toBe("Ali, это ваш счёт");
-    expect(root.querySelector("[aria-pressed=true]")?.textContent).toBe("Русский");
+    expect(root.querySelector("select")?.value).toBe("ru");
+    expect(root.querySelector("option:checked")?.textContent).toBe("Русский");
     expect(storage.kept.get(LANGUAGE_STORAGE_KEY)).toBe("ru");
-    button(root, "O'zbekcha")?.click();
+    choose(root, "uz");
     expect(root.querySelector("h1")?.textContent).toBe("Ali, bu sizning hisobingiz");
     expect(api.sent).toHaveLength(1);
   });
@@ -304,7 +392,7 @@ describe("the language", () => {
     };
     const root = document.createElement("div");
     await startPage({ root, hash: `#${TOKEN}`, fetch: server(json(ACCOUNT)).fetch, storage: refusing, browserLanguages: [] });
-    button(root, "Русский")?.click();
+    choose(root, "ru");
     expect(root.querySelector("h1")?.textContent).toBe("Ali, это ваш счёт");
   });
 
@@ -315,14 +403,104 @@ describe("the language", () => {
 });
 
 describe("the page's text", () => {
-  it("has every message in both languages, with the same places to fill in", () => {
-    const places = (template: string) => [...template.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
+  const places = (template: string) => [...template.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
+  const KEYS = Object.keys(CATALOGS.uz) as MessageKey[];
+
+  it("has every message in Uzbek and Russian, with the same places to fill in", () => {
     expect(Object.keys(CATALOGS.ru).sort()).toEqual(Object.keys(CATALOGS.uz).sort());
-    for (const key of Object.keys(CATALOGS.uz) as MessageKey[]) {
-      expect(CATALOGS.ru[key].trim(), key).not.toBe("");
-      expect(places(CATALOGS.ru[key]), key).toEqual(places(CATALOGS.uz[key]));
+    for (const key of KEYS) {
+      expect(CATALOGS.ru[key]?.trim(), key).toBeTruthy();
+      expect(places(CATALOGS.ru[key] ?? ""), key).toEqual(places(CATALOGS.uz[key] ?? ""));
     }
-    expect(LANGUAGES).toEqual(["uz", "ru"]);
+    expect(LANGUAGES).toEqual(["uz", "uz-Cyrl", "ru", "tg", "kaa", "en"]);
+  });
+
+  it.each(["tg", "kaa", "en"] as const)("holds what %s has to Uzbek: no other key, the same places, no empty text", (language) => {
+    for (const [key, text] of Object.entries(CATALOGS[language])) {
+      expect(KEYS, key).toContain(key);
+      expect(text.trim(), key).not.toBe("");
+      expect(places(text), key).toEqual(places(CATALOGS.uz[key as MessageKey] ?? ""));
+    }
+  });
+
+  it.each(LANGUAGES)("says every message in %s, never nothing and never the key", (language) => {
+    for (const key of KEYS) {
+      const text = wording(language, key);
+      expect(text.trim(), key).not.toBe("");
+      expect(text, key).not.toBe(key);
+      expect(places(text), key).toEqual(places(CATALOGS.uz[key] ?? ""));
+    }
+  });
+
+  it("reads Uzbek for a message that a language does not have yet", () => {
+    const tajik = CATALOGS.tg as Partial<Record<MessageKey, string>>;
+    const kept = tajik["balance.none"];
+    expect(kept).not.toBe(CATALOGS.uz["balance.none"]);
+    delete tajik["balance.none"];
+    try {
+      expect(say("tg", "balance.none")).toBe("Qarzingiz yo'q");
+      expect(say("tg", "balance.owed")).toBe(CATALOGS.tg["balance.owed"]);
+    } finally {
+      tajik["balance.none"] = kept as string;
+    }
+    expect(say("tg", "balance.none")).toBe(kept);
+  });
+
+  it("carries Uzbek Cyrillic exactly as the rules write it from today's Uzbek text", () => {
+    // The file is written by `npm run i18n:k`; this fails when a message in it is no longer what the
+    // rules give, or was edited by hand.
+    for (const [key, text] of Object.entries(CATALOGS["uz-Cyrl"])) {
+      expect(text, key).toBe(cyrillicOf(CATALOGS.uz as Record<string, string>)[key]);
+    }
+    expect(readFileSync(resolve(SOURCE, "uzCyrl.ts"), "utf8")).toBe(fileText(CATALOGS.uz as Record<string, string>));
+    // Would a stale message be noticed? A changed Uzbek text gives another file.
+    expect(fileText({ ...CATALOGS.uz, "page.title": "Mening hisobim" })).not.toBe(fileText(CATALOGS.uz as Record<string, string>));
+    expect(cyrillicOf({ "page.title": "Mening hisobim", "lang.en": "English", "lang.choose": "Til" })).toEqual({
+      "page.title": "Менинг ҳисобим",
+      "lang.en": "English",
+      "lang.choose": "Тил",
+    });
+  });
+
+  it("writes Uzbek Cyrillic from the Uzbek text, and names each language in its own script", () => {
+    expect(say("uz-Cyrl", "page.title")).toBe("Менинг қарзим");
+    expect(say("uz-Cyrl", "greeting", { name: "Ali" })).toBe("Ali, бу сизнинг ҳисобингиз");
+    expect(say("uz-Cyrl", "month.10")).toBe("октябрь");
+    expect(LANGUAGES.map((code) => say("uz-Cyrl", `lang.${code}`))).toEqual(LANGUAGES.map((code) => say("uz", `lang.${code}`)));
+    expect(say("uz-Cyrl", "lang.choose")).toBe("Тил");
+    for (const language of LANGUAGES) {
+      expect(LANGUAGES.map((code) => say(language, `lang.${code}`))).toEqual([
+        "O'zbekcha",
+        "Ўзбекча",
+        "Русский",
+        "Тоҷикӣ",
+        "Qaraqalpaqsha",
+        "English",
+      ]);
+    }
+  });
+
+  it("writes money and dates as each language does, with the same digits everywhere", () => {
+    expect(LANGUAGES.map((language) => money(language, 1250000).replaceAll(String.fromCharCode(160), " "))).toEqual([
+      "1 250 000 so'm",
+      "1 250 000 сўм",
+      "1 250 000 сум",
+      "1 250 000 сӯм",
+      "1 250 000 swm",
+      "1 250 000 soum",
+    ]);
+    expect(LANGUAGES.map((language) => dayOfDate(language, "2026-10-06"))).toEqual([
+      "2026-yil 6-oktabr",
+      "2026-йил 6-октябрь",
+      "6 октября 2026 г.",
+      say("tg", "date", { year: 2026, day: 6, month: say("tg", "month.10") }),
+      say("kaa", "date", { year: 2026, day: 6, month: say("kaa", "month.10") }),
+      "6 October 2026",
+    ]);
+    for (const language of ["tg", "kaa"] as const) {
+      expect(dayOfDate(language, "2026-10-06")).toMatch(/2026/);
+      expect(dayOfDate(language, "2026-10-06")).not.toMatch(/oktabr|октября|October|[{}]/);
+    }
   });
 
   it("fails loudly when a place is left empty", () => {
@@ -338,7 +516,7 @@ describe("the page's text", () => {
     expect(dayOfInstant("uz", "yesterday")).toBe("yesterday");
     expect(dayOfDate("ru", "2026-10-08")).toBe("8 октября 2026 г.");
     expect(dayOfDate("uz", "2026-13-08")).toBe("2026-13-08");
-    expect([normalizeLanguage("ru-RU"), normalizeLanguage("UZ"), normalizeLanguage("en"), normalizeLanguage(null)]).toEqual([
+    expect([normalizeLanguage("ru-RU"), normalizeLanguage("UZ"), normalizeLanguage("de"), normalizeLanguage(null)]).toEqual([
       "ru",
       "uz",
       null,
@@ -479,13 +657,26 @@ describe("US dollars beside so'm", () => {
 });
 
 describe("the page stays apart from the staff application", () => {
-  const files = ["main.ts", "page.ts", "account.ts", "messages.ts"];
+  const files = ["main.ts", "page.ts", "account.ts", "messages.ts", "uz.ts", "uzCyrl.ts", "tg.ts", "kaa.ts", "en.ts"];
 
   it("imports nothing but its own modules and the design tokens", () => {
     const imports = files.flatMap((name) =>
       [...readFileSync(resolve(SOURCE, name), "utf8").matchAll(/^import .*?["']([^"']+)["'];?$/gms)].map((match) => match[1]),
     );
-    expect([...new Set(imports)].sort()).toEqual(["../shared/tokens.css", "./account", "./k.css", "./messages", "./page"]);
+    expect([...new Set(imports)].sort()).toEqual([
+      "../shared/tokens.css",
+      "./account",
+      "./en",
+      "./k.css",
+      "./kaa",
+      "./messages",
+      "./page",
+      "./tg",
+      "./uz",
+      "./uzCyrl",
+    ]);
+    // Every file of the page is in the list above: a new one cannot bring the staff application in unseen.
+    expect(readdirSync(SOURCE).filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts")).sort()).toEqual([...files].sort());
   });
 
   it("never writes markup from text, and reaches no other host", () => {

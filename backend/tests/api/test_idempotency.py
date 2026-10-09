@@ -77,7 +77,7 @@ def test_a_write_without_a_valid_key_is_rejected(
 def test_a_failed_write_stores_nothing_so_the_key_can_be_retried(
     client: TestClient, world: World, owner: psycopg.Connection
 ) -> None:
-    rejected = _patch(client, world, {"lang": "en"}, "key-00000005")
+    rejected = _patch(client, world, {"lang": "de"}, "key-00000005")
     assert rejected.status_code == 422
     assert owner.execute("SELECT count(*) FROM request_key WHERE key = 'key-00000005'").fetchone() == (0,)
     accepted = _patch(client, world, {"lang": "ru"}, "key-00000005")

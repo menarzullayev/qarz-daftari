@@ -13,7 +13,7 @@ import { stockQtyText } from "../workspace/StockNotes";
 import "./messages";
 import { MAX_REASON, tidy } from "./quantity";
 import "./stock.css";
-import { type Labelled, PAYMENT_METHODS, type PaymentMethod, type StockApi, stockOf, type StockSettings } from "./stockApi";
+import { type Labelled, labelIn, PAYMENT_METHODS, type PaymentMethod, type StockApi, stockOf, type StockSettings } from "./stockApi";
 
 export const NONE = "—";
 
@@ -34,7 +34,8 @@ export function labelOf(list: readonly Labelled[] | undefined, key: string | nul
   if (key === null) {
     return NONE;
   }
-  return list?.find((entry) => entry.key === key)?.label[language] ?? key;
+  const found = list?.find((entry) => entry.key === key);
+  return found ? labelIn(found.label, language) : key;
 }
 
 /** "7,5 kg": a quantity of the API with its unit. */

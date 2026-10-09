@@ -16,9 +16,10 @@ from typing import Any
 
 import pytest
 
-from qarz.application.chat_texts import CATALOGS, money
+from qarz.application.chat_texts import money
 from qarz.application.ports import SendFailed, SendRejected
 from qarz.application.reminders import reminder_text
+from qarz.domain.languages import LANGUAGES, sms_language
 from qarz.domain.reminders import Channel, ReminderKind, ReminderPlan
 from qarz.infrastructure.eskiz_sms import (
     LOGIN_PATH,
@@ -353,12 +354,12 @@ def test_any_other_number_is_refused_for_good_without_asking_eskiz(number: str) 
 def test_an_amount_travels_with_ordinary_spaces() -> None:
     """One no-break space would make a Latin SMS a Unicode one: 70 characters a part instead of 160."""
     plan = ReminderPlan(ReminderKind.OVERDUE, 1_250_000)
-    for lang in CATALOGS:
+    for lang in LANGUAGES:
         text = reminder_text(lang, 1, plan, Channel.SMS, shop="Shop A", name="Ali")
         assert " " in text, "the chat form keeps its no-break spaces"
         sent = wire_text(text)
         assert " " not in sent and " " not in sent
-        assert sent == text.replace(" ", " ") and money(lang, 1_250_000).replace(" ", " ") in sent
+        assert sent == text.replace(" ", " ") and money(sms_language(lang), 1_250_000).replace(" ", " ") in sent
     uzbek = wire_text(reminder_text("uz", 1, plan, Channel.SMS, shop="Shop A", name="Ali"))
     assert uzbek.isascii(), "the Uzbek text is one that fits the 160-character alphabet"
 

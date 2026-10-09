@@ -80,7 +80,8 @@ def test_amounts_are_written_for_a_person_with_grouped_thousands_and_the_unit_af
     # Dollars always show both decimals; an unknown language is written as Uzbek.
     assert format_amount(USD, 5_000) == "50.00" and format_amount(USD, 5) == "0.05"
     assert format_amount(USD, 100_000_000) == f"1{NBSP}000{NBSP}000.00"
-    assert format_money(UZS, 100, "en") == f"100{NBSP}so'm"
+    assert format_money(UZS, 100, "kk") == f"100{NBSP}so'm"
+    assert format_money(UZS, 100, "en") == f"100{NBSP}soum"
     assert format_amount(USD, -1_250) == "-12.50" and format_amount(UZS, -45_000) == f"-45{NBSP}000"
 
 

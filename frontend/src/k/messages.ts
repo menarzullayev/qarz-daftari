@@ -1,64 +1,22 @@
+import { en } from "./en";
+import { kaa } from "./kaa";
+import { tg } from "./tg";
+import { uz } from "./uz";
+import { uzCyrl } from "./uzCyrl";
+
 /**
- * The text of the page behind a customer's read-only link, in Uzbek (Latin) and Russian.
+ * The text of the page behind a customer's read-only link, in the six languages of the product.
  *
  * The page has a catalog of its own, and a small one: whoever opens the link is a shop's customer on a
  * phone, often on a slow connection, and must not download the staff application's text to read one
- * number. Both languages are here because the reader may switch between them without the network.
+ * number. Every language is here, because the reader may switch between them without the network: a
+ * few dozen short messages each. Uzbek is the source (`uz.ts`) and Russian mirrors it key for key;
+ * Tajik, Karakalpak and English may lack a key and then read Uzbek. Uzbek Cyrillic is not typed: its
+ * file is written from the Uzbek text by `npm run i18n:k`, with the rules the staff application uses
+ * when it runs. The page itself shares no code with that application.
  */
-export const LANGUAGES = ["uz", "ru"] as const;
+export const LANGUAGES = ["uz", "uz-Cyrl", "ru", "tg", "kaa", "en"] as const;
 export type Language = (typeof LANGUAGES)[number];
-
-const uz = {
-  "page.title": "Mening qarzim",
-  "lang.uz": "O'zbekcha",
-  "lang.ru": "Русский",
-  "lang.choose": "Til",
-  "state.loading": "Yuklanmoqda…",
-  "gone.title": "Havola ishlamayapti",
-  "gone.body":
-    "Havolaning muddati tugagan, u bekor qilingan yoki noto'g'ri ko'chirilgan. Do'kondan yangi havola so'rang.",
-  "limited.title": "Juda ko'p urinish",
-  "limited.body": "Bir daqiqadan so'ng sahifani qayta oching.",
-  "offline.title": "Ulanib bo'lmadi",
-  "offline.body": "Internetni tekshirib, qayta urinib ko'ring.",
-  "action.retry": "Qayta urinish",
-  "greeting": "{name}, bu sizning hisobingiz",
-  "greeting.noName": "Bu sizning hisobingiz",
-  "shop.phone": "Do'kon telefoni: ",
-  "balance.owed": "Qarzingiz",
-  "balance.none": "Qarzingiz yo'q",
-  "balance.credit": "Ortiqcha to'lovingiz",
-  "overdue": "Shundan muddati o'tgani: {amount}",
-  "dueToday": "Bugun to'lanishi kerak: {amount}",
-  "entries.title": "Yozuvlar",
-  "entries.empty": "Hozircha yozuv yo'q.",
-  "entries.shown": "Oxirgi {shown} ta yozuv ko'rsatilgan, jami {total} ta.",
-  "kind.credit": "Nasiya",
-  "kind.opening": "Boshlang'ich qarz",
-  "kind.payment": "To'lov",
-  "kind.reversal": "Bekor qilish yozuvi",
-  "kind.other": "Yozuv",
-  "entry.promised": "To'lash muddati: {date}",
-  "entry.reversed": "Bekor qilingan",
-  "line": "{name} — {qty} {unit} × {price} = {total}",
-  "money": "{amount} so'm",
-  "date": "{year}-yil {day}-{month}",
-  "foot.readOnly": "Bu sahifa faqat o'qish uchun. Xato ko'rsangiz, do'konga murojaat qiling.",
-  "foot.expires": "Havola {date} gacha amal qiladi.",
-  "foot.secret": "Bu havola faqat siz uchun: uni boshqalarga yubormang.",
-  "month.1": "yanvar",
-  "month.2": "fevral",
-  "month.3": "mart",
-  "month.4": "aprel",
-  "month.5": "may",
-  "month.6": "iyun",
-  "month.7": "iyul",
-  "month.8": "avgust",
-  "month.9": "sentabr",
-  "month.10": "oktabr",
-  "month.11": "noyabr",
-  "month.12": "dekabr",
-} as const;
 
 export type MessageKey = keyof typeof uz;
 
@@ -66,6 +24,10 @@ const ru: Readonly<Record<MessageKey, string>> = {
   "page.title": "Мой долг",
   "lang.uz": "O'zbekcha",
   "lang.ru": "Русский",
+  "lang.uz-Cyrl": "Ўзбекча",
+  "lang.tg": "Тоҷикӣ",
+  "lang.kaa": "Qaraqalpaqsha",
+  "lang.en": "English",
   "lang.choose": "Язык",
   "state.loading": "Загрузка…",
   "gone.title": "Ссылка не работает",
@@ -114,13 +76,26 @@ const ru: Readonly<Record<MessageKey, string>> = {
   "month.12": "декабря",
 };
 
-export const CATALOGS: Readonly<Record<Language, Readonly<Record<MessageKey, string>>>> = { uz, ru };
+/** What each language has of its own. Uzbek and Russian have every key; the others may lack some. */
+export const CATALOGS: Readonly<Record<Language, Readonly<Partial<Record<MessageKey, string>>>>> = {
+  uz,
+  "uz-Cyrl": uzCyrl,
+  ru,
+  tg,
+  kaa,
+  en,
+};
+
+/** The wording of a message before its places are filled in: the language's own, else Uzbek's. */
+export function wording(language: Language, key: MessageKey): string {
+  return CATALOGS[language][key] ?? uz[key];
+}
 
 const PLACEHOLDER = /\{(\w+)\}/g;
 
 /** The message with its `{param}` places filled in. A missing parameter is a mistake in the page, said loudly. */
 export function say(language: Language, key: MessageKey, params: Readonly<Record<string, string | number>> = {}): string {
-  return CATALOGS[language][key].replace(PLACEHOLDER, (_whole, name: string) => {
+  return wording(language, key).replace(PLACEHOLDER, (_whole, name: string) => {
     const value = params[name];
     if (value === undefined) {
       throw new Error(`message "${key}" needs the parameter "${name}"`);
@@ -133,7 +108,10 @@ export function normalizeLanguage(code: unknown): Language | null {
   if (typeof code !== "string") {
     return null;
   }
-  const primary = code.trim().toLowerCase().split(/[-_]/)[0];
+  const [primary, ...rest] = code.trim().toLowerCase().split(/[-_]/);
+  if (primary === "uz" && rest.includes("cyrl")) {
+    return "uz-Cyrl";
+  }
   return LANGUAGES.find((language) => language === primary) ?? null;
 }
 

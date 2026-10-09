@@ -44,7 +44,15 @@ function currencyOrNull(value: unknown): Currency | null {
   return value === null || value === undefined ? null : currency(value);
 }
 
+/**
+ * A name the server gives in Uzbek and Russian. A reader of another language is shown the Uzbek one
+ * (`labelIn`), until the server names it in theirs.
+ */
 export type Labelled = { key: string; label: { uz: string; ru: string } };
+
+export function labelIn(label: Labelled["label"], language: string): string {
+  return language === "ru" ? label.ru : label.uz;
+}
 export type StockUnit = Labelled & { weighed: boolean };
 
 export type StockSettings = {

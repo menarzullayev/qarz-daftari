@@ -31,6 +31,7 @@ import {
 import { ItemFinder } from "./ItemFinder";
 import { DOCUMENT_KIND_LABELS, labelOf, MethodChoice, useStock } from "./parts";
 import { MAX_DOCUMENT_LINES, MAX_NOTE, tidy } from "./quantity";
+import { labelIn } from "./stockApi";
 import type { NewDocument, PaymentMethod, StockDocument, StockDocumentKind, StockItem, StockSettings } from "./stockApi";
 
 const OLDEST_DAYS = 365;
@@ -151,7 +152,7 @@ function NewItemForm({
           <select id="stock-new-unit" className="input" value={unit} onChange={(event) => setUnit(event.target.value)}>
             {settings.units.map((known) => (
               <option key={known.key} value={known.key}>
-                {known.label[language]}
+                {labelIn(known.label, language)}
               </option>
             ))}
           </select>
@@ -519,7 +520,7 @@ export function DocumentEditor({
             <option value="">{t("stock.doc.reason.choose")}</option>
             {settings.writeOffReasons.map((reason) => (
               <option key={reason.key} value={reason.key}>
-                {reason.label[language]}
+                {labelIn(reason.label, language)}
               </option>
             ))}
           </select>

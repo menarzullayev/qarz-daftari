@@ -1,0 +1,595 @@
+{
+  "about": "Shared by backend/tests/test_uz_cyrillic.py and frontend/src/i18n/uzCyrillic.test.ts: the two implementations must have these tables and give these results. 'cases' are [latin, cyrillic]; 'wrong' are [latin, a result that must never come out].",
+  "brands": [
+    "Anorbank",
+    "Authenticator",
+    "Click",
+    "Eskiz",
+    "Excel",
+    "Google",
+    "Humo",
+    "Payme",
+    "Telegram",
+    "Uzcard",
+    "Visa",
+    "WebP"
+  ],
+  "product": "Qarz Daftari",
+  "codes": [
+    "api",
+    "csv",
+    "id",
+    "jpeg",
+    "jpg",
+    "pdf",
+    "png",
+    "pwa",
+    "qr",
+    "runbook",
+    "sms",
+    "totp",
+    "url",
+    "usd",
+    "utf",
+    "uuid",
+    "uzs",
+    "webp",
+    "xls",
+    "xlsx"
+  ],
+  "upper_words": [
+    "diqqat",
+    "sinov"
+  ],
+  "words": {
+    "aprel": "апрель",
+    "dekabr": "декабрь",
+    "fevral": "февраль",
+    "iyul": "июль",
+    "iyun": "июнь",
+    "mebel": "мебель",
+    "nol": "ноль",
+    "noyabr": "ноябрь",
+    "oktabr": "октябрь",
+    "panel": "панель",
+    "parol": "пароль",
+    "rol": "роль",
+    "rubl": "рубль",
+    "sentabr": "сентябрь",
+    "sex": "цех",
+    "sirk": "цирк",
+    "yanvar": "январь"
+  },
+  "stems": {
+    "aksiya": "акция",
+    "albom": "альбом",
+    "film": "фильм",
+    "filtr": "фильтр",
+    "funksiya": "функция",
+    "intervyu": "интервью",
+    "kalkulator": "калькулятор",
+    "kompyuter": "компьютер",
+    "konsert": "концерт",
+    "kvitansiya": "квитанция",
+    "litsenziya": "лицензия",
+    "litsey": "лицей",
+    "mayor": "майор",
+    "mo'jiza": "мўъжиза",
+    "mo'tabar": "мўътабар",
+    "mo'tadil": "мўътадил",
+    "obyekt": "объект",
+    "oktabr": "октябр",
+    "rayon": "район",
+    "sement": "цемент",
+    "sentabr": "сентябр",
+    "subyekt": "субъект"
+  },
+  "cases": [
+    [
+      "abdfghijklmnopqrstuvxz",
+      "абдфгҳижклмнопқрстувхз"
+    ],
+    [
+      "kitob daftar qalam",
+      "китоб дафтар қалам"
+    ],
+    [
+      "hisob va xabar",
+      "ҳисоб ва хабар"
+    ],
+    [
+      "jami mijoz",
+      "жами мижоз"
+    ],
+    [
+      "o'zbek so'm do'kon to'lov",
+      "ўзбек сўм дўкон тўлов"
+    ],
+    [
+      "g'alla tog' bog'lash",
+      "ғалла тоғ боғлаш"
+    ],
+    [
+      "oʻzbek gʻalla soʼm do’kon to‘lov bo`sh",
+      "ўзбек ғалла сўм дўкон тўлов бўш"
+    ],
+    [
+      "Boshlang'ich qarz",
+      "Бошланғич қарз"
+    ],
+    [
+      "ming so'ng sizning",
+      "минг сўнг сизнинг"
+    ],
+    [
+      "shahar ochiq chek qo'shish",
+      "шаҳар очиқ чек қўшиш"
+    ],
+    [
+      "Is'hoq",
+      "Исҳоқ"
+    ],
+    [
+      "yangi yaxshi yana",
+      "янги яхши яна"
+    ],
+    [
+      "yordam yozuv yoki",
+      "ёрдам ёзув ёки"
+    ],
+    [
+      "yuborish yuklash buyurtma",
+      "юбориш юклаш буюртма"
+    ],
+    [
+      "yo'q yo'l bo'yicha",
+      "йўқ йўл бўйича"
+    ],
+    [
+      "tayyor jarayon ixtiyoriy",
+      "тайёр жараён ихтиёрий"
+    ],
+    [
+      "nasiya sessiya Rossiya",
+      "насия сессия Россия"
+    ],
+    [
+      "keyin quyida milliy",
+      "кейин қуйида миллий"
+    ],
+    [
+      "dunyo daryo",
+      "дунё дарё"
+    ],
+    [
+      "valyuta menyu",
+      "валюта меню"
+    ],
+    [
+      "chiqyapti kutyapsiz",
+      "чиқяпти кутяпсиз"
+    ],
+    [
+      "yetti yer yetarli",
+      "етти ер етарли"
+    ],
+    [
+      "qayerda Valiyev",
+      "қаерда Валиев"
+    ],
+    [
+      "premyera atelye",
+      "премьера ателье"
+    ],
+    [
+      "ega eslatma eksport endi",
+      "эга эслатма экспорт энди"
+    ],
+    [
+      "kerak menejer telefon",
+      "керак менежер телефон"
+    ],
+    [
+      "poema duel",
+      "поэма дуэл"
+    ],
+    [
+      "veb-eslatma",
+      "веб-эслатма"
+    ],
+    [
+      "ma'lumot a'zo va'da e'tiroz",
+      "маълумот аъзо ваъда эътироз"
+    ],
+    [
+      "mas'ul san'at she'r",
+      "масъул санъат шеър"
+    ],
+    [
+      "ma’lumot maʼlumot",
+      "маълумот маълумот"
+    ],
+    [
+      "operatsiya informatsiya",
+      "операция информация"
+    ],
+    [
+      "ketsa ruxsatsiz muvaffaqiyatsiz",
+      "кетса рухсатсиз муваффақиятсиз"
+    ],
+    [
+      "Shahar Chek Yangi Yordam Yuborish",
+      "Шаҳар Чек Янги Ёрдам Юбориш"
+    ],
+    [
+      "O'chirish G'alla Yo'q Yetib Eksport E'tiroz",
+      "Ўчириш Ғалла Йўқ Етиб Экспорт Эътироз"
+    ],
+    [
+      "O'ZBEK",
+      "ЎЗБЕК"
+    ],
+    [
+      "SINOV",
+      "СИНОВ"
+    ],
+    [
+      "Ali Valiyev, Toshkent",
+      "Али Валиев, Тошкент"
+    ],
+    [
+      "Assalomu alaykum!",
+      "Ассалому алайкум!"
+    ],
+    [
+      "yanvar fevral mart aprel may iyun",
+      "январь февраль март апрель май июнь"
+    ],
+    [
+      "iyul avgust sentabr oktabr noyabr dekabr",
+      "июль август сентябрь октябрь ноябрь декабрь"
+    ],
+    [
+      "2026-yil 6-oktabr",
+      "2026-йил 6-октябрь"
+    ],
+    [
+      "oktabrda sentabrgacha yanvarda",
+      "октябрда сентябргача январда"
+    ],
+    [
+      "Oktabr OKTABR",
+      "Октябрь OKTABR"
+    ],
+    [
+      "parol rol panel",
+      "пароль роль панель"
+    ],
+    [
+      "parolni rolning panelda",
+      "паролни ролнинг панелда"
+    ],
+    [
+      "filtr filtrlash film",
+      "фильтр фильтрлаш фильм"
+    ],
+    [
+      "mo'jiza mo'tabar",
+      "мўъжиза мўътабар"
+    ],
+    [
+      "obyekt subyekt",
+      "объект субъект"
+    ],
+    [
+      "rayon mayor",
+      "район майор"
+    ],
+    [
+      "kvitansiya aksiya funksiya",
+      "квитанция акция функция"
+    ],
+    [
+      "konsert sirk sirka",
+      "концерт цирк сирка"
+    ],
+    [
+      "kompyuter kalkulator albom",
+      "компьютер калькулятор альбом"
+    ],
+    [
+      "{name}, bu sizning hisobingiz",
+      "{name}, бу сизнинг ҳисобингиз"
+    ],
+    [
+      "{count} ta mijoz",
+      "{count} та мижоз"
+    ],
+    [
+      "{shop}: {name}, bugun {amount} to'lash kuni.",
+      "{shop}: {name}, бугун {amount} тўлаш куни."
+    ],
+    [
+      "{shop}ga {date}gacha",
+      "{shop}га {date}гача"
+    ],
+    [
+      "{year}-yil {day}-{month}",
+      "{year}-йил {day}-{month}"
+    ],
+    [
+      "{amount} so'm",
+      "{amount} сўм"
+    ],
+    [
+      "/dokon — faol do'konni almashtirish",
+      "/dokon — фаол дўконни алмаштириш"
+    ],
+    [
+      "Tarif haqida: /obuna",
+      "Тариф ҳақида: /obuna"
+    ],
+    [
+      "(/yordam)",
+      "(/yordam)"
+    ],
+    [
+      "/start {code}",
+      "/start {code}"
+    ],
+    [
+      "/til\n/yordam",
+      "/til\n/yordam"
+    ],
+    [
+      "ha/yo'q, kun/oy",
+      "ҳа/йўқ, кун/ой"
+    ],
+    [
+      "Havola: https://t.me/qarz_bot?start=abc",
+      "Ҳавола: https://t.me/qarz_bot?start=abc"
+    ],
+    [
+      "t.me/qarz_bot orqali",
+      "t.me/qarz_bot орқали"
+    ],
+    [
+      "eskiz.uz saytida",
+      "eskiz.uz сайтида"
+    ],
+    [
+      "Yozing: yordam@qarz.uz",
+      "Ёзинг: yordam@qarz.uz"
+    ],
+    [
+      "@qarz_bot ga yozing",
+      "@qarz_bot га ёзинг"
+    ],
+    [
+      "<b>Diqqat</b>: muddat",
+      "<b>Диққат</b>: муддат"
+    ],
+    [
+      ".xlsx yoki .csv (UTF-8)",
+      ".xlsx ёки .csv (UTF-8)"
+    ],
+    [
+      "hisobot.xlsx fayli",
+      "hisobot.xlsx файли"
+    ],
+    [
+      "runbook 16 (docs/10-operations/runbooks.md)",
+      "runbook 16 (docs/10-operations/runbooks.md)"
+    ],
+    [
+      "Qarz Daftari — do'kondagi nasiya hisobi",
+      "Qarz Daftari — дўкондаги насия ҳисоби"
+    ],
+    [
+      "qarz daftari",
+      "қарз дафтари"
+    ],
+    [
+      "Qarz yozish. Daftari yo'q.",
+      "Қарз ёзиш. Дафтари йўқ."
+    ],
+    [
+      "Telegram hisobingiz",
+      "Telegram ҳисобингиз"
+    ],
+    [
+      "Telegramda Telegramga Telegramsiz",
+      "Telegramда Telegramга Telegramсиз"
+    ],
+    [
+      "Telegram'da",
+      "Telegram'да"
+    ],
+    [
+      "Excel fayli, Google Authenticator",
+      "Excel файли, Google Authenticator"
+    ],
+    [
+      "Humo · Anorbank, Payme, Click, Eskiz",
+      "Humo · Anorbank, Payme, Click, Eskiz"
+    ],
+    [
+      "eskiz chizish",
+      "эскиз чизиш"
+    ],
+    [
+      "SMS, QR kod, PDF, JPEG, PNG yoki WebP",
+      "SMS, QR код, PDF, JPEG, PNG ёки WebP"
+    ],
+    [
+      "sms orqali, qr kod",
+      "sms орқали, qr код"
+    ],
+    [
+      "UZS va USD",
+      "UZS ва USD"
+    ],
+    [
+      "Administrator ID (ixtiyoriy)",
+      "Администратор ID (ихтиёрий)"
+    ],
+    [
+      "{size} MB gacha",
+      "{size} MB гача"
+    ],
+    [
+      "45k yoki 45 000",
+      "45k ёки 45 000"
+    ],
+    [
+      "Ali 45000 non, sut",
+      "Али 45000 нон, сут"
+    ],
+    [
+      "Ali 20000 berdi",
+      "Али 20000 берди"
+    ],
+    [
+      "1 250.50 $ va 45 000 so'm",
+      "1 250.50 $ ва 45 000 сўм"
+    ],
+    [
+      "kun.oy, masalan 25.10",
+      "кун.ой, масалан 25.10"
+    ],
+    [
+      "✅ «{shop}» do'koni ochildi.",
+      "✅ «{shop}» дўкони очилди."
+    ],
+    [
+      "↩️ Bekor qilish",
+      "↩️ Бекор қилиш"
+    ],
+    [
+      "Русский",
+      "Русский"
+    ],
+    [
+      "Ўзбекча матн",
+      "Ўзбекча матн"
+    ],
+    [
+      "O'zbekcha / Русский",
+      "Ўзбекча / Русский"
+    ],
+    [
+      "wow",
+      "wоw"
+    ],
+    [
+      "",
+      ""
+    ],
+    [
+      "   ",
+      "   "
+    ],
+    [
+      "'qo'shtirnoq'",
+      "'қўштирноқ'"
+    ],
+    [
+      "Bu amal uchun sizda ruxsat yo'q. Do'kon egasiga murojaat qiling.",
+      "Бу амал учун сизда рухсат йўқ. Дўкон эгасига мурожаат қилинг."
+    ],
+    [
+      "Bepul tarif {limit} tagacha mijozni o'z ichiga oladi, yangi mijoz qo'shilmadi.",
+      "Бепул тариф {limit} тагача мижозни ўз ичига олади, янги мижоз қўшилмади."
+    ],
+    [
+      "Havolaning muddati tugagan, u bekor qilingan yoki noto'g'ri ko'chirilgan.",
+      "Ҳаволанинг муддати тугаган, у бекор қилинган ёки нотўғри кўчирилган."
+    ],
+    [
+      "Til o'zgartirildi: o'zbekcha.",
+      "Тил ўзгартирилди: ўзбекча."
+    ],
+    [
+      "Yangi mijoz: {name}",
+      "Янги мижоз: {name}"
+    ],
+    [
+      "To'lash muddati: {date}",
+      "Тўлаш муддати: {date}"
+    ]
+  ],
+  "wrong": [
+    [
+      "{name}",
+      "{наме}"
+    ],
+    [
+      "/obuna",
+      "/обуна"
+    ],
+    [
+      "yo'q",
+      "ёъқ"
+    ],
+    [
+      "yo'q",
+      "ё'қ"
+    ],
+    [
+      "o'zbek",
+      "о'збек"
+    ],
+    [
+      "g'alla",
+      "г'алла"
+    ],
+    [
+      "shahar",
+      "сҳаҳар"
+    ],
+    [
+      "chek",
+      "cҳек"
+    ],
+    [
+      "ega",
+      "ега"
+    ],
+    [
+      "yetti",
+      "йетти"
+    ],
+    [
+      "ma'lumot",
+      "ма'лумот"
+    ],
+    [
+      "ketsa",
+      "кеца"
+    ],
+    [
+      "Telegram",
+      "Телеграм"
+    ],
+    [
+      "Qarz Daftari",
+      "Қарз Дафтари"
+    ],
+    [
+      "SMS",
+      "СМС"
+    ],
+    [
+      "https://t.me/qarz_bot",
+      "ҳттпс://т.ме/қарз_бот"
+    ],
+    [
+      "oktabr",
+      "октабр"
+    ],
+    [
+      "Yangi",
+      "ЯНги"
+    ]
+  ]
+}

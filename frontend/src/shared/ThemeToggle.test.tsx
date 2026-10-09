@@ -107,7 +107,7 @@ describe("theme toggle", () => {
     const group = screen.getByRole("group", { name: "Тема" });
     fireEvent.click(within(group).getByRole("button", { name: "Тёмная" }));
     expect(root().getAttribute("data-theme")).toBe("dark");
-    fireEvent.click(screen.getByRole("button", { name: "O'zbekcha" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Язык" }), { target: { value: "uz" } });
     expect(pressed()).toEqual(["Tungi"]);
     expect(root().getAttribute("data-theme")).toBe("dark");
   });
@@ -132,7 +132,7 @@ describe("theme toggle inside Telegram", () => {
     expect(screen.queryByRole("group", { name: "Mavzu" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Tungi" })).toBeNull();
     // The rest of the header is as it was.
-    expect(screen.getByRole("group", { name: "Til" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Til" })).toBeTruthy();
     expect(within(screen.getByRole("banner")).getByText("Baraka savdo")).toBeTruthy();
   });
 

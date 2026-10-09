@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from "react";
 
 import { useI18n } from "../../i18n/I18nProvider";
+import type { Language } from "../../i18n/types";
 import { formatCalendarDay, formatMoney } from "../format";
 import { useLoad, usePagedList, useSubmit } from "../hooks";
 import type { Column } from "../layout";
@@ -41,7 +42,7 @@ const RECEIPT: StockDocumentKind = "receipt";
 
 const STATUS_TONE = { draft: "warning", posted: "success", cancelled: "danger" } as const;
 
-function dateText(iso: string, language: "uz" | "ru"): string {
+function dateText(iso: string, language: Language): string {
   const day = parseIsoDate(iso);
   return day === null ? iso : formatCalendarDay(day, language);
 }

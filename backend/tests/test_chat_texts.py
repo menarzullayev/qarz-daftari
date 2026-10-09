@@ -7,6 +7,7 @@ import pytest
 
 from qarz.application.chat import _PARSE_TEXTS, _QUICK, callback
 from qarz.application.chat_texts import LANGUAGE_NAMES, RU, UZ, day, money, say
+from qarz.domain.languages import LANGUAGES
 from qarz.interface.errors import _STATUS
 
 
@@ -16,7 +17,7 @@ def _placeholders(template: str) -> set[str]:
 
 def test_both_languages_have_the_same_keys() -> None:
     assert set(RU) == set(UZ)
-    assert set(LANGUAGE_NAMES) == {"uz", "ru"}
+    assert tuple(LANGUAGE_NAMES) == LANGUAGES, "one name for each language, in the order /til offers them"
 
 
 @pytest.mark.parametrize("key", sorted(UZ))
@@ -98,7 +99,9 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
 
 
 def test_an_unknown_language_is_answered_in_uzbek() -> None:
-    assert say("en", "cancelled") == UZ["cancelled"]
+    assert say("kk", "cancelled") == UZ["cancelled"]
+    assert say("", "cancelled") == UZ["cancelled"]
+    assert money("kk", 45000) == money("uz", 45000)
 
 
 def test_a_missing_value_is_an_error_not_a_blank() -> None:

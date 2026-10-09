@@ -627,12 +627,13 @@ def test_an_invitation_link_joins_the_shop(client: TestClient, world: World, own
 def test_the_language_can_be_changed(client: TestClient, world: World, owner: psycopg.Connection) -> None:
     seller = chat_of(client, owner, world.seller_a)
     asked = seller.say("/til")
-    assert list(asked.buttons) == ["O'zbekcha", "Русский"]
+    assert list(asked.buttons) == ["O'zbekcha", "Ўзбекча", "Русский", "Тоҷикӣ", "Qaraqalpaqsha", "English"]
     assert seller.press(asked.buttons["Русский"]).text == say("ru", "lang_set")
     assert owner.execute("SELECT lang FROM app_user WHERE id = %s", (world.seller_a,)).fetchone() == ("ru",)
     assert seller.say("/yordam").text == say("ru", "help")
-    seller.press("v2:lang:en")  # an unknown language is ignored
-    assert owner.execute("SELECT lang FROM app_user WHERE id = %s", (world.seller_a,)).fetchone() == ("ru",)
+    for unknown in ("v2:lang:de", "v2:lang:kk", "v2:lang:uz-cyrl"):  # an unknown language is ignored
+        seller.press(unknown)
+        assert owner.execute("SELECT lang FROM app_user WHERE id = %s", (world.seller_a,)).fetchone() == ("ru",)
 
 
 def test_commands(client: TestClient, world: World, owner: psycopg.Connection) -> None:

@@ -49,6 +49,10 @@ export const ru: RuCatalog = {
   "theme.system": "Как в системе",
   "lang.uz": "O'zbekcha",
   "lang.ru": "Русский",
+  "lang.uz-Cyrl": "Ўзбекча",
+  "lang.tg": "Тоҷикӣ",
+  "lang.kaa": "Qaraqalpaqsha",
+  "lang.en": "English",
 
   "role.owner": "Владелец магазина",
   "role.manager": "Менеджер",
@@ -470,7 +474,7 @@ export const ru: RuCatalog = {
   "reminders.template.dueToday": "В день оплаты",
   "reminders.template.overdue": "Когда срок прошёл",
   "reminders.template.example":
-    "Тексты показаны так, как их увидит клиент, на обоих языках. Имя и сумма — пример: каждый клиент увидит своё имя и свой долг.",
+    "Тексты показаны так, как их увидит клиент, на вашем языке; клиент получит напоминание на своём. Имя и сумма — пример: каждый клиент увидит своё имя и свой долг.",
   "reminders.example.name": "Али Валиев",
   "reminders.example.shop": "Барака савдо",
   "reminders.sms": "Отправлять также по SMS",

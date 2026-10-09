@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { detectLanguage, readStoredLanguage } from "../i18n/detect";
+import { startLanguage } from "../i18n/start";
 import { takeLoginReturn } from "../panel/loginReturn";
 import { previewAdminSession } from "../shared/session";
 import { initTheme } from "../shared/theme";
@@ -23,8 +24,11 @@ initTheme();
 const initialLanguage = detectLanguage({ stored: readStoredLanguage() });
 const preview = import.meta.env.DEV ? previewAdminSession(window.location.search) : false;
 
-createRoot(root).render(
-  <StrictMode>
-    {preview ? <AdminApp signedIn initialLanguage={initialLanguage} /> : <AdminRoot initialLanguage={initialLanguage} loginReturn={loginReturn} />}
-  </StrictMode>,
-);
+// The text of the language the person starts in is fetched before anything is drawn.
+void startLanguage(initialLanguage).then(() => {
+  createRoot(root).render(
+    <StrictMode>
+      {preview ? <AdminApp signedIn initialLanguage={initialLanguage} /> : <AdminRoot initialLanguage={initialLanguage} loginReturn={loginReturn} />}
+    </StrictMode>,
+  );
+});

@@ -2,7 +2,8 @@ import { useState, type FormEvent } from "react";
 
 import { translate } from "../../i18n/catalog";
 import { useI18n, type Translate } from "../../i18n/I18nProvider";
-import { LANGUAGES, type Language } from "../../i18n/types";
+import { DEFAULT_LANGUAGE } from "../../i18n/detect";
+import type { Language } from "../../i18n/types";
 import type { ApiError, ReminderSettings, ReminderSettingsPatch, ReminderTemplate } from "../api";
 import { formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
@@ -31,33 +32,37 @@ export function fillWording(wording: string, example: { shop: string; name: stri
   return wording.replace(/\{(shop|name|amount)\}/g, (_whole, name: "shop" | "name" | "amount") => example[name]);
 }
 
-const isLanguage = (code: string): code is Language => LANGUAGES.some((language) => language === code);
-
-/** The languages a wording comes in: the reader's own first, then the rest in the server's order. */
-function languagesOf(wordings: Readonly<Record<string, string>>, own: Language): string[] {
-  const codes = Object.keys(wordings);
-  return [...codes.filter((code) => code === own), ...codes.filter((code) => code !== own)];
+/**
+ * The wording shown: the one in the reader's own language, and the Uzbek one when the server has none in
+ * it. The server sends a wording for each of its languages; a customer is reminded in theirs.
+ */
+function wordingFor(wordings: Readonly<Record<string, string>>, own: Language): { code: Language; text: string } | null {
+  for (const code of [own, DEFAULT_LANGUAGE]) {
+    const text = wordings[code];
+    if (typeof text === "string" && text !== "") {
+      return { code, text };
+    }
+  }
+  return null;
 }
 
 function Wordings({ title, wordings }: { title: string; wordings: Readonly<Record<string, string>> }) {
   const { t, language } = useI18n();
   const { shopName } = useWorkspace();
+  const shown = wordingFor(wordings, language);
   return (
     <>
       <p className="wording__when">{title}</p>
-      {languagesOf(wordings, language).map((code) => {
+      {shown ? (
         // The example name and the amount are written as the message's own language writes them.
-        const own = isLanguage(code) ? code : language;
-        return (
-          <p key={code} className="wording" lang={code}>
-            {fillWording(wordings[code] ?? "", {
-              shop: shopName ?? t("reminders.example.shop"),
-              name: translate(own, "reminders.example.name"),
-              amount: formatMoney(EXAMPLE_AMOUNT, own),
-            })}
-          </p>
-        );
-      })}
+        <p className="wording" lang={shown.code}>
+          {fillWording(shown.text, {
+            shop: shopName ?? t("reminders.example.shop"),
+            name: translate(shown.code, "reminders.example.name"),
+            amount: formatMoney(EXAMPLE_AMOUNT, shown.code),
+          })}
+        </p>
+      ) : null}
     </>
   );
 }

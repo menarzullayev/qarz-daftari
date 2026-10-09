@@ -23,6 +23,7 @@ from xml.parsers import expat
 from qarz.domain.files import MAX_FILE_BYTES
 from qarz.domain.names import normalize_name, unify_apostrophes
 from qarz.domain.phones import normalize_phone
+from qarz.domain.uz_cyrillic import to_cyrillic
 
 MAX_ROWS = 2000
 # What a file may expand to, and how much of it is looked at. A real file of 2 000 rows is far below these.
@@ -74,10 +75,29 @@ _HEADERS = {
     ),
     NOTE: ("izoh", "изоҳ", "заметка", "примечание", "комментарий", "note"),
 }
-_COLUMN_OF = {header: column for column, headers in _HEADERS.items() for header in headers}
+_UZ_TEMPLATE = ("Ism", "Telefon", "Qarz summasi", "To'lash muddati", "Izoh")
+# The titles of the published template in each language of the product (qarz.domain.languages), in the
+# order of `COLUMNS`. Uzbek Cyrillic is made from the Uzbek titles, like every Uzbek Cyrillic text.
 TEMPLATE_HEADERS = {
-    "uz": ("Ism", "Telefon", "Qarz summasi", "To'lash muddati", "Izoh"),
+    "uz": _UZ_TEMPLATE,
+    "uz-Cyrl": tuple(to_cyrillic(title) for title in _UZ_TEMPLATE),
     "ru": ("Имя", "Телефон", "Сумма долга", "Срок оплаты", "Примечание"),
+    "tg": ("Ном", "Телефон", "Маблағи қарз", "Мӯҳлати пардохт", "Эзоҳ"),
+    "kaa": ("Atı", "Telefon", "Qarız summası", "Tólew múddeti", "Túsindirme"),
+    "en": ("Name", "Phone", "Debt amount", "Due date", "Note"),
+}
+
+
+def header_form(title: str) -> str:
+    """A column title as it is compared: lower case, one kind of apostrophe, no "*" or ":", single spaces."""
+    return " ".join(unify_apostrophes(title).replace("*", " ").replace(":", " ").lower().split())
+
+
+# A template is read back whatever language it was downloaded in: each of its titles names its column.
+_COLUMN_OF = {header: column for column, headers in _HEADERS.items() for header in headers} | {
+    header_form(title): column
+    for titles in TEMPLATE_HEADERS.values()
+    for column, title in zip(COLUMNS, titles, strict=True)
 }
 
 
@@ -378,7 +398,7 @@ def _header(table: Table) -> dict[str, int]:
         raise _Refused(FileProblem.NO_HEADER)
     found: dict[str, int] = {}
     for index, cell in enumerate(table[0][1]):
-        title = " ".join(unify_apostrophes(cell).replace("*", " ").replace(":", " ").lower().split())
+        title = header_form(cell)
         if not title:
             continue  # a column without a title carries nothing that is imported
         column = _COLUMN_OF.get(title)

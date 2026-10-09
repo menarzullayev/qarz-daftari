@@ -13,14 +13,13 @@ from qarz.application.currencies import DollarBalanceOpen, platform_dollars
 from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import Operation, operation, self_operation
 from qarz.application.ports import Membership, ShopSettings, Storage, TenantSession
-from qarz.domain import platform_settings
+from qarz.domain import languages, platform_settings
 from qarz.domain.access import Capability, Role
 
 READ_SHOP = operation("shop.read", Capability.READ_SHOP)
 UPDATE_SHOP = operation("shop.update", Capability.ADMINISTER_SHOP)
 CREATE_SHOP = self_operation("shop.create")
 
-LANGUAGES = ("uz", "ru")
 DEFAULT_TRIAL_DAYS = 30
 TASHKENT = ZoneInfo("Asia/Tashkent")
 
@@ -64,8 +63,8 @@ class ShopUpdate:
         fields: dict[str, str] = {}
         if self.name is not None and not 1 <= len(self.name.strip()) <= 80:
             fields["name"] = "length must be between 1 and 80"
-        if self.lang is not None and self.lang not in LANGUAGES:
-            fields["lang"] = "must be uz or ru"
+        if self.lang is not None and not languages.is_language(self.lang):
+            fields["lang"] = languages.ALLOWED
         if self.default_promise_days is not None and not 1 <= self.default_promise_days <= 365:
             fields["default_promise_days"] = "must be between 1 and 365"
         if self.name is None and self.lang is None and self.default_promise_days is None and self.usd_on is None:
@@ -114,8 +113,8 @@ class ShopService:
         fields: dict[str, str] = {}
         if not 1 <= len(name.strip()) <= 80:
             fields["name"] = "length must be between 1 and 80"
-        if lang not in LANGUAGES:
-            fields["lang"] = "must be uz or ru"
+        if not languages.is_language(lang):
+            fields["lang"] = languages.ALLOWED
         if fields:
             raise ValidationFailed(fields)
 

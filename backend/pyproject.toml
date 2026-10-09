@@ -56,6 +56,9 @@ ignore = [
 "src/qarz/infrastructure/db.py" = ["S608"]
 "src/qarz/infrastructure/db_stock.py" = ["S608"]
 "src/qarz/infrastructure/db_cash.py" = ["S608"]
+# The transliterator's comments name the Cyrillic letters they are about.
+"src/qarz/domain/uz_cyrillic.py" = ["RUF002", "RUF003"]
+"tests/test_uz_cyrillic.py" = ["S105", "S106", "S608", "RUF002", "RUF003"]
 
 [tool.mypy]
 python_version = "3.12"
