@@ -105,6 +105,8 @@ class DocumentRecord:
     cancel_reason: str | None
     supplier_name: str | None = None
     customer_name: str | None = None
+    # A cash sale: how the buyer paid. None on every other kind.
+    method: str | None = None
 
 
 @dataclass(frozen=True)
@@ -184,6 +186,51 @@ class ExportSupplierEntry:
     reversed_kind: str | None  # of a reversal: the kind of the entry it reverses
 
 
+@dataclass(frozen=True)
+class SaleCost:
+    """What the goods of one line of a cash sale cost, as its movement keeps it."""
+
+    line_no: int
+    cost_total: int | None
+    currency: str | None
+
+
+@dataclass(frozen=True)
+class SaleTotals:
+    """The cash sales that stand in a stretch of time: how many, and their money by how it was paid."""
+
+    count: int
+    total: int
+    by_method: dict[str, int]
+
+
+@dataclass(frozen=True)
+class SoldItem:
+    """What was sold of one counted item since a moment, credit and cash sales together."""
+
+    item_id: UUID
+    name: str
+    unit: str
+    qty: Decimal
+    revenue: int
+    # Of the sales whose cost is known in so'm: what they brought and what they cost. The margin is of
+    # these alone, so it is never a difference of two currencies.
+    costed_revenue: int
+    cost: int
+    cash_qty: Decimal  # of it, sold for cash without a customer
+    cash_revenue: int
+
+
+@dataclass(frozen=True)
+class ExportSaleLine:
+    document: DocumentRecord
+    line: DocumentLine
+    item_name: str
+    unit: str
+    cost_total: int | None
+    cost_currency: str | None
+
+
 class StockSession(Protocol):
     # --- items ------------------------------------------------------------------------------------
 
@@ -250,9 +297,10 @@ class StockSession(Protocol):
         created_by: UUID,
         created_at: datetime,
         origin_ref: UUID | None = None,
+        method: str | None = None,
     ) -> None:
         """`origin_ref` is the delivery note of another shop that a receipt answers (module J): written
-        with the document and never changed."""
+        with the document and never changed. `method` is how a cash sale was paid; only a sale has one."""
         ...
 
     async def get_document(self, document_id: UUID, *, for_update: bool) -> DocumentRecord | None: ...
@@ -298,6 +346,58 @@ class StockSession(Protocol):
         before: tuple[datetime, UUID] | None,
         limit: int,
     ) -> list[DocumentRecord]: ...
+
+    # --- cash sales (a document of the kind `sale`) --------------------------------------------------
+
+    async def list_sales(
+        self,
+        *,
+        since: datetime,
+        until: datetime,
+        item_id: UUID | None,
+        seller_id: UUID | None,
+        status: str | None,
+        before: tuple[datetime, UUID] | None,
+        limit: int,
+    ) -> list[DocumentRecord]:
+        """A page of the cash sales made in `[since, until)`, newest first, cancelled ones included."""
+        ...
+
+    async def sale_totals(
+        self, *, since: datetime, until: datetime, item_id: UUID | None, seller_id: UUID | None
+    ) -> SaleTotals:
+        """The sales of that stretch that stand (posted, not cancelled), under the same narrowing."""
+        ...
+
+    async def sale_costs(self, document_id: UUID) -> dict[int, SaleCost]:
+        """By line: what the goods of a sale cost. A line of an item that is not counted has none."""
+        ...
+
+    async def add_sale_cash_entry(
+        self,
+        *,
+        entry_id: UUID,
+        method: str,
+        amount: int,
+        category_id: UUID,
+        note: str | None,
+        day: date,
+        author_id: UUID,
+        stock_document_id: UUID,
+        now: datetime,
+    ) -> None:
+        """Write the income of the cash book that a cash sale is, in so'm."""
+        ...
+
+    async def stock_sold(self, *, since: datetime, limit: int) -> list[SoldItem]:
+        """What sold since then, per counted item, the most money first. Cancelled sales are left out."""
+        ...
+
+    async def export_sale_lines(
+        self, *, until: datetime, after: tuple[datetime, UUID, int] | None, limit: int
+    ) -> list[ExportSaleLine]:
+        """A page of the lines of the shop's cash sales up to a moment, oldest first."""
+        ...
 
     # --- suppliers --------------------------------------------------------------------------------
 

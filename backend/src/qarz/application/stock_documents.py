@@ -527,7 +527,8 @@ async def _lock_for(session: TenantSession, document_id: UUID) -> DocumentRecord
     """The document under its lock. The customer of a customer's return is locked first, in the order
     every write to a customer's account takes its locks, so the two can never wait for each other."""
     seen = await session.get_document(document_id, for_update=False)
-    if seen is None:
+    if seen is None or seen.kind == stock.DOC_SALE:
+        # A cash sale is not a document of these routes: it is read and cancelled at its own.
         raise NotFound()
     if seen.customer_id is not None:
         await session.get_customer(seen.customer_id, for_update=True)
@@ -829,7 +830,7 @@ class DocumentService:
             actor = await require_member(session, user_id, READ_DOCUMENT)
             await require_viewable(session, actor, self._today())
             document = await session.get_document(document_id, for_update=False)
-            if document is None:
+            if document is None or document.kind == stock.DOC_SALE:
                 raise NotFound()
             return await document_body_in(session, actor, document)
 
@@ -881,7 +882,7 @@ class DocumentService:
 
             async def apply() -> dict[str, Any]:
                 document = await session.get_document(document_id, for_update=True)
-                if document is None:
+                if document is None or document.kind == stock.DOC_SALE:
                     raise NotFound()
                 if document.kind != clean.kind:
                     raise ValidationFailed({"kind": "the kind of a document does not change"})

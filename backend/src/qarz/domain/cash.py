@@ -60,7 +60,13 @@ STOCK_CATEGORIES: dict[str, tuple[str, str]] = {
     CUSTOMER_REFUND: ("Ombor: mijozga qaytarildi", "Склад: возврат клиенту"),
 }
 # The categories only the service writes under: a person records nothing there by hand.
-_WRITTEN_BY_THE_SERVICE = frozenset({DEBT_REPAID, GOODS_PURCHASE, CUSTOMER_REFUND})
+# The stock's one category of income: what a sale for cash, without a customer, brought in. Apart from
+# the shop's own "Savdo", which stays for what a shop writes by hand, so its total is what the sales say.
+CASH_SALE = "cash_sale"
+STOCK_INCOME_CATEGORIES: dict[str, tuple[str, str]] = {
+    CASH_SALE: ("Ombor: naqd savdo", "Склад: продажа за наличные"),
+}
+_WRITTEN_BY_THE_SERVICE = frozenset({DEBT_REPAID, GOODS_PURCHASE, CUSTOMER_REFUND, CASH_SALE})
 
 
 class Direction(StrEnum):

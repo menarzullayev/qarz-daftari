@@ -20,9 +20,13 @@ from qarz.application.stock_ports import (
     DocumentLine,
     DocumentRecord,
     ExportMovement,
+    ExportSaleLine,
     ExportSupplierEntry,
     MovementRecord,
     NewMovement,
+    SaleCost,
+    SaleTotals,
+    SoldItem,
     StockItem,
     StockTotals,
     SupplierEntryRecord,
@@ -66,12 +70,62 @@ _STANDING = "m.kind <> 'reversal' AND NOT EXISTS (SELECT 1 FROM stock_movement r
 _DOCUMENT_COLUMNS = (
     "d.id, d.kind, d.number, d.status, d.doc_date, d.supplier_id, d.customer_id, d.currency, d.total, d.paid, "
     "d.reason, d.note, d.draft, d.ledger_entry_id, d.created_by, d.created_at, "
-    "d.posted_at, d.cancelled_at, d.cancel_reason, "
+    "d.posted_at, d.cancelled_at, d.cancel_reason, d.method, "
     "(SELECT s.name FROM supplier s WHERE s.id = d.supplier_id) AS supplier_name, "
     "(SELECT c.display_name FROM customer c WHERE c.id = d.customer_id) AS customer_name"
 )
 _DOCUMENT_BY_ID = f"SELECT {_DOCUMENT_COLUMNS} FROM stock_document d WHERE d.id = :id"
 _DOCUMENT_LOCKED = f"{_DOCUMENT_BY_ID} FOR NO KEY UPDATE OF d"
+
+# A cash sale is a document nobody writes as one: the lists of documents leave it out, through an index
+# that holds every other kind (`stock_document_papers`), and it has lists of its own below.
+_NOT_A_SALE = "d.kind <> 'sale'"
+# The cash sales of a stretch of time, through `stock_document_by_kind`. Narrowed to a seller the rows of
+# the stretch are filtered; to an item, each is asked for a line of it through the lines' primary key.
+_SALES_WHERE = (
+    "d.shop_id = :shop_id AND d.kind = 'sale' AND d.created_at >= :since AND d.created_at < :until "
+    "AND (CAST(:seller AS uuid) IS NULL OR d.created_by = CAST(:seller AS uuid)) "
+    "AND (CAST(:item AS uuid) IS NULL OR EXISTS ("
+    "  SELECT 1 FROM stock_document_line n WHERE n.document_id = d.id AND n.item_id = CAST(:item AS uuid))) "
+)
+_SALES_PAGE = (
+    f"SELECT {_DOCUMENT_COLUMNS} FROM stock_document d WHERE {_SALES_WHERE}"
+    "AND (CAST(:status AS text) IS NULL OR d.status = CAST(:status AS text)) "
+    "AND (CAST(:before_at AS timestamptz) IS NULL "
+    "     OR (d.created_at, d.id) < (CAST(:before_at AS timestamptz), CAST(:before_id AS uuid))) "
+    "ORDER BY d.created_at DESC, d.id DESC LIMIT :limit"
+)
+_SALES_TOTALS = (
+    "SELECT d.method, count(*) AS sales, coalesce(sum(d.total), 0)::bigint AS total "
+    f"FROM stock_document d WHERE {_SALES_WHERE} AND d.status = 'posted' GROUP BY d.method"
+)
+_SALE_COSTS = (
+    "SELECT m.line_no, m.cost_total, m.currency FROM stock_movement m WHERE m.document_id = :document AND m.kind = 'sale'"
+)
+# Through `stock_movement_sold`, which holds the sales alone with everything added up here.
+_SOLD = (
+    "SELECT m.item_id, i.name, i.unit, sum(-m.qty) AS qty, coalesce(sum(m.sale_total), 0)::bigint AS revenue, "
+    "  coalesce(sum(m.sale_total) FILTER (WHERE m.currency = 'UZS' AND m.cost_total IS NOT NULL), 0)::bigint "
+    "    AS costed_revenue, "
+    "  coalesce(sum(m.cost_total) FILTER (WHERE m.currency = 'UZS'), 0)::bigint AS cost, "
+    "  coalesce(sum(-m.qty) FILTER (WHERE m.document_id IS NOT NULL), 0) AS cash_qty, "
+    "  coalesce(sum(m.sale_total) FILTER (WHERE m.document_id IS NOT NULL), 0)::bigint AS cash_revenue "
+    "FROM stock_movement m JOIN catalog_item i ON i.id = m.item_id "
+    "WHERE m.shop_id = :shop_id AND m.kind = 'sale' AND m.created_at >= :since "
+    "  AND NOT EXISTS (SELECT 1 FROM stock_movement r WHERE r.reverses_id = m.id) "
+    "GROUP BY m.item_id, i.name, i.unit ORDER BY revenue DESC, m.item_id LIMIT :limit"
+)
+_EXPORT_SALE_LINES = (
+    f"SELECT {_DOCUMENT_COLUMNS}, n.line_no, n.item_id, n.qty, n.unit_cost, n.line_total, "
+    "       i.name AS item_name, i.unit AS item_unit, m.cost_total, m.currency AS cost_currency "
+    "FROM stock_document d JOIN stock_document_line n ON n.document_id = d.id "
+    "JOIN catalog_item i ON i.id = n.item_id "
+    "LEFT JOIN stock_movement m ON m.document_id = d.id AND m.line_no = n.line_no AND m.kind = 'sale' "
+    "WHERE d.shop_id = :shop_id AND d.kind = 'sale' AND d.created_at <= :until "
+    "  AND (CAST(:after_at AS timestamptz) IS NULL OR (d.created_at, d.id, n.line_no) > "
+    "       (CAST(:after_at AS timestamptz), CAST(:after_id AS uuid), CAST(:after_line AS integer))) "
+    "ORDER BY d.created_at, d.id, n.line_no LIMIT :limit"
+)
 
 _SUPPLIER_COLUMNS = "s.id, s.name, s.name_norm, s.phone, s.note, s.status, s.created_at"
 _SUPPLIER_BY_ID = f"SELECT {_SUPPLIER_COLUMNS} FROM supplier s WHERE s.id = :id"
@@ -168,6 +222,7 @@ def _document(row: Any) -> DocumentRecord:
         cancel_reason=row.cancel_reason,
         supplier_name=row.supplier_name,
         customer_name=row.customer_name,
+        method=row.method,
     )
 
 
@@ -430,13 +485,14 @@ class StockQueries:
         created_by: UUID,
         created_at: datetime,
         origin_ref: UUID | None = None,
+        method: str | None = None,
     ) -> None:
         await self._conn.execute(
             text(
                 "INSERT INTO stock_document (id, shop_id, kind, number, doc_date, supplier_id, customer_id, currency, "
-                "  total, paid, reason, note, draft, created_by, created_at, origin_ref) "
+                "  total, paid, reason, note, draft, created_by, created_at, origin_ref, method) "
                 "VALUES (:id, :shop_id, :kind, :number, :doc_date, :supplier_id, :customer_id, :currency, :total, "
-                "  :paid, :reason, :note, CAST(:draft AS jsonb), :created_by, :created_at, :origin_ref)"
+                "  :paid, :reason, :note, CAST(:draft AS jsonb), :created_by, :created_at, :origin_ref, :method)"
             ),
             {
                 "id": document_id,
@@ -455,6 +511,7 @@ class StockQueries:
                 "created_by": created_by,
                 "created_at": created_at,
                 "origin_ref": origin_ref,
+                "method": method,
             },
         )
 
@@ -583,7 +640,7 @@ class StockQueries:
             await self._conn.execute(
                 text(
                     f"SELECT {_DOCUMENT_COLUMNS} FROM stock_document d "
-                    "WHERE (CAST(:kind AS text) IS NULL OR d.kind = CAST(:kind AS text)) "
+                    f"WHERE {_NOT_A_SALE} AND (CAST(:kind AS text) IS NULL OR d.kind = CAST(:kind AS text)) "
                     "  AND (CAST(:status AS text) IS NULL OR d.status = CAST(:status AS text)) "
                     "  AND (CAST(:supplier AS uuid) IS NULL OR d.supplier_id = CAST(:supplier AS uuid)) "
                     "  AND (CAST(:before_at AS timestamptz) IS NULL "
@@ -601,6 +658,148 @@ class StockQueries:
             )
         ).all()
         return [_document(row) for row in rows]
+
+    # --- cash sales ---------------------------------------------------------------------------------
+
+    async def list_sales(
+        self,
+        *,
+        since: datetime,
+        until: datetime,
+        item_id: UUID | None,
+        seller_id: UUID | None,
+        status: str | None,
+        before: tuple[datetime, UUID] | None,
+        limit: int,
+    ) -> list[DocumentRecord]:
+        rows = (
+            await self._conn.execute(
+                text(_SALES_PAGE),
+                {
+                    "shop_id": self._shop_id,
+                    "since": since,
+                    "until": until,
+                    "item": item_id,
+                    "seller": seller_id,
+                    "status": status,
+                    "before_at": before[0] if before else None,
+                    "before_id": before[1] if before else None,
+                    "limit": limit,
+                },
+            )
+        ).all()
+        return [_document(row) for row in rows]
+
+    async def sale_totals(
+        self, *, since: datetime, until: datetime, item_id: UUID | None, seller_id: UUID | None
+    ) -> SaleTotals:
+        rows = (
+            await self._conn.execute(
+                text(_SALES_TOTALS),
+                {"shop_id": self._shop_id, "since": since, "until": until, "item": item_id, "seller": seller_id},
+            )
+        ).all()
+        return SaleTotals(
+            count=sum(int(row.sales) for row in rows),
+            total=sum(int(row.total) for row in rows),
+            by_method={str(row.method): int(row.total) for row in rows},
+        )
+
+    async def sale_costs(self, document_id: UUID) -> dict[int, SaleCost]:
+        rows = (await self._conn.execute(text(_SALE_COSTS), {"document": document_id})).all()
+        return {
+            int(row.line_no): SaleCost(
+                int(row.line_no), None if row.cost_total is None else int(row.cost_total), row.currency
+            )
+            for row in rows
+        }
+
+    async def add_sale_cash_entry(
+        self,
+        *,
+        entry_id: UUID,
+        method: str,
+        amount: int,
+        category_id: UUID,
+        note: str | None,
+        day: date,
+        author_id: UUID,
+        stock_document_id: UUID,
+        now: datetime,
+    ) -> None:
+        await self._conn.execute(
+            text(
+                "INSERT INTO cash_entry (id, shop_id, direction, method, currency, amount, category_id, note, day, "
+                "  created_at, author_id, stock_document_id) "
+                "VALUES (:id, :shop_id, 'income', :method, 'UZS', :amount, :category_id, :note, :day, :now, "
+                "  :author_id, :stock_document_id)"
+            ),
+            {
+                "id": entry_id,
+                "shop_id": self._shop_id,
+                "method": method,
+                "amount": amount,
+                "category_id": category_id,
+                "note": note,
+                "day": day,
+                "now": now,
+                "author_id": author_id,
+                "stock_document_id": stock_document_id,
+            },
+        )
+
+    async def stock_sold(self, *, since: datetime, limit: int) -> list[SoldItem]:
+        rows = (
+            await self._conn.execute(text(_SOLD), {"shop_id": self._shop_id, "since": since, "limit": limit})
+        ).all()
+        return [
+            SoldItem(
+                item_id=row.item_id,
+                name=row.name,
+                unit=row.unit,
+                qty=row.qty,
+                revenue=int(row.revenue),
+                costed_revenue=int(row.costed_revenue),
+                cost=int(row.cost),
+                cash_qty=row.cash_qty,
+                cash_revenue=int(row.cash_revenue),
+            )
+            for row in rows
+        ]
+
+    async def export_sale_lines(
+        self, *, until: datetime, after: tuple[datetime, UUID, int] | None, limit: int
+    ) -> list[ExportSaleLine]:
+        rows = (
+            await self._conn.execute(
+                text(_EXPORT_SALE_LINES),
+                {
+                    "shop_id": self._shop_id,
+                    "until": until,
+                    "after_at": after[0] if after else None,
+                    "after_id": after[1] if after else None,
+                    "after_line": after[2] if after else None,
+                    "limit": limit,
+                },
+            )
+        ).all()
+        return [
+            ExportSaleLine(
+                document=_document(row),
+                line=DocumentLine(
+                    line_no=int(row.line_no),
+                    item_id=row.item_id,
+                    qty=row.qty,
+                    unit_cost=None if row.unit_cost is None else int(row.unit_cost),
+                    line_total=None if row.line_total is None else int(row.line_total),
+                ),
+                item_name=row.item_name,
+                unit=row.item_unit,
+                cost_total=None if row.cost_total is None else int(row.cost_total),
+                cost_currency=row.cost_currency,
+            )
+            for row in rows
+        ]
 
     # --- suppliers --------------------------------------------------------------------------------
 
