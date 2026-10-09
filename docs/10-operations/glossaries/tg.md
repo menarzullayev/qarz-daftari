@@ -109,6 +109,9 @@ refusals, permission names).
 | invitation code | taklif kodi | коди даъват | |
 | reconciliation | hisob-kitobni solishtirish | муқоисаи ҳисобу китоб | «Дафтари худамон» = our own books; «бақияи мувофиқашуда» = the balance both sides confirmed. |
 | to take back (a recorded payment, an invitation) | qaytarib olish | бозпас гирифтан | |
+| units of a counted item | dona, kg, g, litr, ml, metr, quti, paket, juft, qop, blok | дона, кг, г, литр, мл, метр, қуттӣ, пакет, ҷуфт, халта, блок | Names only: what is stored and typed is the Uzbek key. «Халта» = a sack; «блок» as in Russian (a carton of packs). |
+| default categories of the cash book | Savdo, Qarz qaytdi, Boshlang'ich qoldiq, Boshqa kirim, Tovar xaridi, Ijara, Ish haqi, Transport, Kommunal to'lovlar, Boshqa chiqim | Фурӯш, Баргашти қарз, Бақияи аввала, Воридоти дигар, Хариди мол, Иҷора, Маош, Нақлиёт, Хизматрасониҳои коммуналӣ, Хароҷоти дигар | Written once, when a shop first uses the cash book, in the shop's language then; afterwards they are the shop's own names. The stock's two: «Анбор: хариди мол», «Анбор: ба мизоҷ баргардонида шуд». |
+| the note a stock document writes | Kirim № N; Tovar qaytarildi, hujjat № N | Воридоти мол № N; Мол баргардонида шуд, ҳуҷҷат № N | In a supplier's or a customer's account and in the cash book. |
 | line (of an order or a note) | qator | сатр | |
 | to approve (a receipt) | tasdiqlash | тасдиқ кардан | |
 | administrator | administrator | администратор | «Маъмурияти хизмат» = the service's administration in messages to owners. |

@@ -80,6 +80,9 @@ refusals, permission names).
 | invitation code | taklif kodi | mirát kodı | |
 | reconciliation | hisob-kitobni solishtirish | esap-kitaptı salıstırıw | "Óz dápterimiz" = our own books. |
 | to take back (a recorded payment, an invitation) | qaytarib olish | qaytarıp alıw | |
+| units of a counted item | dona, kg, g, litr, ml, metr, quti, paket, juft, qop, blok | dana, kg, g, litr, ml, metr, qutı, paket, jup, qap, blok | Names only: what is stored and typed is the Uzbek key. |
+| default categories of the cash book | Savdo, Qarz qaytdi, Boshlang'ich qoldiq, Boshqa kirim, Tovar xaridi, Ijara, Ish haqi, Transport, Kommunal to'lovlar, Boshqa chiqim | Sawda, Qarız qayttı, Baslanǵısh qaldıq, Basqa kiris, Tovar satıp alıw, Ijara, Is haqı, Transport, Kommunallıq tólemler, Basqa shıǵıs | Written once, when a shop first uses the cash book, in the shop's language then; afterwards they are the shop's own names. The stock's two: "Sklad: tovar satıp alıw", "Sklad: qarıydarǵa qaytarıldı". |
+| the note a stock document writes | Kirim № N; Tovar qaytarildi, hujjat № N | Kiris № N; Tovar qaytarıldı, hújjet № N | In a supplier's or a customer's account and in the cash book. |
 | line (of an order or a note) | qator | qatar | |
 | dispute | e'tiroz | narazılıq | "Narazılıq bildiriw". |
 | request | so'rov | soraw | A customer's date request, a deletion request, an HTTP request. |

@@ -130,6 +130,9 @@ words, no exclamation mark unless the source has one, “curly quotes” where U
 | invitation code | taklif kodi | The code one shop hands another outside the service. |
 | reconciliation | hisob-kitobni solishtirish | "Reconcile accounts" as the heading. "Our own books" for *o'z daftarimiz*; "the agreed debt" for what both sides confirmed. |
 | take back | qaytarib olish | Of a payment this shop recorded and of an invitation. |
+| units of a counted item | dona, kg, g, litr, ml, metr, quti, paket, juft, qop, blok | The names shown for a counted item's unit: pcs, kg, g, l, ml, m, box, pack, pair, sack, carton. The stored unit is the Uzbek key and stays as typed (see "unit"). |
+| default categories of the cash book | Savdo, Qarz qaytdi, Boshlang'ich qoldiq, Boshqa kirim, Tovar xaridi, Ijara, Ish haqi, Transport, Kommunal to'lovlar, Boshqa chiqim | Sales, Debt repaid, Opening balance, Other income, Goods purchase, Rent, Wages, Transport, Utilities, Other expense. Written once, when a shop first uses the cash book, in the shop's language then; afterwards they are the shop's own names. The stock's two: "Stock: goods purchase", "Stock: refund to customer". |
+| the note a stock document writes | Kirim № N; Tovar qaytarildi, hujjat № N | "Goods receipt No. N"; "Goods returned, document No. N". |
 | movement | harakat | One change of an item's stock. |
 | tracked (in stock) | omborda hisoblanadi, hisobdagi | An item whose stock is counted. |
 | running low, low stock level | kam qoldi, kam qoldi chegarasi | |

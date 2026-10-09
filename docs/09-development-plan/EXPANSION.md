@@ -40,6 +40,7 @@ possible. The founder's decisions stand.
 | J | Suppliers and the network between shops | I | `network_on` (and `stock_on`) | 0045 | 16:29Z (5:29) | #99, 103 min; final pass #101 at 17:12Z |
 | E | Four more languages | all texts final (built beside H and I, before J: see below) | - | 0044 | 15:23Z (4:23) | #97, 119 min |
 | - | Gaps left by the modules above (free plan in the administrator's panel, stock check in the operations watch, and others) | A, F, G, H, I | the modules' own | 0046 (three count functions; no table) | | |
+| - | Leftovers after the expansion ("Open after the expansion", below) | all | the modules' own | 0047 (`network_receipt_finish` replaced to compare lines; one index on `stock_document`; no table) | | |
 
 Module E was built while H, I and J were still being written (H and I were merged first and are
 translated; J is not), so it does not wait for their texts: a key
@@ -105,6 +106,7 @@ What the figure does not contain, and what remains before any of it reaches a sh
   agent reviewed it; no person has. Four points are left to the founder
   (`docs/10-operations/security-review.md`): the author of a delivery note who has since left the shop,
   totals compared instead of lines, partner members' chat identifiers in the outbox, advance payments.
+  (The second was closed afterwards, without a decision being needed: migration 0047 compares the lines.)
 - The founder chose one release for everything. It has not been made.
 
 Where the time went, as observed:
@@ -134,15 +136,31 @@ Decisions waiting for the founder:
 | 3 | When the free plan is switched off altogether, preview and tell the owners as when it is lowered? | #100 |
 | 4 | A payment notice with a receipt is now recorded as paid by card by default. Keep? | #100 |
 | 5 | Ask Eskiz whether an approved template's amount may read `12.50 $` or two amounts; otherwise eight new templates | #100 |
-| 6 | The four points on the network listed above | #101 |
+| 6 | Three points on the network: a delivery note whose author has since left the shop or lost the right to sell on credit; partner members' chat identifiers stored in the acting shop's outbox; advance payments between linked shops (`EXCEEDS_BALANCE`). The fourth, totals compared instead of lines, is closed (migration 0047) | #101 |
 | 7 | A sale for cash without a customer (stock is drawn only by credit sales and documents today) | I |
 | 8 | The product's name | founder |
+| 9 | A member who holds `stock.receive` or `stock.adjust` without `stock.view` now reaches the documents list in the Mini App, but not the quick receipt or a document's form: those read the stock's settings, the list of items and the barcode lookup, which the server gives to `stock.view` alone. Open those three reads to who writes documents (they show what is on hand), or keep it so? | leftovers |
 
-Known and left for later: the bottom navigation covers the last 55 px on a phone at 200 % text;
-the period export of the cash book is written inside the request, not by the worker; the documents
-list has no index for a filter by state; the supplier filter shows the first 100; goods lines on a
-dollar sale stay refused; some two-language tables in code (stock units, write-off reasons, the stock's
-cash categories) are not in the four new languages.
+Closed after the expansion, in one pull request (`fix/expansion-leftovers`, migration 0047), none of which
+needed a decision: a delivery note is compared line by line when it is received; money paid on delivery
+reaches the supplier's cash book by the method the buyer named; the screens offer declining a payment by
+`network.confirm` alone, as the server decides it; dollars cannot be turned off under an import that is
+writing dollar rows (the shop's advisory lock for the setting); the documents list has an index for a
+filter by state; a supplier, and a link's row of the books, is chosen out of all of them by searching
+and not out of a first page; the Mini App's stock section opens to whoever writes documents; the bottom
+navigation no longer covers the end of a screen on a phone at 200 % text; the two-language tables in
+code (stock units, write-off reasons, the cash book's categories, the notes a stock document writes, the
+states in the network's export sheets) are texts in all six languages, and a test refuses such a table.
+
+Known and left for later: the period export of the cash book is written inside the request, not by the
+worker; goods lines on a dollar sale stay refused; `network_receipt_finish` does not ask whether the
+entries it is given were written in the confirming transaction (`security-review.md`); a notice shown
+above the tab bar is still placed by the bar's nominal height and lies over a taller bar at 200 % text,
+and the overview and the customer book are still up to 76 px wider than a 390 px window at that size;
+the suppliers' screen reads the stock's settings, so a member with `suppliers.view` and without
+`stock.view` is refused there; the remark beside a refused field (`error.fields`) is an English
+identifier that no screen shows (`translation-review.md`); categories of the cash book and notes written
+before the texts were translated stay in the language they were written in.
 
 Only a person can do: try every module in a test shop with its switch on; have the two translations
 reviewed; try the installed app, the camera scanner and a printed QR code on a phone; an independent
