@@ -15,11 +15,13 @@ import {
   isInk,
   isOnIcon,
   lightToken,
+  manifestText,
   PNG_ICONS,
   rgb,
   SVG_ICON,
 } from "../../../scripts/pwaIcons";
 import { quotedManifest, WORKER_FILE, WORKER_MARK, workerManifest } from "../../../vite.config";
+import { BRAND_MARK, BRAND_NAME, BRAND_SHORT_NAME } from "../../shared/brand";
 import { OfflineNotice, useOnline } from "./OfflineNotice";
 import { WORKER_SCOPE, WORKER_URL } from "./register";
 
@@ -33,6 +35,7 @@ type Manifest = {
   id: string;
   name: string;
   short_name: string;
+  description: string;
   lang: string;
   start_url: string;
   scope: string;
@@ -46,12 +49,19 @@ describe("the panel's manifest", () => {
   const manifest = JSON.parse(read("public", "panel", "manifest.webmanifest")) as Manifest;
 
   it("names the panel, opens it standalone, and reaches nothing above it", () => {
-    expect(manifest.name).toBe("Qarz Daftari");
+    expect(manifest.name).toBe(BRAND_NAME);
+    expect(manifest.short_name).toBe(BRAND_SHORT_NAME);
     expect(manifest.short_name.length).toBeLessThanOrEqual(12);
+    expect(manifest.description.startsWith(`${BRAND_NAME} — `)).toBe(true);
     expect(manifest.display).toBe("standalone");
     expect([manifest.id, manifest.start_url, manifest.scope]).toEqual(["/panel/", "/panel/", "/panel/"]);
     expect(manifest.scope).toBe(WORKER_SCOPE);
     expect(WORKER_URL.startsWith(manifest.scope)).toBe(true);
+  });
+
+  it("is exactly what the script writes from the brand's definition: the file is never typed", () => {
+    expect(read("public", "panel", "manifest.webmanifest")).toBe(manifestText());
+    expect(manifestText().replace(BRAND_NAME, "Another Name")).not.toBe(read("public", "panel", "manifest.webmanifest"));
   });
 
   it("takes its colors from the tokens: the page's ground in the light theme", () => {
@@ -91,7 +101,7 @@ describe("the panel's manifest", () => {
 describe("the panel's icons", () => {
   const { ground, ink } = iconColors();
 
-  it("are the product's initials in the color of text on the accent, on the accent", () => {
+  it("are the brand's mark in the color of text on the accent, on the accent", () => {
     expect([ground, ink]).toEqual([lightToken("--qd-accent"), lightToken("--qd-on-accent")]);
   });
 
@@ -100,10 +110,13 @@ describe("the panel's icons", () => {
     const drawn = drawIcon(icon.size, icon.maskable, rgb(ground), rgb(ink));
     expect(found.size).toBe(icon.size);
     expect(Buffer.from(found.pixels).equals(Buffer.from(drawn))).toBe(true);
-    // The ground is the accent, opaque, in the middle of the left edge; a letter is the other color.
+    // The ground is the accent, opaque, in the middle of the left edge; a block of the mark is the other color.
     const at = (x: number, y: number) => [...found.pixels.subarray((y * icon.size + x) * 4, (y * icon.size + x) * 4 + 4)];
     expect(at(2, icon.size / 2)).toEqual([...rgb(ground), 255]);
-    expect(at(Math.round(0.21 * icon.size), icon.size / 2)).toEqual([...rgb(ink), 255]);
+    for (const block of BRAND_MARK.blocks) {
+      const middle = (start: number, length: number) => Math.round(((start + length / 2) / BRAND_MARK.canvas) * icon.size);
+      expect(at(middle(block.x, block.w), middle(block.y, block.h))).toEqual([...rgb(ink), 255]);
+    }
     // A corner: cut away on the rounded icon, filled on the maskable one.
     expect(at(0, 0)[3]).toBe(icon.maskable ? 255 : 0);
   });
@@ -111,10 +124,14 @@ describe("the panel's icons", () => {
   it("the vector icon is what the script writes, and holds no script or outside address", () => {
     const svg = read("public", "panel", "icons", SVG_ICON);
     expect(svg).toBe(iconSvg(ground, ink));
+    // The geometry is the definition's, number for number.
+    for (const block of BRAND_MARK.blocks) {
+      expect(svg).toContain(`<rect x="${block.x}" y="${block.y}" width="${block.w}" height="${block.h}" rx="${block.r}" fill="${ink}"/>`);
+    }
     expect(svg).not.toMatch(/<script|href|https?:\/\/(?!www\.w3\.org\/2000\/svg)/);
   });
 
-  it("keeps both letters inside the part a launcher never cuts away", () => {
+  it("keeps the mark inside the part a launcher never cuts away", () => {
     // A maskable icon is safe within a circle of 40% of its side around the middle.
     for (let y = 0; y < 1; y += 0.005) {
       for (let x = 0; x < 1; x += 0.005) {

@@ -9,6 +9,14 @@ import { resolve } from "node:path";
 const ENV_FILE =
   process.env["E2E_ENV_FILE"] ?? resolve(import.meta.dirname, "../../deploy/production/.local-e2e/local.env");
 
+/**
+ * The product's name, from the one place it is written (the file the server and the pages read): what
+ * an authenticator shows as the issuer of the administrator's second factor.
+ */
+export const BRAND_NAME = (
+  JSON.parse(readFileSync(resolve(import.meta.dirname, "../../backend/src/qarz/domain/brand.json"), "utf8")) as { name: string }
+).name;
+
 function readEnvFile(): Map<string, string> {
   let text: string;
   try {

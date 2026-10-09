@@ -1,6 +1,6 @@
 # Karakalpak (kaa) glossary
 
-The Karakalpak texts of Qarz Daftari use the **current official Latin alphabet (the 2016 revision)**:
+The Karakalpak texts of HisoBox (formerly Qarz Daftari) use the **current official Latin alphabet (the 2016 revision)**:
 Á á, Ǵ ǵ, Í ı (dotless ı for the back vowel, plain I i for the front one), Ń ń, Ó ó, Ú ú, and
 Sh sh, Ch ch, W w, Y y, X x, H h, Q q, C c. No apostrophe letters of the 1995/2009 alphabet (a', g', o',
 u', n') and no Cyrillic, except the language autonyms that are copied verbatim.
@@ -19,7 +19,7 @@ refusals, permission names).
 | customer | mijoz | qarıydar | Native word for a buyer; preferred over the loan "klient". |
 | debtor | qarzdor | qarızdar | |
 | shop | do'kon | dúkan | |
-| ledger (the book) | daftar | dápter | The product name "Qarz Daftari" is never translated. |
+| ledger (the book) | daftar | dápter | The product's name (HisoBox) is never translated and never typed: a text writes `{brand}`. |
 | entry (a ledger record) | yozuv | jazba | Noun only; the verb "to record" is jazıw. Kept apart from jazılıw (subscription). |
 | due date | to'lash muddati | tólew múddeti | Short form: múddet. |
 | promise (promised date) | va'da | wáde | "Tólew wádesi". |

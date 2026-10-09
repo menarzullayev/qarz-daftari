@@ -1,6 +1,6 @@
 # English glossary (`en`)
 
-The terms the English texts of Qarz Daftari use, and the Uzbek source term each one stands for. Uzbek
+The terms the English texts of HisoBox (formerly Qarz Daftari) use, and the Uzbek source term each one stands for. Uzbek
 (Latin) is the source of truth; one English term per concept, used the same way in the web panel, the
 Mini App, the customer page, the bot and the export workbook.
 
@@ -11,7 +11,7 @@ words, no exclamation mark unless the source has one, “curly quotes” where U
 
 | English term | Uzbek source term | Note |
 | --- | --- | --- |
-| Qarz Daftari | Qarz Daftari | Product name, never translated. |
+| `{brand}` | `{brand}` | The product's name, HisoBox: never translated and never typed. A text writes `{brand}` and the name is filled in from `backend/src/qarz/domain/brand.json`. |
 | debt | qarz | What a customer owes. "Total debt" for *jami qarz*; "debt left" for *qolgan qarz*. Not "balance" in visible text. |
 | credit sale | nasiya | A sale on credit: the entry that adds to the debt. Verb: "record a credit sale". Not "loan", not "credit" alone. |
 | opening debt | boshlang'ich qarz | A debt brought in from before the shop used the product (import). |

@@ -22,7 +22,7 @@ from qarz.application import idempotency
 from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import admin_entry_operation, admin_operation
 from qarz.application.ports import AdminAccount, PlatformSession, SecretCipher, SecretUnreadable, Storage
-from qarz.domain import totp
+from qarz.domain import brand, totp
 
 READ_ADMIN_AUTH = admin_entry_operation("admin.auth.read")
 ENROL_ADMIN = admin_entry_operation("admin.auth.enrol")
@@ -31,7 +31,8 @@ CLOSE_ADMIN_SESSION = admin_operation("admin.session.close")
 
 # Specification, clients table: the administrator's "session valid 8 hours".
 ADMIN_SESSION = timedelta(hours=8)
-ISSUER = "Qarz Daftari"
+# What an authenticator application shows beside the code: the product's name.
+ISSUER = brand.NAME
 
 log = logging.getLogger("qarz.admin")
 

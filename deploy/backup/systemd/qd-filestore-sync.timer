@@ -1,6 +1,6 @@
 # Every five minutes.
 [Unit]
-Description=Qarz Daftari: copy the file store's bucket to the standby (schedule)
+Description=qarz: copy the file store's bucket to the standby (schedule)
 
 [Timer]
 OnCalendar=*-*-* *:00/5:00

@@ -9,7 +9,7 @@ the rule's label (a channel, a job, a backup type, a path), a figure and two mom
 """
 
 OPS_UZ = {
-    "ops_title": "⚠️ Qarz Daftari: tizim nazorati",
+    "ops_title": "⚠️ {brand}: tizim nazorati",
     "ops_firing": "🔴 Boshlandi:",
     "ops_reminder": "🟠 Hali ham davom etmoqda:",
     "ops_resolved": "🟢 Tuzaldi:",
@@ -18,14 +18,14 @@ OPS_UZ = {
     "ops_more": "…yana {count} ta ogohlantirish keyingi xabarda.",
     "ops_footer": "Nima qilish kerak: runbook 16 (docs/10-operations/runbooks.md).",
     "ops_test": (
-        "✅ Qarz Daftari: SINOV ogohlantirishi ({at}).\n"
+        "✅ {brand}: SINOV ogohlantirishi ({at}).\n"
         "Bu haqiqiy nosozlik emas. Tizim nazorati xabarlari shu chatga yetib kelishini tekshirish uchun yuborildi."
     ),
     "ops_db_down": (
-        "🔴 Qarz Daftari: ishchi jarayon ma'lumotlar bazasiga ulana olmayapti ({since} dan beri).\n"
+        "🔴 {brand}: ishchi jarayon ma'lumotlar bazasiga ulana olmayapti ({since} dan beri).\n"
         "Nazorat holati saqlanmayapti, boshqa tekshiruvlar to'xtagan. Runbook 16."
     ),
-    "ops_db_up": "🟢 Qarz Daftari: ma'lumotlar bazasi yana ishlayapti ({since} — {until}).",
+    "ops_db_up": "🟢 {brand}: ma'lumotlar bazasi yana ishlayapti ({since} — {until}).",
     "ops_rule_ErrorRateHigh": "so'rovlarning 2% dan ko'pi server xatosi bilan tugayapti",
     "ops_rule_OutboxOld": "xabarlar yuborilmayapti: navbatdagi xabar 10 daqiqadan ko'p kutmoqda",
     "ops_rule_RemindersNotRunning": "eslatmalar ishi bir soatdan beri tugallanmagan",
@@ -56,7 +56,7 @@ OPS_UZ = {
 }
 
 OPS_RU = {
-    "ops_title": "⚠️ Qarz Daftari: контроль системы",
+    "ops_title": "⚠️ {brand}: контроль системы",
     "ops_firing": "🔴 Началось:",
     "ops_reminder": "🟠 Всё ещё продолжается:",
     "ops_resolved": "🟢 Исправлено:",
@@ -65,14 +65,14 @@ OPS_RU = {
     "ops_more": "…ещё предупреждений: {count}, они будут в следующем сообщении.",
     "ops_footer": "Что делать: runbook 16 (docs/10-operations/runbooks.md).",
     "ops_test": (
-        "✅ Qarz Daftari: ПРОБНОЕ предупреждение ({at}).\n"
+        "✅ {brand}: ПРОБНОЕ предупреждение ({at}).\n"
         "Это не настоящая неисправность. Оно отправлено, чтобы проверить, что сообщения контроля доходят в этот чат."
     ),
     "ops_db_down": (
-        "🔴 Qarz Daftari: рабочий процесс не может подключиться к базе данных (с {since}).\n"
+        "🔴 {brand}: рабочий процесс не может подключиться к базе данных (с {since}).\n"
         "Состояние контроля не сохраняется, остальные проверки остановлены. Runbook 16."
     ),
-    "ops_db_up": "🟢 Qarz Daftari: база данных снова работает ({since} — {until}).",
+    "ops_db_up": "🟢 {brand}: база данных снова работает ({since} — {until}).",
     "ops_rule_ErrorRateHigh": "более 2% запросов завершаются ошибкой сервера",
     "ops_rule_OutboxOld": "сообщения не отправляются: очередное ждёт больше 10 минут",
     "ops_rule_RemindersNotRunning": "задание напоминаний не завершалось больше часа",

@@ -1,6 +1,6 @@
 # Runs on the standby server. Output goes to the journal: journalctl -u qd-restore-test.service
 [Unit]
-Description=Qarz Daftari: weekly restore test of the latest backup
+Description=qarz: weekly restore test of the latest backup
 Documentation=https://github.com/menarzullayev/qarz-daftari/blob/main/deploy/backup/README.md
 After=network-online.target postgresql.service
 Wants=network-online.target

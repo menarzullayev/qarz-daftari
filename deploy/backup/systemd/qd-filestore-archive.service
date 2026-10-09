@@ -1,6 +1,6 @@
 # Runs on the standby server. Output goes to the journal: journalctl -u qd-filestore-archive.service
 [Unit]
-Description=Qarz Daftari: weekly file store archive, part of the weekly backup
+Description=qarz: weekly file store archive, part of the weekly backup
 Documentation=https://github.com/menarzullayev/qarz-daftari/blob/main/deploy/backup/README.md
 After=network-online.target postgresql.service
 Wants=network-online.target

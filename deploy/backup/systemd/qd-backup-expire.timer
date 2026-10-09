@@ -1,6 +1,6 @@
 # Daily 03:30 Tashkent time, after the night's backup.
 [Unit]
-Description=Qarz Daftari: remove backups the retention rules no longer keep (schedule)
+Description=qarz: remove backups the retention rules no longer keep (schedule)
 
 [Timer]
 OnCalendar=*-*-* 03:30:00 Asia/Tashkent

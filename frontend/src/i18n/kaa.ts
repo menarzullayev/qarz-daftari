@@ -3,7 +3,7 @@ import type { uz } from "./uz";
 
 /** Karakalpak text of the main catalog. A key that is absent here reads Uzbek at run time. */
 export const kaa: PartialCatalog<typeof uz> = {
-  "app.name": "Qarz Daftari",
+  "app.name": "{brand}",
   "entry.app": "Xızmetkerler jumıs ornı",
   "entry.panel": "Basqarıw paneli",
   "entry.admin": "Platformanı basqarıw",

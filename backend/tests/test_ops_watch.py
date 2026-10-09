@@ -25,6 +25,7 @@ from qarz.application.ops_watch import (
     send_test_alert,
     trial_text,
 )
+from qarz.domain import brand
 from qarz.domain import ops_alerts as rules
 from qarz.domain.ops_alerts import Alert, DatabaseFigures
 
@@ -426,7 +427,7 @@ def test_a_message_is_made_of_the_rules_name_its_fixed_text_a_figure_and_moments
     alert = Alert(key="BackupMissing", since=START, firing_since=START + timedelta(minutes=10), value=97200.0)
     text = render("uz", [(alert, rules.FIRING)])
     assert text.splitlines() == [
-        "⚠️ Qarz Daftari: tizim nazorati",
+        f"⚠️ {brand.NAME}: tizim nazorati",
         "",
         "🔴 Boshlandi:",
         "• BackupMissing: omborda yangi zaxira nusxa yo'q (26 soatda birorta ham, yoki 8 kunda to'liq nusxa)"

@@ -90,15 +90,15 @@ def test_another_secret_does_not_accept_the_code() -> None:
 
 
 def test_the_provisioning_uri_carries_what_an_authenticator_needs() -> None:
-    uri = provisioning_uri(RFC_SECRET, "admin-42", "Qarz Daftari")
+    uri = provisioning_uri(RFC_SECRET, "admin-42", "Two Words")
     parts = urlsplit(uri)
     query = parse_qs(parts.query)
     assert (parts.scheme, parts.netloc) == ("otpauth", "totp")
-    assert unquote(parts.path) == "/Qarz Daftari:admin-42"
+    assert unquote(parts.path) == "/Two Words:admin-42"
     # RFC 4648 base32 of the RFC secret, without padding.
     assert query == {
         "secret": ["GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"],
-        "issuer": ["Qarz Daftari"],
+        "issuer": ["Two Words"],
         "algorithm": ["SHA1"],
         "digits": ["6"],
         "period": ["30"],

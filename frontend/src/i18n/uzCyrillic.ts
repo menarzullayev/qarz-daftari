@@ -8,8 +8,8 @@
  *
  * - placeholders (`{name}`), links, e-mail addresses, `@names`, bot commands (`/obuna`), markup tags
  *   and file names;
- * - the product's name and other brands (`BRANDS`); an Uzbek ending after a brand is still written in
- *   Cyrillic: "Telegramda" becomes "Telegramда";
+ * - the product's name (read from `../shared/brand`, never written here) and other brands (`BRANDS`); an
+ *   Uzbek ending after a brand is still written in Cyrillic: "Telegramda" becomes "Telegramда";
  * - codes: the ones in `CODES`, any word in capitals of two letters or more that is not a known Uzbek
  *   word ("SMS", "QR", "UZS"), and letters that touch a digit ("45k");
  * - everything that is not a Latin letter: digits, punctuation, currency signs, Cyrillic text.
@@ -20,6 +20,7 @@
  *
  * No look-behind in the expressions: some web views that open the Mini App do not have it.
  */
+import { BRAND_NAME } from "../shared/brand.ts";
 
 /** Product and brand names, kept in Latin; an ending after one is still transliterated. */
 export const BRANDS: readonly string[] = [
@@ -37,8 +38,11 @@ export const BRANDS: readonly string[] = [
   "WebP",
 ];
 
-/** The product's own name is two ordinary words; only together are they the name. */
-export const PRODUCT = "Qarz Daftari";
+/**
+ * The product's own name comes from the one place it is written. As a whole it is never touched; when it
+ * is a single word it is also a brand like the ones above, so an ending after it is still transliterated.
+ */
+export const PRODUCT = BRAND_NAME;
 
 /** Codes written in lower case too. Compared without regard to case. */
 export const CODES: readonly string[] = [
@@ -170,7 +174,10 @@ const WORD = new RegExp(
 );
 const ANY_APOSTROPHE = new RegExp(`[${APOSTROPHES}]`, "g");
 const BY_LENGTH = (a: string, b: string) => b.length - a.length;
-const BRANDS_LONGEST_FIRST = [...BRANDS].sort(BY_LENGTH);
+const WHOLE_WORD = new RegExp(`^(?:${WORD.source})$`);
+const BRANDS_LONGEST_FIRST = [...new Set([...BRANDS, ...(WHOLE_WORD.test(PRODUCT) ? [PRODUCT] : [])])].sort(
+  (a, b) => BY_LENGTH(a, b) || (a < b ? -1 : 1),
+);
 const STEMS_LONGEST_FIRST = Object.keys(STEMS).sort(BY_LENGTH);
 
 const isUpper = (text: string) => text === text.toUpperCase() && text !== text.toLowerCase();

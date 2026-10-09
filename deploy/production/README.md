@@ -1,6 +1,6 @@
 # Production deployment: nginx and Docker Compose
 
-The files that put Qarz Daftari on the application host: one image for the API, the worker and the
+The files that put HisoBox (formerly Qarz Daftari) on the application host: one image for the API, the worker and the
 migrations, one image for the proxy with the three front-end entries, a compose file, and scripts to
 deploy, roll back and check.
 

@@ -289,6 +289,116 @@ Cost figures (`cost` of an item and of a movement; `currency`, `total`, `paid`, 
 
 **For module J** (the network between shops): `supplier.linked_shop_id` and `stock_document.origin_ref` are there, nullable and unused; nothing assumes a supplier is not a shop of the platform.
 
+## Brand
+
+The product is called **HisoBox** (until 2026-10-10 the working title was "Qarz Daftari"). The name is
+written in exactly one place and everything else is made from it.
+
+**The one definition: `backend/src/qarz/domain/brand.json`.**
+
+| Field | What it is | Who uses it |
+|---|---|---|
+| `name` | The name as people read it | Every text (`{brand}`), the pages' titles and descriptions, the API's title, the issuer an authenticator shows for the administrator's second factor |
+| `short_name` | The name under the installed panel's icon (12 characters at most) | The panel's manifest |
+| `tagline` | One line on what the product is, typed in `uz`, `ru`, `tg`, `kaa`, `en`; `uz-Cyrl` is made from `uz` by the rules, like every other text | The bot's greeting (`{tagline}`), the Mini App's description, the manifest |
+| `mark` | The mark's geometry: rounded blocks on a rounded square, on a canvas of 96 | The panel's icons (192, 512, maskable 512, SVG), the tab icon of `/app/`, `/panel/` and `/admin/`, the mark beside the name in the header |
+| `former` | The names the product had before, with the initials its icon showed | Only the search that keeps them out of the source |
+
+**Why this file, and how each side reads it.** The backend image is built from `backend/` alone and
+runs from `src/`, so the definition lives inside the package and `qarz.domain.brand` reads the file
+beside it. The front end has no copy: `frontend/src/shared/brand.ts` imports the same file by its path,
+and the proxy image's build copies that one file to the same path before it builds the pages
+(`deploy/production/nginx/Dockerfile`, `.dockerignore`). It is not an environment variable: the name is
+part of the build and of the tests, and two processes of one release could otherwise disagree. Because
+both sides read one file, they cannot read different values; `backend/tests/test_brand.py` fails when
+there is a second definition, when the front end imports another path, or when the image's build does
+not copy this one.
+
+**What is made from it.**
+
+- Texts: no catalog writes the name. A text says `{brand}` (and `{tagline}` in the greeting) in all six
+  languages; `chat_texts.template` on the server and `translate` in the front end fill it in after
+  Uzbek Cyrillic has been made, and the transliterator's own protection of the name reads the same
+  definition, so there is no hand-written exception for it.
+- Pages: the four `index.html` files say `{brand}` in `<title>` and `<meta name="description">`; the build
+  and the development server fill them in (`brandedHtml` in `frontend/vite.config.ts`) and stop at a
+  placeholder they do not know.
+- Manifest and icons (`frontend/public/panel/`): written by `node scripts/pwaIcons.ts` and committed. They
+  are committed rather than made by the build because `public/` is served as it is by the development
+  server, a picture in a pull request can be looked at, and the proxy's routes name fixed paths;
+  `frontend/src/panel/pwa/pwaFiles.test.tsx` fails when a committed file is not what the script writes
+  from today's definition.
+- The API's title in `backend/openapi.json` (`python -m qarz.interface.api_description --check`).
+
+**The mark is a prototype, not a registered logo**: a bold letter H of three rounded blocks, in the color
+of text on the accent, on the accent color (`--qd-accent`; the palette is unchanged). A real logo replaces
+the `mark` of the definition (rounded rectangles; anything else also needs `scripts/pwaIcons.ts` and
+`shared/BrandMark.tsx` to learn to draw it) and the script is run again. The page behind a customer's
+link (`/k/`) shows no tab icon: its Content-Security-Policy allows no image at all, on purpose.
+
+**The guard.** `backend/tests/test_brand.py` searches every tracked text file of the repository, and
+`frontend/src/brand.test.ts` the files under `frontend/` and `e2e/`, for the name, the short name, every
+former name (in any capitals, with or without its spaces) and the former initials as a word. A match
+outside the allow-list fails. The allow-list, in full:
+
+- the definition itself;
+- documents: every `*.md`, `docs/`, `.project-alpha/` (prose; evidence, decisions, `PROGRESS.md` and
+  `EXPANSION.md` keep the name they were written under);
+- files made from the definition, where today's name may stand and a former one may not:
+  `backend/openapi.json`, `frontend/public/panel/manifest.webmanifest`, the Mini App's recorded markup
+  (`frontend/src/app/__snapshots__/`);
+- three single lines: the first comment of `backend/migrations/sql/0001_initial.sql` (an applied
+  migration is never edited), and two bot usernames in test fixtures.
+
+Each test also plants a literal and shows that it is found, and fails when an allowed file or line no
+longer holds a name.
+
+**What is not the brand.** Technical identifiers do not come from the definition and do not change when
+the name does: the Python package `qarz`; the `QD_*` environment variables; the `X-Qarz-*` headers; the
+`qd.*` storage keys; the `--qd-*` style variables; the Compose project name; the database `qarz` and its
+roles (`qd_app`, `qd_worker`, ...); the repository `qarz-daftari`, the image names `qarz-daftari/*` and
+the package names `qarz-daftari-*`; the systemd units `qd-*`; the worker's backup paths
+(`/var/lib/qarz-*`). The bot's username (`VITE_BOT_USERNAME`, and the usernames in tests) is
+configuration, not brand. Renaming any of these is a migration of its own and is not planned.
+
+**SMS.** The four templates registered with Eskiz (`docs/10-operations/runbooks.md`, "Templates to
+register in the Eskiz cabinet") do not contain the product's name, so a new name needs no new approval.
+The sender name Eskiz shows on the phone is set in the Eskiz cabinet, not here.
+
+**The second factor.** An authenticator shows the issuer it was given at enrolment. An administrator
+enrolled before the name changed keeps the old label in their application; the codes are the same.
+
+**The consent text** (`consent_v2`) names the service through `{brand}`. Its wording is otherwise
+unchanged and its version stays 2; whether a new name is a new version of the text is part of the
+legal review that is still open ("Open questions").
+
+### When the name changes
+
+In the repository:
+
+1. Edit `backend/src/qarz/domain/brand.json`: the new `name`, `short_name`, `tagline`, and the old name
+   added to `former`.
+2. `node scripts/pwaIcons.ts` in `frontend/` (manifest and icons), `python -m qarz.interface.api_description`
+   in `backend/` (the API's title), `npx vitest run src/app -u` in `frontend/` (the Mini App's recorded
+   markup holds the name).
+3. Rename the product in the documents a person reads about the running product: `README.md`,
+   `deploy/production/README.md`, `deploy/production/SINGLE-HOST.md`, the glossaries, the runbooks.
+   Historical records are left as they are.
+4. Tajik and Karakalpak taglines go on the list in `docs/10-operations/translation-review.md`.
+
+Outside the repository (none of it is done by a deployment):
+
+- [ ] Telegram, BotFather: the bot's display name (`/setname`), its description and "about" text
+  (`/setdescription`, `/setabouttext`), its picture (`/setuserpic`); a new username only if the founder
+  wants one, which also means `VITE_BOT_USERNAME`, the webhook and every printed QR code.
+- [ ] Telegram, BotFather `/setdomain`: the domain of the Login widget, if the domain changes.
+- [ ] The domain and the Cloudflare Tunnel's public hostname, if the address changes; then
+  `DEPLOY_PUBLIC_HOST` in the env file, the bot's webhook and its Mini App address.
+- [ ] The names of the two Telegram groups (operations alerts, subscription receipts).
+- [ ] Eskiz: the sender name, if it carries the old name. The four templates do not change.
+- [ ] Each administrator may enrol the second factor again to see the new issuer (optional).
+- [ ] Store listings and any printed material, later.
+
 ## Languages
 
 Expansion module E (decision 11 of 2026-10-09). Six languages, all simply available: there is no switch. Uzbek in Latin script and Russian existed; Uzbek in Cyrillic script, Tajik, Karakalpak and English are added.
@@ -618,9 +728,9 @@ Nothing else: `require_member` enforces the new permission, the permission matri
 | Dependencies | Pinned with hashes for Python and a lockfile for the front end; vulnerability scans in continuous integration |
 | Host | Key-only SSH, firewall, unattended security updates, non-root containers; replication and file sync over a private tunnel |
 
-Consent text version 2, Uzbek, with a Russian equivalent to be written; an agent draft that must be legally reviewed before real customers are linked:
+Consent text version 2, Uzbek (`{brand}` is the product's name, see "Brand"), with a Russian equivalent to be written; an agent draft that must be legally reviewed before real customers are linked:
 
-> "{shop} do'koni sizning nasiya xaridlaringiz va to'lovlaringizni Qarz Daftari xizmati orqali yuritadi. Saqlanadigan ma'lumotlar: do'kon sizni qanday nomlagani, telefon raqamingiz (agar bergan bo'lsangiz), Telegram hisobingiz identifikatori, nasiya va to'lov yozuvlari, olingan mahsulotlar. Maqsad: qarz hisobini siz ham ko'rib turishingiz va eslatmalar yuborish. Ma'lumotlar faqat sizga va shu do'kon xodimlariga ko'rinadi, boshqa do'konlarga berilmaydi. Istalgan payt /uzish orqali uzilishingiz yoki /ochirish orqali ma'lumotlaringizni o'chirishni so'rashingiz mumkin. Rozimisiz?"
+> "{shop} do'koni sizning nasiya xaridlaringiz va to'lovlaringizni {brand} xizmati orqali yuritadi. Saqlanadigan ma'lumotlar: do'kon sizni qanday nomlagani, telefon raqamingiz (agar bergan bo'lsangiz), Telegram hisobingiz identifikatori, nasiya va to'lov yozuvlari, olingan mahsulotlar. Maqsad: qarz hisobini siz ham ko'rib turishingiz va eslatmalar yuborish. Ma'lumotlar faqat sizga va shu do'kon xodimlariga ko'rinadi, boshqa do'konlarga berilmaydi. Istalgan payt /uzish orqali uzilishingiz yoki /ochirish orqali ma'lumotlaringizni o'chirishni so'rashingiz mumkin. Rozimisiz?"
 
 ## Performance targets
 

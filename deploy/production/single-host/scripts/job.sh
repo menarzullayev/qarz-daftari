@@ -29,9 +29,16 @@ check)
     shift
     code=0
     bash "$S/check.sh" "$@" || code=$?
-    # What the container's health check reads: the verdict and when it was reached.
-    printf '%s %s\n' "$code" "$(date +%s)" > "$QD_STATE_DIR/check.status.tmp"
-    mv -f "$QD_STATE_DIR/check.status.tmp" "$QD_STATE_DIR/check.status"
+    # What the container's health check reads: the verdict and when it was reached. Checks do not wait
+    # for one another (no lock, above), so the scheduler's and a person's can end in the same moment:
+    # each writes a file of its own name and renames it over the status. A rename replaces the status
+    # whole, so a reader sees one verdict or the other, never half a line. With one name shared by
+    # every writer, the second `mv` found its file already moved away and a good check failed.
+    status="$(mktemp "$QD_STATE_DIR/.check.status.XXXXXX")"
+    trap 'rm -f -- "$status"' EXIT
+    printf '%s %s\n' "$code" "$(date +%s)" > "$status"
+    chmod 644 "$status"
+    mv -f "$status" "$QD_STATE_DIR/check.status"
     exit "$code"
     ;;
 esac

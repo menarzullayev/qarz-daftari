@@ -5,7 +5,7 @@ import type { UzPlural } from "./types";
  * always the plain ASCII one (U+0027), so text stays searchable and typeable on any keyboard.
  */
 export const uz = {
-  "app.name": "Qarz Daftari",
+  "app.name": "{brand}",
   "entry.app": "Xodimlar ish joyi",
   "entry.panel": "Boshqaruv paneli",
   "entry.admin": "Platforma boshqaruvi",
