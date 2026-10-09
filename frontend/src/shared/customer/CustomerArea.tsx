@@ -40,7 +40,7 @@ function AccountRow({ account }: { account: MyAccount }) {
       <Link to={`${MY_PATH}/${account.linkId}`} className="row__link">
         <span className="row__name">{account.shopName}</span>
         <span className="row__amount">
-          <Money uzs={account.balance} usd={account.usd?.balance} />
+          <Money uzs={account.balance} usd={account.usd?.balance} mine />
         </span>
       </Link>
     </li>

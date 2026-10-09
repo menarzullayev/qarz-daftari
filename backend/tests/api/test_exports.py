@@ -807,3 +807,25 @@ def test_someone_who_is_no_longer_staff_is_not_told_about_the_export_they_asked_
     assert told(owner, world.shop_a) == []
     assert link(client, world, job, world.manager_a).status_code == 404
     assert link(client, world, job, world.owner_a).status_code == 200
+
+
+def test_the_summary_keeps_what_is_owed_and_what_is_held_apart(
+    client: TestClient, world: World, owner: psycopg.Connection, worker_database_url: str, file_root: Path
+) -> None:
+    """An advance (the founder's decision of 2026-10-10) is a line of its own and is never taken from the
+    debts; a shop that holds none gets the summary it always got."""
+
+    def facts() -> dict[Any, Any]:
+        job = ask(client, world).json()["id"]
+        assert work(worker_database_url, file_root) == 1
+        return {row[0]: row[1] for row in workbook(client, world, job)["Hisobot"] if len(row) == 2}
+
+    before = facts()
+    held = "Mijozlarning oldindan to'lovlari (avans)"
+    assert (before["Qarzdor mijozlar soni"], before["Jami qarz"], held in before) == (1, 50_000, False)
+
+    owner.execute("UPDATE shop SET accept_advances = true WHERE id = %s", (world.shop_a,))
+    assert record(client, world, world.settled_customer_a, "payment", 30_000, advance=True).status_code == 201
+    after = facts()
+    assert (after["Qarzdor mijozlar soni"], after["Jami qarz"], after[held]) == (1, 50_000, 30_000)
+    assert {name: value for name, value in after.items() if name != held}.keys() == before.keys()

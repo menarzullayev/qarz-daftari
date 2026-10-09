@@ -3,7 +3,8 @@
 A lower number limits the shops the plan holds today that are over it. The administrator is told how
 many they are before saving, and their owners are told once, through the outbox, what happened and how
 to leave the limited mode. No shop loses anything it wrote or the right to read it. Raising the number,
-a shop in a trial or paid period, and the switch off: nobody is counted and nobody is told.
+a shop in a trial or paid period, and the switch off: nobody is counted and nobody is told. Switching
+the plan off is its own change with its own message (test_admin_free_plan_off.py).
 """
 
 import uuid
@@ -348,7 +349,7 @@ def test_with_the_switch_off_nothing_is_previewed_and_nobody_is_told(
         owner.execute("DELETE FROM platform_setting WHERE key IN ('free_plan_on', 'free_plan_customers')")
 
 
-def test_switching_the_plan_on_or_off_together_with_a_lower_number_tells_nobody(
+def test_switching_the_plan_on_or_off_together_with_a_lower_number_tells_nobody_of_a_lowering(
     client: TestClient,
     world: World,
     owner: psycopg.Connection,
@@ -358,7 +359,8 @@ def test_switching_the_plan_on_or_off_together_with_a_lower_number_tells_nobody(
 ) -> None:
     """Lowering is a change of a plan that is on and stays on. Switched on with a lower number, the shops
     were limited before and some become free; switched off, the plan is gone for all, which is the
-    switch's own meaning and not a lowering."""
+    switch's own meaning and not a lowering: the owner is told that, once (test_admin_free_plan_off.py)."""
+    today = _today(admin_env)
     _set(owner, world.shop_a, "limited")
     owner.execute("DELETE FROM platform_setting WHERE key IN ('free_plan_on', 'free_plan_customers')")
     owner.execute("INSERT INTO platform_setting (key, value, updated_by) VALUES ('free_plan_customers', '5', 'test')")
@@ -366,10 +368,17 @@ def test_switching_the_plan_on_or_off_together_with_a_lower_number_tells_nobody(
         on = _save(client, admin, {"free_plan_on": True, "free_plan_customers": 1}, code=fresh_code(admin_env, secret))
         assert set(on) == SETTINGS_KEYS
         assert _save(client, admin, {"free_plan_customers": 5}) and _state(client, admin, world.shop_a) == "free"
+        assert _told(owner, world.shop_a) == []
         off = _save(
             client, admin, {"free_plan_on": False, "free_plan_customers": 1}, code=fresh_code(admin_env, secret)
         )
-        assert set(off) == SETTINGS_KEYS
-        assert _told(owner, world.shop_a) == []
+        assert set(off) == SETTINGS_KEYS | {"free_plan_off"}
+        assert _told(owner, world.shop_a) == [
+            (
+                _chat(owner, world.owner_a),
+                say("uz", "free_plan_off", shop="Shop A"),
+                f"free_plan:off:{world.shop_a}:{today.isoformat()}",
+            )
+        ]
     finally:
         owner.execute("DELETE FROM platform_setting WHERE key IN ('free_plan_on', 'free_plan_customers')")

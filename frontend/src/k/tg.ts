@@ -24,7 +24,7 @@ export const tg: Partial<Record<MessageKey, string>> = {
   "shop.phone": "Телефони мағоза: ",
   "balance.owed": "Қарзи Шумо",
   "balance.none": "Шумо қарз надоред",
-  "balance.credit": "Пардохти зиёдатии Шумо",
+  "balance.credit": "Шумо пешпардохт доред",
   "overdue": "Аз он мӯҳлаташ гузашта: {amount}",
   "dueToday": "Имрӯз бояд пардохт шавад: {amount}",
   "entries.title": "Сабтҳо",

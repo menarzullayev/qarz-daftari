@@ -133,10 +133,10 @@ Decisions waiting for the founder:
 |---|---|---|
 | 1 | Inside Telegram, keep Telegram's own button blue (contrast about 4.1:1) or ours (4.5:1 and above)? | #98 |
 | 2 | The reminders screen now shows a text in the reader's language only, not in both. Keep? | E |
-| 3 | When the free plan is switched off altogether, preview and tell the owners as when it is lowered? | #100 |
+| 3 | ~~When the free plan is switched off altogether, preview and tell the owners as when it is lowered?~~ Decided on 2026-10-10: yes. The settings screen asks for the count before saving, and each owner of a shop that was free is told once (`free_plan_off`). | #100 |
 | 4 | A payment notice with a receipt is now recorded as paid by card by default. Keep? | #100 |
 | 5 | Ask Eskiz whether an approved template's amount may read `12.50 $` or two amounts; otherwise eight new templates | #100 |
-| 6 | Three points on the network: a delivery note whose author has since left the shop or lost the right to sell on credit; partner members' chat identifiers stored in the acting shop's outbox; advance payments between linked shops (`EXCEEDS_BALANCE`). The fourth, totals compared instead of lines, is closed (migration 0047) | #101 |
+| 6 | Three points on the network. Decided on 2026-10-10: a delivery note whose author has since left the shop or lost the right to sell on credit is posted in the owner's name (migration 0048); advance payments are accepted, as a setting of each shop, off by default (technical specification, Advances), so a buyer's payment beyond its debt is confirmed by a supplier that accepts advances. Still open: partner members' chat identifiers stored in the acting shop's outbox. The fourth, totals compared instead of lines, is closed (migration 0047) | #101 |
 | 8 | The product's name | founder |
 | 9 | A member who holds `stock.receive` or `stock.adjust` without `stock.view` now reaches the documents list in the Mini App, but not the quick receipt or a document's form: those read the stock's settings, the list of items and the barcode lookup, which the server gives to `stock.view` alone. Open those three reads to who writes documents (they show what is on hand), or keep it so? | leftovers |
 

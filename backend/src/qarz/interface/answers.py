@@ -42,7 +42,7 @@ class PaymentHistory(Answer):
 class CustomerDollars(Answer):
     """What a customer owes in US dollars: whole cents, beside the so'm figures and never added to them."""
 
-    # Whole cents the customer owes.
+    # Whole cents the customer owes; below zero when they are in credit in dollars.
     balance: int
     # Whole cents; null when the shop's default dollar limit applies.
     credit_limit: int | None
@@ -60,7 +60,8 @@ class Customer(Answer):
     reminders_off: bool
     # Whole UZS; null when the shop's default applies.
     credit_limit: int | None
-    # Whole UZS the customer owes.
+    # Whole UZS the customer owes. Below zero when the customer is in credit: they have paid that much
+    # more than they owe, and the shop holds it as their advance (only in a shop that accepts advances).
     balance: int
     # Only in a shop that works in dollars.
     usd: CustomerDollars | None = None
@@ -158,11 +159,20 @@ class OverviewOverdue(Answer):
     customers: int
 
 
+class OverviewAdvances(Answer):
+    # What the shop holds of customers who have paid more than they owe, and how many they are.
+    amount: int
+    customers: int
+
+
 class OverviewFigures(Answer):
+    # What the customers who owe add up to. A customer in credit is not in it and takes nothing from it.
     outstanding: int
     debtors: int
     overdue: OverviewOverdue
     due_today: int
+    # Only while the shop holds an advance of at least one customer.
+    advances: OverviewAdvances | None = None
 
 
 class Overview(OverviewFigures):

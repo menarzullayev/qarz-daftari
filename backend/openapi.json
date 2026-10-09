@@ -794,6 +794,17 @@
       "CreditPatch": {
         "additionalProperties": false,
         "properties": {
+          "accept_advances": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accept Advances"
+          },
           "default_credit_limit": {
             "anyOf": [
               {
@@ -2359,6 +2370,11 @@
       "NewEntry": {
         "additionalProperties": false,
         "properties": {
+          "advance": {
+            "default": false,
+            "title": "Advance",
+            "type": "boolean"
+          },
           "amount": {
             "anyOf": [
               {
@@ -2748,6 +2764,16 @@
       "Overview": {
         "additionalProperties": false,
         "properties": {
+          "advances": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverviewAdvances"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "debtors": {
             "title": "Debtors",
             "type": "integer"
@@ -2783,9 +2809,38 @@
         "title": "Overview",
         "type": "object"
       },
+      "OverviewAdvances": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "integer"
+          },
+          "customers": {
+            "title": "Customers",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "amount",
+          "customers"
+        ],
+        "title": "OverviewAdvances",
+        "type": "object"
+      },
       "OverviewFigures": {
         "additionalProperties": false,
         "properties": {
+          "advances": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverviewAdvances"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "debtors": {
             "title": "Debtors",
             "type": "integer"
@@ -4454,6 +4509,22 @@
                 }
               ],
               "title": "Free Plan Customers"
+            }
+          },
+          {
+            "in": "query",
+            "name": "free_plan_on",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Free Plan On"
             }
           }
         ],
@@ -12356,6 +12427,16 @@
                 }
               ],
               "title": "Currency"
+            }
+          },
+          {
+            "in": "query",
+            "name": "in_credit",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "In Credit",
+              "type": "boolean"
             }
           }
         ],

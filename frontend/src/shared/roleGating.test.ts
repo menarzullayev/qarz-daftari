@@ -104,6 +104,11 @@ const BY_ROLE_ON_PURPOSE: readonly Allowed[] = [
   },
   { file: "shared/workspace/SubscriptionScreen.tsx", code: 'const isOwner = role === "owner";', why: `subscription.manage, ${FIXED}` },
   {
+    file: "shared/workspace/CreditSettingsSection.tsx",
+    code: 'const owner = role === "owner";',
+    why: "whether the shop accepts advances is the owner's alone to change: the server refuses anyone else by role (FORBIDDEN_ROLE), whatever settings.edit says",
+  },
+  {
     file: "panel/StaffScreen.tsx",
     code: 'const isOwner = role === "owner";',
     why: `permissions.manage and ownership.transfer, ${FIXED}; a role is the owner's alone to give, and someone given staff.manage acts on sellers only (the server's escalation rule)`,

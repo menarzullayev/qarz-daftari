@@ -576,10 +576,14 @@ What changes the moment it is on:
 
 Before the switch: decide `free_plan_customers` first, then turn `free_plan_on` on. Raising the number
 later makes limited shops under the new number free at once; lowering it makes free shops over the new
-number limited at once, with no message to their owners, so tell them before lowering it.
+number limited at once. The panel says how many shops that is before it saves, and each of their owners
+gets one message in the bot: what happened and `/obuna`.
 
 To switch off: the same setting. Every free shop is limited again at once, as it was before the plan,
-and shops on trial and limited shops send SMS again if they had turned it on.
+and shops on trial and limited shops send SMS again if they had turned it on. The panel says how many
+shops the plan holds before it saves, and each of their owners gets one message in the bot (once a day
+at most): the plan was switched off, what still works, and `/obuna`. Nothing a shop wrote is removed,
+and it is all still read. Switching the plan on tells nobody.
 
 ### When SMS fail
 

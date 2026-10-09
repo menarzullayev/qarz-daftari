@@ -250,6 +250,8 @@ export const uzPanel = {
   "activity.action.network.order_declined": "Hamkor buyurtmasi rad etildi",
   "activity.action.network.order_cancelled": "Hamkor buyurtmasi bekor qilindi",
   "activity.action.network.note_issued": "Yuk xati yozildi",
+  "activity.action.network.note_posted_for_owner":
+    "Yuk xati do'kon egasi nomidan yozildi: uni yozgan xodim endi nasiya yoza olmaydi",
   "activity.action.network.note_corrected": "Yuk xati tuzatildi",
   "activity.action.network.note_received": "Yuk xati tasdiqlandi, tovar qabul qilindi",
   "activity.action.network.note_rejected": "Yuk xati rad etildi",

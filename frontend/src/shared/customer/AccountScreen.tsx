@@ -29,7 +29,7 @@ import {
   Failure,
   formatInstant,
   Loading,
-  Money,
+  BalanceLine,
   ReasonForm,
 } from "../workspace/parts";
 
@@ -320,12 +320,7 @@ function Detail({
       <h2 className="subject">{account.shopName}</h2>
       <p className="row__meta">{t("my.knownAs", { name: account.displayName })}</p>
 
-      <p className="balance balance--large">
-        <span>{t("my.balance")}</span>{" "}
-        <strong>
-          <Money uzs={account.balance} usd={usd?.balance} />
-        </strong>
-      </p>
+      <BalanceLine label={t("my.balance")} uzs={account.balance} usd={usd?.balance} large mine />
       {account.overdueAmount > 0 ? (
         <p className="row__warning">{t("overdue.amount", { amount: formatMoney(account.overdueAmount, language) })}</p>
       ) : null}

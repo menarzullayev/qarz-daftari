@@ -3,7 +3,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { Reply, Sent } from "../testing/fakeServer";
-import { loweredPlan } from "./rules";
+import { loweredPlan, planSwitchedOff } from "./rules";
 import { SettingsScreen } from "./SettingsScreen";
 import { ShopScreen } from "./ShopScreen";
 import { ShopsScreen } from "./ShopsScreen";
@@ -113,17 +113,23 @@ describe("lowering the free plan in the settings", () => {
   const open = (preview: (sent: Sent) => Reply, settings: Record<string, unknown> = { free_plan_on: true }, lowered: unknown = undefined) => {
     const made = adminApi((sent) => {
       if (sent.method === "GET") {
-        return sent.query["free_plan_customers"] === undefined ? ok(platformBody({}, settings)) : preview(sent);
+        return sent.query["free_plan_customers"] === undefined && sent.query["free_plan_on"] === undefined ? ok(platformBody({}, settings)) : preview(sent);
       }
       const changes = (sent.body as { changes: Record<string, unknown> }).changes;
-      return ok(platformBody(lowered === undefined ? {} : { free_plan_lowered: lowered }, { ...settings, ...changes }));
+      const word = changes["free_plan_on"] === false ? "free_plan_off" : "free_plan_lowered";
+      return ok(platformBody(lowered === undefined ? {} : { [word]: lowered }, { ...settings, ...changes }));
     });
     renderAdmin(<SettingsScreen api={made.api} />);
     return made.server;
   };
   const wouldLimit = (shops: number) => (sent: Sent) =>
     ok(platformBody({ free_plan_preview: { customers: Number(sent.query["free_plan_customers"]), shops_limited: shops } }, { free_plan_on: true }));
-  const questions = (server: Server) => server.sent.filter((sent) => sent.method === "GET" && sent.query["free_plan_customers"] !== undefined);
+  const wouldLimitOff = (shops: number) => () => ok(platformBody({ free_plan_off_preview: { shops_limited: shops } }, { free_plan_on: true }));
+  const questions = (server: Server) => server.sent.filter((sent) => sent.method === "GET" && Object.keys(sent.query).length > 0);
+  const switchOff = async () => {
+    fireEvent.click(await screen.findByLabelText(SWITCH));
+    fireEvent.change(screen.getByLabelText(CODE), { target: { value: "123456" } });
+  };
   const type = async (value: string) => fireEvent.change(await screen.findByLabelText(NUMBER), { target: { value } });
   const save = () => fireEvent.click(screen.getByRole("button", { name: "Saqlash" }));
   /** The question before a lowering is sent; the cards of the form are a group too, so it is found by its place. */
@@ -170,17 +176,86 @@ describe("lowering the free plan in the settings", () => {
     expect(done.textContent).not.toContain("Cheklangan rejimga");
   });
 
+  it("asks the server how many shops switching the plan off would limit, and sends nothing until that was seen and agreed to", async () => {
+    const server = open(wouldLimitOff(7), { free_plan_on: true }, { shops_limited: 7 });
+    await switchOff();
+    expect(questions(server)).toHaveLength(0);
+    save();
+    const shown = await asked();
+    expect(questions(server).map((sent) => sent.query)).toEqual([{ free_plan_on: "false" }]);
+    expect([...shown.querySelectorAll("p:not(.actions)")].map((line) => line.textContent)).toEqual([
+      "Bepul tarif o'chiriladi.",
+      "Cheklangan rejimga o'tadigan do'konlar: 7 ta. Ularda yangi nasiya yozilmaydi; yozilgan ma'lumotlar saqlanadi, ko'rish va to'lov qabul qilish ishlayveradi.",
+      "Bu do'konlarning egalariga botda xabar yuboriladi: nima bo'lgani va /obuna buyrug'i.",
+    ]);
+    expect(screen.queryByRole("button", { name: "Saqlash" })).toBeNull();
+    expect(server.writes()).toHaveLength(0);
+
+    fireEvent.click(within(shown).getByRole("button", { name: "Orqaga" }));
+    expect(question()).toBeNull();
+    expect(server.writes()).toHaveLength(0);
+
+    save();
+    fireEvent.click(within(await asked()).getByRole("button", { name: "Ha, saqlansin" }));
+    const done = await screen.findByRole("status");
+    expect(server.writes().map((sent) => [sent.method, sent.path, sent.body])).toEqual([["PATCH", `${ADMIN}/settings`, { changes: { free_plan_on: false }, code: "123456" }]]);
+    expect(within(done).getByText("Cheklangan rejimga o'tgan do'konlar: 7 ta. Egalariga botda xabar yuborildi.")).toBeTruthy();
+    expect(question()).toBeNull();
+  });
+
+  it("asks the one question of the switch when the plan is switched off and its number changed in one save", async () => {
+    const server = open(wouldLimitOff(7), { free_plan_on: true }, { shops_limited: 7 });
+    await type("20");
+    await switchOff();
+    save();
+    const shown = await asked();
+    // The number is not asked about: a plan that is off holds nobody, whatever it says.
+    expect(questions(server).map((sent) => sent.query)).toEqual([{ free_plan_on: "false" }]);
+    expect(shown.textContent).toContain("Bepul tarif o'chiriladi.");
+    expect(shown.textContent).not.toContain("kamaytiriladi");
+    fireEvent.click(within(shown).getByRole("button", { name: "Ha, saqlansin" }));
+    const done = await screen.findByRole("status");
+    expect(server.writes().map((sent) => sent.body)).toEqual([{ changes: { free_plan_on: false, free_plan_customers: 20 }, code: "123456" }]);
+    expect(within(done).getByText("Cheklangan rejimga o'tgan do'konlar: 7 ta. Egalariga botda xabar yuborildi.")).toBeTruthy();
+  });
+
+  it("saves at once when the plan holds no shop to switch it off for", async () => {
+    const server = open(wouldLimitOff(0), { free_plan_on: true }, { shops_limited: 0 });
+    await switchOff();
+    save();
+    const done = await screen.findByRole("status");
+    expect(questions(server)).toHaveLength(1);
+    expect(server.writes()).toHaveLength(1);
+    expect(question()).toBeNull();
+    expect(done.textContent).not.toContain("Cheklangan rejimga");
+  });
+
+  it("sends nothing when the question of the switch cannot be answered, and says so", async () => {
+    const server = open(() => "offline");
+    await switchOff();
+    save();
+    expect((await screen.findByRole("alert")).textContent).toContain("Serverga ulanib bo'lmadi");
+    expect(server.writes()).toHaveLength(0);
+    expect(question()).toBeNull();
+  });
+
+  it("withdraws the question of the switch when the plan is left on after all", async () => {
+    const server = open(wouldLimitOff(7));
+    await switchOff();
+    save();
+    await asked();
+    fireEvent.click(screen.getByLabelText(SWITCH));
+    expect(question()).toBeNull();
+    expect(server.writes()).toHaveLength(0);
+    expect((screen.getByLabelText(SWITCH) as HTMLInputElement).checked).toBe(true);
+  });
+
   it.each([
-    ["a higher number", { free_plan_on: true }, "45", false],
-    ["the plan switched off", { free_plan_on: false }, "20", false],
-    ["the plan being switched off in the same change", { free_plan_on: true }, "20", true],
-  ])("asks nothing with %s: the change is sent as every other", async (_, settings, value, switchOff) => {
+    ["a higher number", { free_plan_on: true }, "45"],
+    ["the plan switched off", { free_plan_on: false }, "20"],
+  ])("asks nothing with %s: the change is sent as every other", async (_, settings, value) => {
     const server = open(() => refusal(500, "INTERNAL", "no question is expected"), settings);
     await type(value);
-    if (switchOff) {
-      fireEvent.click(screen.getByLabelText(SWITCH));
-      fireEvent.change(screen.getByLabelText(CODE), { target: { value: "123456" } });
-    }
     save();
     await screen.findByRole("status");
     expect(questions(server)).toHaveLength(0);
@@ -229,6 +304,27 @@ describe("lowering the free plan in the settings", () => {
     await screen.findByRole("status");
     expect(server.writes()).toHaveLength(1);
     expect(question()).toBeNull();
+  });
+});
+
+describe("the rule of a free plan switched off", () => {
+  const on = { free_plan_on: true, free_plan_customers: 30 };
+
+  it("is the switch turned off while the plan is on, whatever else changes", () => {
+    expect(planSwitchedOff(on, { free_plan_on: false })).toBe(true);
+    expect(planSwitchedOff(on, { free_plan_on: false, free_plan_customers: 5 })).toBe(true);
+    expect(planSwitchedOff(on, { free_plan_on: false, trial_days: 7 })).toBe(true);
+  });
+
+  it.each([
+    ["the plan left on", on, { free_plan_customers: 5 }],
+    ["the plan said to be on again", on, { free_plan_on: true }],
+    ["another setting", on, { trial_days: 7 }],
+    ["the plan off and left off", { ...on, free_plan_on: false }, { free_plan_on: false }],
+    ["the plan switched on", { ...on, free_plan_on: false }, { free_plan_on: true }],
+    ["no switch held", { free_plan_customers: 30 }, { free_plan_on: false }],
+  ])("is not %s", (_, values, changes) => {
+    expect(planSwitchedOff(values, changes)).toBe(false);
   });
 });
 

@@ -154,6 +154,7 @@ export const uzAdmin = {
   "admin.settings.saved": "Sozlamalar saqlandi. O'zgarganlari:",
   "admin.settings.changed": "{name}: {before} → {after}",
   "admin.settings.plan.confirm": "Bepul tarif {from} tadan {to} tagacha mijozga kamaytiriladi.",
+  "admin.settings.plan.off": "Bepul tarif o'chiriladi.",
   "admin.settings.plan.shops": "Cheklangan rejimga o'tadigan do'konlar: {count} ta. Ularda yangi nasiya yozilmaydi; yozilgan ma'lumotlar saqlanadi, ko'rish va to'lov qabul qilish ishlayveradi.",
   "admin.settings.plan.ownersTold": "Bu do'konlarning egalariga botda xabar yuboriladi: nima bo'lgani va /obuna buyrug'i.",
   "admin.settings.plan.yes": "Ha, saqlansin",

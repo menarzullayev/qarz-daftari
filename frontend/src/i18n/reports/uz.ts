@@ -24,6 +24,8 @@ export const uzReports = {
 
   "reports.outstanding.start": "Davr boshidagi qarz",
   "reports.outstanding.end": "Davr oxiridagi qarz",
+  "reports.advances.start": "Davr boshidagi avanslar",
+  "reports.advances.end": "Davr oxiridagi avanslar",
   "reports.netChange": "Davrdagi o'zgarish",
   "reports.credit": "Berilgan nasiya",
   "reports.payments": "Qaytarilgan (to'lovlar)",
@@ -37,6 +39,9 @@ export const uzReports = {
   "reports.equation": "Tekshirish",
   "reports.equation.hint": "Davr boshidagi qarz + berilgan nasiya + boshlang'ich qarz − to'lovlar = davr oxiridagi qarz",
   "reports.equation.line": "{start} + {credit} + {opening} − {payments} = {end}",
+  "reports.equation.line.advances":
+    "({start} − {advancesStart}) + {credit} + {opening} − {payments} = ({end} − {advancesEnd})",
+  "reports.equation.hint.advances": "Mijozlarning avanslari qarzdan ayirib hisoblanadi: (qarz − avanslar).",
   "reports.equation.mismatch":
     "Hisob mos kelmadi: chap tomon {computed}, davr oxiridagi qarz esa {end}. Qo'llab-quvvatlashga xabar bering.",
 

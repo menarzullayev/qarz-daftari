@@ -21,6 +21,9 @@ class CreditPatch(BaseModel):
     sellers_may_exceed: bool | None = None
     # The default dollar limit, in whole cents, the same way. Only in a shop that works in dollars.
     default_credit_limit_usd: int | None = None
+    # Whether a customer may pay more than they owe, the rest staying as their advance. The owner's to
+    # change; it cannot be turned off while an advance stands (`ADVANCES_STAND`).
+    accept_advances: bool | None = None
 
 
 def add_credit_routes(app: FastAPI, service: CreditService, current_user: CurrentUser) -> None:
@@ -46,4 +49,5 @@ def add_credit_routes(app: FastAPI, service: CreditService, current_user: Curren
             default_credit_limit_usd=body.default_credit_limit_usd
             if "default_credit_limit_usd" in body.model_fields_set
             else UNSET,
+            accept_advances=body.accept_advances,
         )

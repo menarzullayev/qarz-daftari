@@ -12,7 +12,7 @@ Rules the rows follow, because the database or the domain layer would refuse any
 
 - `seq` runs 1, 2, 3, ... per customer and `created_at` rises with it;
 - a payment never exceeds the balance, and a credit sale is reversed only while the balance covers it,
-  so no running balance is ever negative (INV-3);
+  so no running balance is ever negative: no generated shop accepts advances (INV-3);
 - a reversal names an earlier entry of the same customer that is not itself a reversal and has not been
   reversed, and carries its amount (INV-5, INV-6);
 - every credit sale and opening balance has a promise, between the sale date and 365 days after it;

@@ -26,7 +26,7 @@ export const uz = {
   "shop.phone": "Do'kon telefoni: ",
   "balance.owed": "Qarzingiz",
   "balance.none": "Qarzingiz yo'q",
-  "balance.credit": "Ortiqcha to'lovingiz",
+  "balance.credit": "Siz haqdorsiz (oldindan to'lov)",
   "overdue": "Shundan muddati o'tgani: {amount}",
   "dueToday": "Bugun to'lanishi kerak: {amount}",
   "entries.title": "Yozuvlar",

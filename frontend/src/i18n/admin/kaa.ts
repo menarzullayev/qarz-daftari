@@ -154,6 +154,7 @@ export const kaaAdmin: PartialCatalog<typeof uzAdmin> = {
   "admin.settings.saved": "Sazlawlar saqlandı. Ózgergenleri:",
   "admin.settings.changed": "{name}: {before} → {after}",
   "admin.settings.plan.confirm": "Biypul tarif {from} qarıydardan {to} qarıydarǵa shekem kemeytiriledi.",
+  "admin.settings.plan.off": "Biypul tarif óshiriledi.",
   "admin.settings.plan.shops": "Sheklengen rejimge ótetuǵın dúkanlar: {count}. Olarda jańa nesiye jazılmaydı; jazılǵan maǵlıwmatlar saqlanadı, kóriw hám tólem qabıllaw isley beredi.",
   "admin.settings.plan.ownersTold": "Bul dúkanlardıń iyelerine botta xabar jiberiledi: ne bolǵanı hám /obuna.",
   "admin.settings.plan.yes": "Awa, saqlansın",

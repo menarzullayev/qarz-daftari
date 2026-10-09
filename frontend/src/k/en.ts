@@ -23,7 +23,7 @@ export const en: Partial<Record<MessageKey, string>> = {
   "shop.phone": "Shop phone: ",
   "balance.owed": "Your debt",
   "balance.none": "You have no debt",
-  "balance.credit": "You have overpaid",
+  "balance.credit": "You are in credit by",
   "overdue": "Of which overdue: {amount}",
   "dueToday": "Due today: {amount}",
   "entries.title": "Entries",

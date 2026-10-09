@@ -89,6 +89,7 @@ def test_without_a_limit_nothing_is_said(client: TestClient, world: World) -> No
         "default_credit_limit": None,
         "sellers_may_exceed": True,
         "limit_bounds": [1000, 10_000_000_000],
+        "accept_advances": False,
     }
     sale = sell(client, world, world.seller_a, 90_000_000)
     assert sale.status_code == 201

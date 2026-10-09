@@ -38,6 +38,14 @@ def fill(owner: psycopg.Connection, shop: Shop) -> uuid.UUID:
     add_line(owner, shop, entry, 1, 30000)
     payment = add_entry(owner, shop, seq=2, amount=10000, kind="payment")
     add_entry(owner, shop, seq=3, amount=10000, kind="reversal", reverses=payment)
+    # And an advance, in a shop that accepts them: dollars paid by a customer who owes none (the so'm
+    # debt beside it stays open; the two books never meet).
+    owner.execute("UPDATE shop SET accept_advances = true WHERE id = %s", (shop.shop_id,))
+    owner.execute(
+        "INSERT INTO ledger_entry (id, shop_id, customer_id, seq, kind, amount, currency, author_id) "
+        "VALUES (gen_random_uuid(), %s, %s, 4, 'payment', 500, 'USD', %s)",
+        (shop.shop_id, shop.customer_id, shop.member_id),
+    )
     linked = uuid.uuid4()
     cash_income, cash_expense = uuid.uuid4(), uuid.uuid4()
     owner.execute("INSERT INTO app_user (id, tg_id) VALUES (%s, %s)", (linked, uuid.uuid4().int % 10**15))
