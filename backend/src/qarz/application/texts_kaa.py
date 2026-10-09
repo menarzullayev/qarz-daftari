@@ -294,6 +294,10 @@ CHAT: dict[str, str] = {
         "nesiye jazılmaydı; tólem qabıllaw, kóriw hám qarıydarlarǵa xabarlar isley beredi, maǵlıwmatlarıńız "
         "saqlanadı. Tolıq islew ushın: /obuna"
     ),
+    "free_plan_off": (
+        "«{shop}»: biypul tarif óshirildi. Endi jańa nesiye jazılmaydı; tólem qabıllaw, kóriw hám "
+        "qarıydarlarǵa xabarlar isley beredi, maǵlıwmatlarıńız saqlanadı. Tolıq islew ushın: /obuna"
+    ),
     "move_date_button": "📅 Múddetti kóshiriw",
     "ask_move_date": "Tólew múddeti qaysı sánege kóshirilsin? kún.ay kórinisinde jazıń, mısalı 25.10",
     "move_date_invalid": "Sáneni túsinbedim. kún.ay kórinisinde jazıń, mısalı 25.10",

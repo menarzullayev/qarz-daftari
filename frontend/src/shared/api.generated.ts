@@ -4178,6 +4178,7 @@ export interface operations {
         parameters: {
             query?: {
                 free_plan_customers?: string | null;
+                free_plan_on?: string | null;
             };
             header?: never;
             path?: never;

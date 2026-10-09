@@ -15,6 +15,7 @@ import {
   cleanReason,
   isCode,
   loweredPlan,
+  planSwitchedOff,
   parseSetting,
   REASON_MAX,
   REASON_MIN,
@@ -160,8 +161,11 @@ function without(problems: Readonly<Record<string, string>>, ...keys: string[]):
 
 type Change = { key: string; before: SettingValue; after: SettingValue };
 type Payload = { changes: Record<string, SettingValue>; reason: string | null };
-/** A change that lowers the free plan and would limit `shops` shops: asked about before it is sent. */
-type Lowering = { payload: Payload; from: number; to: number; shops: number };
+/**
+ * A change that lowers the free plan, or switches it off (`to` is then null), and would limit `shops`
+ * shops: asked about before it is sent.
+ */
+type Lowering = { payload: Payload; from: number; to: number; shops: number } | { payload: Payload; to: null; shops: number };
 
 function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings }) {
   const { t, language } = useI18n();
@@ -174,7 +178,7 @@ function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings
   const [reason, setReason] = useState("");
   const [problems, setProblems] = useState<Record<string, string>>({});
   const [changed, setChanged] = useState<Change[] | null>(null);
-  // The free plan lowered: the question before the change is sent, and what the server said after it.
+  // The free plan lowered or switched off: the question before the change is sent, and what the server said after it.
   const [lowering, setLowering] = useState<Lowering | null>(null);
   const [asking, setAsking] = useState<{ status: "idle" | "pending" } | { status: "error"; error: ApiError }>({ status: "idle" });
   const [limited, setLimited] = useState<number | null>(null);
@@ -253,20 +257,23 @@ function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings
     }
     setChanged(null);
     const payload = { changes, reason: cleanedReason };
-    const lowered = loweredPlan(saved.values, changes);
-    if (lowered === null) {
+    // Switched off, the plan holds nobody whatever number is saved with the switch: that one question
+    // covers a number changed in the same save.
+    const off = planSwitchedOff(saved.values, changes);
+    const lowered = off ? null : loweredPlan(saved.values, changes);
+    if (!off && lowered === null) {
       send(payload);
       return;
     }
     if (asking.status === "pending") {
       return;
     }
-    // A lower number limits the shops that are over it. How many is asked first, and nothing is sent
-    // until the administrator has seen the number and said yes.
+    // A lower number limits the shops that are over it, and the plan switched off every shop it holds. How
+    // many is asked first, and nothing is sent until the administrator has seen the number and said yes.
     reset();
     setAsking({ status: "pending" });
     const asked = ++question.current;
-    api.previewFreePlan(lowered.to).then(
+    (lowered === null ? api.previewFreePlanOff() : api.previewFreePlan(lowered.to)).then(
       (shops) => {
         if (asked !== question.current) {
           return;
@@ -275,7 +282,7 @@ function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings
         if (shops === null || shops === 0) {
           send(payload);
         } else {
-          setLowering({ payload, ...lowered, shops });
+          setLowering(lowered === null ? { payload, to: null, shops } : { payload, ...lowered, shops });
         }
       },
       (error: unknown) => {
@@ -447,7 +454,7 @@ function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings
         <Confirm
           question={
             <>
-              <p>{t("admin.settings.plan.confirm", { from: lowering.from, to: lowering.to })}</p>
+              <p>{lowering.to === null ? t("admin.settings.plan.off") : t("admin.settings.plan.confirm", { from: lowering.from, to: lowering.to })}</p>
               <p>{t("admin.settings.plan.shops", { count: lowering.shops })}</p>
               <p>{t("admin.settings.plan.ownersTold")}</p>
             </>

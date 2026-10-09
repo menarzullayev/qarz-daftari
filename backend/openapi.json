@@ -4368,6 +4368,22 @@
               ],
               "title": "Free Plan Customers"
             }
+          },
+          {
+            "in": "query",
+            "name": "free_plan_on",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Free Plan On"
+            }
           }
         ],
         "responses": {
