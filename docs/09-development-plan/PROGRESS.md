@@ -166,6 +166,7 @@ Each is implemented. If one is rejected, the named story must be revisited.
 | DEC-076 | CI in four test jobs; documents-only runs; superseded runs cancelled | Development |
 | DEC-077 | Legal questions and the two languages reported settled by the founder, on oral advice | Launch |
 | DEC-078 | How each open launch criterion is closed (decided by the founder) | Launch |
+| DEC-079 | The expansion after the comparison with pDaftar: fifteen decisions (`EXPANSION.md`) | Product |
 | DEC-068 | Three database roles, one for each part of the application; what each is granted; sign out everywhere | S19.2 |
 
 Decided by the founder on 2026-10-07, and so not awaiting review: DEC-058 (nginx and Docker Compose, where the architecture document names Caddy; what to prepare before production); DEC-051 (buttons in the review group, honoured for platform administrators only, as the agent understood him), DEC-052 (no fresh code to decide a receipt), DEC-053 (store open debts).

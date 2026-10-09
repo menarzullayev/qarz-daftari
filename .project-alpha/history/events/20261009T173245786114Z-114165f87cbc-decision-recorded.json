@@ -1,0 +1,21 @@
+{
+  "event_id": "114165f87cbc",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-09T17:32:45+00:00",
+  "path": ".project-alpha\\decisions\\DEC-079.md",
+  "stage": "04-prd",
+  "title": "The expansion after the comparison with pDaftar",
+  "risk": "HIGH",
+  "decision_id": "DEC-079",
+  "decision": "After comparing the product with pDaftar the founder decided, one question at a time: a free plan with no end date up to 30 customers per shop and 100 000 UZS a month above it; SMS through Eskiz for paying shops and no voice calls; no instalment schedules now; a full cash book; full stock with receipts, cost price, returns, write-offs and barcodes; a full network between shops with orders, confirmation by the other side and a delivery note; UZS and USD as separate balances without conversion; the subscription stays paid by transfer and receipt, Payme later; a matrix of separate permissions per member of staff; Uzbek Cyrillic, Tajik, Karakalpak and English beside Uzbek Latin and Russian; a secret read-only link and QR code for a customer; the Mini App, the web panel and an installable web app now, Android and iOS later; everything built in parallel; one release when everything is ready. The agent advised against the last two and built each module behind its own switch so that a staged release stays possible",
+  "context": "Answered by the founder on 2026-10-09 in a dialogue of fifteen questions put by the agent",
+  "chosen_option": "As listed",
+  "rationale": "The founder wants the product to stand beside pDaftar in breadth while keeping entry by a chat message",
+  "impact": "High",
+  "reversibility": "Medium",
+  "evidence": "EVID-084",
+  "approval_required": "yes",
+  "approval_status": "approved",
+  "approver": "founder",
+  "approved_at": "2026-10-09"
+}
