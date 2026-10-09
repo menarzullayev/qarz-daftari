@@ -2,7 +2,8 @@
 
 Five more sheets after the ones every workbook has: what is on hand, every movement, the documents, the
 suppliers with what they are owed, and their accounts. They are written only for a shop that has any of
-it, so a shop that never used the stock gets exactly the workbook it always got. An export is the
+it, so a shop that never used the stock gets exactly the workbook it always got. A sixth, the sales for
+cash a line at a time, is written for a shop that made one. An export is the
 owner's copy of everything recorded, so nothing here depends on the platform switch, and the cost
 figures are in it: only managers and owners may ask for an export.
 
