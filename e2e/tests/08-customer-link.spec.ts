@@ -58,6 +58,10 @@ test("a customer without Telegram reads their debt through a secret link, until 
 
     await test.step("an administrator turns the switch on, with a code of the second factor", async () => {
       const admin = freshAdministrator();
+      // Signing in, the administrators' status, enrolling and passing the factor all count against the
+      // proxy's sign-in limit by address (30 a minute, burst 10), and the journeys before this one have
+      // used most of it from this address. Twenty seconds refill the burst.
+      await page.waitForTimeout(20_000);
       await signInOnWeb(page, admin, "/admin/");
       await page.getByRole("button", { name: "Maxfiy kalit yaratish" }).click();
       const uri = await page.getByText(/^otpauth:\/\/totp\//).innerText();
