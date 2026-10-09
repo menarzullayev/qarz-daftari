@@ -63,6 +63,9 @@ SETTINGS: dict[str, Setting] = {
     "usd_on": Setting("switch", False, needs_code=True),
     # The cash book: income and expense, categories, cash and card (expansion module H).
     "cash_book_on": Setting("switch", False, needs_code=True),
+    # The network between shops: links, orders, delivery notes, payments both sides confirm (expansion
+    # module J). It works only for shops of a platform where the stock is on as well. Off: nothing of it.
+    "network_on": Setting("switch", False, needs_code=True),
 }
 
 

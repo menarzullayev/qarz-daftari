@@ -21,7 +21,19 @@ export type WorkspaceRoute =
   | { screen: "reminders" }
   | { screen: "subscription" }
   | { screen: "shopSettings" }
-  | { screen: "stock"; view: StockView };
+  | { screen: "stock"; view: StockView }
+  | { screen: "network"; view: NetworkView };
+
+/** The screens of the network between shops; their code is loaded apart (module J). */
+export type NetworkView =
+  | { name: "home" }
+  | { name: "link"; linkId: string }
+  | { name: "orders"; role: "buyer" | "supplier" }
+  | { name: "compose"; draftId: string | null }
+  | { name: "order"; orderId: string }
+  | { name: "notes"; waiting: boolean }
+  | { name: "note"; noteId: string }
+  | { name: "payments" };
 
 /** The screens of the stock, its documents and the suppliers; their code is loaded apart (module I). */
 export type StockView =
@@ -53,6 +65,10 @@ const STOCK_ITEM = new RegExp(`^/stock/items/(${ID})$`, "i");
 const STOCK_DOCUMENT = new RegExp(`^/stock-documents/(${ID})$`, "i");
 const NEW_STOCK_DOCUMENT = /^\/stock-documents\/new\/([a-z_]+)$/;
 const SUPPLIER = new RegExp(`^/suppliers/(${ID})$`, "i");
+const NETWORK_LINK = new RegExp(`^/network/links/(${ID})$`, "i");
+const NETWORK_DRAFT = new RegExp(`^/network/drafts/(${ID})$`, "i");
+const NETWORK_ORDER = new RegExp(`^/network/orders/(${ID})$`, "i");
+const NETWORK_NOTE = new RegExp(`^/network/notes/(${ID})$`, "i");
 const ADD_GOODS = new RegExp(`^/customers/(${ID})/entries/(${ID})/goods$`, "i");
 
 /** The data screen for a route path, or null when the path is not one of them. */
@@ -98,6 +114,10 @@ export function matchWorkspaceRoute(path: string): WorkspaceMatch | null {
   const stock = matchStockRoute(path);
   if (stock) {
     return stock;
+  }
+  const network = matchNetworkRoute(path);
+  if (network) {
+    return network;
   }
   const customer = CUSTOMER.exec(path);
   if (customer?.[1]) {
@@ -164,6 +184,51 @@ function matchStockRoute(path: string): WorkspaceMatch | null {
   const supplier = SUPPLIER.exec(path);
   if (supplier?.[1]) {
     return stock({ name: "supplier", supplierId: supplier[1] }, "/suppliers", "nav.suppliers");
+  }
+  return null;
+}
+
+/**
+ * The screens of the network between shops. As with the stock, a path is matched whether or not the
+ * network is switched on: the one section they all belong to is absent while it is off.
+ */
+function matchNetworkRoute(path: string): WorkspaceMatch | null {
+  const network = (view: NetworkView): WorkspaceMatch => ({
+    route: { screen: "network", view },
+    sectionPath: "/network",
+    titleKey: "nav.network",
+  });
+  switch (path) {
+    case "/network":
+      return network({ name: "home" });
+    case "/network/orders/out":
+      return network({ name: "orders", role: "buyer" });
+    case "/network/orders/in":
+      return network({ name: "orders", role: "supplier" });
+    case "/network/orders/new":
+      return network({ name: "compose", draftId: null });
+    case "/network/notes":
+      return network({ name: "notes", waiting: false });
+    case "/network/notes/waiting":
+      return network({ name: "notes", waiting: true });
+    case "/network/payments":
+      return network({ name: "payments" });
+  }
+  const link = NETWORK_LINK.exec(path);
+  if (link?.[1]) {
+    return network({ name: "link", linkId: link[1] });
+  }
+  const draft = NETWORK_DRAFT.exec(path);
+  if (draft?.[1]) {
+    return network({ name: "compose", draftId: draft[1] });
+  }
+  const order = NETWORK_ORDER.exec(path);
+  if (order?.[1]) {
+    return network({ name: "order", orderId: order[1] });
+  }
+  const note = NETWORK_NOTE.exec(path);
+  if (note?.[1]) {
+    return network({ name: "note", noteId: note[1] });
   }
   return null;
 }

@@ -249,7 +249,11 @@ class StockSession(Protocol):
         draft: dict[str, Any],
         created_by: UUID,
         created_at: datetime,
-    ) -> None: ...
+        origin_ref: UUID | None = None,
+    ) -> None:
+        """`origin_ref` is the delivery note of another shop that a receipt answers (module J): written
+        with the document and never changed."""
+        ...
 
     async def get_document(self, document_id: UUID, *, for_update: bool) -> DocumentRecord | None: ...
 
