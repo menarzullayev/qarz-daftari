@@ -38,7 +38,9 @@ class Said:
     @property
     def text(self) -> str:
         assert len(self.payloads) >= 1, "the bot said nothing"
-        return str(self.payloads[0]["text"])
+        # The words of a message that is a photo or a document are its caption (editMessageCaption).
+        first = self.payloads[0]
+        return str(first["text"] if "text" in first else first["caption"])
 
     @property
     def buttons(self) -> dict[str, str]:

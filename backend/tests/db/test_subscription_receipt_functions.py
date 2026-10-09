@@ -190,8 +190,15 @@ def test_the_administrators_functions_do_nothing_for_anyone_else(
     with as_admin(None) as conn:
         copies = conn.execute("SELECT receipt_id FROM admin_receipt_copies(%s, %s)", (admin, receipt)).fetchall()
         assert copies == [(copy,)]
+        # The list is the oldest first, a page at a time, and other tests leave receipts waiting: the page
+        # is asked for from just before this receipt, so that it is on it however many wait before it.
+        written = owner.execute(
+            "SELECT created_at - interval '1 microsecond' FROM subscription_receipt WHERE id = %s", (receipt,)
+        ).fetchone()
+        assert written is not None
         seen = conn.execute(
-            "SELECT receipt_id, shop_name, has_file FROM admin_receipts(%s, 'submitted', NULL, NULL, 100)", (admin,)
+            "SELECT receipt_id, shop_name, has_file FROM admin_receipts(%s, 'submitted', %s, %s, 100)",
+            (admin, written[0], uuid.UUID(int=0)),
         ).fetchall()
         assert (receipt, "Shop A", True) in seen
         assert conn.execute(
