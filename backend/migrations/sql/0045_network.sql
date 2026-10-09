@@ -1263,7 +1263,11 @@ BEGIN
     SELECT user_id FROM customer_link WHERE shop_id = p_shop_id AND user_id IS NOT NULL
   ) known;
 
-  -- The partners' side of the network: each link in the order every step locks them.
+  -- Every copy of every link of this shop, its own and its partners', under lock in the order every step
+  -- of a link takes them (the lower shop first), so an erasure and a step never wait for each other.
+  PERFORM 1 FROM network_link l
+    WHERE l.shop_id = p_shop_id OR l.peer_shop_id = p_shop_id ORDER BY l.id, l.shop_id FOR UPDATE;
+  -- The partners' side of the network.
   FOR partner IN
     SELECT l.shop_id, l.id, l.state, l.supplier_id, l.customer_id, l.counterpart_made
       FROM network_link l WHERE l.peer_shop_id = p_shop_id ORDER BY l.shop_id, l.id FOR UPDATE

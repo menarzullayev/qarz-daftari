@@ -604,6 +604,10 @@ def test_an_order_is_delivered_and_confirmed_and_both_books_take_it_in_one_step(
             "network.note_received",
         ]
     assert [text.split(" ", 1)[0] for text in told(owner, world.owner_b)][-2:] == ["🧾", "✅"]
+    # The owner reads its log as before: the partner's steps are there as the system's, with nobody named.
+    for side in (d.buyer, d.supplier):
+        log = ok(read(client, side.user, f"/api/v1/shops/{side.shop}/activity"))
+        assert "network.note_received" in str(log)
     assert "169 500" in told(owner, world.owner_a)[-1] and "Shop B" in told(owner, world.owner_a)[-1]
 
     # Once.
