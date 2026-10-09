@@ -266,6 +266,21 @@ async function sidewaysOverflow(page: Page): Promise<Overflow | null> {
       const words = (element.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
       return `<${element.tagName.toLowerCase()} class="${element.className}"> "${words}" ends at ${Math.round(box.right)}px`;
     });
+    // Text that does not wrap runs out of a box that itself fits: no element sticks out, its words do.
+    const texts = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    for (let node = texts.nextNode(); node !== null && widest.length < 6; node = texts.nextNode()) {
+      const parent = node.parentElement;
+      if ((node.textContent ?? "").trim() === "" || parent === null || innermost.some((element) => element.contains(parent))) {
+        continue;
+      }
+      range.selectNodeContents(node);
+      const box = range.getBoundingClientRect();
+      if (box.width > 0 && box.right > clientWidth + 0.5) {
+        const words = (node.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
+        widest.push(`the words "${words}" of <${parent.tagName.toLowerCase()} class="${parent.className}"> end at ${Math.round(box.right)}px`);
+      }
+    }
     return { scrollWidth: root.scrollWidth, clientWidth, widest };
   });
 }
