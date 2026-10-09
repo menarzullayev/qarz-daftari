@@ -33,6 +33,7 @@ import { useMay, useWorkspace } from "./context";
 import { exceedsLimit, limitIn, refusedLimit } from "./creditRules";
 import { type DraftLine, GoodsEditor, GoodsList, readDrafts } from "./GoodsEditor";
 import { CurrencyToggle, errorText, Failure, FieldError, Loading, Money } from "./parts";
+import { StockRefusal, StockWarnings } from "./StockNotes";
 
 export const MAX_NOTE_LENGTH = 200;
 
@@ -156,6 +157,7 @@ function Recorded({ saved, today, onAnother }: { saved: Saved; today: CalendarDa
           })}
         </p>
       ) : null}
+      <StockWarnings warnings={saved.recorded.stockWarnings} />
       {entry.lines.length > 0 ? <GoodsList lines={entry.lines} /> : null}
       {promised ? <p>{t("entry.promised", { date: formatCalendarDay(promised, language) })}</p> : null}
       {refusal ? (
@@ -328,6 +330,7 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
               })}
             </p>
           ) : null}
+          <StockRefusal error={failure} />
           {failure.serverMessage === null ? <p>{t("entry.retrySafe")}</p> : null}
         </div>
       ) : null}

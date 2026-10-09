@@ -13,6 +13,8 @@ export type StaffSession = {
   membershipId?: string | null;
   /** What the server said the person may do in the active shop; absent or null when it keeps to roles. */
   permissions?: Held | undefined;
+  /** Whether the server answered that the stock exists for this member; absent or false, nothing of it is offered. */
+  stock?: boolean | undefined;
 };
 
 /**

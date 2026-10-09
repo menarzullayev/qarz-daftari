@@ -38,7 +38,11 @@ _ITEM_COLUMNS = (
 _ITEM_FROM = "FROM catalog_item i LEFT JOIN stock_level l ON l.item_id = i.id"
 _ITEM_BY_ID = f"SELECT {_ITEM_COLUMNS} {_ITEM_FROM} WHERE i.id = :id"
 # The lock is on the catalogue row: it exists before the first movement, when there is no level yet.
-_ITEM_LOCKED = f"{_ITEM_BY_ID} FOR UPDATE OF i"
+# FOR NO KEY UPDATE, not FOR UPDATE: a sale has already taken the key-share lock of each item its goods
+# lines refer to (the foreign key does) before it comes here. Two writers still take turns, but neither
+# has to wait for the other's foreign-key lock, which is how a sale and a receipt of the same item at
+# the same moment would otherwise wait for each other in a ring.
+_ITEM_LOCKED = f"{_ITEM_BY_ID} FOR NO KEY UPDATE OF i"
 _PAGE_AFTER = (
     "AND (CAST(:name AS text) IS NULL OR i.name_norm LIKE CAST(:name AS text)) "
     "AND (CAST(:after_name AS text) IS NULL "
@@ -67,11 +71,12 @@ _DOCUMENT_COLUMNS = (
     "(SELECT c.display_name FROM customer c WHERE c.id = d.customer_id) AS customer_name"
 )
 _DOCUMENT_BY_ID = f"SELECT {_DOCUMENT_COLUMNS} FROM stock_document d WHERE d.id = :id"
-_DOCUMENT_LOCKED = f"{_DOCUMENT_BY_ID} FOR UPDATE OF d"
+_DOCUMENT_LOCKED = f"{_DOCUMENT_BY_ID} FOR NO KEY UPDATE OF d"
 
 _SUPPLIER_COLUMNS = "s.id, s.name, s.name_norm, s.phone, s.note, s.status, s.created_at"
 _SUPPLIER_BY_ID = f"SELECT {_SUPPLIER_COLUMNS} FROM supplier s WHERE s.id = :id"
-_SUPPLIER_LOCKED = f"{_SUPPLIER_BY_ID} FOR UPDATE"
+# For the same reason: a document that names the supplier holds its key-share lock already.
+_SUPPLIER_LOCKED = f"{_SUPPLIER_BY_ID} FOR NO KEY UPDATE"
 
 _ENTRY_COLUMNS = (
     "e.id, e.supplier_id, e.seq, e.kind, e.amount, e.currency, e.note, e.reverses_id, e.document_id, "

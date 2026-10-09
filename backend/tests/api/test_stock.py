@@ -498,7 +498,7 @@ def test_two_writers_to_one_item_at_once_take_turns_and_the_books_add_up(
     receive(client, world, [line(rice, "100", 10_000), line(tea, "100", 5_000)])
     customers = [new_customer(client, world, "Vali"), new_customer(client, world, "G'ani")]
     with another_client(app_database_url) as second:
-        for _ in range(5):
+        for _ in range(20):
             barrier = threading.Barrier(2)
 
             def sale(barrier: threading.Barrier = barrier) -> int:
@@ -515,8 +515,8 @@ def test_two_writers_to_one_item_at_once_take_turns_and_the_books_add_up(
             with ThreadPoolExecutor(max_workers=2) as pool:
                 first, other = pool.submit(sale), pool.submit(receipt)
                 assert (first.result(), other.result()) == (201, 201)
-        assert [item_of(client, world, item)["on_hand"] for item in (rice, tea)] == ["105", "105"]
-        assert [row["seq"] for row in movements(client, world, rice)] == list(range(11, 0, -1))
+        assert [item_of(client, world, item)["on_hand"] for item in (rice, tea)] == ["120", "120"]
+        assert [row["seq"] for row in movements(client, world, rice)] == list(range(41, 0, -1))
 
         # The last unit: the shop refuses sales beyond stock, and two sellers reach for it at once.
         assert (

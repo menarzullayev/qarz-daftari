@@ -55,13 +55,52 @@ const STAFF_SECTIONS: readonly StaffSection[] = [
 export const STAFF_SECTION_IDS: readonly string[] = STAFF_SECTIONS.map((section) => section.id);
 
 /**
- * Exactly the sections the member may open, in display order: by what the server said they hold, or by
- * the role alone when it said nothing (`permissions` absent or null).
+ * The sections of the stock (the expansion's module I). They exist only while the platform switch
+ * `stock_on` is on, which the server says by answering the stock's settings; until then, and for a
+ * client that was not told, none of them is offered. `office` marks the one the web panel alone has:
+ * the documents are heavy tables, the Mini App keeps to the counter's tasks.
  */
-export function staffSections(role: Role, permissions?: Held): NavItem[] {
-  return STAFF_SECTIONS.filter((section) => mayAny({ role, permissions }, section.needs)).map(
-    ({ id, path, labelKey }) => ({ id, path, labelKey }),
-  );
+const STOCK_SECTIONS: readonly (StaffSection & { office?: true })[] = [
+  { id: "stock", path: "/stock", labelKey: "nav.stock", needs: ["stock.view"] },
+  {
+    id: "stockDocuments",
+    path: "/stock-documents",
+    labelKey: "nav.stockDocuments",
+    needs: ["stock.receive", "stock.adjust"],
+    office: true,
+  },
+  { id: "suppliers", path: "/suppliers", labelKey: "nav.suppliers", needs: ["suppliers.view"] },
+];
+
+export const STOCK_SECTION_IDS: readonly string[] = STOCK_SECTIONS.map((section) => section.id);
+
+/** The section the stock's own follow: goods are in the catalog, the stock counts them. */
+const STOCK_AFTER = "catalog";
+
+/** What the server said exists beyond the base workspace, and which client is asking. */
+export type Features = {
+  /** The stock is switched on for the platform and the member may see it. */
+  stock?: boolean | undefined;
+  /** The web panel, which has the screens made of tables. */
+  office?: boolean | undefined;
+};
+
+/**
+ * Exactly the sections the member may open, in display order: by what the server said they hold, or by
+ * the role alone when it said nothing (`permissions` absent or null). The stock's sections join them
+ * only when `features` says the stock is on.
+ */
+export function staffSections(role: Role, permissions?: Held, features: Features = {}): NavItem[] {
+  const all: StaffSection[] = [];
+  for (const section of STAFF_SECTIONS) {
+    all.push(section);
+    if (section.id === STOCK_AFTER && features.stock === true) {
+      all.push(...STOCK_SECTIONS.filter((added) => added.office !== true || features.office === true));
+    }
+  }
+  return all
+    .filter((section) => mayAny({ role, permissions }, section.needs))
+    .map(({ id, path, labelKey }) => ({ id, path, labelKey }));
 }
 
 /** How many sections fit in the bottom tab bar of a phone; the rest sit behind "More". */

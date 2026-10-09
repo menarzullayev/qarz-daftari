@@ -110,6 +110,12 @@ function backend(shops: unknown) {
       case `${SHOP_BASE}/customers/${CUSTOMER_ID}/share`:
       case `${SHOP_BASE}/share-contact`:
         return refusal(404, "NOT_FOUND", "Topilmadi.");
+      // Asked once for the active shop since the stock (the expansion of 2026-10-09, module I): a
+      // deliberate addition, and the only one. It is how the client learns whether the stock exists: the
+      // platform switch is off here, so the answer is that of a route that does not exist, and the
+      // snapshots of the markup, which were not touched, show that nothing is drawn or offered for it.
+      case `${SHOP_BASE}/stock/settings`:
+        return refusal(404, "NOT_FOUND", "Topilmadi.");
       default:
         // Anything the Mini App did not ask before this story is refused, and shows in the snapshot.
         return refusal(404, "NOT_FOUND", "Topilmadi.");

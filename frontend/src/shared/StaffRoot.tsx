@@ -227,6 +227,25 @@ export function StaffWorkspace({
       cancelled = true;
     };
   }, [shopApi, shop, permissionsOn]);
+  // Whether the stock exists for this member of this shop: asked once for each shop of the session. Until
+  // the server has said yes, and whenever it says anything else, nothing of the stock is offered.
+  const [stock, setStock] = useState<{ shopId: string; on: boolean } | null>(null);
+  useEffect(() => {
+    if (!shopApi || !shop) {
+      return undefined;
+    }
+    const controller = new AbortController();
+    const shopId = shop.shopId;
+    shopApi.stockOn(controller.signal).then(
+      (on) => {
+        if (!controller.signal.aborted) {
+          setStock({ shopId, on });
+        }
+      },
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, [shopApi, shop]);
   const reloadSession = useCallback(() => setAttempt((count) => count + 1), []);
 
   if (phase.kind === "connecting") {
@@ -331,6 +350,7 @@ export function StaffWorkspace({
         role: shop.role,
         membershipId: shop.membershipId,
         permissions: held?.shopId === shop.shopId ? held.permissions : null,
+        stock: stock?.shopId === shop.shopId && stock.on,
       }}
       api={shopApi}
       now={now}

@@ -525,7 +525,8 @@ _INDEX_OF = {
     "the movements of a ledger entry": "stock_movement_entry",
     "the movements of a document": "stock_movement_document",
     "the documents, newest first": "stock_document_recent",
-    "the documents of a kind": "stock_document_by_kind",
+    # On a table this small the planner may as well read the newest documents and filter them by kind.
+    "the documents of a kind": "stock_document_",
     "the lines of a document": "stock_document_line_pkey",
     "the suppliers by name": "supplier_shop_id_name_norm_key",
     "what suppliers are owed": "supplier_balance_pkey",

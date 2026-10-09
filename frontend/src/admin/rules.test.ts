@@ -51,7 +51,7 @@ describe("reasons and codes", () => {
 });
 
 describe("platform settings, by type and range", () => {
-  it("knows the thirteen settings of the platform", () => {
+  it("knows the fourteen settings of the platform", () => {
     expect(Object.keys(SETTING_RULES).sort()).toEqual(
       [
         "customer_links_on",
@@ -64,6 +64,7 @@ describe("platform settings, by type and range", () => {
         "review_group",
         "sms_monthly_quota",
         "sms_on",
+        "stock_on",
         "trial_days",
         "trial_on",
         "usd_on",

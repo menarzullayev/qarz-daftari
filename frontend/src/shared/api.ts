@@ -250,7 +250,18 @@ export type RecordedEntry = {
   customer: Customer;
   /** Set when the sale was saved although it took the balance above the limit that applies (REQ-044). */
   limitWarning: LimitFigures | null;
-};
+} & StockNoted;
+
+/**
+ * What a sale with goods did to the stock that the seller should know (the expansion's module I): an
+ * item went below zero, or was sold in another unit than it is counted in and so was not taken out.
+ * Quantities are the API's decimal strings. Absent unless the server sent some, which it only does
+ * while the stock is switched on.
+ */
+export type StockWarning =
+  | { kind: "negative"; itemId: string; name: string; onHand: string }
+  | { kind: "unit"; itemId: string; name: string; unit: string };
+export type StockNoted = { stockWarnings?: StockWarning[] };
 
 /** A credit limit and the balance that met it, both in the entry's currency. */
 export type LimitFigures = { limit: number; balance: number };
@@ -356,7 +367,7 @@ export function cardTag(card: PaymentCard): string {
   return `${card.label} ··${card.number.slice(-4)}`;
 }
 
-export type AddedLines = { id: string; amount: number; lines: GoodsLine[] };
+export type AddedLines = { id: string; amount: number; lines: GoodsLine[] } & StockNoted;
 export type ChosenPromise = { id: string; amount: number; promisedDate: string };
 
 export type CatalogItem = {
@@ -802,7 +813,33 @@ function recordedEntry(value: unknown): RecordedEntry {
     },
     customer: customer(body["customer"]),
     limitWarning: limitFigures(body["limit_warning"]),
+    ...stockNoted(body["stock_warnings"]),
   };
+}
+
+/** A quantity as the stock writes it: a decimal string with up to three decimals, below zero too. */
+const STOCK_QTY = /^-?\d{1,12}(?:\.\d{1,3})?$/;
+
+/** The stock's warnings on an answer, when it carries any. A kind this client does not know is left out. */
+function stockNoted(value: unknown): StockNoted {
+  if (value === undefined || value === null) {
+    return {};
+  }
+  const stockWarnings: StockWarning[] = [];
+  for (const element of list(value, record)) {
+    const itemId = text(element["item"]);
+    const name = text(element["name"]);
+    if (element["kind"] === "negative") {
+      const onHand = text(element["on_hand"]);
+      if (!STOCK_QTY.test(onHand)) {
+        throw new Malformed();
+      }
+      stockWarnings.push({ kind: "negative", itemId, name, onHand });
+    } else if (element["kind"] === "unit") {
+      stockWarnings.push({ kind: "unit", itemId, name, unit: text(element["unit"]) });
+    }
+  }
+  return stockWarnings.length > 0 ? { stockWarnings } : {};
 }
 
 function limitFigures(value: unknown): LimitFigures | null {
@@ -918,8 +955,14 @@ function paymentCard(value: unknown): PaymentCard {
 }
 
 function addedLines(value: unknown): AddedLines {
-  const made = record(record(value)["entry"]);
-  return { id: text(made["id"]), amount: whole(made["amount"]), lines: list(made["lines"], goodsLine) };
+  const body = record(value);
+  const made = record(body["entry"]);
+  return {
+    id: text(made["id"]),
+    amount: whole(made["amount"]),
+    lines: list(made["lines"], goodsLine),
+    ...stockNoted(body["stock_warnings"]),
+  };
 }
 
 function chosenPromise(value: unknown): ChosenPromise {
@@ -1318,6 +1361,26 @@ function shopApi(transport: Transport, shopId: string) {
           return null;
         }
         throw error;
+      });
+    },
+
+    /**
+     * Whether the stock, its documents and the suppliers exist for this member (the expansion's module
+     * I). All of it is behind a platform switch: while that is off the route answers as one that does not
+     * exist, and a member who may not see the stock is refused. Anything but the settings themselves is
+     * "no": the module is an addition to a workspace that works without it.
+     */
+    stockOn(signal?: AbortSignal): Promise<boolean> {
+      return call(transport, {
+        method: "GET",
+        path: `${base}/stock/settings`,
+        signal,
+        read: (value) => Array.isArray(record(value)["units"]),
+      }).catch((error: unknown) => {
+        if (isAbort(error)) {
+          throw error;
+        }
+        return false;
       });
     },
 
