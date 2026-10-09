@@ -768,11 +768,16 @@ a.row__link:hover .row__name,
   white-space: nowrap;
 }
 
+/* On a line of its own, in the large figures. It may break when the line cannot hold it (larger text
+   in a narrow column): kept whole there, it made the page wider than its window. The groups of an
+   amount are joined by no-break spaces, so it does not break while it fits. */
 .balance--large strong {
   display: block;
   font: var(--qd-type-amount-lg);
   font-variant-numeric: tabular-nums;
   letter-spacing: var(--qd-tracking-tight);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .more {
@@ -1185,6 +1190,13 @@ a.row__link:hover .row__name,
   .modal__panel {
     max-width: 32rem;
     border-radius: var(--qd-radius-xl);
+  }
+
+  /* The main figure spans two columns here, so there must be two: a figure is at least 9rem wide and
+     never more than half of the row. With larger text two columns of 9rem are wider than the screen;
+     at the ordinary text size half of the row is always the larger of the two at this width. */
+  .figures {
+    grid-template-columns: repeat(auto-fit, minmax(min(9rem, calc(50% - var(--qd-space-3) / 2)), 1fr));
   }
 
   .figure--main {

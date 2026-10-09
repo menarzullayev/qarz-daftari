@@ -67,6 +67,28 @@ export function TelegramLogin({ botUsername, language }: LoginWidgetProps) {
     return () => container.replaceChildren();
   }, [botUsername, language]);
 
+  // Telegram's script puts a frame in the place of itself, and gives it no title: a screen reader then
+  // announces "frame" and nothing more. The frame's content is Telegram's, but the element is in this
+  // page, so its name is given here, whenever the script adds or replaces it.
+  const title = t("panel.signIn.widget");
+  useEffect(() => {
+    const container = host.current;
+    if (!container) {
+      return;
+    }
+    const name = () => {
+      for (const frame of container.querySelectorAll("iframe")) {
+        if (frame.title !== title) {
+          frame.title = title;
+        }
+      }
+    };
+    name();
+    const observer = new MutationObserver(name);
+    observer.observe(container, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [title]);
+
   return (
     <>
       <div className="signin__widget" ref={host} role="group" aria-label={t("panel.signIn.widget")} />

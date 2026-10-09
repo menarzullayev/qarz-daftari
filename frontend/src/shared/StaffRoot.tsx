@@ -3,6 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNo
 import { I18nProvider, useI18n } from "../i18n/I18nProvider";
 import type { Language, MessageKey } from "../i18n/types";
 import { type Api, type ApiAuth, type ApiError, createApi, type Fetch, type ShopMembership, toApiError } from "./api";
+import { useLatest } from "./hooks";
 import { isCustomerPath, MY_PATH } from "./customer/paths";
 import { type ShopSwitch, useDesktop, type WorkspaceExtension } from "./layout";
 import type { Held } from "./permissions";
@@ -99,13 +100,19 @@ function ShopChooser({
   onChoose: (shop: ShopMembership) => void;
 }) {
   const { t } = useI18n();
+  // The shop that was asked for last: "try again" after a failure asks for the same one.
+  const [asked, setAsked] = useState<ShopMembership | null>(null);
+  const choose = (shop: ShopMembership) => {
+    setAsked(shop);
+    onChoose(shop);
+  };
   return (
     <>
-      {error ? <Failure error={error} /> : null}
+      {error ? <Failure error={error} {...(asked && !pending ? { onRetry: () => choose(asked) } : {})} /> : null}
       <ul className="rows">
         {shops.map((shop) => (
           <li key={shop.shopId} className="row">
-            <button type="button" className="row__link row__button" onClick={() => onChoose(shop)} disabled={pending}>
+            <button type="button" className="row__link row__button" onClick={() => choose(shop)} disabled={pending}>
               <span className="row__name">{shop.name}</span>
               <span className="row__meta">{t(`role.${shop.role}`)}</span>
             </button>
@@ -137,16 +144,19 @@ export function StaffWorkspace({
   // for other staff this is the one source; it is forgotten when another shop is chosen.
   const [shopMode, setShopMode] = useState<ShopMode | null>(null);
 
+  // What the page was given, read when a connection is made: only a retry makes one again.
+  const given = useLatest({ connect, fetch, customerPage, panel });
   useEffect(() => {
     let cancelled = false;
     const signedOut = () => {
       if (!cancelled) {
         setPhase({ kind: "signedOut", everywhere: false });
-        panel?.onSignedOut();
+        given.current.panel?.onSignedOut();
       }
     };
     setPhase({ kind: "connecting" });
     (async () => {
+      const { connect, fetch, customerPage } = given.current;
       const auth = await connect();
       if (auth === null) {
         signedOut();
@@ -200,8 +210,7 @@ export function StaffWorkspace({
     return () => {
       cancelled = true;
     };
-    // `connect` and `fetch` are fixed for the life of the page; only a retry runs this again.
-  }, [attempt]);
+  }, [attempt, given]);
 
   const ready = phase.kind === "ready" ? phase : null;
   const shop = useMemo(() => {

@@ -1,5 +1,5 @@
 import { outbox } from "../support/chat.ts";
-import { expect, goTo, openMiniApp, test } from "../support/fixtures.ts";
+import { expect, expectNoSidewaysScroll, goTo, openMiniApp, test } from "../support/fixtures.ts";
 import { lit, sql, sqlValue } from "../support/stack.ts";
 import { newPerson } from "../support/telegram.ts";
 import { inDays, uzDate } from "../support/dates.ts";
@@ -38,17 +38,23 @@ test("a new person opens a shop, sells on credit, takes a payment, and reverses 
     await expect(page.getByRole("banner").locator("strong")).toHaveText(shopName);
     await expect(page.getByRole("heading", { level: 1, name: "Umumiy ko'rinish" })).toBeVisible();
     await expect(page.getByText("Hozircha hech kim qarzdor emas.")).toBeVisible();
+    // On every screen of this journey: nothing is wider than the phone's window (the same at a
+    // tablet's and a desktop's width, screen by screen, is 11-responsive-keyboard).
+    await expectNoSidewaysScroll(page, "the empty overview");
   });
 
   const customerId = await test.step("add a customer", async () => {
     await page.getByRole("navigation", { name: "Asosiy menyu" }).getByRole("link", { name: "Mijozlar" }).click();
+    await expectNoSidewaysScroll(page, "the empty customer book");
     await page.getByRole("link", { name: "Yangi mijoz" }).click();
     await page.getByLabel("Ism", { exact: true }).fill("Ali Valiyev");
+    await expectNoSidewaysScroll(page, "the form for a new customer");
     await page.getByRole("button", { name: "Yangi mijoz" }).click();
     await expect(page.getByRole("heading", { level: 2, name: "Ali Valiyev" })).toBeVisible();
     const rows = sql(`SELECT id::text, display_name, status FROM customer WHERE shop_id = ${lit(shopId)}`);
     expect(rows).toEqual([[expect.any(String), "Ali Valiyev", "active"]]);
     expect(page.url()).toContain(`#/customers/${rows[0]?.[0]}`);
+    await expectNoSidewaysScroll(page, "a new customer's page");
     return rows[0]?.[0] ?? "";
   });
 
@@ -57,11 +63,13 @@ test("a new person opens a shop, sells on credit, takes a payment, and reverses 
     await page.getByLabel("Summa, so'm").fill("150000");
     await page.getByRole("radio", { name: "Sanani tanlash" }).check();
     await page.getByRole("textbox", { name: "Sanani tanlash" }).fill(promised);
+    await expectNoSidewaysScroll(page, "the credit form, with a date being chosen");
     await page.getByRole("button", { name: "Nasiyani yozish" }).click();
     const saved = page.getByRole("status");
     await expect(saved).toContainText("Ali Valiyev: 150 000 so'm nasiya yozildi.");
     await expect(saved).toContainText("Yangi qarz: 150 000 so'm");
     await expect(saved).toContainText(`To'lash va'dasi: ${uzDate(promised)}`);
+    await expectNoSidewaysScroll(page, "what was recorded, said back");
     expect(ledger(customerId)).toEqual([{ kind: "credit", amount: 150_000, promised, reversal: false }]);
   });
 
@@ -87,12 +95,14 @@ test("a new person opens a shop, sells on credit, takes a payment, and reverses 
     await expect(entries.nth(0)).toContainText("50 000 so'm");
     await expect(entries.nth(1)).toContainText("150 000 so'm");
     await expect(entries.nth(1)).toContainText(`To'lash va'dasi: ${uzDate(promised)}`);
+    await expectNoSidewaysScroll(page, "the customer's page with its entries");
 
     await goTo(page, "/");
     const totals = page.locator("main dl");
     await expect(totals.locator("dd").nth(0)).toHaveText("100 000 so'm");
     await expect(totals.locator("dd").nth(1)).toHaveText("1 ta mijoz");
     await expect(page.getByRole("region", { name: "Qarzdorlar" }).getByRole("link")).toContainText(["100 000 so'm"]);
+    await expectNoSidewaysScroll(page, "the overview with a debtor");
     expect(sql(`SELECT customer_id::text, remaining::text FROM open_debt WHERE shop_id = ${lit(shopId)}`)).toEqual([[customerId, "100000"]]);
   });
 
@@ -100,8 +110,10 @@ test("a new person opens a shop, sells on credit, takes a payment, and reverses 
     await page.getByRole("region", { name: "Qarzdorlar" }).getByRole("link", { name: /Ali Valiyev/ }).click();
     const entries = page.getByRole("region", { name: "Yozuvlar" }).getByRole("listitem");
     await entries.filter({ hasText: "To'lov" }).getByRole("button", { name: "Yozuvni bekor qilish" }).click();
+    await expectNoSidewaysScroll(page, "the question before an entry is reversed");
     await page.getByRole("button", { name: "Ha, bekor qilinsin" }).click();
     await expect(page.locator(".balance strong")).toHaveText("150 000 so'm");
+    await expectNoSidewaysScroll(page, "the customer's page with a reversed entry");
     expect(ledger(customerId).map((entry) => [entry.kind, entry.amount, entry.reversal])).toEqual([
       ["credit", 150_000, false],
       ["payment", 50_000, false],

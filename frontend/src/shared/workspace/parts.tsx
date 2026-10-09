@@ -2,7 +2,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 
 import { useI18n, type Translate } from "../../i18n/I18nProvider";
 import type { Language, MessageKey } from "../../i18n/types";
-import { type ApiError, cleanReason, NETWORK_ERROR, type Overdue, REASON_MAX, REASON_MIN } from "../api";
+import { type ApiError, cleanReason, NETWORK_ERROR, NO_ANSWER, type Overdue, REASON_MAX, REASON_MIN, TIMEOUT } from "../api";
 import { formatDateTime, formatMoney } from "../format";
 import { AlertIcon, CheckIcon, ClockIcon, ListIcon } from "../icons";
 import { CURRENCIES, type Currency } from "../money";
@@ -23,8 +23,12 @@ export function errorText(error: ApiError, t: Translate): string {
   if (error.serverMessage) {
     return error.serverMessage;
   }
-  if (error.code === "TIMEOUT") {
+  if (error.code === TIMEOUT) {
     return t("error.timeout");
+  }
+  // A write this page stopped waiting for: it may have been applied, and the words must not deny it.
+  if (error.code === NO_ANSWER) {
+    return t("error.noAnswer");
   }
   return error.code === NETWORK_ERROR ? t("error.network") : t("state.error");
 }

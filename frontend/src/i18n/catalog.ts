@@ -146,6 +146,11 @@ export function setActiveLanguage(language: Language): void {
   active = language;
 }
 
+/** The language the interface is in now, for the one reader that has no language context above it. */
+export function activeLanguage(): Language {
+  return active;
+}
+
 /**
  * Resolves when the catalogs added so far have their text for the language in use, or when that text
  * could not be fetched: never rejects. A screen that is fetched on demand waits for this before it is

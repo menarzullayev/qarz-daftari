@@ -52,7 +52,8 @@ function Accounts({ api, now }: { api: Api; now: (() => Date) | undefined }) {
   const { t } = useI18n();
   const { state, reload } = useLoad((signal) => api.myAccounts(signal), [api]);
   const only = state.status === "ready" && state.data.length === 1 ? state.data[0] : undefined;
-  const onlyApi = useMemo(() => (only ? api.account(only.linkId) : null), [api, only?.linkId]);
+  const onlyLinkId = only?.linkId;
+  const onlyApi = useMemo(() => (onlyLinkId === undefined ? null : api.account(onlyLinkId)), [api, onlyLinkId]);
 
   if (state.status === "loading") {
     return <Loading />;

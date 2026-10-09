@@ -31,3 +31,33 @@ describe("third-party resources", () => {
     expect(externalUrls('<script type="module" src="/src/app/main.tsx"></script>')).toEqual([]);
   });
 });
+
+/** What a page says of itself to whoever lists it or shares its link: the one description, or null. */
+function description(html: string): string | null {
+  const tags = [...html.replace(/<!--[\s\S]*?-->/g, "").matchAll(/<meta\s+name="description"\s+content="([^"]*)"\s*\/?>/gi)];
+  return tags.length === 1 ? (tags[0]?.[1] ?? null) : null;
+}
+
+describe("each page describes itself", () => {
+  it.each(["app", "panel", "admin", "k"])("%s has one description, in the page's language, of a length a result can show", (entry) => {
+    const text = description(page(entry));
+    expect(text).not.toBeNull();
+    expect((text ?? "").length).toBeGreaterThanOrEqual(50);
+    expect((text ?? "").length).toBeLessThanOrEqual(160);
+    expect(text).toContain("Qarz Daftari");
+    // Uzbek, as `<html lang="uz">` says the page is until the application sets the reader's language.
+    expect(page(entry)).toContain('<html lang="uz">');
+  });
+
+  it("no two pages share a description", () => {
+    const texts = ["app", "panel", "admin", "k"].map((entry) => description(page(entry)));
+    expect(new Set(texts).size).toBe(4);
+  });
+
+  it("would notice a page without one, with an empty one's length, or with two", () => {
+    expect(description("<head><title>Qarz Daftari</title></head>")).toBeNull();
+    expect(description('<meta name="description" content="a" /><meta name="description" content="b" />')).toBeNull();
+    expect(description('<!-- <meta name="description" content="a" /> -->')).toBeNull();
+    expect(description('<meta name="description" content="" />')).toBe("");
+  });
+});

@@ -285,6 +285,7 @@ export const uz = {
   "goods.pick.list": "Katalogdagi tovarlar",
   "goods.lines": "Tanlangan tovarlar",
   "goods.pick.none": "Katalogda topilmadi. Pastda qo'lda yozing.",
+  "goods.lines.none": "Hali tovar tanlanmagan. Katalogdan tanlang yoki pastda qo'lda yozing.",
   "goods.pick.price": "{price} / {unit}",
   "goods.new": "Katalogda yo'q tovar",
   "goods.new.name": "Tovar nomi",
@@ -622,6 +623,11 @@ export const uz = {
   "error.rateLimited": "So'rovlar juda ko'p. Biroz kutib, qayta urinib ko'ring.",
   "error.wait": { other: "{count} soniyadan keyin urinib ko'ring." } satisfies UzPlural,
   "error.timeout": "So'rov juda uzoq davom etdi va to'xtatildi. Hech narsa saqlanmadi. Qayta urinib ko'ring.",
+  "error.noAnswer": "Javob o'z vaqtida kelmadi. Saqlangan bo'lishi ham mumkin: avval tekshirib ko'ring, so'ng qayta urining.",
+  "crash.title": "Sahifani ko'rsatib bo'lmadi",
+  "crash.body": "Kutilmagan xatolik yuz berdi. Sahifani yangilab, qayta urinib ko'ring.",
+  "crash.outdated": "Ilova yangilandi. Davom etish uchun sahifani yangilang.",
+  "crash.reload": "Sahifani yangilash",
 
   "my.notice.ask": "To'ladim",
   "my.notice.hint":

@@ -189,6 +189,18 @@ describe("an owner's combined totals", () => {
     expect(asked(server)).toHaveLength(0);
   });
 
+  it("says there is nothing to show, in place of a table with headings and no rows", async () => {
+    const server = totalsServer(ok({ items: [], total: { outstanding: 0, debtors: 0, overdue: 0, due_today: 0 } }));
+    renderOffice(<OwnerTotals />, {
+      fetch: server.fetch,
+      shops: [shop("a", "Baraka savdo", "owner"), shop(OTHER_SHOP, "Ziyo market", "owner")],
+    });
+    expect(await screen.findByText("Hozircha ko'rsatadigan do'kon yo'q.")).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
+    // The section is still named, so the sentence is not adrift.
+    expect(screen.getByRole("heading", { level: 2, name: "Barcha do'konlarim" })).toBeTruthy();
+  });
+
   it("refuses totals that are not whole numbers instead of showing them", async () => {
     const server = totalsServer(ok({ ...TOTALS, total: { ...TOTALS.total, outstanding: 7008000.5 } }));
     renderOffice(<OwnerTotals />, {

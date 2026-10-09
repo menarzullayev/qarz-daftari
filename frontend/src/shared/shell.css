@@ -455,7 +455,10 @@ a {
     grid-template-areas:
       "nav header"
       "nav main";
-    grid-template-columns: var(--qd-side-width) 1fr;
+    /* The side column is as wide as its token says, and never more than a third of the window: with
+       larger text (the token is in rem) it would otherwise leave the screens no room at all. At the
+       ordinary text size the third is never the smaller of the two. */
+    grid-template-columns: min(var(--qd-side-width), 33.34vw) 1fr;
     padding-bottom: 0;
   }
 
@@ -544,9 +547,10 @@ a {
     padding: var(--qd-space-4) 0 0;
   }
 
+  /* The side padding gives way before the content does, for the same reason. */
   .shell__main {
     max-width: 64rem;
-    padding: var(--qd-space-6) var(--qd-space-8);
+    padding: var(--qd-space-6) min(var(--qd-space-8), 4.45vw);
   }
 }
 
@@ -554,4 +558,16 @@ a {
   .skip-link {
     transition: transform 0.15s ease-out;
   }
+}
+
+/* What stands in for a whole page that could not be drawn (ErrorBoundary.tsx): no shell around it. */
+.crash {
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: var(--qd-space-8) var(--qd-space-4);
+}
+
+.crash__title {
+  margin: 0 0 var(--qd-space-4);
+  font: var(--qd-type-title);
 }

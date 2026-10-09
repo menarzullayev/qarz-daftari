@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { detectLanguage, readStoredLanguage } from "../i18n/detect";
 import { startLanguage } from "../i18n/start";
+import { ErrorBoundary } from "../shared/ErrorBoundary";
 import { previewStaffSession } from "../shared/session";
 import { StaffApp } from "../shared/StaffApp";
 import { StaffRoot } from "../shared/StaffRoot";
@@ -35,11 +36,13 @@ const connect = webAppConnector((input, init) => window.fetch(input, init), laun
 void startLanguage(initialLanguage).then(() => {
   createRoot(root).render(
     <StrictMode>
-      {preview ? (
-        <StaffApp entryKey="entry.app" session={preview} initialLanguage={initialLanguage} />
-      ) : (
-        <StaffRoot entryKey="entry.app" initialLanguage={initialLanguage} connect={connect} customerPage />
-      )}
+      <ErrorBoundary scope="page">
+        {preview ? (
+          <StaffApp entryKey="entry.app" session={preview} initialLanguage={initialLanguage} />
+        ) : (
+          <StaffRoot entryKey="entry.app" initialLanguage={initialLanguage} connect={connect} customerPage />
+        )}
+      </ErrorBoundary>
     </StrictMode>,
   );
 });

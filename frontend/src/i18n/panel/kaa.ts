@@ -245,6 +245,9 @@ export const kaaPanel: PartialCatalog<typeof uzPanel> = {
     "Óshirilgen maǵlıwmatlar qaytarılmaydı. Óshiriwdi sorawdan aldın dápterdi Excel faylına eksport etip alıń.",
   "deletion.export.open": "Eksportqa ótiw",
 
+  "deletion.done.requested": "Dúkandı óshiriw soraldı. Belgilengen kúnge shekem sorawdı biykarlawıńız múmkin.",
+  "deletion.done.cancelled": "Óshiriw sorawı biykarlandı. Dúkan ádettegidey islewdi dawam etedi.",
+  "totals.none": "Házirshe kórsetetuǵın dúkan joq.",
   "totals.title": "Barlıq dúkanlarım",
   "totals.shop": "Dúkan",
   "totals.total": "Jámi",

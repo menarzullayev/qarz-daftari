@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { detectLanguage, readStoredLanguage } from "../i18n/detect";
 import { startLanguage } from "../i18n/start";
+import { ErrorBoundary } from "../shared/ErrorBoundary";
 import { previewStaffSession } from "../shared/session";
 import { StaffApp } from "../shared/StaffApp";
 import { initTheme } from "../shared/theme";
@@ -37,11 +38,13 @@ window.addEventListener("load", () => {
 void startLanguage(initialLanguage).then(() => {
   createRoot(root).render(
     <StrictMode>
-      {preview ? (
-        <StaffApp entryKey="entry.panel" session={preview} initialLanguage={initialLanguage} />
-      ) : (
-        <PanelRoot initialLanguage={initialLanguage} loginReturn={loginReturn} />
-      )}
+      <ErrorBoundary scope="page">
+        {preview ? (
+          <StaffApp entryKey="entry.panel" session={preview} initialLanguage={initialLanguage} />
+        ) : (
+          <PanelRoot initialLanguage={initialLanguage} loginReturn={loginReturn} />
+        )}
+      </ErrorBoundary>
     </StrictMode>,
   );
 });

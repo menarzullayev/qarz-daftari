@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { useI18n } from "../../i18n/I18nProvider";
+import { useLatest } from "../../shared/hooks";
 import "../messages";
 
 type Connection = {
@@ -17,10 +18,12 @@ const browser = (): Connection => ({ read: () => navigator.onLine, events: windo
  * only that there is a network; a request can still fail, and each screen says so when one does.
  */
 export function useOnline(connection: Connection = browser()): boolean {
-  const { read, events } = connection;
-  const [online, setOnline] = useState(read);
+  const [online, setOnline] = useState(connection.read);
+  const latest = useLatest(connection);
   useEffect(() => {
-    const update = () => setOnline(read());
+    // The listeners are added to and taken from the same object, whatever a later render passes.
+    const { events } = latest.current;
+    const update = () => setOnline(latest.current.read());
     events.addEventListener("online", update);
     events.addEventListener("offline", update);
     // The connection may have changed between the first render and this effect.
@@ -29,8 +32,7 @@ export function useOnline(connection: Connection = browser()): boolean {
       events.removeEventListener("online", update);
       events.removeEventListener("offline", update);
     };
-    // The browser's own objects: fixed for the life of the page.
-  }, []);
+  }, [latest]);
   return online;
 }
 

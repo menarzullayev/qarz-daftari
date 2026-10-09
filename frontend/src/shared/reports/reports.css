@@ -29,9 +29,16 @@
   overflow-wrap: anywhere;
 }
 
+/* The two dates and the button in a row while there is room for it. With larger text or a narrower
+   column the row wraps, where a grid of fixed columns pushed the page wider than its window. */
 @media (min-width: 720px) {
   .period__fields {
-    grid-template-columns: minmax(10rem, 14rem) minmax(10rem, 14rem) auto;
-    justify-content: start;
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .period__fields .field {
+    flex: 1 1 10rem;
+    max-width: 14rem;
   }
 }
