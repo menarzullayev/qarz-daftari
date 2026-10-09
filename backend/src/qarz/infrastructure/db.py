@@ -149,6 +149,8 @@ _LIVE_RECORDED = (
     "WHERE e.currency = :currency AND e.kind <> 'reversal' "
     "AND NOT EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id)"
 )
+# The shop's advisory lock for its setting "works in dollars" is named by this and the shop's identifier.
+_DOLLARS_SCOPE = "dollars:"
 _TASHKENT_DAY = "(l.created_at AT TIME ZONE 'Asia/Tashkent')::date"
 _SIGNED = "CASE WHEN l.kind IN ('credit', 'opening') THEN l.amount ELSE -l.amount END"
 # A period is the instants from :start up to but not including :end.
@@ -495,7 +497,8 @@ class PgTenantSession(CashStatements, StockQueries, NetworkQueries):
 
     async def dollars_setting(self, *, lock: bool = False) -> bool:
         # A writer of a dollar amount holds the row shared until it commits, and turning dollars off
-        # updates the row first: so the two cannot pass each other (set_dollars_setting).
+        # updates the row before it looks at what is owed: so the two cannot pass each other
+        # (set_dollars_setting).
         row = (
             await self._conn.execute(
                 text("SELECT usd_on FROM shop WHERE id = :shop_id" + (" FOR SHARE" if lock else "")),
@@ -504,7 +507,24 @@ class PgTenantSession(CashStatements, StockQueries, NetworkQueries):
         ).first()
         return row is not None and bool(row.usd_on)
 
+    async def hold_dollars_setting(self) -> bool:
+        # For a writer whose role may not lock the shop's row (the worker reads it and no more): the
+        # shop's advisory lock for this setting, shared, which `set_dollars_setting` takes exclusively
+        # before it writes. Read after the lock is held, so what is read is what stays until the commit.
+        await self._conn.execute(
+            text("SELECT pg_advisory_xact_lock_shared(hashtextextended(:scope, 0))"),
+            {"scope": _DOLLARS_SCOPE + str(self._shop_id)},
+        )
+        return await self.dollars_setting()
+
     async def set_dollars_setting(self, on: bool) -> None:
+        # The advisory lock first, then the row: a writer that holds the setting by the lock (above) holds
+        # no lock on the shop's row and waits for none, and one that holds the row shared (`dollars_setting`
+        # with `lock`) takes no advisory lock, so neither can wait for this in a ring.
+        await self._conn.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:scope, 0))"),
+            {"scope": _DOLLARS_SCOPE + str(self._shop_id)},
+        )
         await self._conn.execute(
             text("UPDATE shop SET usd_on = :on WHERE id = :shop_id"), {"on": on, "shop_id": self._shop_id}
         )
