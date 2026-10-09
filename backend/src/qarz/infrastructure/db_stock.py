@@ -19,6 +19,8 @@ from qarz.application.stock_ports import (
     BelowCostSale,
     DocumentLine,
     DocumentRecord,
+    ExportMovement,
+    ExportSupplierEntry,
     MovementRecord,
     NewMovement,
     StockItem,
@@ -775,6 +777,76 @@ class StockQueries:
             )
         ).all()
         return [_entry(row) for row in rows]
+
+    # --- the owner's export -----------------------------------------------------------------------
+
+    async def stock_recorded(self) -> bool:
+        row = (
+            await self._conn.execute(
+                # The shop is named so that each table is asked through an index that leads with it.
+                text(
+                    "SELECT EXISTS (SELECT 1 FROM stock_movement WHERE shop_id = :shop_id) "
+                    "    OR EXISTS (SELECT 1 FROM stock_document WHERE shop_id = :shop_id) "
+                    "    OR EXISTS (SELECT 1 FROM supplier WHERE shop_id = :shop_id) "
+                    "    OR EXISTS (SELECT 1 FROM catalog_item WHERE shop_id = :shop_id AND tracked) AS any"
+                ),
+                {"shop_id": self._shop_id},
+            )
+        ).one()
+        return bool(row.any)
+
+    async def export_movements(
+        self, *, until: datetime, after: tuple[datetime, UUID, int] | None, limit: int
+    ) -> list[ExportMovement]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    f"SELECT {_MOVEMENT_COLUMNS}, d.kind AS document_kind, d.number AS document_number, "
+                    "       i.name AS item_name, i.unit AS item_unit "
+                    "FROM stock_movement m JOIN catalog_item i ON i.id = m.item_id "
+                    "LEFT JOIN stock_document d ON d.id = m.document_id "
+                    "WHERE m.shop_id = :shop_id AND m.created_at <= :until "
+                    "  AND (CAST(:after_at AS timestamptz) IS NULL OR (m.created_at, m.item_id, m.item_seq) > "
+                    "       (CAST(:after_at AS timestamptz), CAST(:after_id AS uuid), CAST(:after_seq AS integer))) "
+                    "ORDER BY m.created_at, m.item_id, m.item_seq LIMIT :limit"
+                ),
+                {
+                    "shop_id": self._shop_id,
+                    "until": until,
+                    "after_at": after[0] if after else None,
+                    "after_id": after[1] if after else None,
+                    "after_seq": after[2] if after else None,
+                    "limit": limit,
+                },
+            )
+        ).all()
+        return [ExportMovement(_movement(row, with_document=True), row.item_name, row.item_unit) for row in rows]
+
+    async def export_supplier_entries(
+        self, *, until: datetime, after: tuple[datetime, UUID, int] | None, limit: int
+    ) -> list[ExportSupplierEntry]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    f"SELECT {_ENTRY_COLUMNS}, s.name AS supplier_name, "
+                    "       (SELECT o.kind FROM supplier_entry o WHERE o.id = e.reverses_id) AS reversed_kind "
+                    f"{_ENTRY_FROM} JOIN supplier s ON s.id = e.supplier_id "
+                    "WHERE e.shop_id = :shop_id AND e.created_at <= :until "
+                    "  AND (CAST(:after_at AS timestamptz) IS NULL OR (e.created_at, e.supplier_id, e.seq) > "
+                    "       (CAST(:after_at AS timestamptz), CAST(:after_id AS uuid), CAST(:after_seq AS integer))) "
+                    "ORDER BY e.created_at, e.supplier_id, e.seq LIMIT :limit"
+                ),
+                {
+                    "shop_id": self._shop_id,
+                    "until": until,
+                    "after_at": after[0] if after else None,
+                    "after_id": after[1] if after else None,
+                    "after_seq": after[2] if after else None,
+                    "limit": limit,
+                },
+            )
+        ).all()
+        return [ExportSupplierEntry(_entry(row), row.supplier_name, row.reversed_kind) for row in rows]
 
     # --- the report -------------------------------------------------------------------------------
 

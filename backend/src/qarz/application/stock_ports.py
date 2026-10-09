@@ -171,6 +171,20 @@ class BelowCostSale:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class ExportMovement:
+    movement: MovementRecord
+    item_name: str
+    unit: str
+
+
+@dataclass(frozen=True)
+class ExportSupplierEntry:
+    entry: SupplierEntryRecord
+    supplier_name: str
+    reversed_kind: str | None  # of a reversal: the kind of the entry it reverses
+
+
 class StockSession(Protocol):
     # --- items ------------------------------------------------------------------------------------
 
@@ -337,6 +351,23 @@ class StockSession(Protocol):
     ) -> list[SupplierEntryRecord]: ...
 
     async def standing_supplier_entries_of_document(self, document_id: UUID) -> list[SupplierEntryRecord]: ...
+
+    # --- the owner's export -----------------------------------------------------------------------
+
+    async def stock_recorded(self) -> bool:
+        """Whether the shop has anything of the stock or the suppliers to export."""
+        ...
+
+    async def export_movements(
+        self, *, until: datetime, after: tuple[datetime, UUID, int] | None, limit: int
+    ) -> list[ExportMovement]:
+        """A page of the shop's movements up to a moment, oldest first; those of one moment in the order
+        they were written for their item. `after` is the moment, the item and the number of the last row."""
+        ...
+
+    async def export_supplier_entries(
+        self, *, until: datetime, after: tuple[datetime, UUID, int] | None, limit: int
+    ) -> list[ExportSupplierEntry]: ...
 
     # --- the report -------------------------------------------------------------------------------
 

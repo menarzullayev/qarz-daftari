@@ -28,6 +28,7 @@ from qarz.application.files import CheckedFile, FileService, FileStoreUnavailabl
 from qarz.application.operations import operation
 from qarz.application.ports import ExportJobRecord, Storage
 from qarz.application.shops import require_member
+from qarz.application.stock_export import write_stock
 from qarz.application.xlsx import MIME, Cell, Workbook
 from qarz.domain.access import Capability
 from qarz.domain.exports import (
@@ -209,6 +210,9 @@ class ExportService:
         book = Workbook()
         try:
             rows = await self._write(book, shop_id, settings.name, settings.lang, until, with_dollars)
+            # The stock and the suppliers follow, as sheets of their own after the ones every workbook
+            # has: only for a shop that has any, so a shop without them gets the workbook it always got.
+            await write_stock(book, self._storage, shop_id, settings.lang, until)
             # Packing compresses everything written so far; done off the event loop so that messages
             # keep being delivered meanwhile.
             content = await asyncio.to_thread(book.finish)

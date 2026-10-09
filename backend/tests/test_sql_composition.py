@@ -68,6 +68,14 @@ def test_the_three_allowed_lines_are_bound_parameters_not_sql() -> None:
         assert not re.search(r"\b(SELECT|INSERT|UPDATE|DELETE|WHERE|FROM)\b", line), line
 
 
+def test_the_stock_storage_sql_is_built_only_from_constants_with_no_exception() -> None:
+    """`infrastructure/db_stock.py` (module I) has S608 switched off for the same reason and is held to
+    the same rule, without a single allowed line."""
+    source = (DB_MODULE.parent / "db_stock.py").read_text(encoding="utf-8")
+    assert "text(" in source, "the module that is checked is the one that holds the statements"
+    assert unsafe_interpolations(source) == []
+
+
 def test_the_check_catches_a_value_put_into_sql() -> None:
     assert unsafe_interpolations('q = f"SELECT * FROM customer WHERE id = {customer_id}"\n') == [1]
     assert unsafe_interpolations("q = f\"SELECT {_COLUMNS} FROM customer WHERE name = '{name}'\"\n") == [1]

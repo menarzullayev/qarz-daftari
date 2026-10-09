@@ -98,7 +98,7 @@ def test_russian_mirrors_uzbek_key_for_key_and_column_for_column() -> None:
 def test_sheet_names_fit_a_workbook_and_differ_from_each_other() -> None:
     for catalog in (UZ, RU):
         names = [catalog[key] for key in catalog if key.startswith("sheet_")]
-        assert len(names) == 5 == len(set(names))
+        assert len(names) == 10 == len(set(names)), "five of the ledger and five of the stock"
         for name in names:
             assert isinstance(name, str) and len(name) <= 25 and not set(name) & set("[]:*?/\\")
 
