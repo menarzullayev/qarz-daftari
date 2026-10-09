@@ -43,7 +43,8 @@ describe("staff navigation by role (REQ-033)", () => {
 
   it("gives an owner everything", () => {
     expect(ids("owner")).toEqual(OWNER);
-    expect(ids("owner")).toEqual(STAFF_SECTION_IDS);
+    // Everything that exists without a platform switch: the cash book is a section only while it is on.
+    expect(ids("owner")).toEqual(STAFF_SECTION_IDS.filter((id) => id !== "cash"));
   });
 
   it.each(["reports", "reminders", "disputes", "staff", "shopSettings", "subscription", "activityLog", "importExport"])(
@@ -125,5 +126,36 @@ describe("admin navigation", () => {
       expect(importsStaffNavigation(readFileSync(resolve(adminDir, name), "utf8")), name).toBe(false);
     }
     expect(importsStaffNavigation('import { staffSections } from "../shared/navigation";')).toBe(true);
+  });
+});
+
+describe("the cash book's section", () => {
+  const has = (...args: Parameters<typeof staffSections>) => staffSections(...args).some((section) => section.id === "cash");
+
+  it("is offered to nobody while the platform has not switched the cash book on", () => {
+    for (const role of ["seller", "manager", "owner"] as const) {
+      expect(has(role)).toBe(false);
+      expect(has(role, null, {})).toBe(false);
+      expect(has(role, null, { cashBook: false })).toBe(false);
+      expect(has(role, new Set(["cash.view", "cash.record_income"]), {})).toBe(false);
+    }
+  });
+
+  it("is offered, once it is on, to managers and owners by role and not to a seller", () => {
+    expect(has("seller", null, { cashBook: true })).toBe(false);
+    expect(has("manager", null, { cashBook: true })).toBe(true);
+    expect(has("owner", null, { cashBook: true })).toBe(true);
+    // It sits after the reports, and nothing else of the list moves.
+    const off = staffSections("owner").map((section) => section.id);
+    const on = staffSections("owner", null, { cashBook: true }).map((section) => section.id);
+    expect(on.filter((id) => id !== "cash")).toEqual(off);
+    expect(on[on.indexOf("cash") - 1]).toBe("reports");
+  });
+
+  it("follows what the server says the member holds: reading, recording or arranging opens it", () => {
+    for (const permission of ["cash.view", "cash.record_income", "cash.record_expense", "cash.categories"]) {
+      expect(has("seller", new Set([permission]), { cashBook: true })).toBe(true);
+    }
+    expect(has("manager", new Set(["ledger.view", "cash.cancel", "cash.backfill"]), { cashBook: true })).toBe(false);
   });
 });

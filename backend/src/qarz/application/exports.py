@@ -42,7 +42,7 @@ from qarz.domain.exports import (
     signed_effect,
     stale_before,
 )
-from qarz.domain.money import Currency, plain
+from qarz.domain.money import Currency, parse_code, plain
 from qarz.domain.promise import TASHKENT, tashkent_date
 from qarz.domain.reports import day_start
 
@@ -446,7 +446,49 @@ class ExportService:
                         reversed_count,
                     )
                 )
+        await self._write_cash(book, shop_id, lang, until)
         return ledger.data_rows
+
+    async def _write_cash(self, book: Workbook, shop_id: UUID, lang: str, until: datetime) -> None:
+        """The shop's cash book as one more sheet: every entry, cancelled ones included and marked.
+
+        Only in the workbook of a shop that has a cash book: one that never used it gets the workbook it
+        always got. Each row says its currency; nothing on the sheet is a sum.
+        """
+        async with self._storage.tenant(shop_id) as session:
+            if not await session.cash_entries_exist():
+                return
+        sheet = book.sheet(
+            word(lang, "sheet_cash"), header(lang, "cash"), (12, 17, 10, 12, 9, 14, 26, 30, 10, 30, 14, 38, 38, 38)
+        )
+        yes, no = word(lang, "yes"), word(lang, "no")
+        after: tuple[date, datetime, UUID] | None = None
+        while True:
+            async with self._storage.tenant(shop_id) as session:
+                page = await session.export_cash_entries(until=until, after=after, limit=PAGE)
+            if not page:
+                break
+            after = (page[-1].day, page[-1].created_at, page[-1].entry_id)
+            for row in page:
+                currency = parse_code(row.currency) or UZS
+                sheet.append(
+                    (
+                        row.day.isoformat(),
+                        _local(row.created_at),
+                        word(lang, f"cash_{row.direction}", row.direction),
+                        word(lang, f"cash_{row.method}", row.method),
+                        row.currency,
+                        _amount(currency, row.amount),
+                        row.category_name,
+                        row.note,
+                        no if row.cancelled_at is None else yes,
+                        row.cancel_reason,
+                        word(lang, f"role_{row.author_role}", row.author_role),
+                        str(row.author_id),
+                        None if row.ledger_entry_id is None else str(row.ledger_entry_id),
+                        str(row.entry_id),
+                    )
+                )
 
 
 def _amount(currency: Currency, amount: int) -> int | Decimal:

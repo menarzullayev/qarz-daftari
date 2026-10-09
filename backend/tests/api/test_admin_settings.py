@@ -33,6 +33,7 @@ DEFAULTS = {
     "permissions_on": False,
     "customer_links_on": False,
     "usd_on": False,
+    "cash_book_on": False,
 }
 # Specification, clients table: "changes to price, card number, and switches ask for the code again".
 NEEDS_CODE = {
@@ -43,6 +44,7 @@ NEEDS_CODE = {
     "online_pay_on": True,
     "permissions_on": True,
     "customer_links_on": True,
+    "cash_book_on": True,
     "review_group": -1001234567890,
     "free_plan_on": True,
     "usd_on": True,

@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from qarz.application import idempotency, notify, removal
+from qarz.application import cash_feed, idempotency, notify, removal
 from qarz.application.authorization import may, require_permission
 from qarz.application.credit import LimitReached
 from qarz.application.currencies import (
@@ -62,7 +62,7 @@ from qarz.application.ports import (
     TenantSession,
 )
 from qarz.application.shops import require_member
-from qarz.domain import ledger, permissions
+from qarz.domain import cash, ledger, permissions
 from qarz.domain.access import Capability
 from qarz.domain.credit import LimitOutcome, check_limit, effective_limit
 from qarz.domain.date_requests import (
@@ -384,8 +384,12 @@ async def append_entry_in(
     lines: Sequence[CleanLine] | None = None,
     started: float | None = None,
     currency: Currency = UZS,
+    method: cash.Method | None = None,
 ) -> dict[str, Any]:
     """Add a credit sale or a payment to one customer's account, in one currency.
+
+    `method` is how a payment was made (cash unless it says otherwise). It matters only while the cash
+    book is on, where the payment is written as money received (`qarz.application.cash_feed`).
 
     `lines` are the goods of an itemized credit sale, already checked by `clean_sale`: they sum to `amount`.
     The entry joins the book of its currency: a payment is checked against, and reduces, what is owed in
@@ -459,6 +463,12 @@ async def append_entry_in(
         created_at=now,
         currency=currency,
     )
+    paid_by: cash.Method | None = None
+    if kind is EntryKind.PAYMENT:
+        # Money received: while the cash book is on, it is in the book from this same transaction.
+        paid_by = await cash_feed.payment_recorded_in(
+            session, actor, entry_id=entry_id, amount=amount, currency=currency, method=method, now=now
+        )
     if promised is not None:
         await session.add_promise(entry_id=entry_id, promised_date=promised, actor=promise_actor, created_at=now)
     stored_lines = await store_lines_in(session, actor, entry_id, lines) if lines else []
@@ -511,6 +521,9 @@ async def append_entry_in(
         body["limit_warning"] = limit_warning
     await notify.entry_recorded(session, customer_id, body)
     await removal.complete_if_due(session, customer_id, any(balances.values()), now)
+    if paid_by is not None:
+        # For the author only, and only while the cash book is on: which balance of it the money went to.
+        body["entry"]["method"] = paid_by.value
     return body
 
 
@@ -551,6 +564,9 @@ async def reverse_entry_in(
         created_at=now,
         currency=currency,
     )
+    if original.kind is EntryKind.PAYMENT:
+        # The money is no longer received: its entry in the cash book, if it has one, is cancelled with it.
+        await cash_feed.payment_reversed_in(session, actor, entry_id, now)
     await session.record_activity(
         membership_id=actor.membership_id,
         action="ledger.entry_reversed",
@@ -803,6 +819,7 @@ class LedgerService:
         request_key: str | None,
         lines: Sequence[LineRequest] | None = None,
         currency: str | None = None,
+        method: str | None = None,
     ) -> dict[str, Any]:
         started = time.perf_counter()
         async with self._storage.tenant(shop_id) as session:
@@ -810,6 +827,7 @@ class LedgerService:
             key = idempotency.validate_key(request_key)
             money = await require_currency(session, currency)
             entry_kind, text, total, goods = clean_sale(kind, amount, note, promised_date, lines, money)
+            paid_by = cash_feed.clean_method(kind, method)
             require_kind(actor, entry_kind)
             await require_writable(session, self._today(), new_credit=entry_kind is EntryKind.CREDIT)
 
@@ -826,6 +844,7 @@ class LedgerService:
                     started=started,
                     lines=goods,
                     currency=money,
+                    method=paid_by,
                 )
 
             # Only an entry in dollars carries its currency, so a so'm request keeps its fingerprint.
@@ -842,9 +861,17 @@ class LedgerService:
             if goods is not None:
                 # Only an itemized sale carries the key, so an amount-only request keeps its fingerprint.
                 request["lines"] = lines_request(goods)
+            if paid_by is not None:
+                # Likewise only a payment that names its method.
+                request["method"] = paid_by.value
             return await idempotency.run_once(
                 session, key=key, operation=RECORD_ENTRY.name, user_id=user_id, request=request, action=apply
             )
+
+    async def cash_book_on(self) -> bool:
+        """Whether the cash book is on: only then does recording a payment take a method."""
+        async with self._storage.platform() as session:
+            return await session.platform_setting(cash.SWITCH) is True
 
     async def add_lines(
         self, user_id: UUID, shop_id: UUID, entry_id: UUID, lines: Sequence[LineRequest], request_key: str | None

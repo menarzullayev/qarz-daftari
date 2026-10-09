@@ -6,8 +6,10 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Query
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, Field
 
+from qarz.application.cash_feed import UNKNOWN_FIELD
 from qarz.application.customers import (
     ARCHIVE_CUSTOMER,
     CREATE_CUSTOMER,
@@ -81,6 +83,10 @@ class NewEntry(BaseModel):
     lines: list[GoodsLine] | None = None
     # "UZS" (the default) or, in a shop that works in dollars, "USD": `amount` is then whole cents.
     currency: str | None = Field(default=None, max_length=8)
+    # How a payment was made: "cash" (the default), "card" or "transfer". Only while the cash book is on;
+    # while it is off the field does not exist, and a request that carries it is refused like any other
+    # request with an unknown field.
+    method: str | None = Field(default=None, max_length=16)
 
 
 class NewLines(BaseModel):
@@ -166,6 +172,12 @@ def add_customer_routes(
     async def record_entry(
         shop_id: UUID, customer_id: UUID, body: NewEntry, user_id: user, idempotency_key: IdempotencyKey = None
     ) -> dict[str, Any]:
+        if "method" in body.model_fields_set and not await ledger.cash_book_on():
+            # While the cash book is off the field does not exist: the request is answered exactly as it
+            # was before the field was added, as one that carries a field the API does not know.
+            raise RequestValidationError(
+                [{"type": "extra_forbidden", "loc": ("body", "method"), "msg": UNKNOWN_FIELD, "input": body.method}]
+            )
         return await ledger.record(
             user_id,
             shop_id,
@@ -177,6 +189,7 @@ def add_customer_routes(
             request_key=idempotency_key,
             lines=None if body.lines is None else [line.request() for line in body.lines],
             currency=body.currency,
+            method=body.method,
         )
 
     @app.post("/api/v1/shops/{shop_id}/entries/{entry_id}/lines", name=ADD_LINES.name, status_code=201)

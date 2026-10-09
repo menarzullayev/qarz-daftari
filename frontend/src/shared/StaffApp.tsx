@@ -66,6 +66,7 @@ const systemClock = () => new Date();
 const PaymentNoticesScreen = lazy(() => import("./workspace/PaymentNoticesScreen"));
 const DateRequestsScreen = lazy(() => import("./workspace/DateRequestsScreen"));
 const ReportsScreen = lazy(() => import("./reports/ReportsScreen"));
+const CashScreen = lazy(() => import("./cash/CashScreen"));
 const ExportsScreen = lazy(() => import("./exports/ExportsScreen"));
 const ImportScreen = lazy(() => import("./imports/ImportScreen"));
 const SupportAccessSection = lazy(() => import("./support/SupportAccessSection"));
@@ -148,6 +149,12 @@ function workspaceScreen(
           <ReportsScreen />
         </Suspense>
       );
+    case "cash":
+      return (
+        <Suspense fallback={<Loading />}>
+          <CashScreen />
+        </Suspense>
+      );
     case "exports":
       return (
         <Suspense fallback={<Loading />}>
@@ -198,12 +205,13 @@ export function StaffRoutes({
   const membershipId = session?.membershipId ?? null;
   const shopName = session?.shopName;
   const permissions = session?.permissions;
+  const features = session?.features;
   const workspace = useMemo(
     () =>
       api && role
-        ? { api, role, permissions, membershipId, botUsername, now, shopName, shopMode, shops, reloadSession }
+        ? { api, role, permissions, features, membershipId, botUsername, now, shopName, shopMode, shops, reloadSession }
         : null,
-    [api, role, permissions, membershipId, botUsername, now, shopName, shopMode, shops, reloadSession],
+    [api, role, permissions, features, membershipId, botUsername, now, shopName, shopMode, shops, reloadSession],
   );
 
   if (!session) {
@@ -221,7 +229,7 @@ export function StaffRoutes({
     );
   }
 
-  const sections = staffSections(session.role, session.permissions);
+  const sections = staffSections(session.role, session.permissions, session.features);
   const primaryCount = primaryTabCount(sections);
   const overflow = sections.slice(primaryCount);
   const match = matchWorkspaceRoute(path);

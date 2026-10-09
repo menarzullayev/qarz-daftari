@@ -52,7 +52,15 @@ type Phase =
   | { kind: "connecting" }
   | { kind: "signedOut"; everywhere: boolean }
   | { kind: "failed"; error: ApiError }
-  | { kind: "ready"; api: Api; shops: ShopMembership[]; activeShop: string | null; permissionsOn: boolean; isCustomer: boolean };
+  | {
+      kind: "ready";
+      api: Api;
+      shops: ShopMembership[];
+      activeShop: string | null;
+      permissionsOn: boolean;
+      cashBookOn: boolean;
+      isCustomer: boolean;
+    };
 
 const browserFetch: Fetch = (input, init) => window.fetch(input, init);
 
@@ -170,6 +178,7 @@ export function StaffWorkspace({
           shops: mine.items,
           activeShop: mine.activeShop,
           permissionsOn: mine.permissionsOn,
+          cashBookOn: mine.cashBookOn,
           isCustomer: Array.isArray(accounts) && accounts.length > 0,
         });
       }
@@ -228,6 +237,9 @@ export function StaffWorkspace({
     };
   }, [shopApi, shop, permissionsOn]);
   const reloadSession = useCallback(() => setAttempt((count) => count + 1), []);
+  // The parts of the product the platform has switched on; one object for as long as none changes.
+  const cashBookOn = ready?.cashBookOn ?? false;
+  const features = useMemo(() => ({ cashBook: cashBookOn }), [cashBookOn]);
 
   if (phase.kind === "connecting") {
     return (
@@ -331,6 +343,7 @@ export function StaffWorkspace({
         role: shop.role,
         membershipId: shop.membershipId,
         permissions: held?.shopId === shop.shopId ? held.permissions : null,
+        features,
       }}
       api={shopApi}
       now={now}

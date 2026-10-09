@@ -18,10 +18,17 @@ from qarz.application import idempotency
 from qarz.application.admin_receipts import CHAT as DECIDED_IN_CHAT
 from qarz.application.admin_receipts import AdminReceiptService, ReceiptAlreadyDecided
 from qarz.application.authorization import may
+from qarz.application.cash_book import book_in
 from qarz.application.chat_texts import CONSENT_VERSION, LANGUAGE_NAMES, both, day, money, say
 from qarz.application.currencies import USD, UZS, balance_in, currency_of, platform_dollars, tag
 from qarz.application.customer_account import CustomerAccountService
-from qarz.application.customers import CREATE_CUSTOMER, FreePlanFull, create_customer_in, require_writable
+from qarz.application.customers import (
+    CREATE_CUSTOMER,
+    FreePlanFull,
+    create_customer_in,
+    require_viewable,
+    require_writable,
+)
 from qarz.application.date_requests import (
     ACCEPT_ACTION,
     ACCEPT_DATE_REQUEST,
@@ -61,7 +68,7 @@ from qarz.application.shops import ShopService, require_member
 from qarz.application.staff import StaffService, token_hash
 from qarz.application.subscription import SubscriptionService
 from qarz.application.subscription_receipts import REVIEW_GROUP, SubscriptionReceiptService
-from qarz.domain import permissions, platform_settings
+from qarz.domain import cash, permissions, platform_settings
 from qarz.domain.chat_entry import ParsedEntry, ParseError, ParseErrorCode, parse_entry, parse_money
 from qarz.domain.disputes import clean_reason
 from qarz.domain.ledger import EntryKind
@@ -450,8 +457,14 @@ class ChatService:
                 await self._subscription_offer(incoming, replies, shop)
         elif command == "/toladim":
             await self._notice_start(session, incoming, replies)
+        elif command == "/kassa" and await self._cash_book_on(session):
+            # While the cash book is off this is no command at all: it falls through to the help below.
+            await self._cash_today(session, incoming, replies)
         elif command == "/yordam":
-            await replies.send(say(lang, "help"))
+            text = say(lang, "help")
+            if await self._cash_book_on(session):
+                text = "\n".join([text, say(lang, "cash_help")])
+            await replies.send(text)
         elif command in _LATER_COMMANDS:
             await replies.send(say(lang, "soon"))
         else:
@@ -1698,6 +1711,65 @@ class ChatService:
         except KeyError:
             return say(lang, "error")
 
+    async def _cash_book_on(self, session: PlatformSession) -> bool:
+        return await session.platform_setting(cash.SWITCH) is True
+
+    async def _cash_today(self, session: PlatformSession, incoming: Incoming, replies: Replies) -> None:
+        """`/kassa`: today's cash book of the active shop, for a member who may read it.
+
+        One line for each way of paying that holds or moved anything, and one total, per currency. The
+        currencies are never added together. The chat only reads the book; it is written in the Mini App
+        and the panel, so that "Ali 45000" can never be taken for an entry of it.
+        """
+        lang = incoming.lang
+        shops = await session.my_memberships(incoming.user_id)
+        shop = await self._active_shop(session, incoming.user_id, shops)
+        if not shops:
+            await replies.send(say(lang, "no_shops"), self._open_shop(lang))
+            return
+        if shop is None:
+            await replies.send(say(lang, "choose_shop"), self._shop_buttons(shops))
+            return
+        today = self._today()
+        try:
+            async with self._storage.tenant(shop.shop_id) as tenant:
+                member = await tenant.active_membership(incoming.user_id)
+                if member is None:
+                    raise NotFound()
+                if not may(member, permissions.CASH_VIEW):
+                    await replies.send(say(lang, "cash_forbidden"))
+                    return
+                await require_viewable(tenant, member, today)
+                lines = await book_in(tenant, today, today)
+        except AppError as error:
+            await replies.send(self._error_text(lang, error))
+            return
+        text = [say(lang, "cash_today", shop=shop.name, date=day(today))]
+        for currency, total in cash.totals_by_currency(lines).items():
+            text.append("")
+            for line in lines:
+                if line.currency is currency and (line.count or line.opening or line.closing):
+                    text.append(
+                        say(
+                            lang,
+                            "cash_line",
+                            method=say(lang, f"cash_method_{line.method.value}"),
+                            income=money(lang, line.income, currency),
+                            expense=money(lang, line.expense, currency),
+                            closing=money(lang, line.closing, currency),
+                        )
+                    )
+            text.append(
+                say(
+                    lang,
+                    "cash_total",
+                    income=money(lang, total.income, currency),
+                    expense=money(lang, total.expense, currency),
+                    closing=money(lang, total.closing, currency),
+                )
+            )
+        await replies.send("\n".join(text))
+
     async def _may_cancel(self, shop: MyShop, user_id: UUID) -> bool:
         """Whether to offer the button that reverses an entry: asked of the shop now, like the press itself."""
         async with self._storage.tenant(shop.shop_id) as tenant:
@@ -1763,6 +1835,9 @@ class ChatService:
                 now=self._now(),
                 started=incoming.received,
                 currency=currency,
+                # "Ali -45000 karta": a payment whose note is exactly a way of paying was made that way.
+                # It matters only while the cash book is on; the note itself stays as it was typed.
+                method=cash.method_from_note(note) if kind is EntryKind.PAYMENT else None,
             )
 
         return await idempotency.run_once(

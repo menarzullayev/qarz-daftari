@@ -43,6 +43,12 @@ EXPECTED: dict[str, tuple[set[Role], bool]] = {
     "reports.view": ({M, OWN}, False),
     "reports.export": ({M, OWN}, False),
     "imports.run": ({M, OWN}, False),
+    "cash.view": ({M, OWN}, False),
+    "cash.record_income": ({M, OWN}, False),
+    "cash.record_expense": ({M, OWN}, False),
+    "cash.cancel": ({M, OWN}, False),
+    "cash.categories": ({M, OWN}, False),
+    "cash.backfill": ({OWN}, False),
     "settings.view": ({M, OWN}, False),
     "settings.edit": ({M, OWN}, False),
     "shop.edit": ({OWN}, False),
@@ -132,9 +138,17 @@ def test_the_defaults_of_an_operations_permissions_are_the_role_table(op: Operat
             assert (role in permission.roles) is allows(role, op.capability), (op.name, permission.key, role)
 
 
-def test_only_recording_an_entry_is_opened_by_two_permissions() -> None:
+def test_the_operations_opened_by_more_than_one_permission() -> None:
     several = {op.name for op in shop_operations() if len(permissions.permissions_of_operation(op.name)) > 1}
-    assert several == {"ledger.entry.create"}, "a service must ask for the one the request needs"
+    assert several == {
+        # A credit sale needs one permission and a payment the other: the service asks for it.
+        "ledger.entry.create",
+        # Likewise income and expense of the cash book.
+        "cash.entry.create",
+        # The list of categories is what everyone who works with the cash book chooses from: reading,
+        # recording and arranging each open it, and there is nothing finer to ask inside.
+        "cash.categories.list",
+    }, "a service must ask for the one the request needs"
 
 
 def test_role_defaults_only_grow_upward() -> None:

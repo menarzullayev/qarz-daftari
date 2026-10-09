@@ -240,7 +240,17 @@ export type EntryKind = "credit" | "payment";
  * With `lines` the amount is not sent: the server uses the sum of the lines (REQ-037). With
  * `currency: "USD"` the amount is whole cents, and there are no lines: goods are priced in so'm.
  */
-export type NewEntry = { kind: EntryKind; note: string | null; promisedDate: string | null } & (
+/** How a payment was made; it decides which balance of the cash book the money goes to. */
+export const PAYMENT_METHODS = ["cash", "card", "transfer"] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+/** `method` is for a payment, and only while the cash book is on: otherwise the server does not know the field. */
+export type NewEntry = {
+  kind: EntryKind;
+  note: string | null;
+  promisedDate: string | null;
+  method?: PaymentMethod;
+} & (
   | { amount: number; currency?: Currency; lines?: never }
   | { lines: readonly NewLine[]; amount?: never; currency?: never }
 );
@@ -392,7 +402,13 @@ export type ShopMembership = {
  * `permissionsOn`: the server keeps a set of permissions per member, and each shop answers what the
  * signed-in member may do there (`myPermissions`). Off, the role alone says it.
  */
-export type MyShops = { items: ShopMembership[]; activeShop: string | null; permissionsOn: boolean };
+export type MyShops = {
+  items: ShopMembership[];
+  activeShop: string | null;
+  permissionsOn: boolean;
+  /** The platform has switched the cash book on: a shop then answers its cash routes, and offers it. */
+  cashBookOn: boolean;
+};
 
 /** A customer's objection to one entry. `status`: open, declined, withdrawn, or reversed (the shop agreed). */
 export type Dispute = { id: string; status: string; reason: string; declineReason: string | null };
@@ -980,11 +996,14 @@ function linesBody(lines: readonly NewLine[]): Wire["GoodsLine"][] {
 
 /** The header the server sends with a person's shops while the permission matrix is switched on. */
 export const PERMISSIONS_HEADER = "X-Qarz-Permissions";
+/** The header the server sends with a person's shops while the cash book is switched on. */
+export const CASH_BOOK_HEADER = "X-Qarz-Cash-Book";
 
 function myShops(value: unknown, headers: Headers): MyShops {
   const body = fieldsOf<Wire["MyShops"]>(value);
   return {
     permissionsOn: headers.get(PERMISSIONS_HEADER) === "on",
+    cashBookOn: headers.get(CASH_BOOK_HEADER) === "on",
     items: list(body.raw("items"), (element) => {
       const shop = fieldsOf<Wire["MyShop"]>(element);
       const role = shop.raw("role");
@@ -1413,6 +1432,12 @@ function shopApi(transport: Transport, shopId: string) {
       }
       if (input.promisedDate !== null) {
         body.promised_date = input.promisedDate;
+      }
+      if (input.method !== undefined) {
+        if (input.kind !== "payment") {
+          throw new RangeError("only a payment has a method");
+        }
+        body.method = input.method;
       }
       return call(transport, {
         method: "POST",

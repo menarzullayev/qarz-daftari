@@ -166,6 +166,7 @@ export const uzAdmin = {
   "admin.setting.permissions_on": "Xodimlarga alohida ruxsatlar yoqilgan",
   "admin.setting.customer_links_on": "Mijoz uchun havola va QR kod (Telegramsiz) yoqilgan",
   "admin.setting.usd_on": "Dollar (USD) yoqilgan",
+  "admin.setting.cash_book_on": "Kassa (kirim va chiqim daftari) yoqilgan",
 
   "admin.audit.filters": "Audit filtrlari",
   "admin.audit.at": "Vaqt",

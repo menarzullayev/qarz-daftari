@@ -74,6 +74,12 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
         "SUPPORT_ACCESS_ALREADY_OPEN",
         "SUPPORT_ACCESS_NOT_OPEN",  # the owner ends it in the panel
         "RECEIPT_ALREADY_DECIDED",  # receipts are decided in the administrator's panel
+        "CASH_ENTRY_OF_LEDGER",  # the cash book is written in the Mini App and the panel; the chat reads it
+        "CASH_ENTRY_CANCELLED",
+        "CASH_CATEGORY_ARCHIVED",
+        "CASH_CATEGORY_NAME_TAKEN",
+        "CASH_CATEGORY_FIXED",
+        "CASH_CATEGORY_IN_USE",
     }
     assert set(_STATUS) - spoken_elsewhere <= set(UZ)
 
