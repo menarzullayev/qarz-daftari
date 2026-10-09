@@ -66,45 +66,33 @@ SWITCH = "stock_on"
 @dataclass(frozen=True)
 class Unit:
     key: str  # the stored form, the same the catalogue has always folded spellings to
-    uz: str
-    ru: str
     weighed: bool  # sold by measure: a client offers a decimal quantity
 
 
 # The units a stock-tracked item may have. The catalogue itself still accepts any short unit a shop
-# types; an item is only counted in stock in one of these.
+# types; an item is only counted in stock in one of these. What each is called is a text like any other,
+# in every language of the product: `unit_<key>` of `qarz.application.export_texts`.
 UNITS: tuple[Unit, ...] = (
-    Unit("dona", "dona", "шт", False),
-    Unit("kg", "kg", "кг", True),
-    Unit("g", "g", "г", True),
-    Unit("l", "litr", "л", True),
-    Unit("ml", "ml", "мл", True),
-    Unit("m", "metr", "м", True),
-    Unit("quti", "quti", "коробка", False),
-    Unit("paket", "paket", "пакет", False),
-    Unit("juft", "juft", "пара", False),
-    Unit("qop", "qop", "мешок", False),
-    Unit("blok", "blok", "блок", False),
+    Unit("dona", False),
+    Unit("kg", True),
+    Unit("g", True),
+    Unit("l", True),
+    Unit("ml", True),
+    Unit("m", True),
+    Unit("quti", False),
+    Unit("paket", False),
+    Unit("juft", False),
+    Unit("qop", False),
+    Unit("blok", False),
 )
 UNIT_KEYS = frozenset(unit.key for unit in UNITS)
 
 # --- why goods were written off ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class Reason:
-    key: str
-    uz: str
-    ru: str
-
-
-WRITE_OFF_REASONS: tuple[Reason, ...] = (
-    Reason("damaged", "Shikastlangan", "Повреждён"),
-    Reason("expired", "Muddati o'tgan", "Истёк срок"),
-    Reason("lost", "Yo'qolgan", "Утерян"),
-    Reason("own_use", "O'z ehtiyojiga", "Для себя"),
-)
-WRITE_OFF_KEYS = frozenset(reason.key for reason in WRITE_OFF_REASONS)
+# Named in every language as `reason_<key>` of `qarz.application.export_texts`.
+WRITE_OFF_REASONS: tuple[str, ...] = ("damaged", "expired", "lost", "own_use")
+WRITE_OFF_KEYS = frozenset(WRITE_OFF_REASONS)
 
 # --- kinds --------------------------------------------------------------------------------------------------
 

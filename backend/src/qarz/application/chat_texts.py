@@ -65,6 +65,10 @@ UZ = {
     # of a confirmed delivery, the reason of a payment taken back, and the name of a partner without one.
     "net_sale_note": "Yuk xati № {number}",
     "net_paid_note": "Yuk xati № {number}: to'lov",
+    # The note a stock document writes beside its entry in a supplier's or a customer's account and in
+    # the cash book, in the shop's language.
+    "stock_purchase_note": "Kirim № {number}",
+    "stock_return_note": "Tovar qaytarildi, hujjat № {number}",
     "net_withdrawn_reason": "Hamkor to'lovi qaytarib olindi",
     "net_partner_name": "Hamkor",
     "net_partner_suffix": "hamkor",
@@ -497,6 +501,10 @@ RU = {
     "net_payment_withdrawn": "«{shop}» отозвал запись об оплате {amount}.",
     "net_sale_note": "Накладная № {number}",
     "net_paid_note": "Накладная № {number}: оплата",
+    # The note a stock document writes beside its entry in a supplier's or a customer's account and in
+    # the cash book, in the shop's language.
+    "stock_purchase_note": "Приход № {number}",
+    "stock_return_note": "Возврат товара, документ № {number}",
     "net_withdrawn_reason": "Запись об оплате партнёра отозвана",
     "net_partner_name": "Партнёр",
     "net_partner_suffix": "партнёр",

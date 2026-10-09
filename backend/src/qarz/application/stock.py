@@ -19,6 +19,7 @@ from qarz.application import idempotency
 from qarz.application.authorization import may
 from qarz.application.customers import MAX_PAGE, decode_cursor, encode_cursor, require_viewable, require_writable
 from qarz.application.errors import AppError, NotFound, ValidationFailed
+from qarz.application.export_texts import in_every_language
 from qarz.application.operations import operation
 from qarz.application.ports import Membership, Storage, TenantSession
 from qarz.application.shops import require_member
@@ -134,11 +135,14 @@ def settings_body(*, refuse_negative: bool, currencies: tuple[str, ...], cash_bo
         # was paid (cash, card, transfer).
         "cash_book": cash_book,
         "currencies": list(currencies),
+        # Each name in all six languages, like a permission's (`GET .../permissions`): the reader's client
+        # picks its own.
         "units": [
-            {"key": unit.key, "label": {"uz": unit.uz, "ru": unit.ru}, "weighed": unit.weighed} for unit in stock.UNITS
+            {"key": unit.key, "label": in_every_language(f"unit_{unit.key}"), "weighed": unit.weighed}
+            for unit in stock.UNITS
         ],
         "write_off_reasons": [
-            {"key": reason.key, "label": {"uz": reason.uz, "ru": reason.ru}} for reason in stock.WRITE_OFF_REASONS
+            {"key": reason, "label": in_every_language(f"reason_{reason}")} for reason in stock.WRITE_OFF_REASONS
         ],
         "document_kinds": list(stock.DOCUMENT_KINDS),
     }

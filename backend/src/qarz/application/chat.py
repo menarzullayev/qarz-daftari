@@ -47,6 +47,7 @@ from qarz.application.errors import (
     NotFound,
     ValidationFailed,
 )
+from qarz.application.export_texts import word
 from qarz.application.files import FileService
 from qarz.application.group_receipts import GroupReceiptService
 from qarz.application.ledger_service import (
@@ -1093,7 +1094,7 @@ class ChatService:
         if not low:
             await replies.send(say(lang, "ombor_none", shop=shop.name))
             return
-        units = {unit.key: unit.ru if lang == "ru" else unit.uz for unit in stock.UNITS}
+        units = {unit.key: word(lang, f"unit_{unit.key}") for unit in stock.UNITS}
         lines = [say(lang, "ombor_low", shop=shop.name), ""]
         lines += [
             say(
