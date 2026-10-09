@@ -76,6 +76,30 @@ to Eskiz (`notify.eskiz.uz`) from the worker, behind the platform switch `sms_on
 - **Database:** no new right. Migration 0032 adds one index for the health figures.
 - **Not reviewed by anyone but its author, and never run against Eskiz.**
 
+## Added after the review: the operations watch (Telegram alerts)
+
+Not part of the review above and not seen by its reviewer; recorded here by the build (the founder's
+decision of 2026-10-09, DEC-078). The worker evaluates a fixed set of conditions every minute and sends
+a message to the operators' Telegram chat (`application/ops_watch.py`, `domain/ops_alerts.py`,
+`infrastructure/ops_probes.py`, `infrastructure/telegram_alerts.py`; migration 0035). What it adds to
+what can be reached, and by whom:
+
+| New right or exposure | Who gets it | What it is, and what bounds it |
+|---|---|---|
+| Tables `ops_alert` and `ops_sample` | `qd_worker`: all four rights on the first, `SELECT`, `INSERT`, `DELETE` on the second. `qd_app` and `qd_admin`: nothing | The watch's own state: a rule's name with a label the code supplies, moments, a figure, a fixed word for the last send. No tenant, no person. Listed in `tests/db/test_database_roles.py` and `tests/db/test_security_review_db.py` |
+| `open_debt_mismatch_count()` (new, `SECURITY DEFINER`, `search_path = public, pg_temp`, closed to PUBLIC) | `qd_worker` | A count over every shop of where the stored open debts differ from the ledger. The comparison itself, `open_debt_mismatches`, returns identifiers and amounts and stays executable by nobody. One statement a day, bounded by the worker's 60-second statement timeout; on a large database it may be cancelled, and then `JobNotRunning:ledger_check` says so after a day |
+| `oldest_waiting_receipt()` (existing) | now also `qd_worker` | One moment, nothing of the receipt. The API already had it for `/metrics` |
+| The metrics token (`QD_METRICS_TOKEN`) | now also handed to the worker | The worker reads the API's `/metrics` inside the Compose network: counts by route template and by kind of security event, no identifiers. Whoever takes over the worker could already read the outbox, which is worth far more |
+| The backup jobs' figures (single host): volumes `backup-figures` and `files-state`, read-only | the worker's container | Numbers: when a backup ended, how old the newest WAL segment is, whether the restore test passed, when the files were copied. The worker is given neither the `backup-state` volume (the restore test's throwaway database, the monthly dumps), nor the database's files, nor the bucket's key, nor the passphrase; `single_host_static.py` fails for a composition where it is |
+| Messages to a chat named in the environment (`QD_ALERT_CHAT_IDS`) | whoever is in that chat | A rule's name, a label, a figure, two moments, in fixed words. No shop, person, phone number, amount or message text: a line is built from a key that must be a known rule and a plain label, and the rule's text has no placeholder (tests: a round against a real outbox row, and the refusal of a key made of anything else). The security rules name a kind of event and a count, never who or which shop. The chat is configuration, not data: nobody can change it through the application |
+| Outbound calls | the worker, to Telegram (as before) and to `http://api:8000` | No new destination outside the machine |
+
+What this does **not** do: it does not make the worker able to read tenant data it could not read
+before, and it gives the ordinary role `qd_app` nothing. What a reviewer should look at: that a message
+cannot be made to carry tenant content (`render` in `application/ops_watch.py`), and that the group
+named in `QD_ALERT_CHAT_IDS` is one whose members may know that, for example, an administrator opened a
+support access.
+
 ## What was read
 
 | Area | Files |

@@ -1,5 +1,6 @@
 """What the application needs from storage and from the outside world. Implemented in the infrastructure layer."""
 
+from collections.abc import Mapping
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -9,6 +10,7 @@ from uuid import UUID
 
 from qarz.domain.access import Role
 from qarz.domain.ledger import Entry
+from qarz.domain.ops_alerts import Alert, DatabaseFigures
 
 
 @dataclass(frozen=True)
@@ -1322,6 +1324,32 @@ class PlatformSession(Protocol):
     async def job_done(self, job: str, period: str) -> bool: ...
 
     async def finish_job(self, job: str, period: str) -> None: ...
+
+    # --- the operations watch (DEC-078) ------------------------------------------------------------------
+
+    async def ops_alerts(self) -> list[Alert]:
+        """Every condition that holds, or stopped and has not been said yet."""
+        ...
+
+    async def store_ops_alert(self, alert: Alert) -> None: ...
+
+    async def delete_ops_alert(self, key: str) -> None: ...
+
+    async def ops_database_figures(self, now: datetime) -> DatabaseFigures:
+        """Ages and counts of the outbox, the scheduled jobs, SMS, receipts and the ledger check."""
+        ...
+
+    async def add_ops_samples(self, taken_at: datetime, values: Mapping[str, float]) -> None: ...
+
+    async def ops_samples(self, since: datetime) -> dict[str, list[tuple[datetime, float]]]: ...
+
+    async def prune_ops_samples(self, before: datetime) -> None:
+        """Delete samples older than `before`, keeping the newest of every series."""
+        ...
+
+    async def ledger_mismatch_count(self) -> int:
+        """In how many places the stored open debts differ from the ledger, over every shop."""
+        ...
 
     async def use_signed_data(self, payload_hash: bytes, expires_at: datetime) -> bool:
         """Remember that this signed sign-in payload was accepted. False when it already had been."""

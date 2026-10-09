@@ -171,7 +171,55 @@ def backups_are_encrypted_and_scheduled(c: Composition) -> str | None:
     return None
 
 
+def the_watch_reads_figures_and_nothing_else(c: Composition) -> str | None:
+    """The worker's operations watch (DEC-078): it is shown the figures of the backup jobs read-only, and
+    is given neither the backups' state, nor the database's files, nor the bucket's key or passphrase."""
+    worker = services(c)["worker"]
+    mounts = {volume.get("source"): volume for volume in worker.get("volumes") or []}
+    for source in ("backup-figures", "files-state"):
+        if source not in mounts:
+            return f"the worker is not shown {source}"
+        if not mounts[source].get("read_only"):
+            return f"the worker can write to {source}"
+    for source in ("backup-state", "pgdata", "pgsocket", "pgscratch"):
+        if source in mounts:
+            return f"the worker mounts {source}"
+    environment = worker.get("environment") or {}
+    for name in environment:
+        if name.startswith("QD_R2_") or name == "QD_BACKUP_PASSPHRASE":
+            return f"the worker is handed {name}"
+    for name in (
+        "QD_ALERT_API_URL",
+        "QD_ALERT_BACKUP_FIGURES_DIR",
+        "QD_ALERT_FILES_FIGURES_DIR",
+        "QD_ALERT_DISK_PATHS",
+    ):
+        if not environment.get(name):
+            return f"the worker is not told {name}"
+    targets = {volume.get("source"): volume.get("target") for volume in worker.get("volumes") or []}
+    if environment["QD_ALERT_BACKUP_FIGURES_DIR"] != targets["backup-figures"]:
+        return "the worker looks for the backups' figures where they are not mounted"
+    if environment["QD_ALERT_FILES_FIGURES_DIR"] != targets["files-state"]:
+        return "the worker looks for the files' figures where they are not mounted"
+    written = [
+        v.get("target") for v in services(c)["backup"].get("volumes") or [] if v.get("source") == "backup-figures"
+    ]
+    if written != [targets["backup-figures"]]:
+        return "the backup jobs do not write their figures into the volume the worker reads"
+    return None
+
+
 Check = Callable[[Composition], str | None]
+
+
+def _watch_can_write(s: dict[str, Any]) -> None:
+    for volume in s["worker"]["volumes"]:
+        if volume["source"] == "backup-figures":
+            volume["read_only"] = False
+
+
+def _watch_sees_the_state(s: dict[str, Any]) -> None:
+    s["worker"]["volumes"].append({"type": "volume", "source": "backup-state", "target": "/x", "read_only": True})
 
 
 def break_by(change: Callable[[dict[str, Any]], None]) -> Callable[[Composition], None]:
@@ -243,6 +291,21 @@ CHECKS: list[tuple[str, Check, Callable[[Composition], None]]] = [
         "the live data volume is writable by the database alone (and by a restore into an empty one)",
         the_live_data_is_written_by_the_database_alone,
         break_by(_add_writer),
+    ),
+    (
+        "the worker's watch is shown the backup figures read-only",
+        the_watch_reads_figures_and_nothing_else,
+        break_by(_watch_can_write),
+    ),
+    (
+        "the worker's watch is shown nothing else of the backups",
+        the_watch_reads_figures_and_nothing_else,
+        break_by(_watch_sees_the_state),
+    ),
+    (
+        "the worker's watch is not handed the bucket's passphrase",
+        the_watch_reads_figures_and_nothing_else,
+        break_by(lambda s: s["worker"]["environment"].update(QD_BACKUP_PASSPHRASE="x")),
     ),
     (
         "every image is pinned by a tag",

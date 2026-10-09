@@ -1,7 +1,7 @@
 # Runbooks
 
-The runbooks the operations document asks for (`OUTPUT.md`, "Runbooks"): its thirteen, and two for the
-single host (14 and 15). They are written from the system as it is built on 2026-10-07; the parts for the
+The runbooks the operations document asks for (`OUTPUT.md`, "Runbooks"): its thirteen, two for the
+single host (14 and 15), and one for the alerts the worker sends (16, added 2026-10-09 with DEC-078). They are written from the system as it is built on 2026-10-07; the parts for the
 single host on 2026-10-08. **None has been executed**: there are no servers, no monitoring
 system and no production environment yet (the deployment files of `deploy/production/` have run only on
 a developer machine), so launch criterion 10 ("each executed once") is
@@ -696,3 +696,68 @@ byte for byte (`deploy/production/scripts/single-host-proof.sh`, sections 8 and 
 **Not proven:** any of it on a second real machine, against the real bucket, by a person, with a clock.
 Of the "On the same machine" commands, only the copy of a volume was tried (on the proof's own volume: the
 same number of files, the same owner); the sequence as a whole has never been run.
+
+## 16. An alert arrived in the operators' chat; the test alert; the notification from outside
+
+Added on 2026-10-09 (the founder's decision, DEC-078). **None of it has been executed against real
+Telegram or on the real machine.** The worker watches the service every minute and writes to the
+Telegram chats named in `QD_ALERT_CHAT_IDS` (`deploy/production/SINGLE-HOST.md`, "What is watched, and
+what is not", has the full table and the thresholds). A message has three kinds of line: 🔴 it began,
+🟠 it still goes on (every four hours), 🟢 it stopped, with from when to when. A line names a rule and
+sometimes a label, never a shop or a person.
+
+### Once, after the first deployment (launch criterion 9)
+
+1. Put your numeric Telegram identifier, or a group's (negative; add the bot to the group first), into
+   `QD_ALERT_CHAT_IDS` in the env file, and run `single-host.sh up` so that the worker reads it. A person
+   must have sent `/start` to the bot once, or Telegram refuses the message.
+2. `single-host.sh alert-test`. It prints `ACCEPTED` or `NOT DELIVERED` with the reason for every chat.
+   **Then look in the chat**: the criterion is "triggered and received", and the command can only know
+   the first half. Write down the date and that you saw it.
+3. See one real alert arrive and stop: `docker compose -p qarz stop files-backup`, wait about 25 minutes
+   for `FilesCopyStale`, `docker compose -p qarz start files-backup`, wait for the 🟢.
+4. **Turn on Cloudflare's notification for the tunnel.** Cloudflare dashboard, *Notifications*, *Add*,
+   **Tunnel Health Alert**, this tunnel, your e-mail. This is the only thing that tells you when the
+   machine is off, offline, or Docker is not running: the worker's watch runs on that machine and is
+   silent then. Test it: `single-host.sh stop`, wait for the e-mail, `single-host.sh start`. Optional
+   and worth it: an uptime service asking `https://<host>/healthz` every minute.
+
+After any change of the bot's token or of the chats, repeat step 2.
+
+### When an alert arrives
+
+`single-host.sh status` shows the containers, the backups and what is firing; `single-host.sh logs
+worker` shows the watch's own lines (`ops_alert_firing`, `ops_alert_resolved`, `ops_alert_not_sent`).
+
+| The message says | Look at | Then |
+|---|---|---|
+| `BackupMissing`, `BackupFailed`, `RestoreTestNotPassed`, `RestoreTestFailed` | `single-host.sh logs backup`: the job's JSON line and the lines before it | Usually the bucket cannot be reached (the link, the R2 key) or the disk is full. Fix that, then `single-host.sh backup full` or `restore-test`. A restore test that fails on a good link is serious: the newest backup may not be restorable; take a new full backup and test again, and do not delete anything |
+| `WalArchiveStale` | The same log; `single-host.sh status` | The database is not sending its log to the bucket, or the check is not running. Until it is fixed, a lost disk loses everything since the last archived segment. If the link is down, it catches up by itself when the link returns |
+| `FilesCopyStale` | `single-host.sh logs files-backup` | The same causes. Receipts uploaded since the last copy exist on this machine only |
+| `DiskAlmostFull` | `docker system df`; `single-host.sh status` | Free space before the database stops: old images of earlier releases (`docker image ls`), never a volume. Runbook 14 has what else lives on that disk |
+| `OutboxOld`, `DispatcherFailing` | `single-host.sh logs worker` | Messages are not going out. With `TelegramUnreachable` beside it: the link, or Telegram. With `TelegramRefusesBot`: the token (runbook 4). Otherwise restart the worker (`docker compose -p qarz restart worker`) and read why it stopped. Nothing is lost: messages wait up to 24 hours |
+| `TelegramRefusesBot`, `TelegramUnreachable` | These reach you only after they stopped (the alert could not be sent while they held) | Read the period in the 🟢 line and check what did not go out meanwhile; runbook 5 |
+| `RemindersNotRunning`, `JobNotRunning:<job>` | `single-host.sh logs worker`, lines `schedule_failed` | A scheduled job fails every time it is tried. The error names the place. `ledger_check` failing alone on a large database means its one statement takes longer than the worker's 60 seconds: tell the developer |
+| `LedgerMismatch` | Nothing in the panel shows it; the figure in the message is in how many places | The stored open debts differ from the ledger somewhere. The ledger is the truth and the stored figures can be rebuilt from it (`refresh_open_debts`, as the owner). **Do not edit anything by hand**: this should never happen and means a defect, so tell the developer first |
+| `ReceiptsWaiting` | The panel, receipts | Runbook 8 |
+| `SmsRefused`, `SmsNotGoingOut` | Runbook 12, "When SMS fail" | |
+| `ApiDown`, `MetricsMissing`, `ErrorRateHigh` | `single-host.sh logs api`; `single-host.sh status` | Runbook 5. `ErrorRateHigh` right after a release: runbook 1, roll back |
+| `CrossTenantAttempt`, `InvalidSignaturesRepeated`, `AdminSecondFactorRepeated`, `AdminWithoutSupportAccess` | `single-host.sh logs api`, lines with `"event":"security"`: they carry the request identifier, the user and the shop | One `CrossTenantAttempt` is often a member who was just removed. Repeated, or with the others: runbook 11 |
+| `SupportAccessOpened`, `ShopOwnerReassigned` | The admin audit in the panel | Expected now and then; you should be able to name the reason for each (runbooks 9 and 7) |
+| "the worker cannot reach the database" | `single-host.sh status`, `single-host.sh logs db` | Runbook 5, then 14. While it lasts nothing else is watched |
+
+### When no alert arrives and one should have
+
+- `single-host.sh alert-test`: `NOT DELIVERED` says whether it is the token, the chat or the network.
+- `single-host.sh status`: under "operations watch", `FIRING, nobody told (unconfigured)` means
+  `QD_ALERT_CHAT_IDS` is empty in the env file the worker was started with.
+- The worker is not running or is restarting (`single-host.sh status`): then nothing is watched at all,
+  and nothing says so. This is the gap the watch cannot close for itself.
+
+**What has been proven and what has not.** In tests, with Telegram replaced: every condition fires and
+does not fire at its threshold; an alert is told once, repeated after four hours, taken back once, kept
+quiet with no chat configured, and stays owed while Telegram fails. In containers
+(`single-host-proof.sh`, section 7a; CI job `single-host`): a WAL figure made stale by hand became a
+firing alert in the worker's table, the failed attempt to send it was recorded (every way out of the
+stack is closed), and it stopped when the figure was fresh again. **Not proven:** a message arriving in
+a real Telegram chat, the Cloudflare notification, and any of the steps above on the real machine.

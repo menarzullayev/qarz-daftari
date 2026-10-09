@@ -9,7 +9,10 @@
 : "${QD_DATABASE:=qarz}"
 : "${QD_PGUSER:=postgres}"
 : "${QD_STATE_DIR:=/var/lib/qarz-backup}"
-: "${QD_TEXTFILE_DIR:=$QD_STATE_DIR/textfile}"
+# The figures (*.prom) go to a directory of their own, outside the state directory: it is a volume
+# the worker mounts read-only for its operations watch, and the worker must see nothing else of the
+# backups' state.
+: "${QD_TEXTFILE_DIR:=/var/lib/qarz-backup-figures}"
 : "${QD_RESTORE_TEST_DIR:=$QD_STATE_DIR/scratch}"
 : "${QD_MONTHLY_DIR:=$QD_STATE_DIR/monthly}"
 # The scripts of deploy/backup read an env file when one exists; here everything is in the environment.

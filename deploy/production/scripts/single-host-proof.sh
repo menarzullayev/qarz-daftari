@@ -82,6 +82,9 @@ QD_WEBHOOK_SECRET=$(openssl rand -hex 24)
 QD_SECRETS_KEY=$(openssl rand -base64 32)
 QD_ADMIN_TG_IDS=1
 QD_METRICS_TOKEN=$(openssl rand -hex 16)
+# Not a chat: a number of the right shape, so that the watch has somebody to tell. Every way out of
+# the stack is closed, so nothing is sent; the proof reads what the watch recorded.
+QD_ALERT_CHAT_IDS=-1001000000001
 EOF
   )
 }
@@ -167,6 +170,16 @@ expect_field() {
 said() { grep -qF -- "$2" "$OUT_DIR/$1.err" "$OUT_DIR/$1.out"; }
 
 sql() { dc exec -T db psql -X -qAt -v ON_ERROR_STOP=1 -U postgres -d qarz -c "$1" | tr -d '\r'; }
+# wait_for_sql SECONDS QUERY WANTED: true as soon as the query answers WANTED, false after SECONDS.
+wait_for_sql() {
+  local waited=0
+  while [ "$waited" -lt "$1" ]; do
+    [ "$(sql "$2" 2> /dev/null)" != "$3" ] || return 0
+    sleep 5
+    waited=$((waited + 5))
+  done
+  return 1
+}
 job() { dc exec -T backup /opt/qarz-single/job.sh "$@"; }
 in_tunnel() { dc exec -T cloudflared "$@"; }
 # docker, with arguments that are paths inside a container.
@@ -349,12 +362,42 @@ r = c.getresponse(); print(r.status, r.getheader("Location") or "")' "$marker" "
   step check-fresh-again 0 job check
   step health-after-fresh-check 0 dc exec -T backup /opt/qarz-single/healthcheck.sh
   local figures wanted
-  figures="$(dc exec -T backup bash -c 'cat /var/lib/qarz-backup/textfile/*.prom' | grep -v '^#' | tr -d '\r')"
+  figures="$(dc exec -T backup bash -c 'cat /var/lib/qarz-backup-figures/*.prom' | grep -v '^#' | tr -d '\r')"
   echo "$figures" | sort | sed 's/^/      /'
   for wanted in 'qd_backup_last_success_timestamp_seconds{type="full"}' 'qd_backup_last_success_timestamp_seconds{type="diff"}' \
     'qd_backup_restore_test_last_success_timestamp_seconds' 'qd_backup_last_run_success{type="diff"}'; do
     expect "written and not zero: $wanted" bash -c 'grep -F "$2 " <<< "$1" | grep -qv " 0$"' _ "$figures" "$wanted"
   done
+
+  # ---------------------------------------------------------------------------------------------
+  section "7a. The operations watch: a stale WAL archive becomes a firing alert in the worker, then stops"
+  # The worker sees the figures and nothing else of the backups, read-only.
+  expect "the worker reads the backup jobs' figures" \
+    dc exec -T worker python -c 'import sys; from qarz.infrastructure.ops_probes import read_figure_files as r; sys.exit(0 if "qd_wal_archive_newest_age_seconds" in r("/var/lib/qarz-backup-figures") else 1)'
+  expect "the worker cannot write there" \
+    refuses dc exec -T worker python -c 'open("/var/lib/qarz-backup-figures/x.prom", "w")'
+  expect "the worker sees nothing of the backups' state" \
+    refuses dc exec -T worker python -c 'import os; os.listdir("/var/lib/qarz-backup")'
+  expect "nothing is firing about the WAL archive while it is fresh" \
+    [ "$(sql "select count(*) from ops_alert where key = 'WalArchiveStale' and firing_since is not null and resolved_at is null")" = 0 ]
+  # The schedule is stopped so that its check does not write the true figure back, and the figure is
+  # made stale by hand: the newest archived segment is said to be 9999 seconds old.
+  step stop-the-schedule 0 dc stop backup
+  step make-the-wal-figure-stale 0 dc run --rm --no-deps -T backup bash -c 'f=/var/lib/qarz-backup-figures/qd_backup_repo.prom; sed "s/^qd_wal_archive_newest_age_seconds .*/qd_wal_archive_newest_age_seconds 9999/" "$f" > "$f.tmp" && mv -f "$f.tmp" "$f" && grep -q "^qd_wal_archive_newest_age_seconds 9999$" "$f"'
+  # A round a minute, and the rule waits a minute before it fires: two to three minutes.
+  expect "the worker records WalArchiveStale as firing" \
+    wait_for_sql 240 "select count(*) from ops_alert where key = 'WalArchiveStale' and firing_since is not null and resolved_at is null" 1
+  # Telegram cannot be reached from here (every way out is closed): the attempt is recorded, the alert
+  # stays owed, and nothing is queued anywhere.
+  expect "the attempt to tell the chat is recorded as not delivered, and the alert stays owed" \
+    wait_for_sql 90 "select count(*) from ops_alert where key = 'WalArchiveStale' and notified_at is null and attempts >= 1 and last_outcome = 'unreachable'" 1
+  expect "no alert went into the outbox" [ "$(sql "select count(*) from outbox_message where payload::text like '%WalArchiveStale%'")" = 0 ]
+  step start-the-schedule-again 0 dc start backup
+  step check-after-stale-figure 0 job check
+  expect "once the figure is fresh again the worker records that the alert stopped" \
+    wait_for_sql 180 "select count(*) from ops_alert where key = 'WalArchiveStale' and resolved_at is null" 0
+  step alert-test-without-telegram 1 dc exec -T worker python -m qarz.interface.alert_test
+  expect "the test alert says that Telegram did not take it" said alert-test-without-telegram "NOT DELIVERED: chat 1 (...0001)"
 
   # ---------------------------------------------------------------------------------------------
   section "8. The stored files: an encrypted copy in the bucket"

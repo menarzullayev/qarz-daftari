@@ -71,6 +71,19 @@ class Settings(BaseSettings):
     # across shops and get longer. 0 means no limit.
     statement_timeout_ms: int = 5000
     worker_statement_timeout_ms: int = 60000
+    # The operations watch (DEC-078), read by the worker only. Telegram chats that are told when something
+    # is wrong, separated by commas: a person's identifier, or a group's (a negative number). It may be
+    # the review group, and is set apart from it. Empty: the watch runs and logs, and tells nobody.
+    alert_chat_ids: str = Field(default="", repr=False)
+    # The API as the worker reaches it inside the Compose network, scheme://host:port. Empty: the API is
+    # not watched. With it and QD_METRICS_TOKEN the worker also reads the API's counters.
+    alert_api_url: str = ""
+    # Directories, mounted read-only, where the backup jobs and the copy of the stored files write their
+    # figures (the single host). Empty: backups are not watched from here.
+    alert_backup_figures_dir: str = ""
+    alert_files_figures_dir: str = ""
+    # Paths whose filesystems are watched for space, separated by commas. Empty: none.
+    alert_disk_paths: str = ""
 
     def admin_allow_list(self) -> frozenset[int]:
         """The allow-list as numbers. Anything that is not a positive whole number refuses to start."""
@@ -83,3 +96,21 @@ class Settings(BaseSettings):
                 raise ValueError("QD_ADMIN_TG_IDS must be Telegram user identifiers separated by commas")
             ids.add(int(raw))
         return frozenset(ids)
+
+    def alert_chats(self) -> tuple[int, ...]:
+        """The chats of the operations alerts, in the order written. Anything that is not a whole number
+        other than zero refuses to start: a typing mistake must not silently mean "tell nobody"."""
+        chats: list[int] = []
+        for part in self.alert_chat_ids.split(","):
+            raw = part.strip()
+            if not raw:
+                continue
+            digits = raw[1:] if raw.startswith("-") else raw
+            if not (digits.isascii() and digits.isdigit()) or int(digits) == 0:
+                raise ValueError("QD_ALERT_CHAT_IDS must be Telegram chat identifiers separated by commas")
+            if int(raw) not in chats:
+                chats.append(int(raw))
+        return tuple(chats)
+
+    def alert_disks(self) -> tuple[str, ...]:
+        return tuple(part.strip() for part in self.alert_disk_paths.split(",") if part.strip())

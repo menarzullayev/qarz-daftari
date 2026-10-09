@@ -26,7 +26,13 @@ RUN groupadd --system --gid 10001 qarz \
     && useradd --system --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent \
        --shell /usr/sbin/nologin qarz \
     && python -m pip uninstall --yes pip \
-    && install -d -o 10001 -g 10001 /var/lib/qarz/files
+    && install -d -o 10001 -g 10001 /var/lib/qarz/files /var/lib/qarz-files-backup \
+    && install -d -o 999 -g 999 -m 755 /var/lib/qarz-backup-figures
+# The last two directories are where the single-host deployment mounts, read-only, the figures of
+# its backup jobs for the worker's operations watch. Docker gives an empty volume the owner of the
+# directory it is first mounted over, whichever container that is, so they carry here the owners
+# they have in the database image (deploy/production/single-host/postgres/Dockerfile): the
+# application's user for the files' copy, and 999 (postgres there) for the backups.
 WORKDIR /app
 COPY --from=build /opt/venv /opt/venv
 COPY alembic.ini ./

@@ -16,11 +16,14 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl jq openssl pgbackrest rclone \
     && rm -rf /var/lib/apt/lists/* \
     && install -d -o postgres -g postgres -m 750 /var/lib/qarz-backup \
+    && install -d -o postgres -g postgres -m 755 /var/lib/qarz-backup-figures \
     && install -d -o 10001 -g 10001 -m 755 /var/lib/qarz /var/lib/qarz/files /var/lib/qarz-files-backup \
     && rm -f /etc/pgbackrest.conf
 # About the line with 10001 above: the stored files and the state of their copy belong to the
 # application's user, exactly as in the backend image. Docker gives an empty volume the owner and mode
 # of the directory it is mounted over, whichever container mounts it, so the two images must agree.
+# The same holds for /var/lib/qarz-backup-figures (the figures of the backup jobs, which the worker
+# reads): postgres owns it here, and the backend image names the same owner by number.
 
 COPY production/single-host/postgres/pgbackrest.conf /etc/pgbackrest/pgbackrest.conf
 # The scripts written for the two-server design, unchanged: a backup, the restore test, expiry, the

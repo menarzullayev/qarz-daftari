@@ -191,6 +191,9 @@ _PLATFORM_RIGHTS: dict[str, tuple[set[str], set[str]]] = {
     "job_run": ({"SELECT"}, set()),
     "chat_pending": ({"SELECT", "INSERT", "DELETE"}, set()),
     "alembic_version": (set(), set()),
+    # The operations watch (migration 0035) is the worker's: the application holds nothing on its state.
+    "ops_alert": (set(), set()),
+    "ops_sample": (set(), set()),
 }
 _TABLE_RIGHTS = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
 

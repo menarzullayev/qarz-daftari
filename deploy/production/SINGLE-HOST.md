@@ -40,7 +40,7 @@ visitor ── HTTPS ──> Cloudflare ══ tunnel (outbound from this machin
 
 Nothing in the composition publishes a port on the host and nothing of the host's file system is
 mounted: the way in is the tunnel, and every piece of state is a Docker volume
-(`pgdata`, `files`, `backup-state`, `files-state`, `pgsocket`).
+(`pgdata`, `files`, `backup-state`, `backup-figures`, `files-state`, `pgsocket`).
 
 ## First deployment: the founder's checklist
 
@@ -151,6 +151,7 @@ none of them and refuses to overwrite an existing file.
 | `DEPLOY_R2_ENDPOINT`, `DEPLOY_R2_BUCKET`, `DEPLOY_R2_ACCESS_KEY_ID`, `DEPLOY_R2_SECRET_ACCESS_KEY` | steps 3.1 and 3.2 |
 | `VITE_BOT_USERNAME`, `QD_BOT_TOKEN` | BotFather: the production bot's username without `@`, and its token |
 | `QD_ADMIN_TG_IDS` | the numeric Telegram identifiers of the administrators, separated by commas |
+| `QD_ALERT_CHAT_IDS` | whom the worker's watch tells when something is wrong: your numeric Telegram identifier, or a group's (negative; the bot must be in it). See "What is watched". Empty: nobody is told |
 
 A value that contains `$` goes in single quotes. The file is never committed, never pasted into a chat,
 and never printed by the scripts.
@@ -209,6 +210,7 @@ Nothing in this repository calls Telegram.
 deploy/production/scripts/single-host.sh status       # everything Up; backups and WAL fresh; files copied
 deploy/production/scripts/single-host.sh smoke        # smoke.sh against https://$DEPLOY_PUBLIC_HOST
 deploy/production/scripts/single-host.sh restore-test # "outcome":"ok"
+deploy/production/scripts/single-host.sh alert-test   # ACCEPTED, and the TEST message is in your chat
 ```
 
 - `docker compose -p qarz logs proxy | tail`: `remote_addr` must be visitors' own addresses (yours, when
@@ -217,13 +219,18 @@ deploy/production/scripts/single-host.sh restore-test # "outcome":"ok"
   limits by address count all visitors as one: stop and find out why before going on.
 - In the R2 dashboard the bucket holds two folders, `pgbackrest` and `crypt`, and no readable name.
 - Send `/start` to the bot; open `/panel/` and sign in; open the Mini App in Telegram.
-- Optional, and worth it (see "What is watched"): an outside check of `https://<host>/healthz`, and
-  Cloudflare's notification for the tunnel.
+- The test alert arrived in the chat of `QD_ALERT_CHAT_IDS` (launch criterion 9, "alerts triggered and
+  received"). If the command says `NOT DELIVERED`, it says why.
+- **Turn on Cloudflare's notification for the tunnel** ("What is watched", "The honest limit"): the
+  worker's watch says nothing when the machine itself is down. An outside check of
+  `https://<host>/healthz` is the other half, and optional.
 
 ## Day to day
 
 ```sh
-single-host.sh status                     # what runs; ages of the newest backup and WAL segment; disk
+single-host.sh status                     # what runs; ages of the newest backup and WAL segment; disk;
+                                          # what the watch has firing
+single-host.sh alert-test                 # one TEST alert to the operators' chat
 single-host.sh up [<git-ref>]             # a new release (default: the checkout's HEAD)
 single-host.sh rollback <previous-ref>    # the previous images; the schema is not changed
 single-host.sh backup full|diff           # one backup, now
@@ -242,6 +249,7 @@ When something is wrong, the runbooks are in `docs/10-operations/runbooks.md`; e
 
 | What happened | Runbook |
 |---|---|
+| An alert arrived in the operators' chat (or should have and did not) | 16 |
 | The site or the bot does not answer | 5, then 14 |
 | The computer was off, lost power, restarted; Docker is not running | 14 |
 | The machine or its disk is lost; Docker's data was wiped; moving to another machine | 15 |
@@ -299,8 +307,9 @@ that would remove more than 100 files stops.
 systemd. A job is due when its latest scheduled moment has passed and it has not run since, so a backup
 missed because the machine was off is taken when it comes back. Every job writes one JSON line to the
 container's log (`single-host.sh logs backup`); the same figures the two-server scripts write for
-monitoring are files in the `backup-state` volume (`qd_backup_last_success_timestamp_seconds{type}`,
-`qd_wal_archive_newest_age_seconds`, `qd_backup_restore_test_last_success_timestamp_seconds`, ...). The
+monitoring are files in the `backup-figures` volume (`qd_backup_last_success_timestamp_seconds{type}`,
+`qd_wal_archive_newest_age_seconds`, `qd_backup_restore_test_last_success_timestamp_seconds`, ...),
+which the worker reads for its watch ("What is watched"). The
 `backup` container is **healthy** in `docker ps` only while the newest backup is younger than 26 hours,
 the newest full younger than 8 days and the newest archived WAL segment younger than 5 minutes.
 
@@ -323,7 +332,7 @@ that the ledger agrees with itself (`open_debt_mismatches`, no negative balance)
 | The repository on the standby, plus a third location | **One location: the bucket.** There is no standby and no third location |
 | The key held off both servers | A working copy is on the machine (it must be, to encrypt); the real copies are the two off it |
 | Restore test weekly "into staging" | Weekly, into a throwaway instance on the same machine |
-| A stale archive reaches the operator's phone | **Nobody is told.** See "What is watched" |
+| A stale archive reaches the operator's phone | It reaches the operators' Telegram chat within about 7 minutes (a check every 5, the rule's 1, a round a minute), **while the machine and the worker run**. Not a phone call. See "What is watched" |
 
 ### What can be lost, and how long recovery takes
 
@@ -341,27 +350,99 @@ that the ledger agrees with itself (`open_debt_mismatches`, no negative balance)
 
 ## What is watched, and what is not
 
-Honestly: almost nothing is watched by anything but a person.
+**The worker watches the service and writes to your Telegram chat** (the founder's decision of
+2026-10-09, DEC-078). Every minute it judges a fixed set of conditions; when one starts to hold it
+sends a message through the service's own bot, when it stops it sends another, and while it stays it
+repeats the message every four hours. Where the rules of `deploy/monitoring/alerts.yml` have a
+threshold, the worker uses that one (a test fails when the two differ).
 
-| Signal | State on the single host |
-|---|---|
-| A process dies | Docker restarts it (`restart: unless-stopped`) |
-| A container is unhealthy but running | Shown by `docker ps` and `single-host.sh status`. **Docker does not restart it and nobody is told** |
-| Backups or the WAL archive are stale | The `backup` container turns unhealthy; one line a check in its log. **Nobody is told** |
-| The copy of the files fails | The `files-backup` container turns unhealthy when no copy has succeeded for a quarter of an hour; a `"outcome":"failed"` line in its log. **Nobody is told** |
-| Disk filling | `single-host.sh status` prints it. **Nobody is told** |
-| The whole machine is off, or the internet link is down | **Nothing on the machine can tell anybody.** Only something outside can |
-| Error rates, latency, the outbox, security events (`deploy/monitoring/alerts.yml`) | The API serves `/metrics` inside the Compose network; **nothing reads it** |
+Whom it tells is `QD_ALERT_CHAT_IDS` in the env file: your own numeric Telegram identifier, or a
+group's (a negative number; add the bot to the group first), several separated by commas. It may be the
+group that reviews receipts, and is set apart from it. **Empty: the watch runs, writes to the log, and
+tells nobody** (and calls Telegram for nothing, so the two rules about Telegram itself are not judged). Messages are in Uzbek to a group and in a person's own language to a person, and hold
+the rule's name, a label the code supplies (a channel, a job, a backup type), a figure and two moments:
+never a shop, a person, a phone number or an amount.
 
-Two things outside the machine cost nothing and are worth setting up. Both are yours to create; nothing
-here does it.
+| Signal | Condition (rule name in the message) | Told after |
+|---|---|---|
+| No recent backup: none for 26 hours, no full for 8 days, or none at all | `BackupMissing` | 10 minutes |
+| The last full or differential backup failed | `BackupFailed:full`, `BackupFailed:diff` | 5 minutes |
+| The WAL archive is older than 5 minutes, there is none, or the check itself has not run for 16 minutes | `WalArchiveStale` | 1 minute |
+| The restore test has not passed for 8 days or never has; its last run failed | `RestoreTestNotPassed`, `RestoreTestFailed` | 10 minutes; 5 minutes |
+| The stored files have not been copied to the bucket for 17 minutes | `FilesCopyStale` | 5 minutes |
+| The Docker disk (it holds every volume, the database's too) is more than 80% full | `DiskAlmostFull:/var/lib/qarz/files` | 10 minutes |
+| A message that is due has waited more than 10 minutes | `OutboxOld:telegram`, `OutboxOld:sms` | 2 minutes |
+| The dispatcher has not finished a round for 5 minutes | `DispatcherFailing` | at once |
+| Telegram refuses the bot's token; Telegram cannot be reached | `TelegramRefusesBot`, `TelegramUnreachable` | at once; 5 minutes (see below) |
+| No reminder run for 65 minutes between 08:00 and 20:00 | `RemindersNotRunning` | 5 minutes |
+| A scheduled job has not finished its period: the hourly ones (`erasure`, `receipts`, `sign_in_cleanup`) for 65 minutes, the daily ones (`subscriptions`, `ledger_check`) for 26 hours, `measure_week` for 8 days | `JobNotRunning:<job>` | 5 minutes |
+| The stored open debts differ from the ledger (checked once a day, just after midnight) | `LedgerMismatch` | at once |
+| A subscription receipt has waited more than 24 hours | `ReceiptsWaiting` | 10 minutes |
+| An SMS was refused or given up within the hour; SMS are queued and not accepted | `SmsRefused`, `SmsNotGoingOut` | at once; 30 minutes |
+| The API does not answer `/healthz` inside the Compose network | `ApiDown` | 2 minutes |
+| The API's counters cannot be read | `MetricsMissing` | 3 minutes |
+| More than 2% of the answers of the last 5 minutes are server errors | `ErrorRateHigh` | 5 minutes |
+| A signed-in user asked about a shop that is not theirs; more than 10 invalid signatures in 10 minutes; more than 5 refused administrator second factors in 15 minutes; a support access was opened; an administrator asked for a shop's data without one; a shop's owner was reassigned | `CrossTenantAttempt`, `InvalidSignaturesRepeated:<kind>`, `AdminSecondFactorRepeated`, `SupportAccessOpened`, `AdminWithoutSupportAccess`, `ShopOwnerReassigned` | at once |
+| The worker cannot reach the database for 2 minutes | a message of its own (the state is kept in the database, so this one is kept in memory) | 2 minutes |
 
-- **Cloudflare's tunnel notification.** Cloudflare dashboard, Notifications, Add: *Tunnel Health
-  Alert*, for this tunnel, to your e-mail. Cloudflare then tells you when the tunnel stops being
-  connected, which is what "the machine is off or offline" looks like from outside.
+`single-host.sh status` prints what is firing now. What to do for each is runbook 16.
+
+**How it reads the backups.** The backup jobs write their figures (numbers: when, how old, passed or
+not) into a volume of their own, `backup-figures`, and the worker mounts it read-only, with the state
+of the files' copy (`files-state`). The worker is given neither the backups' own state (the restore
+test's throwaway database, the monthly dumps), nor the bucket's key, nor the passphrase.
+
+**How it sends.** Straight through the bot, with a ten-second limit, never through the outbox: an alert
+about the outbox cannot wait in the outbox. What is firing and when you were last told is in the
+database (table `ops_alert`), so a restart of the worker neither repeats nor forgets. If Telegram does
+not take a message, the attempt is recorded, the alert stays owed, and the next round tries again;
+nothing piles up. `TelegramRefusesBot` and `TelegramUnreachable` cannot be delivered while they hold:
+they are recorded and logged, and you hear of them, with their duration, when Telegram is back.
+
+### The honest limit
+
+**This watch runs on the machine it watches.** When the machine is off, when the internet link is
+down, when Docker is not running, or when the worker itself is stopped or stuck, it says nothing, and
+its silence looks exactly like "all is well". For that case there must be something outside the
+machine, and it is yours to create; nothing here does it:
+
+- **Cloudflare's tunnel notification (do this).** Cloudflare dashboard, *Notifications*, *Add*:
+  **Tunnel Health Alert**, for this tunnel, delivered to your e-mail (and to a webhook or PagerDuty if
+  you use one). Cloudflare then tells you when the tunnel stops being connected, which is what "the
+  machine is off, offline, or Docker is down" looks like from outside. Test it once: `single-host.sh
+  stop`, wait for the e-mail, `single-host.sh start`.
 - **An outside check of `https://<host>/healthz`** every minute by any uptime service that can notify a
   phone. `/healthz` answers `ok` only when the tunnel, the proxy, the API and the database all work. It
-  says nothing about backups.
+  says nothing about backups and nothing about the worker: a worker that is stopped or stuck is
+  noticed by nobody but you (`single-host.sh status` shows it restarting or missing, and messages stop
+  going out).
+
+### Still not watched
+
+| Signal | State |
+|---|---|
+| The machine off, the link down, Docker stopped, the worker stopped or stuck | Not by this watch. The tunnel notification covers the first three; **nothing covers a stopped worker** |
+| A container that is unhealthy but running, other than what the conditions above see | Shown by `docker ps` and `single-host.sh status`; Docker does not restart it |
+| Latency (the three "slow" rules of `alerts.yml`) | Not evaluated: a percentile over a histogram needs a monitoring system |
+| Memory, CPU, the number of database connections | Not collected; `docker stats` shows them |
+| The disk of Windows itself (outside Docker's own disk) | Not seen from a container |
+| Telegram's webhook backlog (`getWebhookInfo`) | Not collected |
+| Whether the tunnel is connected | Not by this watch (it would have no way to say so); Cloudflare's notification |
+| The backup figures being true | The watch believes what the jobs wrote. The restore test is what checks a backup |
+| The counters between an API restart and the next reading | Lost: they are in the API's memory. An event in the last minute before a restart may pass unseen |
+
+### Proving it: the test alert (launch criterion 9)
+
+```sh
+single-host.sh alert-test
+```
+
+sends one message marked as a TEST to every chat of `QD_ALERT_CHAT_IDS`, the way a real alert goes,
+and prints for each chat `ACCEPTED` or `NOT DELIVERED` with the reason (exit code 0 only when every
+chat took it). Then look in the chat: the criterion is "triggered **and received**". Run it after the
+first deployment and after any change of the bot's token or of the chats. To see a real alert arrive
+and resolve, stop the copy of the files for half an hour (`docker compose -p qarz stop files-backup`,
+wait for `FilesCopyStale`, then `start` it and wait for the "resolved").
 
 ## What you should know before relying on it
 
@@ -394,6 +475,11 @@ here does it.
 - Upload times over the machine's real link, the size of a real backup, and what R2 charges; expiry over
   weeks (no repository here is older than minutes).
 - Telegram's webhook arriving through Cloudflare, and the Login widget on the real host name.
+- An alert of the worker's watch arriving in a real Telegram chat: Telegram was replaced in every
+  test, and in the proof every way out is closed, so what is proven is that the alert is recorded as
+  firing, that the failed attempt to send it is recorded, and that it stops. `single-host.sh
+  alert-test` on the real machine is what closes that. Cloudflare's tunnel notification was not set
+  up or tried by anybody.
 - `smoke.sh` against the public address. Through Cloudflare it has never run: Cloudflare normalises
   paths, may answer a plain-HTTP request or an oversized one itself before the proxy sees it, and adds
   headers of its own. A check that fails there for such a reason is to be understood and then decided
