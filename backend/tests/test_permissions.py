@@ -39,6 +39,13 @@ EXPECTED: dict[str, tuple[set[Role], bool]] = {
     "promises.change": ({M, OWN}, False),
     "disputes.decide": ({M, OWN}, False),
     "goods.edit": ({M, OWN}, False),
+    "stock.view": ({S, M, OWN}, False),
+    "stock.receive": ({M, OWN}, False),
+    "stock.adjust": ({M, OWN}, False),
+    "stock.costs.view": ({M, OWN}, False),
+    "suppliers.view": ({M, OWN}, False),
+    "suppliers.manage": ({M, OWN}, False),
+    "suppliers.pay": ({M, OWN}, False),
     "reminders.send": ({M, OWN}, False),
     "reports.view": ({M, OWN}, False),
     "reports.export": ({M, OWN}, False),
@@ -132,9 +139,22 @@ def test_the_defaults_of_an_operations_permissions_are_the_role_table(op: Operat
             assert (role in permission.roles) is allows(role, op.capability), (op.name, permission.key, role)
 
 
-def test_only_recording_an_entry_is_opened_by_two_permissions() -> None:
+def test_the_operations_opened_by_two_permissions_are_these() -> None:
+    """Each is one route that does different things by what is sent: the service asks for the
+    permission the request needs (a credit sale or a payment; the kind of a stock document; a payment
+    to a supplier or an opening balance). tests/api/test_stock_permissions.py holds the stock ones."""
     several = {op.name for op in shop_operations() if len(permissions.permissions_of_operation(op.name)) > 1}
-    assert several == {"ledger.entry.create"}, "a service must ask for the one the request needs"
+    assert several == {
+        "ledger.entry.create",
+        "stock.documents.list",
+        "stock.documents.read",
+        "stock.documents.create",
+        "stock.documents.update",
+        "stock.documents.post",
+        "stock.documents.cancel",
+        "suppliers.entries.create",
+        "suppliers.entries.cancel",
+    }, "a service must ask for the one the request needs"
 
 
 def test_role_defaults_only_grow_upward() -> None:

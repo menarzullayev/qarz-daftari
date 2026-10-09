@@ -82,6 +82,8 @@ GROUPS: tuple[Group, ...] = (
     Group("customers", "Mijozlar", "Клиенты"),
     Group("ledger", "Qarz va to'lovlar", "Долги и оплаты"),
     Group("goods", "Tovarlar", "Товары"),
+    Group("stock", "Ombor", "Склад"),
+    Group("suppliers", "Ta'minotchilar", "Поставщики"),
     Group("reminders", "Eslatmalar", "Напоминания"),
     Group("reports", "Hisobot va fayllar", "Отчёты и файлы"),
     Group("shop", "Do'kon va xodimlar", "Магазин и сотрудники"),
@@ -213,7 +215,97 @@ CATALOGUE: tuple[Permission, ...] = (
             "catalog.learned.accept",
             "catalog.learned.dismiss",
             "catalog.learned.merge",
+            "stock.items.update",
         ),
+    ),
+    # --- stock (expansion module I; every operation below exists only while `stock_on` is on) ----------
+    Permission(
+        "stock.view",
+        "stock",
+        "Omborni ko'rish: qoldiq, kam qolgan tovarlar, harakatlar",
+        "Просмотр склада: остатки, заканчивающиеся товары, движения",
+        _ALL,
+        (
+            "stock.settings.read",
+            "stock.items.list",
+            "stock.items.read",
+            "stock.lookup",
+            "stock.movements.list",
+        ),
+    ),
+    # A document is opened by either of the next two; the service then asks for the one its kind needs.
+    Permission(
+        "stock.receive",
+        "stock",
+        "Tovar kirimi va ta'minotchiga qaytarish",
+        "Приход товара и возврат поставщику",
+        _MANAGERS,
+        (
+            "stock.documents.list",
+            "stock.documents.read",
+            "stock.documents.create",
+            "stock.documents.update",
+            "stock.documents.post",
+            "stock.documents.cancel",
+        ),
+    ),
+    Permission(
+        "stock.adjust",
+        "stock",
+        "Hisobdan chiqarish, inventarizatsiya va mijozdan tovar qaytarib olish",
+        "Списание, инвентаризация и возврат товара от клиента",
+        _MANAGERS,
+        (
+            "stock.documents.list",
+            "stock.documents.read",
+            "stock.documents.create",
+            "stock.documents.update",
+            "stock.documents.post",
+            "stock.documents.cancel",
+        ),
+    ),
+    # What goods were bought for, and the margin: absent from every answer of a member without it.
+    Permission(
+        "stock.costs.view",
+        "stock",
+        "Tannarx, foyda va ombor hisobotini ko'rish",
+        "Видеть себестоимость, прибыль и отчёт по складу",
+        _MANAGERS,
+        ("stock.report",),
+    ),
+    # --- suppliers ------------------------------------------------------------------------------------
+    Permission(
+        "suppliers.view",
+        "suppliers",
+        "Ta'minotchilar va ulardan qarzni ko'rish",
+        "Видеть поставщиков и долг перед ними",
+        _MANAGERS,
+        ("suppliers.list", "suppliers.read"),
+    ),
+    # Recording on a supplier's account is opened by either of the next two: stating an old debt goes
+    # with managing suppliers, a payment with paying them.
+    Permission(
+        "suppliers.manage",
+        "suppliers",
+        "Ta'minotchi qo'shish, tahrirlash, arxivlash va boshlang'ich qarzni kiritish",
+        "Добавлять, изменять, архивировать поставщиков и вносить начальный долг",
+        _MANAGERS,
+        (
+            "suppliers.create",
+            "suppliers.update",
+            "suppliers.archive",
+            "suppliers.unarchive",
+            "suppliers.entries.create",
+            "suppliers.entries.cancel",
+        ),
+    ),
+    Permission(
+        "suppliers.pay",
+        "suppliers",
+        "Ta'minotchiga to'lov yozish va uni bekor qilish",
+        "Записывать оплату поставщику и отменять её",
+        _MANAGERS,
+        ("suppliers.entries.create", "suppliers.entries.cancel"),
     ),
     # --- reminders ------------------------------------------------------------------------------------
     Permission(
@@ -272,7 +364,7 @@ CATALOGUE: tuple[Permission, ...] = (
         "Qarz limiti, eslatmalar va kassa kodi sozlamalarini o'zgartirish",
         "Менять настройки лимита, напоминаний и кода кассы",
         _MANAGERS,
-        ("shop.credit.update", "reminders.settings.update", "counter_code.rotate"),
+        ("shop.credit.update", "reminders.settings.update", "counter_code.rotate", "stock.settings.update"),
     ),
     Permission(
         "shop.edit",
@@ -403,6 +495,11 @@ ENTRIES_CANCEL = "entries.cancel"
 PROMISES_CHANGE = "promises.change"
 DISPUTES_DECIDE = "disputes.decide"
 STAFF_MANAGE = "staff.manage"
+STOCK_RECEIVE = "stock.receive"
+STOCK_ADJUST = "stock.adjust"
+STOCK_COSTS_VIEW = "stock.costs.view"
+SUPPLIERS_MANAGE = "suppliers.manage"
+SUPPLIERS_PAY = "suppliers.pay"
 PERMISSIONS_MANAGE = "permissions.manage"
 ALL_KEYS: frozenset[str] = frozenset(_BY_KEY)
 FIXED_KEYS: frozenset[str] = frozenset(key for key, permission in _BY_KEY.items() if permission.fixed)

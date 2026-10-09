@@ -56,6 +56,8 @@ SETTINGS: dict[str, Setting] = {
     "permissions_on": Setting("switch", False, needs_code=True),
     # A customer's secret read-only link and its QR code (the expansion of 2026-10-09, module B).
     "customer_links_on": Setting("switch", False, needs_code=True),
+    # Stock, purchases and suppliers (expansion module I). Off: the catalogue is names and prices only.
+    "stock_on": Setting("switch", False, needs_code=True),
 }
 
 

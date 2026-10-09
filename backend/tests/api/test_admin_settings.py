@@ -32,6 +32,7 @@ DEFAULTS = {
     "free_plan_customers": 30,
     "permissions_on": False,
     "customer_links_on": False,
+    "stock_on": False,
 }
 # Specification, clients table: "changes to price, card number, and switches ask for the code again".
 NEEDS_CODE = {
@@ -42,6 +43,7 @@ NEEDS_CODE = {
     "online_pay_on": True,
     "permissions_on": True,
     "customer_links_on": True,
+    "stock_on": True,
     "review_group": -1001234567890,
     "free_plan_on": True,
 }

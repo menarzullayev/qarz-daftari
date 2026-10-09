@@ -51,6 +51,7 @@ from qarz.application.ports import (
     TenantSession,
 )
 from qarz.application.shops import require_member
+from qarz.application.stock_moves import before_entry_reversed, draw_for_sale
 from qarz.domain import ledger, permissions
 from qarz.domain.access import Capability
 from qarz.domain.credit import LimitOutcome, check_limit, effective_limit
@@ -377,6 +378,8 @@ async def append_entry_in(
     if promised is not None:
         await session.add_promise(entry_id=entry_id, promised_date=promised, actor=promise_actor, created_at=now)
     stored_lines = await store_lines_in(session, actor, entry_id, lines) if lines else []
+    # A line of a counted item takes its quantity out of the stock (nothing while `stock_on` is off).
+    stock_warnings = await draw_for_sale(session, actor, entry_id, stored_lines, now=now)
     await session.record_activity(
         membership_id=actor.membership_id,
         action=f"ledger.{kind.value}_recorded",
@@ -415,6 +418,9 @@ async def append_entry_in(
         # For the author only: the customer's message says nothing of limits.
         body["limit_warning"] = limit_warning
     await notify.entry_recorded(session, customer_id, body)
+    if stock_warnings:
+        # For the author only, added after the customer's message is made: it says nothing of the stock.
+        body["stock_warnings"] = stock_warnings
     await removal.complete_if_due(session, customer_id, balance, now)
     return body
 
@@ -436,6 +442,9 @@ async def reverse_entry_in(
     refusal = ledger.validate_new_entry([row.entry for row in account], EntryKind.REVERSAL, original.amount, entry_id)
     if refusal is not None:
         raise _refuse(refusal)
+
+    # What the entry took out of the stock comes back first: if it cannot, the entry is not cancelled.
+    await before_entry_reversed(session, actor, entry_id, now=now)
 
     reversal_id = uuid4()
     seq = max(row.entry.seq for row in account) + 1

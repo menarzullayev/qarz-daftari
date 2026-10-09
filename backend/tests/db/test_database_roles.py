@@ -99,6 +99,12 @@ DEFINER_FUNCTIONS: dict[str, set[str]] = {
     "open_debt_mismatches(uuid)": NOBODY,
     "open_debts_of(uuid[])": NOBODY,
     "refresh_open_debts(uuid[])": NOBODY,
+    # The stock (migration 0043): the two triggers that keep what is on hand and what a supplier is
+    # owed, and the two comparisons of those figures with their ledgers.
+    "stock_movement_apply()": NOBODY,
+    "supplier_entry_apply()": NOBODY,
+    "stock_level_mismatches(uuid)": NOBODY,
+    "supplier_balance_mismatches(uuid)": NOBODY,
 }
 
 # Every table, and what each role holds on it: (qd_app, qd_admin, qd_worker). A right followed by column
@@ -142,7 +148,29 @@ TABLE_RIGHTS: dict[str, tuple[str, str, str]] = {
     "online_payment": ("SELECT; INSERT; UPDATE", "", ""),
     "support_access": ("SELECT; INSERT; UPDATE(closed_at, closed_by)", "", ""),
     "request_key": ("SELECT; INSERT; UPDATE; DELETE", "", ""),
-    "catalog_item": ("SELECT; INSERT; UPDATE; DELETE", "", ""),
+    # The worker reads the catalogue since migration 0043: the owner's export names the goods in stock.
+    "catalog_item": ("SELECT; INSERT; UPDATE; DELETE", "", "SELECT"),
+    # The stock, its documents and the suppliers (migration 0043). The two ledgers and the lines of a
+    # posted document are insert-only for the application; what is on hand and what a supplier is
+    # owed are written by triggers alone; a supplier's link to another shop cannot be changed. The
+    # worker reads all of it for the owner's export.
+    "catalog_barcode": ("SELECT; INSERT; DELETE", "", "SELECT"),
+    "supplier": (
+        "SELECT; INSERT; UPDATE(name, name_norm, phone, note, status)",
+        "",
+        "SELECT",
+    ),
+    "supplier_entry": ("SELECT; INSERT", "", "SELECT"),
+    "supplier_balance": ("SELECT", "", "SELECT"),
+    "stock_document": (
+        "SELECT; INSERT; UPDATE(status, doc_date, supplier_id, customer_id, currency, total, paid, reason, note, "
+        "draft, ledger_entry_id, cash_entry_id, posted_by, posted_at, cancelled_by, cancelled_at, cancel_reason)",
+        "",
+        "SELECT",
+    ),
+    "stock_document_line": ("SELECT; INSERT", "", "SELECT"),
+    "stock_movement": ("SELECT; INSERT", "", "SELECT"),
+    "stock_level": ("SELECT", "", "SELECT"),
     "customer": ("SELECT; INSERT; UPDATE; DELETE", "SELECT", "SELECT; INSERT; UPDATE"),
     "customer_link": ("SELECT; INSERT; UPDATE; DELETE", "", "SELECT; UPDATE"),
     # A customer's read-only link (migration 0040). The application makes one, ends it and notes that it

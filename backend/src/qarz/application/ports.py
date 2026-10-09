@@ -8,6 +8,7 @@ from decimal import Decimal
 from typing import Any, Protocol
 from uuid import UUID
 
+from qarz.application.stock_ports import StockSession
 from qarz.domain.access import Role
 from qarz.domain.ledger import Entry
 from qarz.domain.ops_alerts import Alert, DatabaseFigures
@@ -694,7 +695,7 @@ class OutboxMessage:
     created_at: datetime
 
 
-class TenantSession(Protocol):
+class TenantSession(StockSession, Protocol):
     """One database transaction scoped to one shop. Nothing outside that shop is visible through it."""
 
     async def active_membership(self, user_id: UUID) -> Membership | None: ...

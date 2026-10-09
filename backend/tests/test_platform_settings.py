@@ -37,6 +37,7 @@ def test_the_settings_are_the_ones_the_administrator_controls() -> None:
         "free_plan_customers",
         "permissions_on",
         "customer_links_on",
+        "stock_on",
     }
     assert "card_number" not in SETTINGS, "the single card became the list"
 
@@ -55,6 +56,7 @@ def test_defaults_when_nothing_is_stored() -> None:
         "free_plan_customers": 30,
         "permissions_on": False,
         "customer_links_on": False,
+        "stock_on": False,
     }
 
 
@@ -97,6 +99,7 @@ def test_price_card_and_switches_need_a_code() -> None:
         "online_pay_on",
         "permissions_on",
         "customer_links_on",
+        "stock_on",
         "review_group",
         "free_plan_on",
     }
@@ -105,7 +108,9 @@ def test_price_card_and_switches_need_a_code() -> None:
     assert not needs_code("free_plan_customers")
 
 
-@pytest.mark.parametrize("key", ["trial_on", "sms_on", "online_pay_on", "permissions_on", "customer_links_on"])
+@pytest.mark.parametrize(
+    "key", ["trial_on", "sms_on", "online_pay_on", "permissions_on", "customer_links_on", "stock_on"]
+)
 def test_a_switch_is_true_or_false_and_nothing_else(key: str) -> None:
     assert validate(key, True) is True
     assert validate(key, False) is False

@@ -23,6 +23,7 @@ not bound to a registered operation, so nothing can be added without being check
 
 import base64
 import hashlib
+import json
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -277,6 +278,72 @@ def _open_support(owner: psycopg.Connection, world: World) -> None:
     )
 
 
+def _supplier_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-supplier:{world.shop_a}")
+
+
+def _stock_document_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-stock-document:{world.shop_a}")
+
+
+def _supplier_entry_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-supplier-entry:{world.shop_a}")
+
+
+def _stock(owner: psycopg.Connection, world: World) -> None:
+    """The platform switch `stock_on`, and in shop A what the stock's calls need: "Non" counted and with
+    a barcode, a supplier with one payment on their account, and a stocktake still in draft. With the
+    switch off none of these routes exists: tests/api/test_stock.py."""
+    owner.execute(
+        "INSERT INTO platform_setting (key, value, updated_by) VALUES ('stock_on', 'true', %s) "
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by",
+        (str(world.admin),),
+    )
+    owner.execute("UPDATE catalog_item SET tracked = true WHERE id = %s", (world.catalog_item_a,))
+    owner.execute(
+        "INSERT INTO catalog_barcode (shop_id, code, item_id) VALUES (%s, 'SUITE-1', %s)",
+        (world.shop_a, world.catalog_item_a),
+    )
+    owner.execute(
+        "INSERT INTO supplier (id, shop_id, name, name_norm) VALUES (%s, %s, 'Ulgurji', 'ulgurji')",
+        (_supplier_id(world), world.shop_a),
+    )
+    owner.execute(
+        "INSERT INTO supplier_entry (id, shop_id, supplier_id, seq, kind, amount, author_id) "
+        "VALUES (%s, %s, %s, 1, 'payment', 20000, %s)",
+        (_supplier_entry_id(world), world.shop_a, _supplier_id(world), world.manager_a_membership),
+    )
+    owner.execute(
+        "INSERT INTO stock_document (id, shop_id, kind, number, doc_date, draft, created_by) "
+        "VALUES (%s, %s, 'stocktake', 1, current_date, %s::jsonb, %s)",
+        (
+            _stock_document_id(world),
+            world.shop_a,
+            json.dumps({"lines": [{"item_id": str(world.catalog_item_a), "qty": "3", "unit_cost": None}]}),
+            world.manager_a_membership,
+        ),
+    )
+
+
+def _stock_archived_supplier(owner: psycopg.Connection, world: World) -> None:
+    _stock(owner, world)
+    owner.execute("UPDATE supplier SET status = 'archived' WHERE id = %s", (_supplier_id(world),))
+
+
+def _stock_settled_supplier(owner: psycopg.Connection, world: World) -> None:
+    """Archiving needs a settled account: the payment of `_stock` is met by a purchase of the same amount."""
+    _stock(owner, world)
+    owner.execute(
+        "INSERT INTO supplier_entry (id, shop_id, supplier_id, seq, kind, amount, author_id) "
+        "VALUES (gen_random_uuid(), %s, %s, 2, 'opening', 20000, %s)",
+        (world.shop_a, _supplier_id(world), world.manager_a_membership),
+    )
+
+
+def _stocktake(world: World) -> dict[str, Any]:
+    return {"kind": "stocktake", "lines": [{"item_id": str(world.catalog_item_a), "qty": "4"}]}
+
+
 def _permissions_on(owner: psycopg.Connection, world: World) -> None:
     """The permission matrix exists only while its switch is on; off, its routes answer 404 to everyone
     (tests/api/test_permissions.py)."""
@@ -284,6 +351,103 @@ def _permissions_on(owner: psycopg.Connection, world: World) -> None:
 
 
 CALLS: dict[str, Call] = {
+    # The stock, its documents and the suppliers are behind the platform switch `stock_on`; the suite turns
+    # it on, so that the roles are told apart. With the switch off: tests/api/test_stock.py.
+    "stock.settings.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/stock/settings", prepare=_stock),
+    "stock.settings.update": Call(
+        "PUT", lambda w, shop: f"/api/v1/shops/{shop}/stock/settings", {"refuse_negative": True}, True, prepare=_stock
+    ),
+    "stock.items.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/stock/items", prepare=_stock),
+    "stock.items.read": Call(
+        "GET", lambda w, shop: f"/api/v1/shops/{shop}/stock/items/{w.catalog_item_a}", prepare=_stock
+    ),
+    "stock.items.update": Call(
+        "PATCH",
+        lambda w, shop: f"/api/v1/shops/{shop}/stock/items/{w.catalog_item_a}",
+        {"low_stock": "5"},
+        True,
+        prepare=_stock,
+    ),
+    "stock.lookup": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/stock/lookup?code=SUITE-1", prepare=_stock),
+    "stock.movements.list": Call(
+        "GET", lambda w, shop: f"/api/v1/shops/{shop}/stock/items/{w.catalog_item_a}/movements", prepare=_stock
+    ),
+    "stock.report": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/stock/report", prepare=_stock),
+    "stock.documents.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/stock/documents", prepare=_stock),
+    "stock.documents.read": Call(
+        "GET", lambda w, shop: f"/api/v1/shops/{shop}/stock/documents/{_stock_document_id(w)}", prepare=_stock
+    ),
+    # The body names "Non" of shop A (`_body`): sent to shop B it is refused as no item of that shop.
+    "stock.documents.create": Call(
+        "POST", lambda w, shop: f"/api/v1/shops/{shop}/stock/documents", None, True, 201, prepare=_stock
+    ),
+    "stock.documents.update": Call(
+        "PUT",
+        lambda w, shop: f"/api/v1/shops/{shop}/stock/documents/{_stock_document_id(w)}",
+        None,
+        True,
+        prepare=_stock,
+    ),
+    "stock.documents.post": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/stock/documents/{_stock_document_id(w)}/post",
+        None,
+        True,
+        prepare=_stock,
+    ),
+    "stock.documents.cancel": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/stock/documents/{_stock_document_id(w)}/cancel",
+        {"reason": "Suite uchun"},
+        True,
+        prepare=_stock,
+    ),
+    "suppliers.list": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/suppliers", prepare=_stock),
+    "suppliers.read": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/suppliers/{_supplier_id(w)}", prepare=_stock),
+    "suppliers.create": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/suppliers",
+        {"name": "Yangi ta'minotchi"},
+        True,
+        201,
+        prepare=_stock,
+    ),
+    "suppliers.update": Call(
+        "PUT",
+        lambda w, shop: f"/api/v1/shops/{shop}/suppliers/{_supplier_id(w)}",
+        {"name": "Ulgurji bozor", "phone": "+998901234567"},
+        True,
+        prepare=_stock,
+    ),
+    "suppliers.archive": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/suppliers/{_supplier_id(w)}/archive",
+        None,
+        True,
+        prepare=_stock_settled_supplier,
+    ),
+    "suppliers.unarchive": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/suppliers/{_supplier_id(w)}/unarchive",
+        None,
+        True,
+        prepare=_stock_archived_supplier,
+    ),
+    "suppliers.entries.create": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/suppliers/{_supplier_id(w)}/entries",
+        {"kind": "payment", "amount": 5000},
+        True,
+        201,
+        prepare=_stock,
+    ),
+    "suppliers.entries.cancel": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/suppliers/{_supplier_id(w)}/entries/{_supplier_entry_id(w)}/cancel",
+        {"reason": "Suite uchun"},
+        True,
+        prepare=_stock,
+    ),
     "permissions.catalogue": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/permissions", prepare=_permissions_on),
     "permissions.mine": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/permissions/mine", prepare=_permissions_on),
     "permissions.member.read": Call(
@@ -701,6 +865,29 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "catalog.learned.accept": {Role.MANAGER, Role.OWNER},
     "catalog.learned.dismiss": {Role.MANAGER, Role.OWNER},
     "catalog.learned.merge": {Role.MANAGER, Role.OWNER},
+    # The stock (expansion module I): what is on hand is every member's to see; the rest is a manager's.
+    "stock.settings.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "stock.items.list": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "stock.items.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "stock.lookup": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "stock.movements.list": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "stock.settings.update": {Role.MANAGER, Role.OWNER},
+    "stock.items.update": {Role.MANAGER, Role.OWNER},
+    "stock.report": {Role.MANAGER, Role.OWNER},
+    "stock.documents.list": {Role.MANAGER, Role.OWNER},
+    "stock.documents.read": {Role.MANAGER, Role.OWNER},
+    "stock.documents.create": {Role.MANAGER, Role.OWNER},
+    "stock.documents.update": {Role.MANAGER, Role.OWNER},
+    "stock.documents.post": {Role.MANAGER, Role.OWNER},
+    "stock.documents.cancel": {Role.MANAGER, Role.OWNER},
+    "suppliers.list": {Role.MANAGER, Role.OWNER},
+    "suppliers.read": {Role.MANAGER, Role.OWNER},
+    "suppliers.create": {Role.MANAGER, Role.OWNER},
+    "suppliers.update": {Role.MANAGER, Role.OWNER},
+    "suppliers.archive": {Role.MANAGER, Role.OWNER},
+    "suppliers.unarchive": {Role.MANAGER, Role.OWNER},
+    "suppliers.entries.create": {Role.MANAGER, Role.OWNER},
+    "suppliers.entries.cancel": {Role.MANAGER, Role.OWNER},
 }
 
 SELF_CALLS: dict[str, PlainCall] = {
@@ -793,6 +980,8 @@ def _body(world: World, op_name: str, call: Call) -> dict[str, Any] | None:
         return {"promised_date": (datetime.now(UTC).date() + timedelta(days=3)).isoformat()}
     if op_name == "catalog.learned.merge":
         return {"into": str(world.catalog_item_a)}
+    if op_name in ("stock.documents.create", "stock.documents.update"):
+        return _stocktake(world)
     return call.json
 
 
@@ -923,6 +1112,29 @@ def _snapshot(owner: psycopg.Connection, shop: uuid.UUID, *, shared: bool = True
             "SELECT id, file_id, stated_amount, stated_months, status, months, reject_reason, decided_by "
             "FROM subscription_receipt WHERE shop_id = %s ORDER BY id",
             (shop,),
+        ).fetchall(),
+        # The stock, its documents and the suppliers (migration 0043).
+        owner.execute(
+            "SELECT id, tracked, low_stock, unit FROM catalog_item WHERE shop_id = %s ORDER BY id", (shop,)
+        ).fetchall(),
+        owner.execute("SELECT stock_refuse_negative FROM shop WHERE id = %s", (shop,)).fetchone(),
+        owner.execute("SELECT code, item_id FROM catalog_barcode WHERE shop_id = %s ORDER BY code", (shop,)).fetchall(),
+        owner.execute(
+            "SELECT id, name, phone, note, status FROM supplier WHERE shop_id = %s ORDER BY id", (shop,)
+        ).fetchall(),
+        owner.execute(
+            "SELECT id, supplier_id, seq, kind, amount, reverses_id FROM supplier_entry WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
+        owner.execute(
+            "SELECT id, kind, number, status, total, paid, draft::text FROM stock_document "
+            "WHERE shop_id = %s ORDER BY id",
+            (shop,),
+        ).fetchall(),
+        owner.execute("SELECT count(*) FROM stock_document_line WHERE shop_id = %s", (shop,)).fetchone(),
+        owner.execute("SELECT count(*) FROM stock_movement WHERE shop_id = %s", (shop,)).fetchone(),
+        owner.execute(
+            "SELECT item_id, on_hand, cost_value FROM stock_level WHERE shop_id = %s ORDER BY item_id", (shop,)
         ).fetchall(),
         # The objects of the file store itself: a refused call writes and removes none. A file that another
         # shop has recorded as its own is that shop's; one that nobody recorded is counted here.
@@ -1058,6 +1270,9 @@ def test_a_member_of_one_shop_cannot_reach_another(
         _export_job_id(world),
         _date_request_id(world),
         _import_id(world),
+        _supplier_id(world),
+        _stock_document_id(world),
+        _supplier_entry_id(world),
     )
     uses_foreign_resource = any(str(resource) in call.path(world, world.shop_b) for resource in foreign)
     if uses_foreign_resource:
