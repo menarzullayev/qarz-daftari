@@ -4,10 +4,11 @@ import { useI18n } from "../../i18n/I18nProvider";
 import type { Customer } from "../api";
 import { formatMoney } from "../format";
 import { usePagedList } from "../hooks";
+import { PlusIcon, SearchIcon, UsersIcon } from "../icons";
 import { useDesktop } from "../layout";
 import { Link } from "../router";
 import { useWorkspace } from "./context";
-import { Empty, Failure, Loading, LoadMore } from "./parts";
+import { Avatar, Empty, Failure, Loading, LoadMore } from "./parts";
 
 /** How long typing must pause before the list is searched again. */
 export const SEARCH_DELAY_MS = 300;
@@ -32,8 +33,9 @@ function Row({ customer, pick, selectedId }: { customer: Customer; pick: boolean
   const { t, language } = useI18n();
   if (!pick) {
     return (
-      <li className="row">
+      <li className="row row--person">
         <Link to={`/customers/${customer.id}`} className="row__link" current={customer.id === selectedId}>
+          <Avatar name={customer.displayName} />
           <span className="row__name">{customer.displayName}</span>
           <span className="row__amount">{formatMoney(customer.balance, language)}</span>
         </Link>
@@ -44,6 +46,7 @@ function Row({ customer, pick, selectedId }: { customer: Customer; pick: boolean
   return (
     <li className="row">
       <p className="row__link">
+        <Avatar name={customer.displayName} />
         <span className="row__name">{customer.displayName}</span>
         <span className="row__amount">{formatMoney(customer.balance, language)}</span>
       </p>
@@ -94,7 +97,7 @@ export function CustomersScreen({ pick = false, selectedId }: CustomersScreenPro
     body = <Failure error={state.error} onRetry={reload} />;
   } else if (state.items.length === 0) {
     body = (
-      <Empty>
+      <Empty icon={<UsersIcon />}>
         {query !== "" ? t("customers.noMatch") : status === "archived" ? t("customers.noArchived") : t("customers.none")}
       </Empty>
     );
@@ -120,7 +123,8 @@ export function CustomersScreen({ pick = false, selectedId }: CustomersScreenPro
   return (
     <>
       {pick ? <p className="hint">{t("entry.pickCustomer")}</p> : null}
-      <form className="search" role="search" onSubmit={onSubmit}>
+      <form className="search search--icon" role="search" onSubmit={onSubmit}>
+        <SearchIcon />
         <input
           type="search"
           className="input"
@@ -156,6 +160,7 @@ export function CustomersScreen({ pick = false, selectedId }: CustomersScreenPro
           </div>
         )}
         <Link to="/customers/new" className="button">
+          <PlusIcon />
           {t("customers.add")}
         </Link>
       </div>

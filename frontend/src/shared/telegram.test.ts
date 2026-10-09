@@ -6,6 +6,7 @@ import {
   getWebApp,
   initTelegram,
   isInsideTelegram,
+  telegramColorScheme,
   themeToCssVariables,
   type TelegramWebApp,
 } from "./telegram";
@@ -23,7 +24,13 @@ function fakeWebApp(overrides: Partial<TelegramWebApp> = {}): TelegramWebApp {
 
 function fakeTarget() {
   const values = new Map<string, string>();
-  return { values, style: { setProperty: (name: string, value: string | null) => void values.set(name, value ?? "") } };
+  const attributes = new Map<string, string>();
+  return {
+    values,
+    attributes,
+    style: { setProperty: (name: string, value: string | null) => void values.set(name, value ?? "") },
+    setAttribute: (name: string, value: string) => void attributes.set(name, value),
+  };
 }
 
 describe("outside Telegram", () => {
@@ -55,6 +62,8 @@ describe("outside Telegram", () => {
     expect(webApp.ready).not.toHaveBeenCalled();
     expect(webApp.expand).not.toHaveBeenCalled();
     expect(target.values.size).toBe(0);
+    // Not marked as themed by Telegram either: the person's own theme choice stays in charge.
+    expect(target.attributes.size).toBe(0);
   });
 });
 
@@ -101,6 +110,60 @@ describe("inside Telegram", () => {
   it("tolerates launch data without a user or a language", () => {
     expect(getTelegramLanguageCode(fakeWebApp({ initDataUnsafe: {} }))).toBeNull();
     expect(getTelegramLanguageCode(fakeWebApp({ initDataUnsafe: { user: {} } }))).toBeNull();
+  });
+});
+
+describe("the tokens Telegram has no color for", () => {
+  it("come from the dark set when Telegram says its theme is dark, and the page is marked as Telegram's", () => {
+    const target = fakeTarget();
+    initTelegram(fakeWebApp({ colorScheme: "dark" }), target);
+    expect(target.attributes.get("data-theme")).toBe("dark");
+    expect(target.attributes.get("data-telegram")).toBe("");
+  });
+
+  it("come from the light set for a light theme, whatever the device's own scheme", () => {
+    const target = fakeTarget();
+    initTelegram(fakeWebApp({ colorScheme: "light", themeParams: { bg_color: "#ffffff", text_color: "#000000" } }), target);
+    expect(target.attributes.get("data-theme")).toBe("light");
+  });
+
+  it("follow the background color when an old client does not say which scheme it has", () => {
+    expect(telegramColorScheme(fakeWebApp())).toBe("dark");
+    expect(telegramColorScheme(fakeWebApp({ themeParams: { bg_color: "#ffffff", text_color: "#000000" } }))).toBe("light");
+    expect(telegramColorScheme(fakeWebApp({ themeParams: { bg_color: "#f1f1f1" } }))).toBe("light");
+    expect(telegramColorScheme(fakeWebApp({ themeParams: { bg_color: "#0e1621" } }))).toBe("dark");
+  });
+
+  it("trust what the client says over what the background looks like", () => {
+    expect(telegramColorScheme(fakeWebApp({ colorScheme: "light" }))).toBe("light");
+  });
+
+  it("are left to the device when Telegram gives neither a scheme nor a usable color", () => {
+    expect(telegramColorScheme(fakeWebApp({ themeParams: {} }))).toBeNull();
+    expect(telegramColorScheme(fakeWebApp({ colorScheme: "sepia", themeParams: { bg_color: "red" } }))).toBeNull();
+    expect(telegramColorScheme(null)).toBeNull();
+    const target = fakeTarget();
+    initTelegram(fakeWebApp({ themeParams: {} }), target);
+    expect(target.attributes.has("data-theme")).toBe(false);
+    expect(target.attributes.get("data-telegram")).toBe("");
+  });
+
+  it("change with Telegram's theme", () => {
+    let onThemeChanged: (() => void) | undefined;
+    const webApp = fakeWebApp({ colorScheme: "dark", onEvent: (_event, handler) => void (onThemeChanged = handler) });
+    const target = fakeTarget();
+    initTelegram(webApp, target);
+    webApp.themeParams = { bg_color: "#ffffff", text_color: "#000000" };
+    webApp.colorScheme = "light";
+    onThemeChanged?.();
+    expect(target.attributes.get("data-theme")).toBe("light");
+  });
+
+  it("do not need a target that can hold attributes", () => {
+    const values = new Map<string, string>();
+    const bare = { style: { setProperty: (name: string, value: string | null) => void values.set(name, value ?? "") } };
+    expect(() => initTelegram(fakeWebApp({ colorScheme: "dark" }), bare)).not.toThrow();
+    expect(values.get("--qd-bg")).toBe("#17212b");
   });
 });
 

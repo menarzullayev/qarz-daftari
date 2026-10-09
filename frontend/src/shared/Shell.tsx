@@ -2,7 +2,10 @@ import { useEffect, useRef, type ReactNode } from "react";
 
 import { useI18n } from "../i18n/I18nProvider";
 import { LANGUAGES, type MessageKey } from "../i18n/types";
+import { NavIcon } from "./icons";
 import { Link } from "./router";
+import { ThemeToggle } from "./ThemeToggle";
+import "./tokens.css";
 import "./shell.css";
 
 export type ShellNavItem = {
@@ -105,7 +108,7 @@ export function Shell({
         <div className="shell__identity">
           <p className="shell__brand">
             <span className="shell__product">{appName}</span>
-            {entryKey ? <span className="shell__entry">{t(entryKey)}</span> : null}
+            {entryKey ? <span className="shell__entry badge">{t(entryKey)}</span> : null}
           </p>
           {context ? (
             <p className="shell__context">
@@ -114,7 +117,10 @@ export function Shell({
             </p>
           ) : null}
         </div>
-        <LanguageSwitcher />
+        <div className="shell__tools">
+          <ThemeToggle />
+          <LanguageSwitcher />
+        </div>
       </header>
 
       {items.length > 0 ? (
@@ -126,14 +132,16 @@ export function Shell({
                 className={index < primaryCount ? "nav__item" : "nav__item nav__item--secondary"}
               >
                 <Link to={item.path} current={item.path === navPath} className="nav__link">
-                  {t(item.labelKey)}
+                  <NavIcon id={item.id} />
+                  <span>{t(item.labelKey)}</span>
                 </Link>
               </li>
             ))}
             {showMore ? (
               <li className="nav__item nav__item--more">
                 <Link to={moreItem.path} current={moreItem.path === navPath} className="nav__link">
-                  {t(moreItem.labelKey)}
+                  <NavIcon id={moreItem.id} />
+                  <span>{t(moreItem.labelKey)}</span>
                 </Link>
               </li>
             ) : null}

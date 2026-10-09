@@ -315,32 +315,35 @@ function Detail({
 
   return (
     <>
-      <h2 className="subject">{customer.displayName}</h2>
-      {customer.phone ? (
-        <p className="row__meta">
-          <a href={`tel:${customer.phone}`}>{customer.phone}</a>
+      {/* Who it is and what they owe, with the two things a seller records: one card. */}
+      <div className="card">
+        <h2 className="subject">{customer.displayName}</h2>
+        {customer.phone ? (
+          <p className="row__meta">
+            <a href={`tel:${customer.phone}`}>{customer.phone}</a>
+          </p>
+        ) : null}
+        {archived ? <p className="notice">{t("customer.archived")}</p> : null}
+        {customer.remindersOff ? <p className="row__meta">{t("customer.remindersOff")}</p> : null}
+
+        <p className="balance balance--large">
+          <span>{t("customer.balance")}</span> <strong>{formatMoney(customer.balance, language)}</strong>
         </p>
-      ) : null}
-      {archived ? <p className="notice">{t("customer.archived")}</p> : null}
-      {customer.remindersOff ? <p className="row__meta">{t("customer.remindersOff")}</p> : null}
+        <OverdueLines overdue={customer.overdue} />
 
-      <p className="balance balance--large">
-        <span>{t("customer.balance")}</span> <strong>{formatMoney(customer.balance, language)}</strong>
-      </p>
-      <OverdueLines overdue={customer.overdue} />
-
-      {archived ? null : (
-        <p className="actions">
-          <Link to={`/customers/${customer.id}/credit`} className="button button--primary">
-            {t("entry.credit.title")}
-          </Link>
-          {customer.balance > 0 ? (
-            <Link to={`/customers/${customer.id}/payment`} className="button">
-              {t("entry.payment.title")}
+        {archived ? null : (
+          <p className="actions">
+            <Link to={`/customers/${customer.id}/credit`} className="button button--primary">
+              {t("entry.credit.title")}
             </Link>
-          ) : null}
-        </p>
-      )}
+            {customer.balance > 0 ? (
+              <Link to={`/customers/${customer.id}/payment`} className="button">
+                {t("entry.payment.title")}
+              </Link>
+            ) : null}
+          </p>
+        )}
+      </div>
 
       {mayManage ? (
         <section aria-label={t("customer.manage")}>

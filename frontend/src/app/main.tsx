@@ -6,6 +6,7 @@ import { previewStaffSession } from "../shared/session";
 import { StaffApp } from "../shared/StaffApp";
 import { StaffRoot } from "../shared/StaffRoot";
 import { initTelegram } from "../shared/telegram";
+import { initTheme } from "../shared/theme";
 import { webAppConnector, webViewStore } from "../shared/webAppSession";
 
 const root = document.getElementById("root");
@@ -15,6 +16,10 @@ if (!root) {
 
 // The Telegram Mini App: the staff workspace, and for a shop's customer their own account.
 const launch = initTelegram();
+// Inside Telegram its theme decides the colors; anywhere else the person's own choice does.
+if (!launch.insideTelegram) {
+  initTheme();
+}
 const initialLanguage = detectLanguage({
   stored: readStoredLanguage(),
   telegramLanguageCode: launch.languageCode,

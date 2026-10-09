@@ -28,6 +28,8 @@ const TECHNICAL_ATTRIBUTES = new Set([
   "inputMode",
   "entryKey",
   "labelKey",
+  // The kind of a badge ("danger", "warning"): a class name's suffix, never shown.
+  "tone",
 ]);
 
 const LETTER = /\p{L}/u;

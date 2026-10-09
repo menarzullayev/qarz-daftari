@@ -1,22 +1,8 @@
 /*
- * Default theme. Every text/background pair below is checked for WCAG AA contrast (4.5:1) by
- * shell.contrast.test.ts, so change the colors here and the test tells you if a pair stopped passing.
- * Inside Telegram these variables are replaced by the Telegram theme (shared/telegram.ts).
+ * The frame every entry point shares, and the few parts the frame itself uses: icons, badges, the
+ * segmented switches of the header, cards and tiles. Colors, spacing, radii, shadows and type come from
+ * tokens.css only, so both themes and the Telegram theme cover every rule here.
  */
-:root {
-  --qd-bg: #ffffff;
-  --qd-surface: #f2f4f7;
-  --qd-text: #16191d;
-  --qd-muted: #545c68;
-  --qd-link: #0a57a4;
-  --qd-accent: #0a57a4;
-  --qd-on-accent: #ffffff;
-  --qd-border: #7b8494;
-  --qd-focus: #0a57a4;
-
-  --qd-nav-height: 3.75rem;
-  --qd-side-width: 15rem;
-}
 
 *,
 *::before,
@@ -31,17 +17,10 @@ html {
 
 body {
   margin: 0;
-  background: var(--qd-bg);
+  background: var(--qd-surface);
   color: var(--qd-text);
-  font-family:
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    "Noto Sans",
-    sans-serif;
-  font-size: 1rem;
-  line-height: 1.5;
+  font: var(--qd-type-body);
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
@@ -70,17 +49,30 @@ a {
   border: 0;
 }
 
+/* Outline icons on a 24px grid, in the color of the text beside them. */
+.icon {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .skip-link {
   position: absolute;
-  top: 0.5rem;
-  left: 0.5rem;
+  top: var(--qd-space-2);
+  left: var(--qd-space-2);
   z-index: 3;
-  padding: 0.75rem 1rem;
+  min-height: var(--qd-control-height);
+  padding: var(--qd-space-3) var(--qd-space-4);
   border: 0;
-  border-radius: 0.5rem;
+  border-radius: var(--qd-radius-md);
   background: var(--qd-accent);
   color: var(--qd-on-accent);
-  font: inherit;
+  font: var(--qd-type-control);
   transform: translateY(-200%);
 }
 
@@ -106,10 +98,11 @@ a {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem 1rem;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--qd-border);
-  background: var(--qd-surface);
+  gap: var(--qd-space-2) var(--qd-space-4);
+  min-height: var(--qd-header-height);
+  padding: var(--qd-space-2) var(--qd-space-4);
+  border-bottom: 1px solid var(--qd-line);
+  background: var(--qd-bg);
 }
 
 .shell__identity {
@@ -124,42 +117,94 @@ a {
 .shell__brand {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 0.5rem;
+  align-items: center;
+  gap: 0 var(--qd-space-2);
   color: var(--qd-muted);
-  font-size: 0.875rem;
+  font: var(--qd-type-small);
+  font-weight: 600;
 }
 
 .shell__product {
-  font-weight: 700;
+  color: var(--qd-text);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
 }
 
 .shell__context {
   overflow-wrap: anywhere;
-  font-size: 1.125rem;
+  color: var(--qd-muted);
+  font-size: 0.875rem;
   line-height: 1.3;
 }
 
-.language {
+.shell__tools {
   display: flex;
-  gap: 0.25rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--qd-space-2);
 }
 
-.language__option {
-  min-width: 2.75rem;
-  min-height: 2.75rem;
-  padding: 0.25rem 0.75rem;
-  border: 1px solid var(--qd-border);
-  border-radius: 0.5rem;
-  background: var(--qd-bg);
-  color: var(--qd-text);
-  font: inherit;
+/* Segmented switches: the language, the theme, and the two- or three-way filters of the screens. */
+.language,
+.theme-toggle,
+.toggle {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--qd-radius-md);
+  background: var(--qd-surface-2);
+}
+
+.language__option,
+.theme-toggle__option,
+.toggle__option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--qd-space-2);
+  min-width: var(--qd-control-height);
+  /* The whole option is the target, so it is as tall as any other control. */
+  min-height: var(--qd-control-height);
+  padding: var(--qd-space-1) var(--qd-space-3);
+  border: 0;
+  border-radius: var(--qd-radius-sm);
+  background: transparent;
+  color: var(--qd-muted);
+  font: var(--qd-type-control);
+  font-size: 0.875rem;
+  font-weight: 700;
   cursor: pointer;
 }
 
-.language__option[aria-pressed="true"] {
-  border-color: var(--qd-accent);
-  background: var(--qd-accent);
-  color: var(--qd-on-accent);
+/* Chosen: a raised chip in the text color, and a line under the word for when shadows are not seen. */
+.language__option[aria-pressed="true"],
+.theme-toggle__option[aria-pressed="true"],
+.toggle__option[aria-pressed="true"] {
+  background: var(--qd-bg);
+  color: var(--qd-text);
+  box-shadow: var(--qd-shadow-sm);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.25em;
+}
+
+/* A narrow header keeps the theme's three icons and drops their words (each button has an aria-label). */
+.theme-toggle__option {
+  padding: var(--qd-space-1);
+}
+
+.theme-toggle__label {
+  display: none;
+}
+
+/* Its icons cannot be underlined, so the chosen theme has the line drawn inside the chip. */
+.theme-toggle__option[aria-pressed="true"] {
+  box-shadow:
+    var(--qd-shadow-sm),
+    inset 0 -2px 0 var(--qd-text);
+  text-decoration: none;
 }
 
 .shell__nav {
@@ -169,8 +214,8 @@ a {
   left: 0;
   z-index: 2;
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  border-top: 1px solid var(--qd-border);
-  background: var(--qd-surface);
+  border-top: 1px solid var(--qd-line);
+  background: var(--qd-bg);
 }
 
 .nav {
@@ -191,72 +236,267 @@ a {
 
 .nav__link {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 2px;
   min-height: var(--qd-nav-height);
-  padding: 0.25rem;
+  padding: var(--qd-space-1);
+  /* The current item is marked by this line, a heavier icon and bold text: not by its color alone. */
   border-top: 3px solid transparent;
-  color: var(--qd-text);
-  font-size: 0.8125rem;
-  line-height: 1.2;
+  color: var(--qd-muted);
+  font: var(--qd-type-caption);
   text-align: center;
   text-decoration: none;
   overflow-wrap: anywhere;
 }
 
+.nav__link .icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
 .nav__link[aria-current="page"] {
-  border-color: var(--qd-accent);
+  border-color: var(--qd-link);
   color: var(--qd-link);
   font-weight: 700;
+}
+
+.nav__link[aria-current="page"] .icon {
+  stroke-width: 2.25;
 }
 
 .shell__main {
   grid-area: main;
   min-width: 0;
-  padding: 1rem;
+  padding: var(--qd-space-4);
 }
 
 .shell__title {
-  margin: 0 0 0.75rem;
-  font-size: 1.5rem;
-  line-height: 1.25;
+  margin: 0 0 var(--qd-space-4);
+  font: var(--qd-type-title);
+  letter-spacing: var(--qd-tracking-tight);
 }
 
-.section-list {
+/* ---------- Card ---------- */
+
+.card {
+  margin: var(--qd-space-3) 0;
+  padding: var(--qd-space-4);
+  border: 1px solid var(--qd-line);
+  border-radius: var(--qd-radius-lg);
+  background: var(--qd-bg);
+  box-shadow: var(--qd-shadow-sm);
+}
+
+.card > :first-child {
+  margin-top: 0;
+}
+
+.card > :last-child {
+  margin-bottom: 0;
+}
+
+.card--flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+.card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--qd-space-2);
+  margin-bottom: var(--qd-space-3);
+}
+
+.card__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+/* ---------- Badge ---------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--qd-space-1);
+  max-width: 100%;
+  padding: 0.125rem var(--qd-space-2);
+  border-radius: var(--qd-radius-pill);
+  background: var(--qd-surface-2);
+  color: var(--qd-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.badge .icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  stroke-width: 2.25;
+}
+
+.badge--accent {
+  background: var(--qd-accent-soft);
+  color: var(--qd-link);
+}
+
+.badge--success {
+  background: var(--qd-success-soft);
+  color: var(--qd-success);
+}
+
+.badge--warning {
+  background: var(--qd-warning-soft);
+  color: var(--qd-warning);
+}
+
+.badge--danger {
+  background: var(--qd-danger-soft);
+  color: var(--qd-danger);
+}
+
+/* ---------- Tiles (section shortcuts) ---------- */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: var(--qd-space-3);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.section-list__link {
-  display: flex;
-  align-items: center;
-  min-height: 3rem;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--qd-border);
+.tile {
+  display: grid;
+  gap: var(--qd-space-1);
+  align-content: start;
+  width: 100%;
+  height: 100%;
+  min-height: 6rem;
+  padding: var(--qd-space-4);
+  border: 1px solid var(--qd-line);
+  border-radius: var(--qd-radius-lg);
+  background: var(--qd-bg);
+  color: var(--qd-text);
+  font: inherit;
+  text-align: left;
   text-decoration: none;
+  box-shadow: var(--qd-shadow-sm);
+  cursor: pointer;
+}
+
+.tile:hover {
+  border-color: var(--qd-border);
+  box-shadow: var(--qd-shadow-md);
+}
+
+.tile__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--qd-space-2);
+  margin-bottom: var(--qd-space-2);
+}
+
+.tile__icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-bottom: var(--qd-space-2);
+  border-radius: var(--qd-radius-md);
+  background: var(--qd-accent-soft);
+  color: var(--qd-link);
+}
+
+.tile__top .tile__icon {
+  margin-bottom: 0;
+}
+
+.tile__icon--success {
+  background: var(--qd-success-soft);
+  color: var(--qd-success);
+}
+
+.tile__icon--warning {
+  background: var(--qd-warning-soft);
+  color: var(--qd-warning);
+}
+
+.tile__icon--danger {
+  background: var(--qd-danger-soft);
+  color: var(--qd-danger);
+}
+
+.tile__title {
+  font: var(--qd-type-control);
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.tile__text {
+  color: var(--qd-muted);
+  font: var(--qd-type-small);
 }
 
 /* From 720px: navigation becomes a list down the left side and every section is visible. */
 @media (min-width: 720px) {
   .shell {
     grid-template-areas:
-      "header header"
+      "nav header"
       "nav main";
     grid-template-columns: var(--qd-side-width) 1fr;
     padding-bottom: 0;
   }
 
+  /* A screen without navigation (sign-in, a closed door) has no side column to leave empty. */
+  .shell:not(:has(> .shell__nav)) {
+    grid-template-areas:
+      "header"
+      "main";
+    grid-template-columns: 1fr;
+  }
+
+  .shell__header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  .theme-toggle__option {
+    padding: var(--qd-space-1) var(--qd-space-3);
+  }
+
+  .theme-toggle__label {
+    display: inline;
+  }
+
   .shell__nav {
-    position: static;
+    position: sticky;
+    top: 0;
     grid-area: nav;
-    padding: 0.5rem 0;
+    align-self: start;
+    height: 100vh;
+    height: 100dvh;
+    padding: var(--qd-space-3);
+    overflow-y: auto;
     border-top: 0;
-    border-right: 1px solid var(--qd-border);
+    border-right: 1px solid var(--qd-line);
   }
 
   .nav {
     flex-direction: column;
+    gap: 2px;
+  }
+
+  .nav__item {
+    flex: none;
   }
 
   .nav__item--secondary {
@@ -268,18 +508,41 @@ a {
   }
 
   .nav__link {
+    flex-direction: row;
     justify-content: flex-start;
-    min-height: 2.75rem;
-    padding: 0.5rem 1rem;
+    gap: var(--qd-space-3);
+    min-height: var(--qd-control-height);
+    padding: var(--qd-space-2) var(--qd-space-3);
     border-top: 0;
     border-left: 3px solid transparent;
-    font-size: 1rem;
+    border-radius: var(--qd-radius-md);
+    font: var(--qd-type-control);
     text-align: left;
   }
 
+  .nav__link:hover {
+    background: var(--qd-surface);
+  }
+
+  .nav__link .icon {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .nav__link[aria-current="page"] {
+    background: var(--qd-accent-soft);
+    font-weight: 700;
+  }
+
+  /* Controls under the side list (the web panel's shop switcher and sign-out). */
+  .shell__nav .nav__side {
+    margin-top: var(--qd-space-4);
+    padding: var(--qd-space-4) 0 0;
+  }
+
   .shell__main {
-    max-width: 60rem;
-    padding: 1.5rem 2rem;
+    max-width: 64rem;
+    padding: var(--qd-space-6) var(--qd-space-8);
   }
 }
 

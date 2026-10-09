@@ -35,6 +35,10 @@ export const uz = {
   "shell.activeShop": "Faol do'kon",
   "shell.noShop": "Do'kon tanlanmagan",
   "shell.language": "Til",
+  "shell.theme": "Mavzu",
+  "theme.light": "Yorug'",
+  "theme.dark": "Tungi",
+  "theme.system": "Tizim",
   "lang.uz": "O'zbekcha",
   "lang.ru": "Русский",
 

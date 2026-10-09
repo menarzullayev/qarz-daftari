@@ -2,14 +2,14 @@
  * The web panel's own styles (REQ-050, REQ-N15). Under 1024px the panel is the phone layout of the
  * shared style sheets, and the tables of its back-office screens stack into cards. From 1024px the
  * content is wider, lists are tables, and a customer opens beside the customer book.
- * Only the color variables of shell.css are used, so the contrast check there covers these rules too.
+ * Only the tokens of tokens.css are used, so the contrast check there covers these rules too.
  */
 
 .nav__side {
   display: grid;
-  gap: 0.75rem;
-  padding: 1rem;
-  border-top: 1px solid var(--qd-border);
+  gap: var(--qd-space-3);
+  padding: var(--qd-space-4);
+  border-top: 1px solid var(--qd-line);
 }
 
 .nav__side .field {
@@ -18,13 +18,14 @@
 
 .signin__widget {
   min-height: 3rem;
-  margin: 1rem 0;
+  margin: var(--qd-space-4) 0;
 }
 
 .filters {
   display: grid;
-  gap: 0.5rem 1rem;
-  margin: 0.75rem 0;
+  gap: var(--qd-space-2) var(--qd-space-4);
+  align-items: end;
+  margin: var(--qd-space-3) 0;
 }
 
 .filters .field,
@@ -40,19 +41,26 @@
   flex: 1 1 12rem;
 }
 
+/* A table is a card, like the rows it replaces. */
 .table-wrap {
-  margin: 0.75rem 0;
+  margin: var(--qd-space-3) 0;
+  overflow: hidden;
+  border: 1px solid var(--qd-line);
+  border-radius: var(--qd-radius-lg);
+  background: var(--qd-bg);
+  box-shadow: var(--qd-shadow-sm);
 }
 
 .table {
   width: 100%;
   border-collapse: collapse;
+  font-size: 0.9375rem;
 }
 
 .table th,
 .table td {
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--qd-border);
+  padding: var(--qd-space-3) var(--qd-space-4);
+  border-bottom: 1px solid var(--qd-line);
   font-weight: 400;
   text-align: left;
   vertical-align: top;
@@ -60,17 +68,30 @@
   overflow-wrap: break-word;
 }
 
+.table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
 .table thead th {
   background: var(--qd-surface);
   color: var(--qd-muted);
-  font-size: 0.875rem;
-  font-weight: 600;
+  font: var(--qd-type-label);
+  font-size: 0.75rem;
+  letter-spacing: var(--qd-tracking-label);
+  text-transform: uppercase;
 }
 
 .table tbody th,
 .table tfoot th,
 .table tfoot td {
-  font-weight: 600;
+  font-weight: 700;
+}
+
+.table tfoot th,
+.table tfoot td {
+  border-top: 1px solid var(--qd-line);
+  border-bottom: 0;
+  background: var(--qd-surface);
 }
 
 .table .table__num {
@@ -83,7 +104,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--qd-space-2);
 }
 
 .table .notice,
@@ -117,20 +138,35 @@
   }
 
   .table tr {
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--qd-border);
+    padding: var(--qd-space-3) var(--qd-space-4);
+    border-bottom: 1px solid var(--qd-line);
+  }
+
+  .table tbody tr:last-child {
+    border-bottom: 0;
   }
 
   .table th,
   .table td {
-    padding: 0.25rem 0;
+    padding: 0.125rem 0;
     border-bottom: 0;
+  }
+
+  .table tfoot tr {
+    border-top: 1px solid var(--qd-line);
+    border-bottom: 0;
+    background: var(--qd-surface);
+  }
+
+  .table tfoot th,
+  .table tfoot td {
+    border-top: 0;
   }
 
   .table td[data-label]::before {
     display: block;
     color: var(--qd-muted);
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     content: attr(data-label);
   }
 
@@ -146,32 +182,30 @@
 
   .filters {
     grid-template-columns: minmax(12rem, 16rem) minmax(12rem, 16rem) minmax(16rem, 1fr);
-    align-items: end;
+  }
+
+  .table tbody tr:hover {
+    background: var(--qd-surface);
   }
 
   /* The customer book on the left, the open customer on the right. */
   .panes {
     display: grid;
-    grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);
-    gap: 2rem;
+    grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
+    gap: var(--qd-space-6);
     align-items: start;
   }
 
+  /* Padded all round so the list's own scrolling never cuts a ring drawn around a row. */
   .panes__list {
     position: sticky;
-    top: 1rem;
-    max-height: calc(100vh - 2rem);
-    padding-right: 1rem;
+    top: calc(var(--qd-header-height) + var(--qd-space-4));
+    max-height: calc(100vh - var(--qd-header-height) - var(--qd-space-8));
+    padding: var(--qd-space-1);
     overflow-y: auto;
-    border-right: 1px solid var(--qd-border);
   }
 
   .panes__detail {
     min-width: 0;
-  }
-
-  .row__link[aria-current="page"] {
-    font-weight: 700;
-    text-decoration: underline;
   }
 }
