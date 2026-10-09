@@ -1,13 +1,21 @@
-"""Texts of the staff chat in Uzbek and Russian (ADR-021: interface text lives in catalogs, not in logic).
+"""Texts of the staff chat (ADR-021: interface text lives in catalogs, not in logic).
 
 Uzbek defines the set of keys; `tests/test_chat_texts.py` requires Russian to have the same keys and the
-same placeholders.
+same placeholders. The other languages (`qarz.domain.languages`) may trail behind: Tajik, Karakalpak and
+English are in `texts_tg`, `texts_kaa` and `texts_en`, Uzbek Cyrillic is made from the Uzbek text, and a
+key that a language does not have is read in Uzbek (`say`). `tests/test_languages.py` holds them to
+that; `scripts/i18n_missing.py` lists what each still lacks.
 """
 
+from collections.abc import Mapping
 from datetime import date
+from functools import cache
 
+from qarz.application import texts_en, texts_kaa, texts_tg
 from qarz.application.ops_texts import OPS_RU, OPS_UZ
+from qarz.domain import languages
 from qarz.domain.money import Currency, format_money
+from qarz.domain.uz_cyrillic import to_cyrillic
 
 UZ = {
     "welcome_new": (
@@ -839,13 +847,48 @@ RU = {
 # The version of the consent text a customer agrees to (REQ-014). Changing the text means a new version.
 CONSENT_VERSION = 2
 
-CATALOGS = {"uz": UZ, "ru": RU}
-LANGUAGE_NAMES = {"uz": "O'zbekcha", "ru": "Русский"}
+# Uzbek Cyrillic texts that are written by hand because the transliteration of the Uzbek text would be
+# wrong. Empty until a reviewer finds one; a word the rules get wrong belongs in the transliterator's
+# own tables instead (`qarz.domain.uz_cyrillic`).
+UZ_CYRILLIC: dict[str, str] = {}
+
+# What each language has of its own. Uzbek and Russian are complete; the others may lack keys.
+CATALOGS: Mapping[str, Mapping[str, str]] = {
+    "uz": UZ,
+    languages.UZ_CYRILLIC: UZ_CYRILLIC,
+    "ru": RU,
+    "tg": texts_tg.CHAT,
+    "kaa": texts_kaa.CHAT,
+    "en": texts_en.CHAT,
+}
+# Each language under its own name, in the order `/til` offers them.
+LANGUAGE_NAMES = {
+    "uz": "O'zbekcha",
+    languages.UZ_CYRILLIC: "Ўзбекча",
+    "ru": "Русский",
+    "tg": "Тоҷикӣ",
+    "kaa": "Qaraqalpaqsha",
+    "en": "English",
+}
+
+
+@cache
+def template(lang: str, key: str) -> str:
+    """The wording of `key` in a language, before its values are filled in.
+
+    A language's own text first. Without one, Uzbek: transliterated for Uzbek Cyrillic, as it is for
+    every other language and for a language the service does not know. A key that Uzbek does not have
+    is a mistake in the code and raises `KeyError`.
+    """
+    own = CATALOGS.get(lang, UZ).get(key)
+    if own is not None:
+        return own
+    return to_cyrillic(UZ[key]) if lang == languages.UZ_CYRILLIC else UZ[key]
 
 
 def say(lang: str, key: str, **values: object) -> str:
-    """The text for `key` in the given language. An unknown language falls back to Uzbek."""
-    return CATALOGS.get(lang, UZ)[key].format(**values)
+    """The text for `key` in the given language; in Uzbek where the language does not have it."""
+    return template(lang, key).format(**values)
 
 
 def money(lang: str, amount: int, currency: Currency = Currency.UZS) -> str:
@@ -853,7 +896,7 @@ def money(lang: str, amount: int, currency: Currency = Currency.UZS) -> str:
 
     The separator is a no-break space so an amount never wraps.
     """
-    return format_money(currency, amount, lang if lang in CATALOGS else "uz")
+    return format_money(currency, amount, lang)
 
 
 def both(lang: str, amount: int, dollars: int | None) -> str:

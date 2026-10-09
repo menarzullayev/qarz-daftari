@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
 
+import { withMessages } from "../../i18n/catalog";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { ApiError, ChangedPromise, Customer, CustomerDetail, CustomerPatch, Entry } from "../api";
 import { changedDate, changeRange, DATE_REASON_MAX, isDebtKind, saleDay } from "../dateRules";
@@ -25,7 +26,7 @@ import { ReminderAction } from "./ReminderAction";
 
 // A customer's read-only link, for whoever holds `customers.share`: behind a platform switch, so its code is
 // fetched apart and shows nothing until the server has said the switch is on.
-const ShareSection = onDemand(() => import("../share/ShareSection"));
+const ShareSection = onDemand(() => withMessages(import("../share/ShareSection")));
 
 /**
  * Only a manager or an owner is offered a reversal, and only for an entry the server would accept: not

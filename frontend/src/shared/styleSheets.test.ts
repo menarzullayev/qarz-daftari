@@ -70,7 +70,7 @@ describe("the style sheets use the design tokens and nothing else", () => {
     for (const selector of [".button", ".button--small", ".input", ".row__link", ".pick", ".choice", ".toast__action", ".skip-link"]) {
       expect(ruleOf(css, selector), selector).toContain("min-height: var(--qd-control-height)");
     }
-    expect(ruleOf(css, ".language__option,\n.theme-toggle__option,\n.toggle__option")).toContain(
+    expect(ruleOf(css, ".theme-toggle__option,\n.toggle__option")).toContain(
       "min-height: var(--qd-control-height)",
     );
     // Would a shorter control be noticed? This is how the check reads a rule.

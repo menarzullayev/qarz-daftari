@@ -8,8 +8,11 @@ would be refused by Eskiz in production and by nothing before it. So the table i
 import re
 from pathlib import Path
 
+import pytest
+
 from qarz.application.chat_texts import CATALOGS
 from qarz.application.reminders import reminder_text
+from qarz.domain.languages import LANGUAGES, SMS_LANGUAGES
 from qarz.domain.reminders import TEMPLATES, Channel, ReminderKind, ReminderPlan
 from qarz.infrastructure.eskiz_sms import wire_text
 
@@ -34,10 +37,14 @@ def in_the_code() -> set[Template]:
 
 
 def sendable() -> set[str]:
-    """Every text a reminder can be by SMS, with the variable parts left as their names."""
+    """Every text a reminder can be by SMS, with the variable parts left as their names.
+
+    For a reader of every language the product has, and of one it does not: whatever the language, the
+    text that goes out is one of the registered ones.
+    """
     return {
         wire_text(reminder_text(lang, template, ReminderPlan(kind, 70_000), Channel.SMS, shop="{shop}", name="{name}"))
-        for lang in CATALOGS
+        for lang in (*LANGUAGES, "kk", "")
         for template in TEMPLATES
         for kind in ReminderKind
     }
@@ -58,7 +65,9 @@ def test_the_documented_templates_are_exactly_what_a_reminder_can_send() -> None
     """Not only the catalog: what the reminder code produces for the SMS channel, as it goes on the wire."""
     rows = documented(RUNBOOKS.read_text(encoding="utf-8"))
     assert {with_an_amount(text, lang) for _, lang, text in rows} == sendable()
-    assert len(sendable()) == len(CATALOGS) * len(ReminderKind), "one per language and kind, whatever the shop chose"
+    assert len(sendable()) == len(SMS_LANGUAGES) * len(ReminderKind), (
+        "one per SMS language and kind, whatever the shop chose"
+    )
 
 
 def test_each_template_has_the_three_variable_parts_and_ordinary_spaces() -> None:
@@ -79,6 +88,30 @@ def test_a_wording_that_differs_from_the_document_is_noticed() -> None:
     }
     extra = document.replace(row, row + "| `sms_thanks` | uz | `{shop}: rahmat.` |\n", 1)
     assert set(documented(extra)) - in_the_code() == {("sms_thanks", "uz", "{shop}: rahmat.")}
+
+
+def test_sms_exists_in_uzbek_and_russian_only() -> None:
+    """Each wording must be registered with the provider, and only these two languages' are. The other
+    languages have no SMS text of their own, so that none can be sent unregistered."""
+    assert SMS_LANGUAGES == ("uz", "ru")
+    assert {lang for _, lang, _ in in_the_code()} == set(SMS_LANGUAGES)
+    for lang in set(LANGUAGES) - set(SMS_LANGUAGES):
+        assert [key for key in CATALOGS[lang] if "sms" in key] == [], lang
+
+
+@pytest.mark.parametrize("lang", [*sorted(set(LANGUAGES) - set(SMS_LANGUAGES)), "kk"])
+@pytest.mark.parametrize("kind", list(ReminderKind))
+def test_a_reader_of_another_language_gets_the_uzbek_sms_whole(lang: str, kind: ReminderKind) -> None:
+    """Not a Tajik sentence, and not an Uzbek sentence with a Tajik unit in it: the registered text."""
+    plan = ReminderPlan(kind, 70_000)
+    sent = reminder_text(lang, 1, plan, Channel.SMS, shop="Baraka", name="Ali")
+    assert sent == reminder_text("uz", 1, plan, Channel.SMS, shop="Baraka", name="Ali")
+    assert "so'm" in sent
+    # By Telegram the same reminder is in the reader's own language.
+    if lang != "kk":
+        assert reminder_text(lang, 1, plan, Channel.TELEGRAM, shop="Baraka", name="Ali") != reminder_text(
+            "uz", 1, plan, Channel.TELEGRAM, shop="Baraka", name="Ali"
+        )
 
 
 def test_a_new_sms_text_in_the_code_must_be_documented() -> None:

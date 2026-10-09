@@ -1,5 +1,6 @@
 import { lazy, Suspense, useMemo, type ReactNode } from "react";
 
+import { withMessages } from "../i18n/catalog";
 import { I18nProvider, useI18n } from "../i18n/I18nProvider";
 import type { Language, MessageKey } from "../i18n/types";
 import type { ShopApi, ShopMembership } from "./api";
@@ -65,11 +66,11 @@ const systemClock = () => new Date();
 // so the first load of the Mini App does not carry them (NFR-010).
 const PaymentNoticesScreen = lazy(() => import("./workspace/PaymentNoticesScreen"));
 const DateRequestsScreen = lazy(() => import("./workspace/DateRequestsScreen"));
-const ReportsScreen = lazy(() => import("./reports/ReportsScreen"));
+const ReportsScreen = lazy(() => withMessages(import("./reports/ReportsScreen")));
 const CashScreen = lazy(() => import("./cash/CashScreen"));
-const ExportsScreen = lazy(() => import("./exports/ExportsScreen"));
-const ImportScreen = lazy(() => import("./imports/ImportScreen"));
-const SupportAccessSection = lazy(() => import("./support/SupportAccessSection"));
+const ExportsScreen = lazy(() => withMessages(import("./exports/ExportsScreen")));
+const ImportScreen = lazy(() => withMessages(import("./imports/ImportScreen")));
+const SupportAccessSection = lazy(() => withMessages(import("./support/SupportAccessSection")));
 // The stock, its documents and the suppliers: one module, fetched when one of their screens is opened.
 const StockScreens = lazy(() => import("./stock/StockScreens"));
 

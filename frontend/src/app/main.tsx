@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { detectLanguage, readStoredLanguage } from "../i18n/detect";
+import { startLanguage } from "../i18n/start";
 import { previewStaffSession } from "../shared/session";
 import { StaffApp } from "../shared/StaffApp";
 import { StaffRoot } from "../shared/StaffRoot";
@@ -30,12 +31,15 @@ const preview = import.meta.env.DEV ? previewStaffSession(window.location.search
 // web view (see webAppSession.ts) and never put in a URL. Outside Telegram there is nothing to sign in with.
 const connect = webAppConnector((input, init) => window.fetch(input, init), launch.initData, webViewStore());
 
-createRoot(root).render(
-  <StrictMode>
-    {preview ? (
-      <StaffApp entryKey="entry.app" session={preview} initialLanguage={initialLanguage} />
-    ) : (
-      <StaffRoot entryKey="entry.app" initialLanguage={initialLanguage} connect={connect} customerPage />
-    )}
-  </StrictMode>,
-);
+// The text of the language the person starts in is fetched before anything is drawn.
+void startLanguage(initialLanguage).then(() => {
+  createRoot(root).render(
+    <StrictMode>
+      {preview ? (
+        <StaffApp entryKey="entry.app" session={preview} initialLanguage={initialLanguage} />
+      ) : (
+        <StaffRoot entryKey="entry.app" initialLanguage={initialLanguage} connect={connect} customerPage />
+      )}
+    </StrictMode>,
+  );
+});

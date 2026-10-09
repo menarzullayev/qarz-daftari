@@ -47,7 +47,11 @@ describe("shop settings for the owner (REQ-049)", () => {
     expect(lang().value).toBe("uz");
     expect(Array.from(lang().options).map((option) => [option.value, option.textContent])).toEqual([
       ["uz", "O'zbekcha"],
+      ["uz-Cyrl", "Ўзбекча"],
       ["ru", "Русский"],
+      ["tg", "Тоҷикӣ"],
+      ["kaa", "Qaraqalpaqsha"],
+      ["en", "English"],
     ]);
     expect(days().value).toBe("30");
   });

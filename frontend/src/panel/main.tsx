@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { detectLanguage, readStoredLanguage } from "../i18n/detect";
+import { startLanguage } from "../i18n/start";
 import { previewStaffSession } from "../shared/session";
 import { StaffApp } from "../shared/StaffApp";
 import { initTheme } from "../shared/theme";
@@ -32,12 +33,15 @@ window.addEventListener("load", () => {
   void registerPanelWorker({ container: navigator.serviceWorker, production: import.meta.env.PROD });
 });
 
-createRoot(root).render(
-  <StrictMode>
-    {preview ? (
-      <StaffApp entryKey="entry.panel" session={preview} initialLanguage={initialLanguage} />
-    ) : (
-      <PanelRoot initialLanguage={initialLanguage} loginReturn={loginReturn} />
-    )}
-  </StrictMode>,
-);
+// The text of the language the person starts in is fetched before anything is drawn.
+void startLanguage(initialLanguage).then(() => {
+  createRoot(root).render(
+    <StrictMode>
+      {preview ? (
+        <StaffApp entryKey="entry.panel" session={preview} initialLanguage={initialLanguage} />
+      ) : (
+        <PanelRoot initialLanguage={initialLanguage} loginReturn={loginReturn} />
+      )}
+    </StrictMode>,
+  );
+});

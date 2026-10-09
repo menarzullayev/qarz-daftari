@@ -49,6 +49,10 @@ export const uz = {
   "theme.system": "Tizim",
   "lang.uz": "O'zbekcha",
   "lang.ru": "Русский",
+  "lang.uz-Cyrl": "Ўзбекча",
+  "lang.tg": "Тоҷикӣ",
+  "lang.kaa": "Qaraqalpaqsha",
+  "lang.en": "English",
 
   "role.owner": "Do'kon egasi",
   "role.manager": "Menejer",
@@ -455,7 +459,7 @@ export const uz = {
   "reminders.template.dueToday": "To'lash kunida",
   "reminders.template.overdue": "Muddati o'tganda",
   "reminders.template.example":
-    "Matnlar mijoz ko'radigan ko'rinishda, ikkala tilda. Ism va summa namuna: har bir mijoz o'z ismi va qarzini ko'radi.",
+    "Matnlar mijoz ko'radigan ko'rinishda, sizning tilingizda; mijoz eslatmani o'z tilida oladi. Ism va summa namuna: har bir mijoz o'z ismi va qarzini ko'radi.",
   "reminders.example.name": "Ali Valiyev",
   "reminders.example.shop": "Baraka savdo",
   "reminders.sms": "SMS orqali ham yuborish",

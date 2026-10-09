@@ -145,8 +145,14 @@ a {
   gap: var(--qd-space-2);
 }
 
-/* Segmented switches: the language, the theme, and the two- or three-way filters of the screens. */
-.language,
+/* The language picker: one control for six languages, as wide as the name of the one chosen. */
+.language__picker {
+  width: auto;
+  max-width: 100%;
+  font-weight: 700;
+}
+
+/* Segmented switches: the theme, and the two- or three-way filters of the screens. */
 .theme-toggle,
 .toggle {
   display: inline-flex;
@@ -157,7 +163,6 @@ a {
   background: var(--qd-surface-2);
 }
 
-.language__option,
 .theme-toggle__option,
 .toggle__option {
   display: inline-flex;
@@ -179,7 +184,6 @@ a {
 }
 
 /* Chosen: a raised chip in the text color, and a line under the word for when shadows are not seen. */
-.language__option[aria-pressed="true"],
 .theme-toggle__option[aria-pressed="true"],
 .toggle__option[aria-pressed="true"] {
   background: var(--qd-bg);

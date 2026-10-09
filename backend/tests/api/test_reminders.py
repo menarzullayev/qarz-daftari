@@ -20,7 +20,9 @@ from fastapi.testclient import TestClient
 from qarz.application.chat_texts import money, say
 from qarz.application.reminders import ReminderService
 from qarz.application.scheduler import Scheduler
+from qarz.domain.languages import LANGUAGES
 from qarz.domain.promise import TASHKENT, tashkent_date
+from qarz.domain.uz_cyrillic import to_cyrillic
 from qarz.infrastructure.db import Database
 
 from .conftest import World, as_user
@@ -419,8 +421,11 @@ def test_reminder_settings_start_off_and_show_the_wordings(client: TestClient, w
     assert [template["id"] for template in body["templates"]] == [1, 2, 3]
     for template in body["templates"]:
         for kind in ("due_today", "overdue"):
-            for lang in ("uz", "ru"):
+            assert tuple(template[kind]) == LANGUAGES, "a wording in each language, in their order"
+            for lang in LANGUAGES:
                 assert "{shop}" in template[kind][lang] and "{amount}" in template[kind][lang]
+            assert len(set(template[kind].values())) == len(LANGUAGES), "each language in its own words"
+            assert template[kind]["uz-Cyrl"] == to_cyrillic(template[kind]["uz"])
 
 
 def test_a_manager_turns_reminders_on_and_chooses_the_hour(

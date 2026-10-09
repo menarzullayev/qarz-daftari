@@ -9,7 +9,7 @@ import {
   translate,
 } from "./catalog";
 import { ru } from "./ru";
-import type { Message, MessageKey, RuCatalog } from "./types";
+import { LANGUAGES, type Message, type MessageKey, type RuCatalog } from "./types";
 import { uz } from "./uz";
 
 function without<T extends object, K extends keyof T>(source: T, key: K): Omit<T, K> {
@@ -80,11 +80,12 @@ describe("Uzbek copy", () => {
     expect(lookAlikes.test("so’m")).toBe(true);
   });
 
-  it("has no Cyrillic letters except the Russian language name", () => {
+  it("has no Cyrillic letters except the names of the languages, each written in its own script", () => {
     const offenders = Object.entries(uz)
-      .filter(([key, message]) => key !== "lang.ru" && /\p{Script=Cyrillic}/u.test(JSON.stringify(message)))
+      .filter(([key, message]) => !key.startsWith("lang.") && /\p{Script=Cyrillic}/u.test(JSON.stringify(message)))
       .map(([key]) => key);
     expect(offenders).toEqual([]);
+    expect(Object.keys(uz).filter((key) => key.startsWith("lang.")).sort()).toEqual(LANGUAGES.map((code) => `lang.${code}`).sort());
   });
 });
 

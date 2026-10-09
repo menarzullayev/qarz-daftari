@@ -18,9 +18,11 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
+from qarz.application import texts_en, texts_kaa, texts_tg
 from qarz.application.chat_texts import say
 from qarz.domain import permissions
 from qarz.domain.access import Role
+from qarz.domain.languages import LANGUAGES
 from qarz.domain.promise import tashkent_date
 
 from .conftest import World, as_user, set_overrides, switch_permissions_on
@@ -253,11 +255,18 @@ def test_the_catalogue_is_read_by_the_owner(client: TestClient, world: World, ow
     assert {item["key"] for item in listed} == permissions.ALL_KEYS
     assert [group["key"] for group in body["groups"]] == [group.key for group in permissions.GROUPS]
     for item in (*body["groups"], *listed):
-        assert set(item["label"]) == {"uz", "ru"} and all(item["label"].values())
+        assert set(item["label"]) == set(LANGUAGES) and all(item["label"].values())
     by_key = {item["key"]: item for item in listed}
     assert by_key["entries.cancel"] == {
         "key": "entries.cancel",
-        "label": {"uz": "Yozuvni bekor qilish", "ru": "Отменять запись"},
+        "label": {
+            "uz": "Yozuvni bekor qilish",
+            "uz-Cyrl": "Ёзувни бекор қилиш",
+            "ru": "Отменять запись",
+            "tg": texts_tg.PERMISSIONS["entries.cancel"],
+            "kaa": texts_kaa.PERMISSIONS["entries.cancel"],
+            "en": texts_en.PERMISSIONS["entries.cancel"],
+        },
         "roles": ["manager", "owner"],
         "fixed": False,
     }

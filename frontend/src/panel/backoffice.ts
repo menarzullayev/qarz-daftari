@@ -1,3 +1,4 @@
+import { LANGUAGES, type Language } from "../i18n/types";
 import { type Page, reading, type ShopApi, toApiError } from "../shared/api";
 import { isRole, type Role } from "../shared/navigation";
 
@@ -92,7 +93,8 @@ function transfer(value: unknown): Transfer {
 }
 
 /** A name in the two languages the server keeps every label in. */
-export type Label = { uz: string; ru: string };
+/** A name in Uzbek and Russian always, and in each other language the server has it in. */
+export type Label = { uz: string; ru: string } & { readonly [L in Language]?: string };
 
 /** One permission of the server's catalogue. `fixed`: it follows the role and cannot be changed. */
 export type CataloguePermission = { key: string; label: Label; roles: string[]; fixed: boolean };
@@ -104,7 +106,12 @@ export type MemberPermissions = { membershipId: string; role: string; permission
 
 function label(value: unknown): Label {
   const body = record(value);
-  return { uz: text(body["uz"]), ru: text(body["ru"]) };
+  const others = Object.fromEntries(
+    LANGUAGES.filter((code) => code !== "uz" && code !== "ru" && typeof body[code] === "string" && body[code] !== "").map(
+      (code) => [code, text(body[code])],
+    ),
+  );
+  return { ...others, uz: text(body["uz"]), ru: text(body["ru"]) };
 }
 
 function catalogue(value: unknown): CatalogueGroup[] {

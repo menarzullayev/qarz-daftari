@@ -63,7 +63,10 @@ def test_a_partial_update_keeps_the_other_settings(client: TestClient, world: Wo
         ({"name": ""}, "name"),
         ({"name": "   "}, "name"),
         ({"name": "x" * 81}, "name"),
-        ({"lang": "en"}, "lang"),
+        ({"lang": "de"}, "lang"),
+        ({"lang": "kk"}, "lang"),
+        ({"lang": "uz-cyrl"}, "lang"),
+        ({"lang": "UZ"}, "lang"),
         ({"default_promise_days": 0}, "default_promise_days"),
         ({"default_promise_days": 366}, "default_promise_days"),
         ({"default_promise_days": "14"}, "default_promise_days"),
@@ -91,7 +94,7 @@ def test_invalid_updates_are_rejected_and_change_nothing(
 
 def test_a_non_member_learns_nothing_from_an_invalid_request(client: TestClient, world: World) -> None:
     """Authorization comes before validation: an outsider gets NOT_FOUND, not a validation report."""
-    response = client.patch(f"/api/v1/shops/{world.shop_a}", json={"lang": "en"}, headers=as_user(world.owner_b))
+    response = client.patch(f"/api/v1/shops/{world.shop_a}", json={"lang": "de"}, headers=as_user(world.owner_b))
     assert response.status_code == 404
     assert response.json()["error"]["fields"] == {}
 

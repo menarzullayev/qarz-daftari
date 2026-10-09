@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "size": "npm run build && node scripts/size.ts",
+    "size": "npm run build && node scripts/size.ts && node scripts/firstLoadLanguages.ts",
+    "i18n:missing": "node scripts/i18nMissing.ts",
+    "i18n:k": "node scripts/kCyrillic.ts",
     "api:types": "node scripts/apiTypes.ts",
     "api:check": "node scripts/apiTypes.ts --check"
   },

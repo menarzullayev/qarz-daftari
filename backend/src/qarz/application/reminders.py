@@ -11,7 +11,8 @@ from typing import Any
 from uuid import UUID
 
 from qarz.application import idempotency
-from qarz.application.chat_texts import CATALOGS, both, money, say
+from qarz.application.chat_texts import both, money, say
+from qarz.application.chat_texts import template as wording
 from qarz.application.currencies import USD, UZS, dollars_on, shop_currencies
 from qarz.application.customers import (
     effective_subscription,
@@ -24,7 +25,7 @@ from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import operation
 from qarz.application.ports import ReminderCandidate, ReminderSettings, Storage, TenantSession
 from qarz.application.shops import require_member
-from qarz.domain import ledger, platform_settings
+from qarz.domain import languages, ledger, platform_settings
 from qarz.domain.access import Capability
 from qarz.domain.promise import tashkent_date
 from qarz.domain.reminders import (
@@ -85,10 +86,13 @@ async def sms_allowance(session: TenantSession, today: date) -> tuple[bool, int,
 
 def reminder_text(lang: str, template: int, plan: ReminderPlan, channel: Channel, *, shop: str, name: str) -> str:
     """The fixed wording (REQ-024). SMS uses its own short form, whatever template the shop chose."""
-    language = lang if lang in CATALOGS else "uz"
     if channel is Channel.SMS:
-        # So'm only: see `qarz.domain.reminders.choose_channel`.
+        # So'm only: see `qarz.domain.reminders.choose_channel`. Only the Uzbek and the Russian wording
+        # are registered with the provider, so every other language is sent the Uzbek one, whole: the
+        # amount's unit too.
+        language = languages.sms_language(lang)
         return say(language, f"sms_{plan.kind.value}", shop=shop, name=name, amount=money(language, plan.amount))
+    language = lang if languages.is_language(lang) else languages.DEFAULT
     return say(
         language,
         f"r{template}_{plan.kind.value}",
@@ -123,8 +127,8 @@ def _settings_body(settings: ReminderSettings) -> dict[str, Any]:
         "templates": [
             {
                 "id": template,
-                "due_today": {lang: catalog[f"r{template}_due_today"] for lang, catalog in CATALOGS.items()},
-                "overdue": {lang: catalog[f"r{template}_overdue"] for lang, catalog in CATALOGS.items()},
+                "due_today": {lang: wording(lang, f"r{template}_due_today") for lang in languages.LANGUAGES},
+                "overdue": {lang: wording(lang, f"r{template}_overdue") for lang in languages.LANGUAGES},
             }
             for template in TEMPLATES
         ],

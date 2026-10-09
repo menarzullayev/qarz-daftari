@@ -75,7 +75,7 @@ After a credit entry the reply shows balance, any credit-limit warning, and butt
 | `/qarzim` | Customer | Balances per shop; opens the customer page |
 | `/toladim` | Customer | Send a payment notice: amount, optional receipt |
 | `/obuna` | Owner | Subscription state; pay: shows the primary card with its label and the amount, offers the other cards behind one button when there are several, accepts a receipt file for the card chosen |
-| `/til` | Anyone | Change language |
+| `/til` | Anyone | Change language: one of the six ("Languages") |
 | `/uzish`, `/ochirish` | Customer | Disconnect; request removal |
 | `/yordam` | Anyone | Help |
 
@@ -252,6 +252,70 @@ Cost figures (`cost` of an item and of a movement; `currency`, `total`, `paid`, 
 
 **For module J** (the network between shops): `supplier.linked_shop_id` and `stock_document.origin_ref` are there, nullable and unused; nothing assumes a supplier is not a shop of the platform.
 
+## Languages
+
+Expansion module E (decision 11 of 2026-10-09). Six languages, all simply available: there is no switch. Uzbek in Latin script and Russian existed; Uzbek in Cyrillic script, Tajik, Karakalpak and English are added.
+
+| Tag | Language | Where its text comes from |
+|---|---|---|
+| `uz` | Uzbek, Latin script | Written first: it defines the keys of every catalog, and every other language falls back to it |
+| `uz-Cyrl` | Uzbek, Cyrillic script | Made from `uz` by rule, never typed (below) |
+| `ru` | Russian | Mirrors `uz` key for key; the tests fail otherwise (NFR-007, unchanged) |
+| `tg` | Tajik (Cyrillic) | Translated; may trail behind `uz` |
+| `kaa` | Karakalpak (Latin, the 2016 alphabet) | Translated; may trail behind `uz` |
+| `en` | English | Translated; may trail behind `uz` |
+
+The tags are BCP 47 and are used as they are everywhere: in the database, in the API, in `<html lang>`, in the browser's storage and in the bot's callback data. One list on each side: `qarz.domain.languages.LANGUAGES` and `frontend/src/i18n/types.ts` `LANGUAGES` (and the customer page's own copy, `frontend/src/k/messages.ts`). All six are written left to right; `<html dir>` is set from a table (`DIRECTIONS`), so a right-to-left language would be one more row.
+
+**Where a language is stored and checked.**
+
+| What | Where | Checked by |
+|---|---|---|
+| A person's own language (the bot's replies, notifications to them, the wording of API refusals) | `app_user.lang` | `PATCH /me` (`AuthService.update_me`), the bot's `/til` callback, and the column's check (migration 0044) |
+| A shop's language (reminders to customers who have none of their own, the export workbook) | `shop.lang` | `POST /shops`, `PATCH /shops/{id}` (`qarz.application.shops`) and the column's check |
+| The language recorded for a customer | `customer.lang` (may be empty) | the column's check; read with a fallback to the shop's |
+| The language of the screens | the browser's `localStorage`, key `qd.language`, per device | `normalizeLanguage` (`frontend/src/i18n/detect.ts`) on every read |
+
+A value that is none of the six is refused with `VALIDATION` on `lang` (`must be one of: uz, uz-Cyrl, ru, tg, kaa, en`); a tag written another way (`uz-cyrl`, `en-US`) is not accepted where a language is stored. `tests/db/test_languages_db.py` holds the three checks to the application's list.
+
+**The language a person starts in** comes from Telegram's `language_code`, by one table in two places that the tests hold together (`qarz.domain.languages.from_telegram`, `languageFromTelegram` in `detect.ts`): `uz`, `ru`, `tg`, `en` and `kaa` to themselves by their first subtag (`en-US` is `en`), `uz` with a `Cyrl` subtag to `uz-Cyrl`, `kk` (Kazakh, which Telegram has and Karakalpak it has not) to `kaa`, anything else to `uz`. That is only a start. A person's own choice always wins and is remembered as before: `/til` writes `app_user.lang`, which a later sign-in or message never overwrites; the picker writes the browser's storage, which is read before Telegram's hint (`detectLanguage`). The two are still separate, as they were: the screens' language is per device and the bot's is per person.
+
+**Fallback.** A text that a language does not have is read in Uzbek, at run time, everywhere: never an error, never an empty string, never the key. For `uz-Cyrl` the Uzbek text is transliterated first. The functions that do it: `translate` (`frontend/src/i18n/catalog.ts`), `wording` (`frontend/src/k/messages.ts`), `chat_texts.template`/`say`, `export_texts.word`/`header`, `errors.message_text`. A plural entry of the wrong kind falls back the same way. A key that Uzbek itself does not have is a mistake in the code and still fails loudly, as before. An unknown language code reaching any of these is answered in Uzbek.
+
+**Completeness, while other modules are still being written.** Other work adds its texts in `uz` and `ru` only, and the existing parity of those two stays strict. For `tg`, `kaa` and `en` the tests check what is there and do not ask for everything: no key that Uzbek does not have, a plural entry where Uzbek has one and with the language's own forms (one form for Tajik and Karakalpak, `one` and `other` for English), the same placeholders as Uzbek in every form, no empty text, bot commands and the product's name left as they are (`frontend/src/i18n/newLanguages.test.ts` over `check.ts`; `backend/tests/test_languages.py`). The front end's check finds the catalogs by their files, so a new catalog directory needs no line added. What is absent is listed by `npm run i18n:missing` (front end, with `-- --keys` for every key) and `python scripts/i18n_missing.py` (server); neither is part of CI. **A final pass, after the remaining modules are merged, translates what the two scripts list and then makes completeness strict** (`--strict` in CI, and the fallback stays as a safety net). Until then a new screen is readable in every language, in Uzbek where it is not translated yet.
+
+**Uzbek Cyrillic is generated.** One deterministic Latin-to-Cyrillic pass, implemented twice, `qarz.domain.uz_cyrillic.to_cyrillic` and `frontend/src/i18n/uzCyrillic.ts`, and held to one file of cases and tables, `backend/tests/data/uz_cyrillic_cases.json`, by a test on each side. The rules: `o'`→`ў`, `g'`→`ғ` (with any of the apostrophes people type), `sh`→`ш`, `ch`→`ч`, `ya`/`yo`/`yu`→`я`/`ё`/`ю` but `yo'`→`йў`, `ye`→`е` at the start of a word and after a vowel and `ье` after a consonant, `e`→`э` at the start of a word and after a vowel, `ts`→`ц` in `-tsiya`/`-tsion` only (`ketsa` stays `кетса`), the apostrophe inside a word→`ъ` (`ma'lumot`→`маълумот`; between `s` and `h` it only separates them), capitals carried over. Where the Latin spelling lost what Cyrillic keeps (the soft sign of `октябрь`, the `ц` of `цирк`, `мўъжиза`) the word is in a table of whole words or of word beginnings. Left exactly as they are: placeholders, links, e-mail addresses, `@names`, bot commands, markup tags, file names and paths, the product's name, brands (an Uzbek ending after one is still written: `Telegramда`), codes (a list, any word of two or more capitals that is not a listed Uzbek word, and letters that touch a digit), and everything that is not a Latin letter. Text typed by people (a shop's or a customer's name, a note) is never rewritten: only the wording is.
+
+- *Generated at run time, not committed.* The staff application and the server make the Cyrillic text from the Uzbek text when it is asked for (cached per key). A committed catalog would have gone stale with every Uzbek text another module adds, and failed that module's build for a file it never touched; made at run time, Uzbek Cyrillic follows every new text at once, and the tests run the rules over every Uzbek text of the product (placeholders, commands, line breaks, digits and signs kept; no word left half in each script).
+- *The one exception* is the page behind a customer's read-only link, which must stay a few kilobytes and share no code with the staff application: its fifty-odd messages are written to `frontend/src/k/uzCyrl.ts` by `npm run i18n:k`, with the same rules, and `page.test.ts` fails when a message in that file is not what the rules give for today's Uzbek text. A key the file lacks reads Uzbek in Latin script.
+- *Corrections.* A word the rules get wrong is added to the tables (`WORDS`, `STEMS`, `BRANDS`, `CODES`, `UPPER_WORDS`) in both implementations and in the shared file, which the tests compare. A whole message that must differ is put in `uzCyrlOverrides.ts` (front end) or `chat_texts.UZ_CYRILLIC` / `export_texts.UZ_CYRILLIC` (server); today these hold only the names of the languages, each of which is written in its own script whatever the reader's. Known limit: an Uzbek word written in capitals is taken for a code and left in Latin unless it is listed in `UPPER_WORDS`; the two scripts print the Latin left in the output, for a reviewer.
+
+**Loading in the browser (NFR-010).** Only Uzbek is part of the first load, because every language falls back to it. Each other language is a file of its own per catalog, fetched when it is the language in use: the entry point fetches the starting language's main catalog before it renders (`startLanguage`), the picker fetches a language before it switches to it (and stays where it is if that fails), and a screen loaded on demand waits for its own catalog's text (`withMessages`). `addMessages` takes a catalog as `{ uz, ru?, tg?, kaa?, en? }` where each other language is the text itself or a function that fetches it; a language left out reads Uzbek. `scripts/firstLoadLanguages.ts`, run by `npm run size`, looks for each language's sentences in what every page loads first and fails when it finds any but Uzbek's, or when it cannot find a language anywhere. Russian was part of the first load before; it no longer is.
+
+**Formatting.** Money keeps the money module's rules in every language: whole so'm with thousands in groups of three separated by no-break spaces and the language's word after (`so'm`, `сўм`, `сум`, `сӯм`, `swm`, `soum`); dollars as `1 250.50 $`, the same in all six. Dates take the language's month names and order from its catalog (`2026-yil 6-oktabr`, `2026-йил 6-октябрь`, `6 октября 2026 г.`, `6 октябри 2026`, `2026-jıl 6-oktyabr`, `6 October 2026`); the bot keeps `06.10.2026` everywhere. Counts: Russian has three plural forms, English two, the others one.
+
+**What each surface does with a language.**
+
+| Surface | In the six languages | Falls back, and why |
+|---|---|---|
+| Mini App, web panel, administrator's panel (every catalog under `frontend/src/i18n/`) | Yes; the header's picker offers all six | - |
+| The customer's page behind a read-only link (`/k/`) | Yes; all six inside the page, picker included | - |
+| The bot: replies, `/til` (six buttons, two to a row), notifications to staff and customers, operations alerts | Yes | What a person must type is the same in every language (commands; `Ali 45000`; `berdi`), since the parser reads Uzbek and Russian words only. The operations test message stays in Uzbek and Russian |
+| Reminders by Telegram | Yes, in the customer's language, else the shop's | - |
+| **Reminders by SMS** | **Uzbek and Russian only** | Each wording must be registered with the provider before it may be sent (runbook 12). A reader of any other language gets the Uzbek SMS, whole, unit included. No other language has an SMS text, and a test fails if one appears |
+| Export workbook (sheet names, headers, words), in the shop's language | Yes | - |
+| Import template, in the reader's language; and reading a template back | Yes; the titles of all six are recognised | The parser of amounts and dates is unchanged |
+| Wording of API refusals | Yes | Field-level validation details (`fields`) are English identifiers, as before |
+| Permission names (`GET …/permissions`) | The server sends each name in the languages that have it | A permission a later module adds has `uz` and `ru` only; the panel shows Uzbek (Cyrillic for `uz-Cyrl`) until it is translated |
+| Reminder wordings on the reminders screen | The server sends each wording in all six; the screen shows the reader's | Before, with two languages, the screen showed both |
+| Names of stock units and write-off reasons (`GET …/stock/settings`) | `uz`, `ru` | The server names them in two languages; every other reader is shown Uzbek (in Latin script for `uz-Cyrl` too). For the final pass |
+| Telegram's own login button on the sign-in screen | `uz`, `ru`, `en` | It is Telegram's widget: Uzbek for the three it has nothing closer for |
+| Payme's error messages (`online_payment.py`) | Unchanged: `uz`, `ru`, `en`, as Payme's protocol asks | Not a text of ours |
+
+**Schema (migration 0044).** The three `lang` checks written in 0001 are replaced by named ones listing the six tags. No row changes: every stored value is `uz` or `ru`.
+
+**Reviewed or not.** English was written with the Uzbek and Russian texts side by side. Tajik and Karakalpak were written by a model and have not been read by a native speaker: they are not to be offered to shops as finished before `docs/10-operations/translation-review.md` is worked through. Nothing in the interface marks them; the checklist and the three glossaries (`docs/10-operations/glossaries/`) are where that is tracked.
+
 ## Events
 
 Domain events are raised and handled inside the command's transaction; effects on the outside world go through the outbox (ADR-007).
@@ -415,7 +479,7 @@ Consent text version 2, Uzbek, with a Russian equivalent to be written; an agent
 | NFR-004 | Recovery from loss of the primary within 1 hour; at most 5 minutes of entries lost; proven by rehearsal | REQ-N08, REQ-N09, ADR-015 |
 | NFR-005 | List, search, and overview calls return within 300 ms at the 95th percentile for a shop with 2,000 customers and 200,000 entries | REQ-026 |
 | NFR-006 | Sustained 50 recorded entries a second across 5,000 shops for 30 minutes without breaching NFR-001 or NFR-005 | REQ-N13 |
-| NFR-007 | Every message key and screen string exists in Uzbek and Russian; the build fails otherwise | REQ-N01, REQ-051 |
+| NFR-007 | Every message key and screen string exists in Uzbek and Russian; the build fails otherwise. Uzbek Cyrillic is made from Uzbek; Tajik, Karakalpak and English may trail and then read Uzbek ("Languages") | REQ-N01, REQ-051 |
 | NFR-008 | No identifying data outside the tables allowed to hold it; verified by a schema test | REQ-N05, ADR-010 |
 | NFR-009 | Itemized entry API call with ten lines completes within 400 ms at the 95th percentile | REQ-N02 |
 | NFR-010 | Staff Mini App first load at most 300 KB compressed and usable within 3 seconds on a low-end Android phone on a 3G connection | REQ-N15 |

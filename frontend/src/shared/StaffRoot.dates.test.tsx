@@ -176,7 +176,7 @@ describe("the reports stay out of the first load (NFR-010)", () => {
     }
     expect(offenders).toEqual([]);
     const app = sources().find((source) => source.name === "shared/StaffApp.tsx")?.text ?? "";
-    expect(app).toContain('lazy(() => import("./reports/ReportsScreen"))');
+    expect(app).toContain('lazy(() => withMessages(import("./reports/ReportsScreen")))');
     expect(app).toContain('lazy(() => import("./cash/CashScreen"))');
     expect(app).not.toMatch(/^import .*["']\.\/cash\//m);
     expect(app).toContain('lazy(() => import("./workspace/DateRequestsScreen"))');
