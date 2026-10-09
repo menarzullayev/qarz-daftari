@@ -291,6 +291,11 @@ CHAT: dict[str, str] = {
         "“{shop}”: the paid period has ended. The shop moved to the free plan and keeps working in full: up to "
         "{limit} customers. If you need more customers: /obuna"
     ),
+    "free_plan_lowered": (
+        "“{shop}”: the free plan now covers up to {limit} customers, and you have {used}. No new credit sales "
+        "can be recorded now; taking payments, viewing and messages to customers keep working, and your data "
+        "is kept. To work in full: /obuna"
+    ),
     "move_date_button": "📅 Move due date",
     "ask_move_date": "What date should the due date be moved to? Write it as day.month, for example 25.10",
     "move_date_invalid": "I did not understand the date. Write it as day.month, for example 25.10",

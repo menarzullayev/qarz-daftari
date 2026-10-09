@@ -305,6 +305,11 @@ UZ = {
         "«{shop}»: muddat tugadi. Do'kon bepul tarifga o'tdi va to'liq ishlayveradi: {limit} tagacha mijoz. "
         "Ko'proq mijoz kerak bo'lsa: /obuna"
     ),
+    "free_plan_lowered": (
+        "«{shop}»: bepul tarif endi {limit} tagacha mijozni o'z ichiga oladi, sizda esa {used} ta mijoz bor. "
+        "Endi yangi nasiya yozilmaydi; to'lov qabul qilish, ko'rish va mijozlarga xabarlar ishlayveradi, "
+        "ma'lumotlaringiz saqlanadi. To'liq ishlash uchun: /obuna"
+    ),
     "move_date_button": "📅 Muddatni ko'chirish",
     "ask_move_date": "To'lash muddati qaysi sanaga ko'chirilsin? kun.oy ko'rinishida yozing, masalan 25.10",
     "move_date_invalid": "Sanani tushunmadim. kun.oy ko'rinishida yozing, masalan 25.10",
@@ -701,6 +706,11 @@ RU = {
     "sub_free_now": (
         "«{shop}»: срок истёк. Магазин перешёл на бесплатный тариф и работает полностью: до {limit} клиентов. "
         "Если нужно больше клиентов: /obuna"
+    ),
+    "free_plan_lowered": (
+        "«{shop}»: бесплатный тариф теперь вмещает до {limit} клиентов, а у вас клиентов: {used}. "
+        "Новые продажи в долг не записываются; приём оплат, просмотр и сообщения клиентам работают, "
+        "ваши данные сохранены. Чтобы работать полностью: /obuna"
     ),
     "move_date_button": "📅 Перенести срок",
     "ask_move_date": "На какую дату перенести срок оплаты? Напишите день.месяц, например 25.10",

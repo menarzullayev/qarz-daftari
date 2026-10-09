@@ -3550,7 +3550,9 @@ export interface operations {
     };
     admin_settings_read_api_admin_v1_settings_get: {
         parameters: {
-            query?: never;
+            query?: {
+                free_plan_customers?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3566,6 +3568,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

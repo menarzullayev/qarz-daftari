@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { Reply, Sent } from "../testing/fakeServer";
+import { loweredPlan } from "./rules";
+import { SettingsScreen } from "./SettingsScreen";
 import { ShopScreen } from "./ShopScreen";
 import { ShopsScreen } from "./ShopsScreen";
-import { ADMIN, adminApi, cells, NOBODY, NOW, ok, OTHER_SHOP, renderAdmin, SHOP_ID, shopBody, shopDetailBody } from "./testing";
+import { ADMIN, adminApi, cells, NOBODY, NOW, ok, OTHER_SHOP, platformBody, refusal, renderAdmin, SHOP_ID, shopBody, shopDetailBody } from "./testing";
 
 /**
  * The free plan in the administrator's panel (module A, behind the platform switch `free_plan_on`). The
@@ -98,5 +100,156 @@ describe("one shop with the free plan", () => {
     expect(facts()[0]?.slice(-2)).toEqual(["Mijozlar soni", "42"]);
     expect(facts()[1]?.slice(0, 2)).toEqual(["Obuna holati", "Cheklangan"]);
     expect(document.body.textContent).not.toContain("bepul tarif");
+  });
+});
+
+describe("lowering the free plan in the settings", () => {
+  const NUMBER = "Bepul tarifdagi mijozlar soni (do'kon boshiga)";
+  const SWITCH = "Bepul tarif yoqilgan (SMS faqat to'lagan do'konlarga)";
+  const CODE = "Autentifikator kodi";
+  type Server = ReturnType<typeof adminApi>["server"];
+
+  /** The settings with the plan on at 30 customers; `preview` is the server's answer to the question. */
+  const open = (preview: (sent: Sent) => Reply, settings: Record<string, unknown> = { free_plan_on: true }, lowered: unknown = undefined) => {
+    const made = adminApi((sent) => {
+      if (sent.method === "GET") {
+        return sent.query["free_plan_customers"] === undefined ? ok(platformBody({}, settings)) : preview(sent);
+      }
+      const changes = (sent.body as { changes: Record<string, unknown> }).changes;
+      return ok(platformBody(lowered === undefined ? {} : { free_plan_lowered: lowered }, { ...settings, ...changes }));
+    });
+    renderAdmin(<SettingsScreen api={made.api} />);
+    return made.server;
+  };
+  const wouldLimit = (shops: number) => (sent: Sent) =>
+    ok(platformBody({ free_plan_preview: { customers: Number(sent.query["free_plan_customers"]), shops_limited: shops } }, { free_plan_on: true }));
+  const questions = (server: Server) => server.sent.filter((sent) => sent.method === "GET" && sent.query["free_plan_customers"] !== undefined);
+  const type = async (value: string) => fireEvent.change(await screen.findByLabelText(NUMBER), { target: { value } });
+  const save = () => fireEvent.click(screen.getByRole("button", { name: "Saqlash" }));
+  /** The question before a lowering is sent; the cards of the form are a group too, so it is found by its place. */
+  const question = () => document.querySelector<HTMLElement>("form > div.notice[role=group]");
+  const asked = () => waitFor(() => question() ?? Promise.reject(new Error("no question is asked")));
+
+  it("asks the server how many shops a lower number would limit, and sends nothing until that was seen and agreed to", async () => {
+    const server = open(wouldLimit(3), { free_plan_on: true }, { customers: 20, shops_limited: 3 });
+    await type("20");
+    expect(questions(server)).toHaveLength(0);
+    save();
+    const shown = await asked();
+    expect(questions(server).map((sent) => sent.query)).toEqual([{ free_plan_customers: "20" }]);
+    expect([...shown.querySelectorAll("p:not(.actions)")].map((line) => line.textContent)).toEqual([
+      "Bepul tarif 30 tadan 20 tagacha mijozga kamaytiriladi.",
+      "Cheklangan rejimga o'tadigan do'konlar: 3 ta. Ularda yangi nasiya yozilmaydi; yozilgan ma'lumotlar saqlanadi, ko'rish va to'lov qabul qilish ishlayveradi.",
+      "Bu do'konlarning egalariga botda xabar yuboriladi: nima bo'lgani va /obuna buyrug'i.",
+    ]);
+    expect(screen.queryByRole("button", { name: "Saqlash" })).toBeNull();
+    expect(server.writes()).toHaveLength(0);
+
+    // Going back sends nothing and gives the form its button again.
+    fireEvent.click(within(shown).getByRole("button", { name: "Orqaga" }));
+    expect(question()).toBeNull();
+    expect(server.writes()).toHaveLength(0);
+
+    save();
+    fireEvent.click(within(await asked()).getByRole("button", { name: "Ha, saqlansin" }));
+    const done = await screen.findByRole("status");
+    expect(server.writes().map((sent) => [sent.method, sent.path, sent.body])).toEqual([["PATCH", `${ADMIN}/settings`, { changes: { free_plan_customers: 20 } }]]);
+    expect(within(done).getByText("Bepul tarifdagi mijozlar soni (do'kon boshiga): 30 → 20")).toBeTruthy();
+    expect(within(done).getByText("Cheklangan rejimga o'tgan do'konlar: 3 ta. Egalariga botda xabar yuborildi.")).toBeTruthy();
+    expect(question()).toBeNull();
+  });
+
+  it("saves at once when the lower number limits no shop", async () => {
+    const server = open(wouldLimit(0), { free_plan_on: true }, { customers: 20, shops_limited: 0 });
+    await type("20");
+    save();
+    const done = await screen.findByRole("status");
+    expect(questions(server)).toHaveLength(1);
+    expect(server.writes()).toHaveLength(1);
+    expect(question()).toBeNull();
+    expect(done.textContent).not.toContain("Cheklangan rejimga");
+  });
+
+  it.each([
+    ["a higher number", { free_plan_on: true }, "45", false],
+    ["the plan switched off", { free_plan_on: false }, "20", false],
+    ["the plan being switched off in the same change", { free_plan_on: true }, "20", true],
+  ])("asks nothing with %s: the change is sent as every other", async (_, settings, value, switchOff) => {
+    const server = open(() => refusal(500, "INTERNAL", "no question is expected"), settings);
+    await type(value);
+    if (switchOff) {
+      fireEvent.click(screen.getByLabelText(SWITCH));
+      fireEvent.change(screen.getByLabelText(CODE), { target: { value: "123456" } });
+    }
+    save();
+    await screen.findByRole("status");
+    expect(questions(server)).toHaveLength(0);
+    expect(server.writes()).toHaveLength(1);
+    expect(question()).toBeNull();
+  });
+
+  it("asks nothing when the plan is being switched on with a lower number: no shop was free before", async () => {
+    const server = open(() => refusal(500, "INTERNAL", "no question is expected"), { free_plan_on: false });
+    await type("20");
+    fireEvent.click(screen.getByLabelText(SWITCH));
+    fireEvent.change(screen.getByLabelText(CODE), { target: { value: "123456" } });
+    save();
+    await screen.findByRole("status");
+    expect(questions(server)).toHaveLength(0);
+    expect(server.writes()[0]?.body).toEqual({ changes: { free_plan_on: true, free_plan_customers: 20 }, code: "123456" });
+  });
+
+  it("sends nothing when the question cannot be answered, and says so", async () => {
+    const server = open(() => "offline");
+    await type("20");
+    save();
+    expect((await screen.findByRole("alert")).textContent).toContain("Serverga ulanib bo'lmadi");
+    expect(server.writes()).toHaveLength(0);
+    expect(question()).toBeNull();
+    expect((screen.getByRole("button", { name: "Saqlash" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("withdraws the question when a field is changed, and asks again for the new number", async () => {
+    const server = open(wouldLimit(3));
+    await type("20");
+    save();
+    await asked();
+    await type("10");
+    expect(question()).toBeNull();
+    save();
+    await asked();
+    expect(questions(server).map((sent) => sent.query["free_plan_customers"])).toEqual(["20", "10"]);
+    expect(server.writes()).toHaveLength(0);
+  });
+
+  it("saves without a question when the server says nothing of the plan, as it does with the switch off", async () => {
+    const server = open(() => ok(platformBody({}, { free_plan_on: true })));
+    await type("20");
+    save();
+    await screen.findByRole("status");
+    expect(server.writes()).toHaveLength(1);
+    expect(question()).toBeNull();
+  });
+});
+
+describe("the rule of a lowered free plan", () => {
+  const on = { free_plan_on: true, free_plan_customers: 30 };
+
+  it("is a lower number while the plan is on and stays on", () => {
+    expect(loweredPlan(on, { free_plan_customers: 29 })).toEqual({ from: 30, to: 29 });
+    expect(loweredPlan(on, { free_plan_customers: 1, trial_days: 7 })).toEqual({ from: 30, to: 1 });
+    expect(loweredPlan(on, { free_plan_on: true, free_plan_customers: 5 })).toEqual({ from: 30, to: 5 });
+  });
+
+  it.each([
+    ["the same number", on, { free_plan_customers: 30 }],
+    ["a higher number", on, { free_plan_customers: 31 }],
+    ["another setting", on, { trial_days: 7 }],
+    ["the plan off", { ...on, free_plan_on: false }, { free_plan_customers: 5 }],
+    ["the plan switched on by the change", { ...on, free_plan_on: false }, { free_plan_on: true, free_plan_customers: 5 }],
+    ["the plan switched off by the change", on, { free_plan_on: false, free_plan_customers: 5 }],
+    ["no number held", { free_plan_on: true }, { free_plan_customers: 5 }],
+  ])("is not %s", (_, values, changes) => {
+    expect(loweredPlan(values, changes)).toBeNull();
   });
 });

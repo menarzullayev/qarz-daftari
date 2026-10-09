@@ -3859,6 +3859,24 @@
     "/api/admin/v1/settings": {
       "get": {
         "operationId": "admin_settings_read_api_admin_v1_settings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "free_plan_customers",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Free Plan Customers"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3871,6 +3889,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Admin.Settings.Read"

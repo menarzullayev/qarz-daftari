@@ -289,6 +289,11 @@ CHAT: dict[str, str] = {
         "«{shop}»: múddet tamamlandı. Dúkan biypul tarifke ótti hám tolıq isley beredi: {limit} "
         "qarıydarǵa shekem. Kóbirek qarıydar kerek bolsa: /obuna"
     ),
+    "free_plan_lowered": (
+        "«{shop}»: biypul tarif endi {limit} qarıydarǵa shekem, al sizde {used} qarıydar bar. Endi jańa "
+        "nesiye jazılmaydı; tólem qabıllaw, kóriw hám qarıydarlarǵa xabarlar isley beredi, maǵlıwmatlarıńız "
+        "saqlanadı. Tolıq islew ushın: /obuna"
+    ),
     "move_date_button": "📅 Múddetti kóshiriw",
     "ask_move_date": "Tólew múddeti qaysı sánege kóshirilsin? kún.ay kórinisinde jazıń, mısalı 25.10",
     "move_date_invalid": "Sáneni túsinbedim. kún.ay kórinisinde jazıń, mısalı 25.10",
