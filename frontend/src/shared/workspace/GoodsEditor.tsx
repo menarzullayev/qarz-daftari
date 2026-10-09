@@ -378,6 +378,8 @@ export function GoodsEditor({ drafts, onChange, showAllProblems, disabled }: Goo
           <span>{t("goods.sum")}</span> <strong>{formatMoney(sum, language)}</strong>
         </p>
       ) : null}
+      {/* Before the first good: what the two ways below are for. */}
+      {drafts.length === 0 ? <p className="state">{t("goods.lines.none")}</p> : null}
       {full ? (
         <p className="hint">{t("goods.max", { max: MAX_LINES })}</p>
       ) : (

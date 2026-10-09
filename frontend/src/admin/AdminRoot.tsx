@@ -6,7 +6,7 @@ import { type LoginReturn, NO_RETURN } from "../panel/loginReturn";
 import { signInPanel, signOutPanel } from "../panel/signIn";
 import { type LoginWidgetProps, TelegramLogin } from "../panel/TelegramLogin";
 import { type ApiAuth, type ApiError, type Fetch, toApiError } from "../shared/api";
-import { useSubmit } from "../shared/hooks";
+import { useLatest, useSubmit } from "../shared/hooks";
 import { useHashPath } from "../shared/router";
 import { NotFoundScreen } from "../shared/screens";
 import { BOT_USERNAME } from "../shared/settings";
@@ -84,8 +84,9 @@ function SignIn({
 
   // Runs once, when the screen appears: what Telegram sent this page back with, if it did, goes to the
   // server. The fields are taken, so showing the screen again (after signing out) sends nothing.
+  const given = useLatest({ fetch, takeReturn, onSignedIn });
   useEffect(() => {
-    const returned = takeReturn();
+    const returned = given.current.takeReturn();
     if (returned.status === "none" || busy.current) {
       return;
     }
@@ -95,18 +96,18 @@ function SignIn({
     }
     busy.current = true;
     setAttempt({ status: "pending" });
-    signInPanel(fetch, returned.data).then(
+    signInPanel(given.current.fetch, returned.data).then(
       (auth) => {
         busy.current = false;
-        onSignedIn(auth);
+        given.current.onSignedIn(auth);
       },
       (error: unknown) => {
         busy.current = false;
         setAttempt({ status: "failed", error: toApiError(error) });
       },
     );
-    // `fetch` and the two callbacks are fixed for the life of the page.
-  }, []);
+    // `given` is one box for the life of the screen, so this runs when the screen appears and not again.
+  }, [given]);
 
   const refused = attempt.status === "failed" && (attempt.error === null || attempt.error.status === 401);
   return (
@@ -394,8 +395,7 @@ function Root({
     return () => {
       cancelled = true;
     };
-    // `fetch` is fixed for the life of the page.
-  }, [auth, checks]);
+  }, [auth, checks, fetch]);
 
   const signOut = useCallback(() => {
     if (auth !== null) {

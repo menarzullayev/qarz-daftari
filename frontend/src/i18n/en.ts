@@ -284,6 +284,7 @@ export const en: PartialCatalog<typeof uz, EnPlural> = {
   "goods.pick.list": "Items in the catalog",
   "goods.lines": "Chosen items",
   "goods.pick.none": "Not found in the catalog. Type it by hand below.",
+  "goods.lines.none": "No items chosen yet. Pick from the catalog or type one by hand below.",
   "goods.pick.price": "{price} / {unit}",
   "goods.new": "Item not in the catalog",
   "goods.new.name": "Item name",
@@ -640,6 +641,11 @@ export const en: PartialCatalog<typeof uz, EnPlural> = {
   "error.rateLimited": "Too many requests. Wait a little and try again.",
   "error.wait": { one: "Try again in {count} second.", other: "Try again in {count} seconds." },
   "error.timeout": "The request took too long and was stopped. Nothing was saved. Try again.",
+  "error.noAnswer": "No answer came in time. It may already have been saved: check first, then try again.",
+  "crash.title": "This page could not be shown",
+  "crash.body": "Something unexpected went wrong. Reload the page and try again.",
+  "crash.outdated": "The app was updated. Reload the page to continue.",
+  "crash.reload": "Reload the page",
 
   "my.notice.ask": "I paid",
   "my.notice.hint":

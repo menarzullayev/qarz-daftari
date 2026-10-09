@@ -262,10 +262,16 @@ describe("support access on a shop's page", () => {
     const { server } = section([supportBody()], NOBODY, () => refusal(409, "SUPPORT_ACCESS_NOT_OPEN", "Sizning ochiq kirishingiz yo'q."));
     fireEvent.click(await screen.findByRole("button", { name: "Kirishimni yopish" }));
     fireEvent.click(screen.getByRole("button", { name: "Ha, yopilsin" }));
-    expect((await screen.findByRole("alert")).textContent).toBe("Sizning ochiq kirishingiz yo'q.");
+    expect((await screen.findByRole("alert")).textContent).toContain("Sizning ochiq kirishingiz yo'q.");
     await waitFor(() => expect(server.sent.filter((sent) => sent.method === "GET")).toHaveLength(2));
     expect(screen.queryByRole("button", { name: "Ha, yopilsin" })).toBeNull();
     expect(screen.queryByText("Kirish yopildi.")).toBeNull();
+
+    // "Try again" reads the accesses once more and puts the refusal away; it writes nothing.
+    fireEvent.click(within(screen.getByRole("alert")).getByRole("button", { name: "Qayta urinish" }));
+    await waitFor(() => expect(server.sent.filter((sent) => sent.method === "GET")).toHaveLength(3));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(server.writes()).toHaveLength(1);
   });
 
   it("says the server's words when the caller's own access is open already, and reads the accesses again", async () => {
@@ -273,7 +279,7 @@ describe("support access on a shop's page", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Kirish ochish" }));
     fill("Egasi so'radi", "1");
     fireEvent.click(screen.getByRole("button", { name: "Ha, ochilsin" }));
-    expect((await screen.findByRole("alert")).textContent).toBe("Bu do'konga kirishingiz allaqachon ochiq.");
+    expect((await screen.findByRole("alert")).textContent).toContain("Bu do'konga kirishingiz allaqachon ochiq.");
     await waitFor(() => expect(server.sent.filter((sent) => sent.method === "GET")).toHaveLength(2));
     expect(screen.queryByRole("button", { name: "Ha, ochilsin" })).toBeNull();
   });

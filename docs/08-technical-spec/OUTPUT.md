@@ -598,7 +598,7 @@ Consent text version 2, Uzbek, with a Russian equivalent to be written; an agent
 
 Until the founder approves this text or other text, NFR-003 and NFR-004 stand as written above and are **not met**.
 
-None of these has been measured. NFR-005, NFR-006, NFR-009 and NFR-011 require a load test with generated data before launch.
+None of these has been measured on the running service. NFR-010 is the one that is checked on every pull request: its 300 KB by the bundle budget and its three seconds by the web-vitals budget of `/app/` on a throttled connection and processor ("Front-end quality" below). NFR-005, NFR-006, NFR-009 and NFR-011 require a load test with generated data before launch.
 
 ## Integrations
 
@@ -632,6 +632,40 @@ None of these has been measured. NFR-005, NFR-006, NFR-009 and NFR-011 require a
 | Database or unexpected error | Roll back; generic message with a reference identifier; alert |
 
 A reply that says something was saved is sent only after commit.
+
+## Front-end quality
+
+What the front end is held to, and where each rule is enforced. All of it runs in CI on every pull request (`.github/workflows/ci.yml`, jobs `frontend` and `e2e`); a change that lowers the bar fails there, and a change that has to move a number moves it in the file named, in the same pull request.
+
+| What | The rule | Enforced by | Its negative check |
+|---|---|---|---|
+| Accessible markup | `eslint-plugin-jsx-a11y`, the recommended set, every rule an error. The panel's table keeps its spelled-out roles through the options of two rules, not by switching them off | `npm run lint` (`frontend/eslint.config.js`) | `scripts/lintRules.test.ts` gives the linter nine mistakes (a picture without text, a click on a `div`, a frame without a title, ...) and each must be refused |
+| Hooks | `react-hooks/rules-of-hooks` and `react-hooks/exhaustive-deps`, both errors. A dependency list is written out: `useLoad` and `usePagedList` take the caller's list and turn it into one counter (`useChangeCount`), and an effect that must run once reads its props through `useLatest`. A rule is switched off only for one line, with the reason on that line | the same | the same file: a conditional hook, a missing dependency and a spread list are refused; a whole-file or unexplained `eslint-disable` in `src/` fails |
+| Nothing blank | A root error boundary in `app`, `panel` and `admin`, and one around every screen inside the shell (`shared/ErrorBoundary.tsx`). A render error shows a localized message with "reload". A part of the application that cannot be fetched (after a deployment the hashed files have new names) reloads the page once by itself: at most once in ten minutes per tab, never without a connection, never where the mark cannot be kept. The console only; no error-reporting service; nothing a screen was showing is written | `ErrorBoundary.test.tsx` | a second reload inside ten minutes does not happen in fifty tries; a customer's name and phone held by the failing screen are not in what is logged |
+| No request waits for ever | `call()` stops waiting after 15 s for a read, 30 s for a write and 120 s for a file (`TIMEOUTS` in `shared/api.ts`; `timeoutMs` per call). The proxy gives up after 20 s and the API cancels a statement after 5 s, so a healthy request ends well inside these. A read ends as `TIMEOUT` ("nothing was saved"). A write ends as `NO_ANSWER`, whose text does not say that: the request had left, and the server may have applied it. Sending the same payload again resends the same `Idempotency-Key` (`useSubmit`), and the server returns the stored result for that key, or runs it if the first never arrived (ADR-006) | `api.timeout.test.ts`, `hooks.test.tsx` | a request one millisecond short of its limit is not stopped; a screen that was left still ends as an abort, not as a timeout; a timed-out write sent again is applied once |
+| Telegram's colors can be read | Inside Telegram nine base tokens come from the client's theme. Each pair they are drawn in is measured first: text, muted text and links on both grounds and a button's label on the button at 4.5:1; a border, the focus ring and a button against the page at 3:1. A pair below its threshold takes the design system's colors for the theme's scheme (`shared/telegramContrast.ts`); the rest of the theme is kept | `telegramContrast.test.ts` | Telegram's own day and night themes each fail a known list of pairs before the guard and none after; a thousand random themes pass; a theme that already reads well is passed through unchanged; the copy of the design tokens in the guard must equal `tokens.css` |
+| The design system's own contrast | Every text/ground pair of `tokens.css` meets WCAG AA in the light and the dark theme | `shell.contrast.test.ts` | existing |
+| Width | No screen is wider than its window (`scrollWidth <= clientWidth`): every screen of the Mini App and of the panel at 390, 768 and 1366 px, and each screen of journeys 01 and 04 as it is visited | `e2e/tests/11-responsive-keyboard.spec.ts`, `expectNoSidewaysScroll` in `e2e/support/fixtures.ts` | the failure names the screen, the width and the elements that stick out |
+| Text size | At twice the text size (root font size 32 px) the main screens have no sideways scroll, no text cut off by a box that hides its overflow, no two controls on top of each other, and the navigation does not cover the end of a screen: the Mini App at 768 px, the panel at 768 and 1366 px. That is the width WCAG's reflow criterion asks for (320 CSS px at the ordinary size is 640 px at twice the size). A 390 px phone at twice the text size is measured and printed in the run's log, and is not held to | the same file | |
+| Keyboard | A customer is added and a credit recorded with Tab, Enter and Space alone, starting signed in (signing in is Telegram's own button). Every control on the way must take the focus, show the 3 px focus ring, and let the focus go | the same file | a control that keeps the focus for three presses, or is not reached in sixty, fails with the path the focus took |
+| Web vitals | A first visit to `/app/` (the overview, signed in), `/panel/` (the sign-in screen) and `/k/` (a customer's account) on a slow phone: 150 ms a round trip, 1.6 Mbit/s down, 750 kbit/s up, the processor four times slower (Chrome DevTools protocol; no Lighthouse). The better of two loads is held to the budgets below | `e2e/tests/12-web-vitals.spec.ts`, `e2e/support/vitals.ts` | the first paint must not come sooner than two round trips, or the connection was not slowed and the run fails; a page that reports no paint fails |
+| First-load size | Compressed scripts and style sheets a page asks for before it starts: the Mini App 300 KB (NFR-010), the panel 167 KB, the administration panel 150 KB, a customer's page 20 KB. The panel's and the administration panel's are their sizes when written plus about 15 % | `npm run size` (`frontend/scripts/size.ts`) | `--budget-kb=1`, `--panel-budget-kb=1`, `--admin-budget-kb=1`, `--customer-page-budget-kb=1` each fail the script |
+| Languages in the first load | Uzbek only; every other language is a file of its own | `scripts/firstLoadLanguages.ts`, run by `npm run size` | existing |
+| Page basics | Each entry page has one `<meta name="description">`; the frame of Telegram's login button is given a title by its wrapper (`panel/TelegramLogin.tsx`) | `entryPoints.test.ts`, `panel/signIn.test.tsx` | a page with none, or with two, is not accepted; a frame elsewhere on the page is left alone |
+
+**Web-vitals budgets.** Measured on GitHub's runner by the suite (pull request 98, 2026-10-09), the better of two loads; the budget is what was measured plus headroom for a slower runner, and never above what the measure is for (2.5 s is the "good" bound of LCP, 0.1 of CLS, 3 s is NFR-010).
+
+| Page | LCP measured / budget | Usable measured / budget | TBT measured / budget | CLS measured / budget |
+|---|---|---|---|---|
+| `/app/` | 1856 ms / 2500 ms | 1829 ms / 2500 ms | 0 ms / 200 ms | 0.022 / 0.1 |
+| `/panel/` | 1344 ms / 1900 ms | 1396 ms / 1900 ms | 0 ms / 200 ms | 0 / 0.05 |
+| `/k/` | 636 ms / 1000 ms | 609 ms / 1000 ms | 0 ms / 100 ms | 0 / 0.05 |
+
+"Usable" is the moment the thing the person came for is on the screen: the overview's totals, the sign-in button, the amount owed. TBT (total blocking time) stands in for INP, which needs a person's taps; it counts from the first paint, and the one task over 50 ms that each of the two applications runs (62 to 71 ms on the slowed processor, starting the application) ends before it. Telegram's own script, which the Mini App's page loads from telegram.org before anything else, is answered by the suite at once and is not in these figures.
+
+**NFR-010** ("first load at most 300 KB compressed and usable within 3 seconds on a low-end Android phone on a 3G connection") is checked in two halves: the size by `npm run size`, and the three seconds by the `usable` budget of `/app/` above, on the throttled profile. Neither is a measurement on a real low-end phone over a real mobile network; that has not been done.
+
+**What is not covered.** The journeys other than 01 and 04 run at one width each. Text size is held to on the main screens only, and not on a 390 px phone: there, at twice the text size, the tab bar grows to 176 px against the 120 px kept free for it and covers the last lines of a screen, and the overview and the customer book are up to 76 px wider than the window. The keyboard journey is one path through the Mini App, not every screen. The contrast guard covers the nine tokens Telegram replaces; a color Telegram's theme does not carry comes from the design system and is covered by its own test.
 
 ## Observability requirements
 

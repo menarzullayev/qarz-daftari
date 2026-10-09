@@ -249,6 +249,9 @@ export const uzPanel = {
   "deletion.export": "O'chirilgan ma'lumotlar qaytarilmaydi. O'chirishni so'rashdan oldin daftarni Excel fayliga eksport qilib oling.",
   "deletion.export.open": "Eksportga o'tish",
 
+  "deletion.done.requested": "Do'konni o'chirish so'raldi. Belgilangan kungacha so'rovni bekor qilishingiz mumkin.",
+  "deletion.done.cancelled": "O'chirish so'rovi bekor qilindi. Do'kon odatdagidek ishlashda davom etadi.",
+  "totals.none": "Hozircha ko'rsatadigan do'kon yo'q.",
   "totals.title": "Barcha do'konlarim",
   "totals.shop": "Do'kon",
   "totals.total": "Jami",

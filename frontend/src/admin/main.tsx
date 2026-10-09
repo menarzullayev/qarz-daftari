@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { detectLanguage, readStoredLanguage } from "../i18n/detect";
 import { startLanguage } from "../i18n/start";
+import { ErrorBoundary } from "../shared/ErrorBoundary";
 import { takeLoginReturn } from "../panel/loginReturn";
 import { previewAdminSession } from "../shared/session";
 import { initTheme } from "../shared/theme";
@@ -28,7 +29,9 @@ const preview = import.meta.env.DEV ? previewAdminSession(window.location.search
 void startLanguage(initialLanguage).then(() => {
   createRoot(root).render(
     <StrictMode>
-      {preview ? <AdminApp signedIn initialLanguage={initialLanguage} /> : <AdminRoot initialLanguage={initialLanguage} loginReturn={loginReturn} />}
+      <ErrorBoundary scope="page">
+        {preview ? <AdminApp signedIn initialLanguage={initialLanguage} /> : <AdminRoot initialLanguage={initialLanguage} loginReturn={loginReturn} />}
+      </ErrorBoundary>
     </StrictMode>,
   );
 });

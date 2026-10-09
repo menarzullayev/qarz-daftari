@@ -281,6 +281,7 @@ export const kaa: PartialCatalog<typeof uz> = {
   "goods.pick.list": "Katalogtaǵı tovarlar",
   "goods.lines": "Tańlanǵan tovarlar",
   "goods.pick.none": "Katalogta tabılmadı. Tómende qoldan jazıń.",
+  "goods.lines.none": "Ele tovar tańlanbaǵan. Katalogtan tańlań yamasa tómende qoldan jazıń.",
   "goods.pick.price": "{price} / {unit}",
   "goods.new": "Katalogta joq tovar",
   "goods.new.name": "Tovar atı",
@@ -622,6 +623,11 @@ export const kaa: PartialCatalog<typeof uz> = {
   "error.rateLimited": "Sorawlar júdá kóp. Biraz kútip, qayta urınıp kóriń.",
   "error.wait": { other: "{count} sekundtan keyin urınıp kóriń." },
   "error.timeout": "Soraw júdá uzaq dawam etti hám toqtatıldı. Hesh nárse saqlanbadı. Qayta urınıp kóriń.",
+  "error.noAnswer": "Juwap waqtında kelmedi. Saqlanǵan bolıwı da múmkin: aldın tekserip kóriń, keyin qayta urınıp kóriń.",
+  "crash.title": "Betti kórsetip bolmadı",
+  "crash.body": "Kútilmegen qátelik júz berdi. Betti jańalap, qayta urınıp kóriń.",
+  "crash.outdated": "Qosımsha jańalandı. Dawam etiw ushın betti jańalań.",
+  "crash.reload": "Betti jańalaw",
 
   "my.notice.ask": "Tóledim",
   "my.notice.hint":

@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { CUSTOMER_PAGE_BUDGET_KB, DEFAULT_BUDGET_KB, checkBudget, collectInitialAssets, parseBudgetKb } from "./size.ts";
+import {
+  ADMIN_BUDGET_KB,
+  BUDGETS,
+  CUSTOMER_PAGE_BUDGET_KB,
+  DEFAULT_BUDGET_KB,
+  PANEL_BUDGET_KB,
+  checkBudget,
+  collectInitialAssets,
+  parseBudgetKb,
+  verdict,
+} from "./size.ts";
 
 describe("collectInitialAssets", () => {
   const html = `
@@ -70,5 +80,37 @@ describe("parseBudgetKb", () => {
     // What the check then does with it: 4.4 KB passes, the staff application's 105 KB does not.
     expect(checkBudget([4_400], CUSTOMER_PAGE_BUDGET_KB).withinBudget).toBe(true);
     expect(checkBudget([105_000], CUSTOMER_PAGE_BUDGET_KB).withinBudget).toBe(false);
+  });
+});
+
+describe("the budgets of the panel and the administration panel", () => {
+  it("are their sizes when written plus about 15 %, each with an option of its own", () => {
+    expect(PANEL_BUDGET_KB).toBe(167);
+    expect(ADMIN_BUDGET_KB).toBe(150);
+    expect(145.03 * 1.15).toBeGreaterThan(PANEL_BUDGET_KB - 1);
+    expect(130.94 * 1.15).toBeGreaterThan(ADMIN_BUDGET_KB - 1);
+    expect(parseBudgetKb([], "--panel-budget-kb", PANEL_BUDGET_KB)).toBe(167);
+    expect(parseBudgetKb(["--panel-budget-kb=1"], "--panel-budget-kb", PANEL_BUDGET_KB)).toBe(1);
+    expect(parseBudgetKb(["--panel-budget-kb=1"], "--admin-budget-kb", ADMIN_BUDGET_KB)).toBe(150);
+  });
+
+  it("every page of the build has a budget, and no two share an option", () => {
+    expect(BUDGETS.map(({ entry }) => entry)).toEqual(["app", "panel", "admin", "k"]);
+    expect(new Set(BUDGETS.map(({ option }) => option)).size).toBe(BUDGETS.length);
+    expect(BUDGETS.map(({ budgetKb }) => budgetKb)).toEqual([300, 167, 150, 20]);
+  });
+
+  it("pass what the panel weighs today and fail it with a screen's worth more", () => {
+    const today = Math.round(145.03 * 1024);
+    expect(verdict("the web panel's first load", today, PANEL_BUDGET_KB)).toEqual({
+      ok: true,
+      line: "OK: the web panel's first load is 145.03 KB gzip, budget is 167 KB",
+    });
+    // The stock screens are 26 KB compressed: fetched with the first load, they would be noticed.
+    const withStock = verdict("the web panel's first load", today + 26 * 1024, PANEL_BUDGET_KB);
+    expect(withStock.ok).toBe(false);
+    expect(withStock.line).toBe("FAIL: the web panel's first load is 171.03 KB gzip, budget is 167 KB");
+    expect(verdict("the administration panel's first load", 151 * 1024, ADMIN_BUDGET_KB).ok).toBe(false);
+    expect(verdict("the administration panel's first load", 150 * 1024, ADMIN_BUDGET_KB).ok).toBe(true);
   });
 });

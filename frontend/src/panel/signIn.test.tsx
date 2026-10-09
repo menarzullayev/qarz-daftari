@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { I18nProvider } from "../i18n/I18nProvider";
@@ -177,6 +177,40 @@ describe("Telegram's sign-in button", () => {
       </I18nProvider>,
     );
     expect(scripts().map((script) => script.getAttribute("data-lang"))).toEqual(["uz"]);
+  });
+
+  it("names the frame Telegram's script puts in the button's place, which comes with no title", async () => {
+    const view = widget();
+    const host = screen.getByRole("group", { name: "Вход через Telegram" });
+    // What Telegram's script does once it has loaded: a frame of its own in the place of the script.
+    const frame = document.createElement("iframe");
+    frame.id = "telegram-login-qarz_daftari_bot";
+    expect(frame.title).toBe("");
+    host.append(frame);
+    await waitFor(() => expect(frame.title).toBe("Вход через Telegram"));
+    expect(screen.getByTitle("Вход через Telegram")).toBe(frame);
+
+    // A frame the script puts there later (it replaces its own) is named as well, in the language of the day.
+    view.rerender(
+      <I18nProvider initialLanguage="ru">
+        <TelegramLogin botUsername="qarz_daftari_bot" language="ru" />
+      </I18nProvider>,
+    );
+    const second = document.createElement("iframe");
+    host.append(second);
+    await waitFor(() => expect(second.title).toBe("Вход через Telegram"));
+  });
+
+  it("names no frame but the button's own", async () => {
+    widget();
+    const elsewhere = document.createElement("iframe");
+    document.body.append(elsewhere);
+    const host = screen.getByRole("group", { name: "Вход через Telegram" });
+    const own = document.createElement("iframe");
+    host.append(own);
+    await waitFor(() => expect(own.title).not.toBe(""));
+    expect(elsewhere.title).toBe("");
+    elsewhere.remove();
   });
 
   it("says so when the script cannot be loaded", async () => {

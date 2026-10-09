@@ -1,7 +1,7 @@
 import { thisMonth, uzDate, inDays } from "../support/dates.ts";
 import type { Download } from "@playwright/test";
 
-import { expect, signInOnWeb, test } from "../support/fixtures.ts";
+import { expect, expectNoSidewaysScroll, signInOnWeb, test } from "../support/fixtures.ts";
 import { lit, sql, waitForRows } from "../support/stack.ts";
 import { newPerson } from "../support/telegram.ts";
 
@@ -26,6 +26,9 @@ test("the panel: customers table, this month's report, and an export the worker 
     // The address the browser came back to carried Telegram's signed fields; none of it is left.
     expect(new URL(page.url()).search).toBe("");
     expect(page.url()).not.toContain("hash=");
+    // On every screen of this journey: nothing is wider than the window (the same at a tablet's and a
+    // phone's width, screen by screen, is 11-responsive-keyboard).
+    await expectNoSidewaysScroll(page, "the panel's overview");
   });
 
   await test.step("the customers table", async () => {
@@ -34,6 +37,7 @@ test("the panel: customers table, this month's report, and an export the worker 
     await expect(table.getByRole("row")).toHaveCount(3);
     await expect(table.getByRole("row").filter({ hasText: "Ali" })).toContainText("30 000 so'm");
     await expect(table.getByRole("row").filter({ hasText: "Sobir" })).toContainText("120 000 so'm");
+    await expectNoSidewaysScroll(page, "the customers table");
     expect(
       sql(`SELECT c.display_name, COALESCE(sum(d.remaining), 0)::text FROM customer c LEFT JOIN open_debt d ON d.customer_id = c.id
            WHERE c.shop_id = ${lit(shopId)} GROUP BY 1 ORDER BY 1`),
@@ -55,6 +59,7 @@ test("the panel: customers table, this month's report, and an export the worker 
     await expect(fact("Qaytarilgan (to'lovlar)")).toHaveText("15 000 so'm");
     await expect(fact("Yangi mijozlar")).toHaveText("2 ta mijoz");
     await expect(period.getByText("0 so'm + 165 000 so'm + 0 so'm − 15 000 so'm = 150 000 so'm")).toBeVisible();
+    await expectNoSidewaysScroll(page, "this month's report");
     expect(
       sql(`SELECT kind, sum(amount)::text, count(*)::text FROM ledger_entry WHERE shop_id = ${lit(shopId)} GROUP BY kind ORDER BY kind`),
     ).toEqual([
@@ -78,6 +83,7 @@ test("the panel: customers table, this month's report, and an export the worker 
     expect(job).toEqual([["done", "", expect.stringMatching(/^[1-9]\d*$/), "true"]]);
     // The screen learns of it by itself, at its own calm interval.
     await expect(row).toContainText("Tayyor", { timeout: 15_000 });
+    await expectNoSidewaysScroll(page, "the exports, with one ready");
 
     await row.getByRole("button", { name: "Yuklab olish havolasini olish" }).click();
     const link = row.getByRole("link", { name: "Faylni yuklab olish" });

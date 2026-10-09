@@ -41,10 +41,11 @@
   flex: 1 1 12rem;
 }
 
-/* A table is a card, like the rows it replaces. */
+/* A table is a card, like the rows it replaces. A table that is wider than its card (larger text, long
+   names) is scrolled inside it: hidden, its last columns could not be reached at all. */
 .table-wrap {
   margin: var(--qd-space-3) 0;
-  overflow: hidden;
+  overflow-x: auto;
   border: 1px solid var(--qd-line);
   border-radius: var(--qd-radius-lg);
   background: var(--qd-bg);
@@ -194,10 +195,12 @@
     background: var(--qd-surface);
   }
 
-  /* The customer book on the left, the open customer on the right. */
+  /* The customer book on the left, the open customer on the right. The book is 18 to 24rem wide and
+     never more than about half of the row, so that with larger text the customer keeps the other
+     half; at the ordinary text size the shares are never the smaller bounds. */
   .panes {
     display: grid;
-    grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
+    grid-template-columns: minmax(min(18rem, 40%), min(24rem, 53.4%)) minmax(0, 1fr);
     gap: var(--qd-space-6);
     align-items: start;
   }

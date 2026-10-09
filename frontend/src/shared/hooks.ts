@@ -2,6 +2,34 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { type ApiError, isAbort, newIdempotencyKey, type Page, toApiError } from "./api";
 
+/**
+ * A box that always holds the value of the latest render. An effect or a handler reads it when it runs,
+ * so it uses what the component has now without running again because that value is a new object.
+ */
+export function useLatest<T>(value: T): { readonly current: T } {
+  const box = useRef(value);
+  box.current = value;
+  return box;
+}
+
+function sameItems(before: readonly unknown[], after: readonly unknown[]): boolean {
+  return before.length === after.length && before.every((item, index) => Object.is(item, after[index]));
+}
+
+/**
+ * A number that changes when an item of `deps` does (compared with `Object.is`, as React compares an
+ * effect's dependencies), and stays when a render passes a new array of the same items. It is what lets
+ * a hook take its caller's list of reasons to run again and still give its own effect a list that is
+ * written out, which the linter can check: a spread of the caller's array is one it cannot.
+ */
+export function useChangeCount(deps: readonly unknown[]): number {
+  const seen = useRef({ deps, count: 0 });
+  if (!sameItems(seen.current.deps, deps)) {
+    seen.current = { deps, count: seen.current.count + 1 };
+  }
+  return seen.current.count;
+}
+
 export type Loaded<T> = { status: "loading" } | { status: "error"; error: ApiError } | { status: "ready"; data: T };
 
 /**
@@ -15,8 +43,8 @@ export function useLoad<T>(
 ): { state: Loaded<T>; reload: () => void } {
   const [state, setState] = useState<Loaded<T>>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
-  const latest = useRef(load);
-  latest.current = load;
+  const latest = useLatest(load);
+  const changes = useChangeCount(deps);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -34,8 +62,9 @@ export function useLoad<T>(
       },
     );
     return () => controller.abort();
-    // The caller lists what the request depends on; `load` itself is a new function on every render.
-  }, [...deps, attempt]);
+    // `changes` stands for the caller's list; `load` itself is a new function on every render and is
+    // read through `latest`.
+  }, [changes, attempt, latest]);
 
   const reload = useCallback(() => setAttempt((count) => count + 1), []);
   return { state, reload };
@@ -53,8 +82,8 @@ export function usePagedList<T>(
 ): { state: PagedList<T>; reload: () => void; loadMore: () => void } {
   const [state, setState] = useState<PagedList<T>>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
-  const latest = useRef(loadPage);
-  latest.current = loadPage;
+  const latest = useLatest(loadPage);
+  const changes = useChangeCount(deps);
   const current = useRef<AbortController | null>(null);
   const loadingMore = useRef(false);
 
@@ -76,7 +105,7 @@ export function usePagedList<T>(
       },
     );
     return () => controller.abort();
-  }, [...deps, attempt]);
+  }, [changes, attempt, latest]);
 
   const reload = useCallback(() => setAttempt((count) => count + 1), []);
 
@@ -133,8 +162,7 @@ export function useSubmit<P, R>(
   const [state, setState] = useState<Submission<R>>({ status: "idle" });
   const inFlight = useRef(false);
   const action = useRef<{ fingerprint: string; key: string } | null>(null);
-  const latest = useRef(send);
-  latest.current = send;
+  const latest = useLatest(send);
 
   const submit = (payload: P) => {
     if (inFlight.current) {

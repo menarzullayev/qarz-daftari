@@ -143,6 +143,25 @@ describe("opening the workspace", () => {
     expect(heading()).toBe("Do'konni tanlang");
   });
 
+  it("asks for the same shop again on 'try again', and opens it once the server lets it", async () => {
+    let fail = true;
+    const server = backend(
+      { items: [membership("seller"), membership("owner", OTHER_SHOP, "Ziyo market")], active_shop: null },
+      (sent) => (sent.method === "PUT" && fail ? "offline" : null),
+    );
+    start(server);
+    // Before anything was chosen there is nothing to try again.
+    await screen.findByRole("button", { name: /Ziyo market/ });
+    expect(screen.queryByRole("button", { name: "Qayta urinish" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Ziyo market/ }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Serverga ulanib bo'lmadi");
+    fail = false;
+    fireEvent.click(within(screen.getByRole("alert")).getByRole("button", { name: "Qayta urinish" }));
+    await waitFor(() => expect(shopName()).toBe("Ziyo market"));
+    expect(server.writes().map((sent) => sent.body)).toEqual([{ shop_id: OTHER_SHOP }, { shop_id: OTHER_SHOP }]);
+  });
+
   it("says so when the person is in no shop", async () => {
     const server = backend({ items: [], active_shop: null });
     start(server);

@@ -3,8 +3,8 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { deferred } from "../testing/fakeServer";
-import { ApiError } from "./api";
-import { useLoad, usePagedList, useSubmit } from "./hooks";
+import { ApiError, NO_ANSWER } from "./api";
+import { useChangeCount, useLatest, useLoad, usePagedList, useSubmit } from "./hooks";
 
 afterEach(cleanup);
 
@@ -165,5 +165,103 @@ describe("usePagedList", () => {
     act(() => result.current.loadMore());
     await waitFor(() => expect(result.current.state).toMatchObject({ moreError: { code: "NETWORK" } }));
     expect(result.current.state).toMatchObject({ items: ["a"], nextCursor: "after-a", loadingMore: false });
+  });
+});
+
+describe("the caller's list of reasons to load again", () => {
+  it("does not load again when a render passes a new array of the same items", async () => {
+    let calls = 0;
+    const shop = { id: "a" };
+    const { result, rerender } = renderHook(({ day }: { day: string }) => useLoad(async () => (calls += 1), [shop, day]), {
+      initialProps: { day: "2026-10-06" },
+    });
+    await waitFor(() => expect(result.current.state.status).toBe("ready"));
+    rerender({ day: "2026-10-06" });
+    rerender({ day: "2026-10-06" });
+    expect(calls).toBe(1);
+    expect(result.current.state).toEqual({ status: "ready", data: 1 });
+  });
+
+  it("loads again when one item changes, and once for it", async () => {
+    let calls = 0;
+    const { result, rerender } = renderHook(({ day }: { day: string }) => useLoad(async () => (calls += 1), [day]), {
+      initialProps: { day: "2026-10-06" },
+    });
+    await waitFor(() => expect(result.current.state.status).toBe("ready"));
+    rerender({ day: "2026-10-07" });
+    await waitFor(() => expect(result.current.state).toEqual({ status: "ready", data: 2 }));
+    rerender({ day: "2026-10-07" });
+    expect(calls).toBe(2);
+  });
+
+  it("does the same for a list read page by page", async () => {
+    const asked: string[] = [];
+    const { result, rerender } = renderHook(
+      ({ query }: { query: string }) =>
+        usePagedList(async () => {
+          asked.push(query);
+          return { items: [query], nextCursor: null };
+        }, [query]),
+      { initialProps: { query: "ali" } },
+    );
+    await waitFor(() => expect(result.current.state.status).toBe("ready"));
+    rerender({ query: "ali" });
+    expect(asked).toEqual(["ali"]);
+    rerender({ query: "vali" });
+    await waitFor(() => expect(result.current.state).toMatchObject({ items: ["vali"] }));
+    expect(asked).toEqual(["ali", "vali"]);
+  });
+
+  it("counts a change, compares as React does, and counts a list that grew", () => {
+    const { result, rerender } = renderHook(({ deps }: { deps: readonly unknown[] }) => useChangeCount(deps), {
+      initialProps: { deps: [1, "a", Number.NaN] as readonly unknown[] },
+    });
+    expect(result.current).toBe(0);
+    // NaN is NaN and a new array of the same items is the same list.
+    rerender({ deps: [1, "a", Number.NaN] });
+    expect(result.current).toBe(0);
+    rerender({ deps: [1, "b", Number.NaN] });
+    expect(result.current).toBe(1);
+    rerender({ deps: [1, "b", Number.NaN, undefined] });
+    expect(result.current).toBe(2);
+    // An object that looks the same is another object.
+    rerender({ deps: [{}] });
+    rerender({ deps: [{}] });
+    expect(result.current).toBe(4);
+  });
+
+  it("gives a handler the value of the latest render", () => {
+    const { result, rerender } = renderHook(({ value }: { value: string }) => useLatest(value), { initialProps: { value: "a" } });
+    const box = result.current;
+    rerender({ value: "b" });
+    expect(result.current).toBe(box);
+    expect(box.current).toBe("b");
+  });
+});
+
+describe("a write the page stopped waiting for", () => {
+  it("is sent again with the same key, and with a new one once the payload changed", async () => {
+    const keys: string[] = [];
+    let attempt = 0;
+    const { result } = renderHook(() =>
+      useSubmit(async (_payload: Payload, key: string) => {
+        keys.push(key);
+        attempt += 1;
+        if (attempt === 1) {
+          // What `call` rejects with when its limit passes for a write.
+          throw new ApiError(0, NO_ANSWER, null);
+        }
+        return "saved";
+      }),
+    );
+    act(() => result.current.submit({ amount: 45000 }));
+    await waitFor(() => expect(result.current.state).toMatchObject({ status: "error", error: { code: NO_ANSWER } }));
+    act(() => result.current.submit({ amount: 45000 }));
+    await waitFor(() => expect(result.current.state).toEqual({ status: "done", result: "saved" }));
+    expect(keys[1]).toBe(keys[0]);
+
+    act(() => result.current.submit({ amount: 54000 }));
+    await waitFor(() => expect(keys).toHaveLength(3));
+    expect(keys[2]).not.toBe(keys[0]);
   });
 });

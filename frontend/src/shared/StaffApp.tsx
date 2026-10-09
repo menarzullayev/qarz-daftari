@@ -3,6 +3,7 @@ import { lazy, Suspense, useMemo, type ReactNode } from "react";
 import { withMessages } from "../i18n/catalog";
 import { I18nProvider, useI18n } from "../i18n/I18nProvider";
 import type { Language, MessageKey } from "../i18n/types";
+import { ErrorBoundary } from "./ErrorBoundary";
 import type { ShopApi, ShopMembership } from "./api";
 import { useDesktop, type WorkspaceExtension } from "./layout";
 import { MORE_ITEM, primaryTabCount, staffSections } from "./navigation";
@@ -286,7 +287,11 @@ export function StaffRoutes({
       side={side}
       banner={extension && workspace ? <extension.Banner /> : undefined}
     >
-      {screen}
+      {/* A screen that cannot be drawn, or whose code cannot be fetched, says so inside the shell; the
+          next screen starts clean. */}
+      <ErrorBoundary scope="screen" key={match?.route.screen ?? path}>
+        {screen}
+      </ErrorBoundary>
     </Shell>
   );
   if (!workspace) {
