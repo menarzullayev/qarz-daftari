@@ -165,6 +165,7 @@ Each is implemented. If one is rejected, the named story must be revisited.
 | DEC-075 | Single host: data leaves the country, one passphrase, no failover figure, no alerts | Deployment |
 | DEC-076 | CI in four test jobs; documents-only runs; superseded runs cancelled | Development |
 | DEC-077 | Legal questions and the two languages reported settled by the founder, on oral advice | Launch |
+| DEC-078 | How each open launch criterion is closed (decided by the founder) | Launch |
 | DEC-068 | Three database roles, one for each part of the application; what each is granted; sign out everywhere | S19.2 |
 
 Decided by the founder on 2026-10-07, and so not awaiting review: DEC-058 (nginx and Docker Compose, where the architecture document names Caddy; what to prepare before production); DEC-051 (buttons in the review group, honoured for platform administrators only, as the agent understood him), DEC-052 (no fresh code to decide a receipt), DEC-053 (store open debts).
@@ -209,22 +210,22 @@ Decided by the founder on 2026-10-07, and so not awaiting review: DEC-058 (nginx
 
 | No. | Criterion | State |
 |---|---|---|
-| 1 | Interviews and pDaftar test | Open; founder |
+| 1 | Interviews and pDaftar test | Reported done by the founder on 2026-10-09 (DEC-078); no record was given |
 | 2 | Legal review | Reported done by the founder on 2026-10-09: a lawyer answered the thirty questions in conversation and named no restriction (DEC-077). Nothing in writing; the questions that asked what must be done (registration, contract with shops, retention, breach notice and others) have no recorded answer |
-| 3 | Registration if required | Open; founder |
-| 4 | M1 to M8 complete, acceptance criteria pass in CI | 42 of 49 stories done in code and CI; S1.5, S16.1, S19.1, S19.2, S19.3 and S19.4 are partly done and each waits on something only people or real servers can give; S2.2's generated API client was never built. Every story's screens exist; fourteen end-to-end tests run the front end and back end together with signed stand-in data (EVID-076) |
+| 3 | Registration if required | Closed by the founder: not mandatory according to the advice he had; to be done later (DEC-078) |
+| 4 | M1 to M8 complete, acceptance criteria pass in CI | Closed by the founder as it stands (DEC-078): 43 of 49 stories done in code and CI; S2.2 has types for 6 of 122 operations, the rest left for a later release; S1.5, S16.1 and S19.1 to S19.4 end with criteria 8 to 11 and 15 |
 | 5 | Authorization and tenant suite covers every operation | In place and blocking; grows with each story |
-| 6 | Load test | Partly: the full 30-minute run was repeated on main with open debts stored; it first exposed a missing index that made every write read a whole table (corrected, migration 0033), and with it every target is met, the large shop included (EVID-063, EVID-070, EVID-083). Run on the planned host but outside its containers, with no proxy, tunnel or worker and the driver on the same machine |
-| 7 | Security review | An agent's review is done; findings 1 to 8 and 10 to 12 are fixed and 9 and 13 in part (EVID-059, EVID-061, EVID-074, EVID-078); the administrator side still shares the API process; a person's review remains |
-| 8 | Failover and restore rehearsals | Rehearsed locally in containers (EVID-044); a weekly automatic restore test is written and proven in containers (EVID-072); not on real servers |
-| 9 | Alerts triggered and received | Not started: rules are written (EVID-062), no monitoring system exists |
-| 10 | Runbooks executed | Not started: the thirteen runbooks are written (`docs/10-operations/runbooks.md`), none was executed |
-| 11 | Usability sessions | Not started; needs real sellers |
-| 12 | Two servers in use | Not met and no longer planned: by DEC-070 the service runs on one host; the criterion has to be rewritten by the founder |
-| 13 | Second operator named | Open; founder |
+| 6 | Load test | Closed by the founder (DEC-078) on run D: every target met after a missing index was found and corrected (EVID-083). Not shown: the run was outside the containers, with no proxy, tunnel or worker and the driver on the same machine |
+| 7 | Security review | An agent's review; the remainders of findings 9 and 13 are being fixed; by DEC-078 the criterion closes when they are merged, without a review by a person |
+| 8 | Restore rehearsal (one host) | Open until the first deployment: one real restore test from R2 (DEC-078). Proven so far in containers with MinIO (EVID-081) |
+| 9 | Alerts triggered and received | Open: alerts to Telegram through the service's own bot are to be built, and the founder turns on Cloudflare's notice for the tunnel (DEC-078) |
+| 10 | Runbooks executed | Open until the first deployment: those that deployment exercises are carried out then; the others stay written and not executed (DEC-078) |
+| 11 | Usability sessions | Open until after deployment: the founder's own trial, then the first shops (DEC-078) |
+| 12 | One host in use | Text for one host approved by the founder (DEC-070, DEC-078); met when the service runs as `deploy/production/SINGLE-HOST.md` describes |
+| 13 | Second operator named | Open: the founder will name one; a one-page guide is to be written (DEC-078) |
 | 14 | Both languages reviewed | Reported done by the founder on 2026-10-09 (DEC-077); the reviewer is not named. Texts added on 2026-10-08 (the customer's indicator, signing out everywhere, the Eskiz templates) are included as far as he reported |
-| 15 | Payment process run end to end with a test shop | Not started |
-| 16 | Launch approval | Open; founder |
+| 15 | Payment process run end to end with a test shop | Open until after deployment: card transfer and receipt only, run once with a test shop; provider adapters stay off (DEC-078) |
+| 16 | Launch approval | Open: after his own trial in a test shop the founder opens the service to everyone (DEC-078) |
 
 ## What the founder is needed for
 

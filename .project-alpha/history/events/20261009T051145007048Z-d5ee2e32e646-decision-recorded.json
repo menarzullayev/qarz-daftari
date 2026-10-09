@@ -1,0 +1,21 @@
+{
+  "event_id": "d5ee2e32e646",
+  "event_type": "decision.recorded",
+  "timestamp": "2026-10-09T05:11:45+00:00",
+  "path": ".project-alpha\\decisions\\DEC-078.md",
+  "stage": "04-prd",
+  "title": "How each open launch criterion is closed",
+  "risk": "HIGH",
+  "decision_id": "DEC-078",
+  "decision": "The founder was asked about each launch criterion that was open or partly met and answered: 1, interviews and the pDaftar test were held (as he reports; no record was given to the agent). 3, registration of the database is not mandatory according to the advice he had, and will be done later. 4, the code is taken as complete as it stands; typing the remaining API answers is left for a later release. 6, the load test as run is enough (run D, on the planned host but outside its containers, without proxy, tunnel or worker). 7, the two remainders of the security review are to be fixed and the criterion closed without a review by a person. 8, closed by one real restore test from R2 after the first deployment. 9, alerts go to Telegram through the service's own bot, with Cloudflare's notice for a tunnel that is down; to be built. 10, closed by carrying out, during deployment, the runbooks deployment naturally exercises; the others stay written and not executed. 11, he tries the service himself in a test shop first; the first shops are the usability test. 12 and the reliability requirements: the text proposed for one host is approved - no availability percentage, no service until someone starts the machine, about a minute of data at risk if the machine is lost, recovery time not measured. 13, he will name a second person who can start the machine, follow the runbook and holds a copy of the backup passphrase; the agent writes a one-page guide and the person is not named in the repository. 15, subscriptions are taken by card transfer and receipt only; the process is run once end to end with a test shop after deployment; the provider adapters stay switched off. 16, after his own trial in a test shop the service opens to everyone at once; the agent had recommended a stage with two or three shops first",
+  "context": "Answered by the founder on 2026-10-09 when asked by the agent, one criterion at a time",
+  "chosen_option": "As listed for each criterion",
+  "rationale": "The criteria are the founder's own gate. Several are closed on his report or by his decision rather than by evidence, and each is recorded as such",
+  "impact": "High",
+  "reversibility": "High",
+  "evidence": "EVID-083",
+  "approval_required": "yes",
+  "approval_status": "approved",
+  "approver": "founder",
+  "approved_at": "2026-10-09"
+}

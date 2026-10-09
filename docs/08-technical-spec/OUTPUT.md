@@ -209,7 +209,7 @@ Consent text version 2, Uzbek, with a Russian equivalent to be written; an agent
 | NFR-012 | A changed platform switch takes effect within 60 seconds without a release | REQ-N14 |
 | NFR-013 | An automated suite attempts every API operation across tenants and roles and finds no access outside the authorization table | REQ-N11, REQ-N12 |
 
-**NFR-003 and NFR-004 on one host (changed by the founder on 2026-10-08, DEC-070; the text below is proposed, awaiting the founder).** The two rows above were written for a primary and a standby. By the founder's decision the service runs on one hand-started machine behind a Cloudflare Tunnel, with its backups in Cloudflare R2 (Architecture, "Deployment as it is run now"). One machine cannot meet either row as written, and nothing has been measured that would justify a number in their place. What it gives, stated so that the founder can approve or change it:
+**NFR-003 and NFR-004 on one host (changed by the founder on 2026-10-08, DEC-070; the text below is approved by the founder on 2026-10-09, DEC-078).** The two rows above were written for a primary and a standby. By the founder's decision the service runs on one hand-started machine behind a Cloudflare Tunnel, with its backups in Cloudflare R2 (Architecture, "Deployment as it is run now"). One machine cannot meet either row as written, and nothing has been measured that would justify a number in their place. What it gives, stated so that the founder can approve or change it:
 
 | ID | Proposed text for one host | Why no better can be said |
 |---|---|---|
