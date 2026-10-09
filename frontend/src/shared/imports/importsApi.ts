@@ -59,7 +59,7 @@ export type RowProblem = (typeof ROW_PROBLEMS)[number];
 export const IMPORT_COLUMNS = ["name", "phone", "amount", "promised_date", "note"] as const;
 
 /** Why a step the worker was asked for was not done, besides a file problem. */
-export const STEP_REFUSALS = ["interrupted", "timeout", "file_store", "internal", "stale", "errors", "balance_used"] as const;
+export const STEP_REFUSALS = ["interrupted", "timeout", "file_store", "internal", "stale", "errors", "free_plan_full", "balance_used"] as const;
 export type StepRefusal = (typeof STEP_REFUSALS)[number];
 
 /** Why an undo is refused at once (`UndoRefusal`) or by the worker ("balance_used"). */

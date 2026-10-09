@@ -26,7 +26,7 @@ This model covers release 1 as defined in PRD version 2. Rules that go beyond wh
 | DOM-015 | Date change request | A customer's request to move a promise, with an outcome |
 | DOM-016 | Payment notice | A customer's statement that they paid an amount, optionally with a receipt, with an outcome |
 | DOM-017 | Import batch | One spreadsheet import: its rows, validation result, and the entries it created |
-| DOM-018 | Subscription | A shop's commercial state: trial, paid-through date, limited, or suspended |
+| DOM-018 | Subscription | A shop's commercial state: trial, paid-through date, limited, or suspended; with the free plan switched on, a shop without a period that the plan holds is free, which is worked out and never stored (BR-33) |
 | DOM-019 | Subscription receipt | An owner's proof of a card transfer, with an administrator's decision |
 | DOM-020 | Platform setting | A switch or value the administrator controls: trial, SMS, online payment, price, quotas |
 | DOM-021 | Activity record | Who did what, when, to which subject, within a shop or on the platform |
@@ -165,6 +165,9 @@ Subscription:
 | BR-29 | In limited mode, recording new credit sales and imports is refused; viewing, exporting, recording payments, reversals, disputes, customer views, and reminders continue. | REQ-057; reminders continuing decided here |
 | BR-30 | A suspended shop, an administrator action, allows only viewing and export by the owner. | REQ-058 |
 | BR-31 | An administrator sees a shop's customers and entries only during a support access, which is requested with a reason, lasts at most 24 hours, and is shown to the owner. | REQ-059; duration decided here |
+| BR-33 | The free plan, behind the platform switch `free_plan_on` (off by default). While it is on, a shop that has no running trial or paid period and no more customers than the plan holds (`free_plan_customers`, 30 by default, 1 to 10 000) is free instead of limited: every operation works, with no end date. The customers counted are the shop's customers whose status is active; archived and anonymized customers are not counted. Free is worked out from the count each time and is not stored: the subscription row says only that no period runs. A suspended shop stays suspended (BR-30). | Expansion decision 1-2 of 2026-10-09; what is counted decided here |
+| BR-34 | While the free plan is on, a shop without a running trial or paid period cannot have more active customers than the plan holds: adding a customer, taking one out of the archive, and applying an import that would exceed the number are refused with `FREE_PLAN_FULL`, which names the number and how to subscribe. A running trial or paid period has no such limit. A shop over the number whose period ends becomes limited (BR-29) as before; one at or under it becomes free, and the owner is told which. The warnings of BR-28 say which of the two follows. | Expansion decision 1-2 of 2026-10-09 |
+| BR-35 | While the free plan is on, SMS reminders are sent only for shops in a paid period, within the monthly quota per shop: not during a trial, not for a free or limited shop. The owner is shown whether SMS is included and how many are left this month. With the free plan off, SMS does not depend on the subscription. | Expansion decision 3 of 2026-10-09; the trial excluded decided here |
 
 Removal:
 

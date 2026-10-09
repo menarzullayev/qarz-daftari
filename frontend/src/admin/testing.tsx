@@ -87,9 +87,11 @@ export const platformBody = (overrides: Record<string, unknown> = {}, settings: 
     sms_on: false,
     sms_monthly_quota: 0,
     online_pay_on: false,
+    free_plan_on: false,
+    free_plan_customers: 30,
     ...settings,
   },
-  needs_code: ["online_pay_on", "payment_cards", "price_uzs", "review_group", "sms_on", "trial_on"],
+  needs_code: ["free_plan_on", "online_pay_on", "payment_cards", "price_uzs", "review_group", "sms_on", "trial_on"],
   changed: { price_uzs: { by: ADMIN_ID, at: "2026-10-01T05:00:00+00:00" } },
   ...overrides,
 });

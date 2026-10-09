@@ -2,6 +2,10 @@
 
 Seven days and one day before a trial or paid period ends the owner is warned; the day after it ends the
 shop becomes limited and the owner is told what still works and how to pay (BR-28, BR-29).
+
+With the free plan switched on (BR-33 to BR-35) a shop without a period that has no more customers than
+the plan holds is free instead of limited. Nothing more is stored for it: the row still says that no
+period runs, and "free" is worked out from the number of customers each time it is asked.
 """
 
 from collections.abc import Callable
@@ -10,9 +14,11 @@ from typing import Any
 from uuid import UUID
 
 from qarz.application.chat_texts import day, money, say
+from qarz.application.customers import free_plan_customers
 from qarz.application.errors import NotFound
 from qarz.application.operations import operation
 from qarz.application.ports import Storage, TenantSession
+from qarz.application.reminders import sms_allowance
 from qarz.application.shops import require_member
 from qarz.domain import platform_settings
 from qarz.domain.access import Capability
@@ -20,11 +26,13 @@ from qarz.domain.promise import tashkent_date
 from qarz.domain.subscription import (
     ACTIVE,
     DEFAULT_PRICE_UZS,
+    FREE,
     LIMITED,
     TRIAL,
     effective_state,
     period_end,
     warning_days,
+    with_free_plan,
 )
 
 READ_SUBSCRIPTION = operation("shop.subscription.read", Capability.ADMINISTER_SHOP)
@@ -38,6 +46,40 @@ async def subscription_body(session: TenantSession, today: date) -> dict[str, An
     state, trial_ends, paid_through = row if row is not None else (LIMITED, None, None)
     effective = effective_state(state, trial_ends, paid_through, today)
     end = period_end(state, trial_ends, paid_through) if effective in (TRIAL, ACTIVE) else None
+    # The free plan, while it is switched on: how many customers it holds, and how many the shop has.
+    held = await free_plan_customers(session)
+    plan: dict[str, Any] | None = None
+    if held is not None:
+        customers = await session.active_customers()
+        sms_on, quota, left = await sms_allowance(session, today)
+        plan = {
+            "free_customers": held,
+            "customers": customers,
+            # What the shop is the day after the running period ends unpaid; null when none is running.
+            "after_period": None if end is None else with_free_plan(LIMITED, held, customers),
+            # `offered`: the platform sends SMS at all. `included`: this shop is in a paid period, the
+            # only one SMS belongs to (BR-35). `left` of `quota` may still be sent this month.
+            "sms": {
+                "offered": sms_on and quota > 0,
+                "included": sms_on and quota > 0 and effective == ACTIVE,
+                "quota": quota,
+                "left": left,
+            },
+        }
+        effective = with_free_plan(effective, held, customers)
+    body = await _period_body(session, effective, trial_ends, paid_through, end, today)
+    # No `plan` at all while the switch is off: the answer is then what it was before the plan.
+    return body if plan is None else {**body, "plan": plan}
+
+
+async def _period_body(
+    session: TenantSession,
+    effective: str,
+    trial_ends: date | None,
+    paid_through: date | None,
+    end: date | None,
+    today: date,
+) -> dict[str, Any]:
     # Read as the administrator's panel shows it: a stored value outside the allowed range does not apply.
     price = platform_settings.effective(PRICE, await session.platform_setting(PRICE))
     cards = platform_settings.payment_cards(await session.platform_setting(CARDS))
@@ -71,6 +113,7 @@ def subscription_text(lang: str, shop: str, body: dict[str, Any], card: int = 0)
         lines.append(say(lang, key, date=day(date.fromisoformat(body["ends_on"])), days=body["days_left"]))
     else:
         lines.append(say(lang, f"sub_state_{body['state']}"))
+    lines.extend(_plan_lines(lang, body))
     lines.append(say(lang, "sub_price", price=money(lang, body["price_uzs"])))
     if not body["cards"]:
         lines.append(say(lang, "sub_no_card"))
@@ -78,6 +121,25 @@ def subscription_text(lang: str, shop: str, body: dict[str, Any], card: int = 0)
         chosen = body["cards"][card]
         lines.append(say(lang, "sub_pay_to", label=chosen["label"], card=grouped(chosen["number"])))
     return "\n".join(lines)
+
+
+def _plan_lines(lang: str, body: dict[str, Any]) -> list[str]:
+    """What `/obuna` adds while the free plan is on: the customers used of those the plan holds, what
+    follows the running period, and what paying adds or, for a paying shop, the SMS left this month."""
+    plan = body.get("plan")
+    if plan is None or body["state"] == "suspended":
+        return []
+    limit, used, sms = plan["free_customers"], plan["customers"], plan["sms"]
+    lines = [say(lang, "sub_customers", used=used, limit=limit)]
+    if plan["after_period"] is not None:
+        lines.append(say(lang, f"sub_then_{plan['after_period']}", used=used, limit=limit))
+    if sms["included"]:
+        lines.append(say(lang, "sub_quota_left", left=sms["left"], quota=sms["quota"]))
+    elif body["state"] != ACTIVE:
+        lines.append(
+            say(lang, "sub_paying_adds_quota", quota=sms["quota"]) if sms["offered"] else say(lang, "sub_paying_adds")
+        )
+    return lines
 
 
 class SubscriptionService:
@@ -119,7 +181,10 @@ class SubscriptionService:
         return subscription_text(lang, settings.name, body, place), settings.name, price, cards
 
     async def run_daily(self) -> int:
-        """Warn owners and move ended periods to limited. Safe to repeat on the same day."""
+        """Warn owners and move ended periods to limited. Safe to repeat on the same day.
+
+        With the free plan on, the owner is told what is true of their shop: one that the plan holds
+        is free from that day, and a warning says which of the two follows the period."""
         today = self._today()
         async with self._storage.platform() as platform:
             rows = await platform.subscriptions_to_review(today)
@@ -133,14 +198,27 @@ class SubscriptionService:
                 end = period_end(state, trial_ends, paid_through)
                 lang = row.owner_lang or "uz"
                 text: str | None = None
-                if state in (TRIAL, ACTIVE) and (end is None or end < today):
-                    # Read and changed inside the shop: the list was only where to look.
+                ended = state in (TRIAL, ACTIVE) and (end is None or end < today)
+                days = None if ended or end is None else warning_days(end, today)
+                # Looked at only when there is something to say, and only while the plan is on.
+                held = await free_plan_customers(session) if ended or days is not None else None
+                used = 0 if held is None else await session.active_customers()
+                after = with_free_plan(LIMITED, held, used)
+                if ended:
+                    # Read and changed inside the shop: the list was only where to look. The stored state
+                    # is the same for a shop the free plan holds: it says that no period runs.
                     await session.limit_subscription(self._now())
-                    await session.record_system_activity(action="subscription.limited", subject_id=row.shop_id)
-                    text, key = say(lang, "sub_limited", shop=row.shop_name), f"sub:limited:{row.shop_id}:{end}"
-                elif end is not None and (days := warning_days(end, today)) is not None:
+                    await session.record_system_activity(action=f"subscription.{after}", subject_id=row.shop_id)
+                    if after == FREE:
+                        text = say(lang, "sub_free_now", shop=row.shop_name, limit=held)
+                    else:
+                        text = say(lang, "sub_limited", shop=row.shop_name)
+                    key = f"sub:{after}:{row.shop_id}:{end}"
+                elif end is not None and days is not None:
                     which = "sub_trial_ending" if state == TRIAL else "sub_paid_ending"
                     text = say(lang, which, shop=row.shop_name, days=days, date=day(end))
+                    if held is not None:
+                        text += " " + say(lang, f"sub_then_{after}", used=used, limit=held)
                     key = f"sub:warn:{row.shop_id}:{end}:{days}"
                 if text is None or row.owner_tg is None:
                     continue

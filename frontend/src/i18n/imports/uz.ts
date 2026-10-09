@@ -131,6 +131,7 @@ export const uzImports = {
   "imports.refused.reason.internal": "Ichki xato yuz berdi. Qayta urinib ko'ring.",
   "imports.refused.reason.stale": "Ko'rib chiqilgandan keyin mijozlar o'zgargan. Yangilangan ko'rib chiqishni tekshirib, so'ng qo'llang.",
   "imports.refused.reason.errors": "Qayta tekshirilganda qatorlarda xato topildi.",
+  "imports.refused.reason.free_plan_full": "Bepul tarif bu importdagi yangi mijozlarni sig'dirmaydi. Ko'proq mijoz uchun obuna to'lang: «Obuna» sahifasi yoki botda /obuna.",
   "imports.refused.reason.other": "Sabab kodi: {reason}",
   "imports.stale": "Holatni yangilab bo'lmadi.",
   "imports.refresh": "Yangilash",

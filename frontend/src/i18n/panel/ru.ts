@@ -166,6 +166,7 @@ export const ruPanel: RuPanelCatalog = {
   "activity.action.staff.removed": "Сотрудник убран",
   "activity.action.staff.updated": "Сотрудник изменён",
   "activity.action.subscription.limited": "Подписка истекла: магазин в ограниченном режиме",
+  "activity.action.subscription.free": "Срок истёк: магазин перешёл на бесплатный тариф",
   "activity.action.export.requested": "Запрошен экспорт",
   "activity.action.support_access.opened": "Администратор открыл доступ поддержки",
   "activity.action.support_access.closed": "Администратор закрыл доступ",
