@@ -5,7 +5,18 @@ import type { ApiError, ChosenPromise, CustomerDetail, EntryKind, NewEntry, Reco
 import { type CalendarDay, formatCalendarDay, formatMoney, tashkentDay } from "../format";
 import { linesSumProblem, MAX_LINES_SUM, MIN_LINES_SUM } from "../goods";
 import { useLoad, useSubmit } from "../hooks";
-import { type AmountProblem, formatUzs, MAX_AMOUNT, MIN_AMOUNT, parseAmount } from "../money";
+import {
+  type AmountProblem,
+  amountInput,
+  type Currency,
+  currencyOf,
+  ENTRY_RANGE,
+  formatDollars,
+  formatUzs,
+  MAX_AMOUNT,
+  MIN_AMOUNT,
+  parseMoney,
+} from "../money";
 import {
   addDays,
   MAX_PROMISE_DAYS,
@@ -19,9 +30,9 @@ import {
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
 import { useMay, useWorkspace } from "./context";
-import { effectiveLimit, exceedsLimit, refusedLimit } from "./creditRules";
+import { exceedsLimit, limitIn, refusedLimit } from "./creditRules";
 import { type DraftLine, GoodsEditor, GoodsList, readDrafts } from "./GoodsEditor";
-import { errorText, Failure, FieldError, Loading } from "./parts";
+import { CurrencyToggle, errorText, Failure, FieldError, Loading, Money } from "./parts";
 
 export const MAX_NOTE_LENGTH = 200;
 
@@ -37,8 +48,18 @@ const CHOICE_LABELS = {
   picked: "promise.pick",
 } as const;
 
-/** Why a typed amount is not one, in words; shared by every form that takes an amount. */
-export function amountMessage(problem: AmountProblem, t: Translate): string {
+/**
+ * Why a typed amount is not one, in words; shared by every form that takes an amount. A dollar amount
+ * has its own words: its decimals are welcome, and its range is another.
+ */
+export function amountMessage(problem: AmountProblem, t: Translate, currency: Currency = "UZS"): string {
+  if (currency === "USD" && problem !== "empty") {
+    if (problem === "too_small" || problem === "too_large") {
+      const { min, max } = ENTRY_RANGE.USD;
+      return t("entry.amount.usd.range", { min: formatDollars(min), max: formatDollars(max) });
+    }
+    return t(problem === "not_whole" ? "entry.amount.usd.notWhole" : "entry.amount.usd.invalid");
+  }
   switch (problem) {
     case "empty":
       return t("entry.amount.required");
@@ -74,7 +95,7 @@ type FieldErrors = { amount: string | null; note: string | null; promise: string
 const NO_ERRORS: FieldErrors = { amount: null, note: null, promise: null };
 
 /** Places a server refusal next to the field it is about. */
-function refusedFields(error: ApiError | null, t: Translate): FieldErrors {
+function refusedFields(error: ApiError | null, t: Translate, currency: Currency): FieldErrors {
   if (error === null) {
     return NO_ERRORS;
   }
@@ -85,7 +106,7 @@ function refusedFields(error: ApiError | null, t: Translate): FieldErrors {
     return NO_ERRORS;
   }
   return {
-    amount: "amount" in error.fields ? amountMessage("invalid", t) : null,
+    amount: "amount" in error.fields ? amountMessage("invalid", t, currency) : null,
     note: "note" in error.fields ? t("entry.note.tooLong", { max: MAX_NOTE_LENGTH }) : null,
     promise: "promised_date" in error.fields ? t("promise.range", { days: MAX_PROMISE_DAYS }) : null,
   };
@@ -110,23 +131,28 @@ function Recorded({ saved, today, onAnother }: { saved: Saved; today: CalendarDa
   const offered = saved.offerPromise && chosen === null && !(refusal !== null && isFinalRefusal(refusal));
   const promisedText = chosen ?? entry.promisedDate;
   const promised = promisedText === null ? null : parseIsoDate(promisedText);
+  // The entry's own currency: its amount and the limit it met are in it; the balances are shown apart.
+  const currency = currencyOf(entry);
   return (
     <div className="notice notice--done" role="status">
       <p>
         {t(entry.kind === "payment" ? "entry.done.payment" : "entry.done.credit", {
           name: customer.displayName,
-          amount: formatMoney(entry.amount, language),
+          amount: formatMoney(entry.amount, language, currency),
         })}
       </p>
       <p className="balance">
-        <span>{t("customer.balance.new")}</span> <strong>{formatMoney(customer.balance, language)}</strong>
+        <span>{t("customer.balance.new")}</span>{" "}
+        <strong>
+          <Money uzs={customer.balance} usd={customer.usd?.balance} />
+        </strong>
       </p>
       {/* The server saved the sale above the limit and says so to its author (REQ-044). */}
       {limitWarning ? (
         <p className="row__warning">
           {t("credit.saved.over", {
-            balance: formatMoney(limitWarning.balance, language),
-            limit: formatMoney(limitWarning.limit, language),
+            balance: formatMoney(limitWarning.balance, language, currency),
+            limit: formatMoney(limitWarning.limit, language, currency),
           })}
         </p>
       ) : null}
@@ -191,6 +217,14 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
   const [goodsOpen, setGoodsOpen] = useState(false);
   const [goods, setGoods] = useState<DraftLine[]>([]);
   const [goodsChecked, setGoodsChecked] = useState(false);
+  // So'm unless the seller says dollars, which only a shop that works in dollars offers. A payment
+  // starts in dollars when dollars are all that is owed: there is nothing to pay in so'm.
+  const dollars = customer.usd;
+  const [chosen, setChosen] = useState<Currency>(
+    kind === "payment" && dollars !== undefined && customer.balance <= 0 && dollars.balance > 0 ? "USD" : "UZS",
+  );
+  const currency: Currency = dollars === undefined ? "UZS" : chosen;
+  const inDollars = currency === "USD";
   const { state, submit } = useSubmit(
     (entry: NewEntry, key): Promise<Saved> =>
       api
@@ -204,27 +238,31 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
     return <Recorded saved={state.result} today={today} onAnother={onRecorded} />;
   }
 
-  const parsed = parseAmount(amountText);
-  // With goods the amount is their sum: the amount field is not shown and not sent (REQ-037).
-  const itemized = kind === "credit" && goods.length > 0;
+  const parsed = parseMoney(amountText, currency);
+  // With goods the amount is their sum: the amount field is not shown and not sent (REQ-037). Goods are
+  // priced in so'm, so a sale in dollars has none and is recorded by its amount.
+  const itemized = kind === "credit" && !inDollars && goods.length > 0;
   const reading = readDrafts(goods);
   const sumProblem = itemized && reading.lines !== null ? linesSumProblem(reading.sum) : null;
 
   // A warning before saving, never a block: the server decides (BR-8). When the shop's settings could
   // not be read, the customer's own limit is still known and still warns.
   const creditSettings = credit.state.status === "ready" ? credit.state.data : null;
-  const limit = effectiveLimit(customer.creditLimit, creditSettings?.defaultLimit ?? null);
+  // The limit and the debt of the sale's own currency: a sale in dollars meets the dollar limit only.
+  const owed = limitIn(currency, customer, creditSettings);
+  const limit = owed?.limit ?? null;
+  const balance = owed?.balance ?? 0;
   const sale = itemized ? reading.sum : parsed.ok ? parsed.amount : null;
-  const overLimit = kind === "credit" && limit !== null && sale !== null && exceedsLimit(limit, customer.balance, sale);
+  const overLimit = kind === "credit" && limit !== null && sale !== null && exceedsLimit(limit, balance, sale);
   const mayProceed = can("entries.over_limit") ? true : (creditSettings?.sellersMayExceed ?? null);
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
-    const amount = parseAmount(amountText);
+    const amount = parseMoney(amountText, currency);
     const cleanNote = note.split(/\s+/u).filter(Boolean).join(" ");
     const promise: PromiseResult = kind === "credit" ? promisedDateFor(choice, picked, today) : { ok: true, date: null };
     const found: FieldErrors = {
-      amount: itemized || amount.ok ? null : amountMessage(amount.problem, t),
+      amount: itemized || amount.ok ? null : amountMessage(amount.problem, t, currency),
       note: [...cleanNote].length > MAX_NOTE_LENGTH ? t("entry.note.tooLong", { max: MAX_NOTE_LENGTH }) : null,
       promise: promise.ok
         ? null
@@ -243,12 +281,13 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
         submit({ ...rest, lines: reading.lines });
       }
     } else if (amount.ok) {
-      submit({ ...rest, amount: amount.amount });
+      // Dollars are named and sent in cents; so'm is sent as it always was, with no currency beside it.
+      submit(inDollars ? { ...rest, amount: amount.amount, currency } : { ...rest, amount: amount.amount });
     }
   };
 
   const failure = state.status === "error" ? state.error : null;
-  const refused = refusedFields(failure, t);
+  const refused = refusedFields(failure, t, currency);
   const refusedAt = refusedLimit(failure);
   const shown: FieldErrors = {
     amount: errors.amount ?? refused.amount,
@@ -261,16 +300,31 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
   return (
     <form className="form" onSubmit={onSubmit} noValidate>
       <p className="balance">
-        <span>{t("customer.balance")}</span> <strong>{formatMoney(customer.balance, language)}</strong>
+        <span>{t("customer.balance")}</span>{" "}
+        <strong>
+          <Money uzs={customer.balance} usd={dollars?.balance} />
+        </strong>
       </p>
+      {dollars === undefined ? null : (
+        <CurrencyToggle
+          value={currency}
+          disabled={pending}
+          onChange={(next) => {
+            setChosen(next);
+            // An amount typed for one currency is not an amount of the other.
+            setAmountText("");
+            clear("amount");
+          }}
+        />
+      )}
       {failure ? (
         <div className="notice notice--error" role="alert">
           <p>{errorText(failure, t)}</p>
           {refusedAt ? (
             <p>
               {t("credit.refused.figures", {
-                limit: formatMoney(refusedAt.limit, language),
-                balance: formatMoney(refusedAt.balance, language),
+                limit: formatMoney(refusedAt.limit, language, currency),
+                balance: formatMoney(refusedAt.balance, language, currency),
               })}
             </p>
           ) : null}
@@ -278,14 +332,15 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
         </div>
       ) : null}
 
-      {kind === "credit" && !goodsOpen ? (
+      {kind === "credit" && inDollars ? <p className="hint">{t("entry.usd.noGoods")}</p> : null}
+      {kind === "credit" && !inDollars && !goodsOpen ? (
         <p className="actions">
           <button type="button" className="button" onClick={() => setGoodsOpen(true)}>
             {t("goods.open")}
           </button>
         </p>
       ) : null}
-      {kind === "credit" && goodsOpen ? (
+      {kind === "credit" && !inDollars && goodsOpen ? (
         <>
           <GoodsEditor
             drafts={goods}
@@ -308,11 +363,11 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
 
       {itemized ? null : (
         <div className="field">
-          <label htmlFor="entry-amount">{t("entry.amount")}</label>
+          <label htmlFor="entry-amount">{t(inDollars ? "entry.amount.usd" : "entry.amount")}</label>
           <input
             id="entry-amount"
             className="input input--amount"
-            inputMode="numeric"
+            inputMode={inDollars ? "decimal" : "numeric"}
             autoComplete="off"
             value={amountText}
             aria-invalid={shown.amount !== null}
@@ -323,12 +378,14 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
             }}
           />
           <p className="field__hint" id="entry-amount-hint">
-            {parsed.ok ? formatMoney(parsed.amount, language) : t("entry.amount.hint")}
+            {parsed.ok
+              ? formatMoney(parsed.amount, language, currency)
+              : t(inDollars ? "entry.amount.usd.hint" : "entry.amount.hint")}
           </p>
           <FieldError id="entry-amount-error" message={shown.amount} />
-          {kind === "payment" && customer.balance >= MIN_AMOUNT ? (
-            <button type="button" className="button" onClick={() => setAmountText(formatUzs(customer.balance))}>
-              {t("entry.payAll", { amount: formatMoney(customer.balance, language) })}
+          {kind === "payment" && balance >= ENTRY_RANGE[currency].min ? (
+            <button type="button" className="button" onClick={() => setAmountText(amountInput(balance, currency))}>
+              {t("entry.payAll", { amount: formatMoney(balance, language, currency) })}
             </button>
           ) : null}
         </div>
@@ -338,8 +395,8 @@ function EntryForm({ customer, kind, onRecorded }: { customer: CustomerDetail; k
         <div className="notice" role="note">
           <p>
             {t("credit.warn.over", {
-              balance: formatMoney(customer.balance + sale, language),
-              limit: formatMoney(limit, language),
+              balance: formatMoney(balance + sale, language, currency),
+              limit: formatMoney(limit, language, currency),
             })}
           </p>
           {mayProceed === null ? null : (

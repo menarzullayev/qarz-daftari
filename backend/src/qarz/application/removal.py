@@ -1,7 +1,8 @@
 """Removing a customer's identifying data (REQ-029, BR-32).
 
 Carried out at once when the customer owes nothing; otherwise recorded, and carried out by the entry that
-brings the balance to zero. The amounts stay in the ledger under an anonymous label, so totals stay
+brings the balance to zero. "Owes nothing" is of every currency: a customer who has paid their so'm and
+still owes dollars is still a debtor. The amounts stay in the ledger under an anonymous label, so totals stay
 correct. Everything here runs inside a tenant transaction that the caller has opened.
 """
 
@@ -23,9 +24,9 @@ async def _anonymize(session: TenantSession, customer_id: UUID, now: datetime) -
     await session.record_customer_activity(action="customer.anonymized", subject_id=customer_id)
 
 
-async def request_removal(session: TenantSession, customer_id: UUID, balance: int, now: datetime) -> str:
+async def request_removal(session: TenantSession, customer_id: UUID, owes: bool, now: datetime) -> str:
     """Returns "done" when the data was removed now, "waiting" when it will be once the debt is settled."""
-    if balance == 0:
+    if not owes:
         await session.close_removal_request(customer_id, now)
         await _anonymize(session, customer_id, now)
         return "done"
@@ -34,9 +35,9 @@ async def request_removal(session: TenantSession, customer_id: UUID, balance: in
     return "waiting"
 
 
-async def complete_if_due(session: TenantSession, customer_id: UUID, balance: int, now: datetime) -> bool:
+async def complete_if_due(session: TenantSession, customer_id: UUID, owes: bool, now: datetime) -> bool:
     """Called after every entry: carry out a waiting removal request once nothing is owed."""
-    if balance != 0 or not await session.removal_waiting(customer_id):
+    if owes or not await session.removal_waiting(customer_id):
         return False
     await session.close_removal_request(customer_id, now)
     await _anonymize(session, customer_id, now)

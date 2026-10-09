@@ -185,6 +185,8 @@ export const ruPanel: RuPanelCatalog = {
   "activity.action.shop.deletion_requested": "Запрошено удаление магазина",
   "activity.action.shop.share_contact_changed": "Изменён телефон в ссылке клиента",
   "activity.action.shop.settings_changed": "Настройки магазина изменены",
+  "activity.action.shop.dollars_on": "В магазине включены доллары",
+  "activity.action.shop.dollars_off": "В магазине выключены доллары",
   "activity.action.staff.invitation_cancelled": "Приглашение отменено",
   "activity.action.staff.invited": "Сотрудник приглашён",
   "activity.action.staff.removed": "Сотрудник убран",

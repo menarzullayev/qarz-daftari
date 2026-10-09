@@ -8,6 +8,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from qarz.application import idempotency
+from qarz.application.currencies import USD, dollars_on, limit_hint
 from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import operation
 from qarz.application.ports import CustomerRecord, Membership, Storage, TenantSession
@@ -15,6 +16,7 @@ from qarz.application.shops import ShopSuspended, require_member
 from qarz.domain import platform_settings
 from qarz.domain.access import Capability, Role
 from qarz.domain.credit import MAX_LIMIT, MIN_LIMIT, valid_limit
+from qarz.domain.money import Currency
 from qarz.domain.names import normalize_name
 from qarz.domain.phones import normalize_phone
 from qarz.domain.promise import tashkent_date
@@ -131,8 +133,13 @@ def clean_phone(raw: str | None) -> str | None:
     return phone
 
 
-def customer_body(customer: CustomerRecord, balance: int) -> dict[str, Any]:
-    return {
+def customer_body(customer: CustomerRecord, balance: int, usd: int | None = None) -> dict[str, Any]:
+    """A customer as the API gives them. `balance` and `credit_limit` are so'm.
+
+    `usd` is the dollar balance in cents, given only for a shop that works in dollars: the body then has
+    a `usd` object with the same two figures in dollars. Otherwise the body is what it always was.
+    """
+    body: dict[str, Any] = {
         "id": str(customer.customer_id),
         "display_name": customer.display_name,
         "phone": customer.phone,
@@ -141,6 +148,24 @@ def customer_body(customer: CustomerRecord, balance: int) -> dict[str, Any]:
         "credit_limit": customer.credit_limit,
         "balance": balance,
     }
+    if usd is not None:
+        body["usd"] = {"balance": usd, "credit_limit": customer.credit_limit_usd}
+    return body
+
+
+async def dollar_balances(session: TenantSession, customer_ids: list[UUID]) -> dict[UUID, int] | None:
+    """What each of the customers owes in dollars, or None when the shop does not work in dollars."""
+    if not await dollars_on(session):
+        return None
+    return await session.balances(customer_ids, USD) if customer_ids else {}
+
+
+async def owes_anything(session: TenantSession, customer_id: UUID) -> bool:
+    """INV-13: whether the customer owes in any currency, whether or not the shop shows dollars now."""
+    for currency in Currency:
+        if (await session.balances([customer_id], currency)).get(customer_id, 0) != 0:
+            return True
+    return False
 
 
 async def create_customer_in(
@@ -206,8 +231,12 @@ async def list_customers_in(
         limit=limit + 1,
     )
     page, more = rows[:limit], len(rows) > limit
+    dollars = await dollar_balances(session, [customer.customer_id for customer, _, _ in page])
     return {
-        "items": [customer_body(customer, balance) for customer, balance, _ in page],
+        "items": [
+            customer_body(customer, balance, None if dollars is None else dollars.get(customer.customer_id, 0))
+            for customer, balance, _ in page
+        ],
         "next_cursor": encode_cursor(page[-1][2], page[-1][0].customer_id) if more else None,
     }
 
@@ -231,7 +260,7 @@ class CustomerService:
 
             async def apply() -> dict[str, Any]:
                 created = await create_customer_in(session, actor, clean_name(name), number, self._today())
-                return customer_body(created, 0)
+                return customer_body(created, 0, 0 if await dollars_on(session) else None)
 
             return await idempotency.run_once(
                 session,
@@ -261,16 +290,32 @@ class CustomerService:
         reminders_off: bool | None,
         request_key: str | None,
         credit_limit: Any = _UNSET,
+        credit_limit_usd: Any = _UNSET,
     ) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, UPDATE_CUSTOMER)
             key = idempotency.validate_key(request_key)
-            if display_name is None and phone is _UNSET and reminders_off is None and credit_limit is _UNSET:
+            if credit_limit_usd is not _UNSET and not await dollars_on(session):
+                # As any field the request model does not know: the shop has no dollar limit to set.
+                raise ValidationFailed({"credit_limit_usd": "unknown field"})
+            if (
+                display_name is None
+                and phone is _UNSET
+                and reminders_off is None
+                and credit_limit is _UNSET
+                and credit_limit_usd is _UNSET
+            ):
                 raise ValidationFailed({"_": "nothing to change"})
             if credit_limit is not _UNSET and credit_limit is not None and not valid_limit(credit_limit):
                 raise ValidationFailed(
                     {"credit_limit": f"a whole amount between {MIN_LIMIT} and {MAX_LIMIT} UZS, or null"}
                 )
+            if (
+                credit_limit_usd is not _UNSET
+                and credit_limit_usd is not None
+                and not valid_limit(credit_limit_usd, USD)
+            ):
+                raise ValidationFailed({"credit_limit_usd": limit_hint(USD)})
             name = clean_name(display_name) if display_name is not None else None
             number = _UNSET if phone is _UNSET else clean_phone(phone)
             await require_writable(session, self._today(), new_credit=False)
@@ -288,6 +333,8 @@ class CustomerService:
                     reminders_off=reminders_off,
                     set_limit=credit_limit is not _UNSET,
                     credit_limit=None if credit_limit is _UNSET else credit_limit,
+                    set_limit_usd=credit_limit_usd is not _UNSET,
+                    credit_limit_usd=None if credit_limit_usd is _UNSET else credit_limit_usd,
                 )
                 await session.record_activity(
                     membership_id=actor.membership_id,
@@ -296,7 +343,10 @@ class CustomerService:
                     subject_id=customer_id,
                 )
                 balances = await session.balances([customer_id])
-                return customer_body(updated, balances.get(customer_id, 0))
+                dollars = await dollar_balances(session, [customer_id])
+                return customer_body(
+                    updated, balances.get(customer_id, 0), None if dollars is None else dollars.get(customer_id, 0)
+                )
 
             return await idempotency.run_once(
                 session,
@@ -311,6 +361,9 @@ class CustomerService:
                     "reminders_off": reminders_off,
                     "limit_set": credit_limit is not _UNSET,
                     "credit_limit": None if credit_limit is _UNSET else credit_limit,
+                    # Only a request that names the dollar limit carries the key, so every other request
+                    # keeps the fingerprint it had before dollars existed.
+                    **({} if credit_limit_usd is _UNSET else {"credit_limit_usd": credit_limit_usd}),
                 },
                 action=apply,
             )
@@ -329,8 +382,9 @@ class CustomerService:
                 if customer is None or customer.status == "anonymized":
                     raise NotFound()
                 balance = (await session.balances([customer_id])).get(customer_id, 0)
-                if archived and balance != 0:
+                if archived and await owes_anything(session, customer_id):
                     raise CustomerHasBalance()
+                dollars = await dollar_balances(session, [customer_id])
                 if not archived and customer.status != "active":
                     # A customer taken out of the archive counts again (BR-33), so needs a place (BR-34).
                     await require_room(session, self._today())
@@ -341,7 +395,7 @@ class CustomerService:
                     subject_type="customer",
                     subject_id=customer_id,
                 )
-                return customer_body(updated, balance)
+                return customer_body(updated, balance, None if dollars is None else dollars.get(customer_id, 0))
 
             return await idempotency.run_once(
                 session,

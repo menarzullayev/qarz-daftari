@@ -32,6 +32,7 @@ from qarz.application.chat_texts import money, say
 from qarz.application.customers import (
     FreePlanFull,
     customer_body,
+    owes_anything,
     require_room,
     require_viewable,
     require_writable,
@@ -56,6 +57,7 @@ from qarz.application.xlsx import Workbook
 from qarz.domain import imports
 from qarz.domain.access import Capability
 from qarz.domain.imports import Candidate, FileProblem, ParsedFile, PlannedRow, RowError
+from qarz.domain.money import Currency
 from qarz.domain.promise import default_promise_date, tashkent_date
 
 IMPORT_TEMPLATE = operation("imports.template", Capability.MANAGE)
@@ -694,9 +696,11 @@ async def undo_in(session: TenantSession, batch_id: UUID, now: datetime) -> None
     customers = await session.customers_of_import(batch_id)
     await session.lock_customers(customers)
     standing = await session.standing_entries_of_import(batch_id)  # what was reversed by hand is left out
+    # An import records so'm only (a file with a currency column is refused as an unknown column), so
+    # what it took and what it gives back are compared in the so'm book alone.
     before = await session.balances(customers)
     taken: dict[UUID, int] = {}
-    for _, customer_id, amount in standing:
+    for _, customer_id, amount, _ in standing:
         taken[customer_id] = taken.get(customer_id, 0) + amount
     if any(before.get(customer_id, 0) < amount for customer_id, amount in taken.items()):
         # A reversal may not take a balance below zero (INV-3): the import's debt has been paid against.
@@ -705,8 +709,8 @@ async def undo_in(session: TenantSession, batch_id: UUID, now: datetime) -> None
 
     next_seq = {customer: seq + 1 for customer, seq in (await session.last_seqs(customers)).items()}
     reversals: list[NewReversal] = []
-    for entry_id, customer_id, amount in standing:
-        reversals.append(NewReversal(uuid4(), entry_id, customer_id, next_seq[customer_id], amount))
+    for entry_id, customer_id, amount, currency in standing:
+        reversals.append(NewReversal(uuid4(), entry_id, customer_id, next_seq[customer_id], amount, currency))
         next_seq[customer_id] += 1
     await session.add_reversals(author, now, reversals)
     await session.close_disputes_of([reversal.entry_id for reversal in reversals], author, now)
@@ -726,12 +730,13 @@ async def undo_in(session: TenantSession, batch_id: UUID, now: datetime) -> None
             }
             await notify.entry_reversed(session, reversal.customer_id, body, "opening")
     for customer_id in await session.customers_waiting_removal(list(taken)):
-        await removal.complete_if_due(session, customer_id, after[customer_id], now)
+        await removal.complete_if_due(session, customer_id, await owes_anything(session, customer_id), now)
 
-    # BR-24: customers the import created are archived if they now owe nothing.
+    # BR-24: customers the import created are archived if they now owe nothing, in any currency: one of
+    # them may have been sold to in dollars since.
     created = [UUID(text) for text in record.summary.get("created_customers", [])]
-    owing = await session.balances(created)
-    archived = await session.archive_customers([customer_id for customer_id in created if not owing.get(customer_id)])
+    owing = {customer_id for currency in Currency for customer_id in await session.balances(created, currency)}
+    archived = await session.archive_customers([customer_id for customer_id in created if customer_id not in owing])
     await session.record_activity(
         membership_id=author, action="import.undone", subject_type="import", subject_id=batch_id
     )

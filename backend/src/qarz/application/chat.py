@@ -18,7 +18,8 @@ from qarz.application import idempotency
 from qarz.application.admin_receipts import CHAT as DECIDED_IN_CHAT
 from qarz.application.admin_receipts import AdminReceiptService, ReceiptAlreadyDecided
 from qarz.application.authorization import may
-from qarz.application.chat_texts import CONSENT_VERSION, LANGUAGE_NAMES, day, money, say
+from qarz.application.chat_texts import CONSENT_VERSION, LANGUAGE_NAMES, both, day, money, say
+from qarz.application.currencies import USD, UZS, balance_in, currency_of, platform_dollars, tag
 from qarz.application.customer_account import CustomerAccountService
 from qarz.application.customers import CREATE_CUSTOMER, FreePlanFull, create_customer_in, require_writable
 from qarz.application.date_requests import (
@@ -61,9 +62,10 @@ from qarz.application.staff import StaffService, token_hash
 from qarz.application.subscription import SubscriptionService
 from qarz.application.subscription_receipts import REVIEW_GROUP, SubscriptionReceiptService
 from qarz.domain import permissions, platform_settings
-from qarz.domain.chat_entry import ParsedEntry, ParseError, ParseErrorCode, parse_amount, parse_entry
+from qarz.domain.chat_entry import ParsedEntry, ParseError, ParseErrorCode, parse_entry, parse_money
 from qarz.domain.disputes import clean_reason
 from qarz.domain.ledger import EntryKind
+from qarz.domain.money import Currency, parse_code
 from qarz.domain.promise import QuickChoice, parse_day_month, quick_choice_date, tashkent_date
 from qarz.domain.subscription_receipts import OFFERED_MONTHS, expected_amount
 from qarz.domain.subscription_receipts import clean_reason as clean_receipt_reason
@@ -88,6 +90,22 @@ _PARSE_TEXTS = {
     ParseErrorCode.AMOUNT_TOO_SMALL: "amount_range",
     ParseErrorCode.AMOUNT_TOO_LARGE: "amount_range",
 }
+# What a dollar amount that could not be read is told. Only a shop that works in dollars gets here.
+_PARSE_TEXTS_USD = {
+    ParseErrorCode.AMOUNT_TOO_PRECISE: "parse_amount_too_precise",
+    ParseErrorCode.AMBIGUOUS: "parse_ambiguous_usd",
+    ParseErrorCode.NO_AMOUNT: "parse_ambiguous_usd",
+    ParseErrorCode.AMOUNT_TOO_SMALL: "amount_range_usd",
+    ParseErrorCode.AMOUNT_TOO_LARGE: "amount_range_usd",
+}
+
+
+def _parse_text(error: ParseError) -> str:
+    if error.currency is USD and error.code in _PARSE_TEXTS_USD:
+        return _PARSE_TEXTS_USD[error.code]
+    return _PARSE_TEXTS.get(error.code, "parse_hint")
+
+
 _LATER_COMMANDS = frozenset({"/ilova"})
 MOVE_DATE_ACTION = "dmv"
 # Why a customer's request to move a date was refused, in words of its own where there are any.
@@ -100,6 +118,15 @@ _DATE_REQUEST_TEXTS = {
 }
 
 Keyboard = list[list[tuple[str, str]]]
+
+
+def _amounts(lang: str, body: dict[str, Any]) -> dict[str, str]:
+    """The entry's amount and the customer's balance in the entry's own currency, as a message states them."""
+    currency = currency_of(body["entry"])
+    return {
+        "amount": money(lang, body["entry"]["amount"], currency),
+        "balance": money(lang, balance_in(body["customer"], currency), currency),
+    }
 
 
 def callback(action: str, *parts: object) -> str:
@@ -329,11 +356,24 @@ class ChatService:
             await replies.send(say(incoming.lang, "choose_shop"), self._shop_buttons(shops))
             return
 
-        parsed = parse_entry(text)
+        # "$" means dollars only in a shop that works in them; everywhere else a message is read as before.
+        parsed = parse_entry(text, dollars=await self._shop_dollars(session, shop.shop_id))
         if isinstance(parsed, ParseError):
-            await replies.send(say(incoming.lang, _PARSE_TEXTS.get(parsed.code, "parse_hint")))
+            await replies.send(say(incoming.lang, _parse_text(parsed)))
             return
         await self._entry(session, incoming, replies, shop, parsed)
+
+    async def _shop_dollars(self, session: PlatformSession, shop_id: UUID) -> bool:
+        """Whether the shop works in dollars: the platform switch, then the shop's own setting."""
+        if not await platform_dollars(session):
+            return False
+        async with self._storage.tenant(shop_id) as tenant:
+            return await tenant.dollars_setting()
+
+    @staticmethod
+    async def _owed_in_dollars(session: PlatformSession, account: CustomerAccount) -> int | None:
+        """The account's dollar balance, or None when its shop does not work in dollars."""
+        return account.balance_usd if account.usd_on and await platform_dollars(session) else None
 
     async def _command(self, session: PlatformSession, incoming: Incoming, replies: Replies, text: str) -> None:
         head, _, argument = text.partition(" ")
@@ -596,7 +636,13 @@ class ChatService:
             return
         lines = [say(lang, "accounts_header")]
         lines += [
-            say(lang, "account_line", shop=account.shop_name, balance=money(lang, account.balance))
+            say(
+                lang,
+                "account_line",
+                shop=account.shop_name,
+                # Each currency's balance by itself, never their sum.
+                balance=both(lang, account.balance, await self._owed_in_dollars(session, account)),
+            )
             for account in accounts
         ]
         await replies.send("\n".join(lines))
@@ -700,7 +746,9 @@ class ChatService:
                     lang,
                     "removal_waiting",
                     shop=account.shop_name,
-                    balance=money(lang, int(result["waiting_for_balance"])),
+                    balance=both(
+                        lang, int(result["waiting_for_balance"]), (result.get("usd") or {}).get("waiting_for_balance")
+                    ),
                 )
             )
 
@@ -792,7 +840,10 @@ class ChatService:
                     [
                         (
                             say(
-                                lang, "notice_shop_button", shop=account.shop_name, balance=money(lang, account.balance)
+                                lang,
+                                "notice_shop_button",
+                                shop=account.shop_name,
+                                balance=both(lang, account.balance, await self._owed_in_dollars(session, account)),
                             ),
                             callback("pn", account.link_id.hex),
                         )
@@ -814,7 +865,8 @@ class ChatService:
     ) -> None:
         lang = incoming.lang
         await session.drop_pending(incoming.user_id, "notice")
-        if account.balance <= 0:
+        in_dollars = await self._owed_in_dollars(session, account)
+        if account.balance <= 0 and not in_dollars:
             await replies.show(say(lang, "notice_nothing_owed", shop=account.shop_name))
             return
         await session.put_pending(
@@ -826,7 +878,7 @@ class ChatService:
             expires_at=self._now() + PENDING_LIFETIME,
         )
         await replies.show(
-            say(lang, "ask_notice_amount", shop=account.shop_name, balance=money(lang, account.balance)),
+            say(lang, "ask_notice_amount", shop=account.shop_name, balance=both(lang, account.balance, in_dollars)),
             [[(say(lang, "cancel"), callback("pnx"))]],
         )
 
@@ -852,23 +904,31 @@ class ChatService:
         if "amount" in payload:
             await replies.send(say(lang, "notice_receipt_hint"), self._receipt_buttons(lang))
             return
-        amount = parse_amount(text)
-        if isinstance(amount, ParseError):
-            await replies.send(say(lang, "notice_amount_invalid"))
+        in_dollars = await self._owed_in_dollars(session, account)
+        # An amount with "$" is dollars, in a shop that works in them; any other amount is so'm.
+        read = parse_money(text, dollars=in_dollars is not None)
+        if isinstance(read, ParseError):
+            await replies.send(
+                say(lang, "notice_amount_invalid" if in_dollars is None else "notice_amount_invalid_usd")
+            )
             return
-        if amount > account.balance:
-            await replies.send(say(lang, "notice_amount_exceeds", balance=money(lang, account.balance)))
+        currency, amount = read
+        # Compared with what is owed in the currency named, and with nothing else.
+        if amount > (account.balance if currency is UZS else in_dollars or 0):
+            await replies.send(say(lang, "notice_amount_exceeds", balance=both(lang, account.balance, in_dollars)))
             return
         await session.drop_pending(incoming.user_id, "notice")
         await session.put_pending(
             pending_id=self._pending_id(incoming),
             user_id=incoming.user_id,
             kind="notice",
-            payload={"link": account.link_id.hex, "amount": amount},
+            payload=tag({"link": account.link_id.hex, "amount": amount}, currency),
             now=self._now(),
             expires_at=self._now() + PENDING_LIFETIME,
         )
-        await replies.send(say(lang, "ask_notice_receipt", amount=money(lang, amount)), self._receipt_buttons(lang))
+        await replies.send(
+            say(lang, "ask_notice_receipt", amount=money(lang, amount, currency)), self._receipt_buttons(lang)
+        )
 
     async def awaits_receipt(self, session: PlatformSession, user_id: UUID) -> bool:
         """Whether a file from this person would be the receipt of a payment notice they are sending."""
@@ -922,8 +982,16 @@ class ChatService:
             await session.drop_pending(incoming.user_id, "notice")
             await replies.show(say(lang, "expired"))
             return
+        currency = currency_of(payload)
         try:
-            await self._notices.send(incoming.user_id, account.link_id, amount, receipt, update_key=incoming.key)
+            await self._notices.send(
+                incoming.user_id,
+                account.link_id,
+                amount,
+                receipt,
+                update_key=incoming.key,
+                currency=None if currency is UZS else currency.value,
+            )
         except AppError as error:
             if isinstance(error, ValidationFailed) and "receipt" in error.fields:
                 # The question stays open: another photo may follow.
@@ -934,7 +1002,7 @@ class ChatService:
             await replies.show(self._error_text(lang, error))
             return
         await session.drop_pending(incoming.user_id, "notice")
-        await replies.show(say(lang, "notice_sent", shop=account.shop_name, amount=money(lang, amount)))
+        await replies.show(say(lang, "notice_sent", shop=account.shop_name, amount=money(lang, amount, currency)))
 
     # --- paying the subscription by card transfer (REQ-054) -------------------------------------------
 
@@ -1427,8 +1495,7 @@ class ChatService:
                 "notice_accepted_staff",
                 shop=shop.name,
                 name=body["customer"]["display_name"],
-                amount=money(lang, body["entry"]["amount"]),
-                balance=money(lang, body["customer"]["balance"]),
+                **_amounts(lang, body),
             )
         )
 
@@ -1549,7 +1616,7 @@ class ChatService:
                     lang,
                     "date_accepted_staff" if accept else "date_declined_staff",
                     name=body["customer_name"],
-                    amount=money(lang, body["amount"]),
+                    amount=money(lang, body["amount"], currency_of(body)),
                     date=day(date.fromisoformat(body["requested_date"])),
                 )
             )
@@ -1640,12 +1707,8 @@ class ChatService:
     def _saved(self, lang: str, shop: MyShop, body: dict[str, Any], may_cancel: bool) -> tuple[str, Keyboard]:
         entry, customer = body["entry"], body["customer"]
         entry_hex = UUID(entry["id"]).hex
-        values = {
-            "shop": shop.name,
-            "name": customer["display_name"],
-            "amount": money(lang, entry["amount"]),
-            "balance": money(lang, customer["balance"]),
-        }
+        currency = currency_of(entry)
+        values = {"shop": shop.name, "name": customer["display_name"], **_amounts(lang, body)}
         keyboard: Keyboard = []
         if entry["kind"] == "credit":
             text = say(lang, "credit_saved", date=day(date.fromisoformat(entry["promised_date"])), **values)
@@ -1655,7 +1718,7 @@ class ChatService:
             keyboard.append([(say(lang, "other_date"), callback("pd", entry_hex, "p"))])
             warning = body.get("limit_warning")
             if warning:
-                limit, owed = money(lang, warning["limit"]), money(lang, warning["balance"])
+                limit, owed = money(lang, warning["limit"], currency), money(lang, warning["balance"], currency)
                 text = "\n".join([text, say(lang, "limit_warning", limit=limit, balance=owed)])
         else:
             text = say(lang, "payment_saved", **values)
@@ -1673,13 +1736,14 @@ class ChatService:
         kind: EntryKind,
         amount: int,
         note: str | None,
+        currency: Currency = UZS,
     ) -> dict[str, Any]:
         """Record the entry, creating the customer first when asked to, as one idempotent write."""
         actor = await require_member(session, incoming.user_id, RECORD_ENTRY)
         require_kind(actor, kind)
         if new_name is not None:
             await require_member(session, incoming.user_id, CREATE_CUSTOMER)
-        clean_entry(kind.value, amount, note, None)
+        clean_entry(kind.value, amount, note, None, currency)
         await require_writable(session, self._today(), new_credit=kind is EntryKind.CREDIT)
 
         async def apply() -> dict[str, Any]:
@@ -1698,6 +1762,7 @@ class ChatService:
                 promised_date=None,
                 now=self._now(),
                 started=incoming.received,
+                currency=currency,
             )
 
         return await idempotency.run_once(
@@ -1705,13 +1770,17 @@ class ChatService:
             key=incoming.key,
             operation="chat.entry",
             user_id=incoming.user_id,
-            request={
-                "customer": str(customer_id),
-                "new_name": new_name,
-                "kind": kind.value,
-                "amount": amount,
-                "note": note,
-            },
+            # Only an entry in dollars carries its currency: a so'm one keeps its fingerprint.
+            request=tag(
+                {
+                    "customer": str(customer_id),
+                    "new_name": new_name,
+                    "kind": kind.value,
+                    "amount": amount,
+                    "note": note,
+                },
+                currency,
+            ),
             action=apply,
         )
 
@@ -1720,7 +1789,8 @@ class ChatService:
     ) -> None:
         lang = incoming.lang
         kind = EntryKind(parsed.kind.value)
-        amount_text = money(lang, parsed.amount)
+        currency = parsed.currency
+        amount_text = money(lang, parsed.amount, currency)
         saved: dict[str, Any] | None = None
         candidates: list[tuple[UUID, str, int]] = []
         try:
@@ -1736,10 +1806,11 @@ class ChatService:
                         kind=kind,
                         amount=parsed.amount,
                         note=parsed.note,
+                        currency=currency,
                     )
                 else:
                     # Check now what would be refused anyway, before asking the seller anything.
-                    clean_entry(kind.value, parsed.amount, parsed.note, None)
+                    clean_entry(kind.value, parsed.amount, parsed.note, None, currency)
                     await require_writable(tenant, self._today(), new_credit=kind is EntryKind.CREDIT)
                     found = exact or [
                         (customer, balance)
@@ -1752,6 +1823,11 @@ class ChatService:
                         )
                     ]
                     candidates = [(c.customer_id, c.display_name, balance) for c, balance in found[:MAX_CANDIDATES]]
+                    if currency is not UZS:
+                        # Beside each name, what they owe in the currency of this entry: a payment in
+                        # dollars is for someone who owes dollars.
+                        owed = await tenant.balances([found_id for found_id, _, _ in candidates], currency)
+                        candidates = [(found_id, name, owed.get(found_id, 0)) for found_id, name, _ in candidates]
         except AppError as error:
             await replies.send(self._error_text(lang, error))
             return
@@ -1773,14 +1849,17 @@ class ChatService:
             pending_id=pending_id,
             user_id=incoming.user_id,
             kind="entry",
-            payload={
-                "shop": shop.shop_id.hex,
-                "name": parsed.name,
-                "kind": kind.value,
-                "amount": parsed.amount,
-                "note": parsed.note,
-                "candidates": [customer_id.hex for customer_id, _, _ in candidates],
-            },
+            payload=tag(
+                {
+                    "shop": shop.shop_id.hex,
+                    "name": parsed.name,
+                    "kind": kind.value,
+                    "amount": parsed.amount,
+                    "note": parsed.note,
+                    "candidates": [customer_id.hex for customer_id, _, _ in candidates],
+                },
+                currency,
+            ),
             now=self._now(),
             expires_at=self._now() + PENDING_LIFETIME,
         )
@@ -1792,7 +1871,7 @@ class ChatService:
             )
             return
         choices: Keyboard = [
-            [(f"{name} · {money(lang, balance)}", callback("pk", pending_id.hex, index))]
+            [(f"{name} · {money(lang, balance, currency)}", callback("pk", pending_id.hex, index))]
             for index, (_, name, balance) in enumerate(candidates)
         ]
         if kind is EntryKind.CREDIT:
@@ -1846,6 +1925,7 @@ class ChatService:
                     kind=kind,
                     amount=int(payload["amount"]),
                     note=payload.get("note"),
+                    currency=parse_code(payload.get("currency")) or UZS,
                 )
         except AppError as error:
             await replies.show(self._error_text(lang, error))
@@ -1915,8 +1995,7 @@ class ChatService:
             "credit_saved",
             shop=shop.name,
             name=body["customer"]["display_name"],
-            amount=money(lang, body["entry"]["amount"]),
-            balance=money(lang, body["customer"]["balance"]),
+            **_amounts(lang, body),
             date=day(chosen),
         )
         may_cancel = await self._may_cancel(shop, incoming.user_id)
@@ -1960,7 +2039,6 @@ class ChatService:
                 "reversed",
                 shop=shop.name,
                 name=body["customer"]["display_name"],
-                amount=money(lang, body["entry"]["amount"]),
-                balance=money(lang, body["customer"]["balance"]),
+                **_amounts(lang, body),
             )
         )

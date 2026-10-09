@@ -31,6 +31,8 @@ class ShopPatch(BaseModel):
     name: str | None = None
     lang: str | None = None
     default_promise_days: int | None = None
+    # "This shop also works in dollars." Only while the platform offers dollars; the owner's to change.
+    usd_on: bool | None = None
 
 
 def add_shop_routes(app: FastAPI, service: ShopService, current_user: CurrentUser) -> None:
@@ -41,7 +43,7 @@ def add_shop_routes(app: FastAPI, service: ShopService, current_user: CurrentUse
     async def create_shop(body: ShopCreate, user_id: user, idempotency_key: IdempotencyKey = None) -> dict[str, Any]:
         return await service.create(user_id, body.name, body.lang, idempotency_key)
 
-    @app.get("/api/v1/shops/{shop_id}", name=READ_SHOP.name, response_model=Shop)
+    @app.get("/api/v1/shops/{shop_id}", name=READ_SHOP.name, response_model=Shop, response_model_exclude_unset=True)
     async def read_shop(shop_id: UUID, user_id: user) -> dict[str, Any]:
         return await service.read(user_id, shop_id)
 
@@ -49,5 +51,7 @@ def add_shop_routes(app: FastAPI, service: ShopService, current_user: CurrentUse
     async def update_shop(
         shop_id: UUID, body: ShopPatch, user_id: user, idempotency_key: IdempotencyKey = None
     ) -> dict[str, Any]:
-        change = ShopUpdate(name=body.name, lang=body.lang, default_promise_days=body.default_promise_days)
+        change = ShopUpdate(
+            name=body.name, lang=body.lang, default_promise_days=body.default_promise_days, usd_on=body.usd_on
+        )
         return await service.update(user_id, shop_id, change, idempotency_key)

@@ -1,6 +1,16 @@
 import type { Account, Entry, Fetch, Outcome } from "./account";
 import { loadAccount, readToken } from "./account";
-import { dayOfDate, dayOfInstant, type Language, LANGUAGES, type MessageKey, money, normalizeLanguage, say } from "./messages";
+import {
+  dayOfDate,
+  dayOfInstant,
+  dollars,
+  type Language,
+  LANGUAGES,
+  type MessageKey,
+  money,
+  normalizeLanguage,
+  say,
+} from "./messages";
 
 /**
  * The page behind a customer's read-only link, drawn with the DOM itself: no framework, so that a
@@ -70,7 +80,13 @@ function entryNode(doc: Document, language: Language, entry: Entry): HTMLElement
   const head = el(doc, "div", "entry__head");
   head.append(
     el(doc, "span", "entry__kind", say(language, KIND_KEYS[entry.kind] ?? "kind.other")),
-    el(doc, "span", entry.kind === "payment" ? "entry__amount entry__amount--paid" : "entry__amount", money(language, entry.amount)),
+    el(
+      doc,
+      "span",
+      entry.kind === "payment" ? "entry__amount entry__amount--paid" : "entry__amount",
+      // An entry in dollars is written with its sign; its amount is cents, never read as so'm.
+      entry.currency === "USD" ? dollars(entry.amount) : money(language, entry.amount),
+    ),
   );
   item.append(head, el(doc, "p", "entry__meta", dayOfInstant(language, entry.createdAt)));
   if (entry.promisedDate !== null) {
@@ -120,24 +136,31 @@ function accountNodes(doc: Document, language: Language, account: Account): HTML
   const greeting =
     account.firstName === "" ? say(language, "greeting.noName") : say(language, "greeting", { name: account.firstName });
   summary.append(el(doc, "h1", "summary__greeting", greeting));
-  if (account.balance > 0) {
-    summary.append(
-      el(doc, "p", "summary__label", say(language, "balance.owed")),
-      el(doc, "p", "summary__amount", money(language, account.balance)),
-    );
-  } else if (account.balance < 0) {
-    summary.append(
-      el(doc, "p", "summary__label", say(language, "balance.credit")),
-      el(doc, "p", "summary__amount summary__amount--clear", money(language, -account.balance)),
-    );
-  } else {
+  // The so'm debt and, in a shop that works in dollars, the dollar debt: two amounts, each written by
+  // itself and never added. A debt that is nothing is not written; "no debt" needs both to be nothing.
+  const usd = account.usd;
+  const each = (uzs: number, cents: number): string[] => [
+    ...(uzs > 0 ? [money(language, uzs)] : []),
+    ...(cents > 0 ? [dollars(cents)] : []),
+  ];
+  const owed = each(account.balance, usd?.balance ?? 0);
+  const overpaid = each(-account.balance, -(usd?.balance ?? 0));
+  if (owed.length > 0) {
+    summary.append(el(doc, "p", "summary__label", say(language, "balance.owed")));
+    summary.append(...owed.map((amount) => el(doc, "p", "summary__amount", amount)));
+  }
+  if (overpaid.length > 0) {
+    summary.append(el(doc, "p", "summary__label", say(language, "balance.credit")));
+    summary.append(...overpaid.map((amount) => el(doc, "p", "summary__amount summary__amount--clear", amount)));
+  }
+  if (owed.length === 0 && overpaid.length === 0) {
     summary.append(el(doc, "p", "summary__amount summary__amount--clear", say(language, "balance.none")));
   }
-  if (account.overdue > 0) {
-    summary.append(el(doc, "p", "summary__overdue", say(language, "overdue", { amount: money(language, account.overdue) })));
+  for (const amount of each(account.overdue, usd?.overdue ?? 0)) {
+    summary.append(el(doc, "p", "summary__overdue", say(language, "overdue", { amount })));
   }
-  if (account.dueToday > 0) {
-    summary.append(el(doc, "p", "summary__due", say(language, "dueToday", { amount: money(language, account.dueToday) })));
+  for (const amount of each(account.dueToday, usd?.dueToday ?? 0)) {
+    summary.append(el(doc, "p", "summary__due", say(language, "dueToday", { amount })));
   }
 
   const entries = el(doc, "section", "entries");

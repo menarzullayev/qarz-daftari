@@ -5,13 +5,14 @@ import type { ApiError } from "../api";
 import { formatCustomerCount, formatMoney, tashkentDay } from "../format";
 import { useLoad } from "../hooks";
 import { type Column, useDesktop } from "../layout";
+import type { Currency } from "../money";
 import { isRole } from "../navigation";
 import { toIsoDate } from "../promise";
 import { dayText } from "../promiseParts";
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
 import { useMay, useWorkspace } from "../workspace/context";
-import { Empty, Failure, FieldError, Loading } from "../workspace/parts";
+import { CurrencyToggle, Empty, Failure, FieldError, Loading } from "../workspace/parts";
 import "./messages";
 import {
   checkPeriod,
@@ -25,7 +26,7 @@ import {
   PRESETS,
 } from "./period";
 import "./reports.css";
-import { type OverdueBand, type OverdueReport, type PeriodReport, reports } from "./reportsApi";
+import { type OverdueBand, type OverdueMoney, type PeriodMoney, type PeriodReport, reports } from "./reportsApi";
 
 const NO_PROBLEMS: PeriodProblems = { from: null, to: null };
 
@@ -90,9 +91,21 @@ function Figures<T>({
   );
 }
 
-function Totals({ report }: { report: PeriodReport }) {
+/**
+ * `report` is the money of one currency, so'm or dollars, and `currency` says which; `counts` are the
+ * period's customers and disputes, which belong to neither.
+ */
+function Totals({
+  report,
+  counts,
+  currency,
+}: {
+  report: PeriodMoney;
+  counts: Pick<PeriodReport, "newCustomers" | "disputesOpened">;
+  currency: Currency;
+}) {
   const { t, language } = useI18n();
-  const money = (amount: number) => formatMoney(amount, language);
+  const money = (amount: number) => formatMoney(amount, language, currency);
   const activity = (count: number, customers?: number) => {
     const entries = t("reports.entries", { count });
     return customers === undefined ? entries : t("reports.activity", { entries, customers: formatCustomerCount(customers, language) });
@@ -139,11 +152,11 @@ function Totals({ report }: { report: PeriodReport }) {
         </div>
         <div className="figure">
           <dt>{t("reports.newCustomers")}</dt>
-          <dd>{formatCustomerCount(report.newCustomers, language)}</dd>
+          <dd>{formatCustomerCount(counts.newCustomers, language)}</dd>
         </div>
         <div className="figure">
           <dt>{t("reports.disputes")}</dt>
-          <dd>{report.disputesOpened}</dd>
+          <dd>{counts.disputesOpened}</dd>
         </div>
       </dl>
 
@@ -169,7 +182,7 @@ function Totals({ report }: { report: PeriodReport }) {
   );
 }
 
-function OnTime({ report }: { report: PeriodReport }) {
+function OnTime({ report, currency }: { report: PeriodMoney; currency: Currency }) {
   const { t, language } = useI18n();
   const { percent, dueAmount, onTimeAmount } = report.onTime;
   return (
@@ -184,8 +197,8 @@ function OnTime({ report }: { report: PeriodReport }) {
           </p>
           <p className="row__meta">
             {t("reports.onTime.amounts", {
-              due: formatMoney(dueAmount, language),
-              onTime: formatMoney(onTimeAmount, language),
+              due: formatMoney(dueAmount, language, currency),
+              onTime: formatMoney(onTimeAmount, language, currency),
             })}
           </p>
         </>
@@ -198,9 +211,9 @@ type Day = PeriodReport["days"][number];
 type Debtor = PeriodReport["topDebtors"][number];
 type Member = PeriodReport["staff"][number];
 
-function Days({ days }: { days: readonly Day[] }) {
+function Days({ days, currency }: { days: readonly Day[]; currency: Currency }) {
   const { t, language } = useI18n();
-  const money = (amount: number) => formatMoney(amount, language);
+  const money = (amount: number) => formatMoney(amount, language, currency);
   // A year of days of which most saw nothing is not a table a person reads: only days with a sale or
   // a payment are listed, and the note under the list says how many were left out.
   const busy = days.filter((day) => day.credit !== 0 || day.payments !== 0);
@@ -234,12 +247,13 @@ function Days({ days }: { days: readonly Day[] }) {
   );
 }
 
-function TopDebtors({ debtors }: { debtors: readonly Debtor[] }) {
+function TopDebtors({ debtors, currency }: { debtors: readonly Debtor[]; currency: Currency }) {
   const { t, language } = useI18n();
+  const balance = (debtor: Debtor) => formatMoney(debtor.balance, language, currency);
   const link = (debtor: Debtor) => <Link to={`/customers/${debtor.customerId}`}>{debtor.displayName}</Link>;
   const columns: Column<Debtor>[] = [
     { id: "customer", header: t("reports.debtors.customer"), rowHeader: true, cell: link },
-    { id: "balance", header: t("reports.debtors.balance"), numeric: true, cell: (debtor) => formatMoney(debtor.balance, language) },
+    { id: "balance", header: t("reports.debtors.balance"), numeric: true, cell: balance },
   ];
   return (
     <section aria-labelledby="reports-debtors">
@@ -252,17 +266,17 @@ function TopDebtors({ debtors }: { debtors: readonly Debtor[] }) {
           columns={columns}
           items={debtors}
           rowKey={(debtor) => debtor.customerId}
-          row={(debtor) => ({ name: link(debtor), amount: formatMoney(debtor.balance, language) })}
+          row={(debtor) => ({ name: link(debtor), amount: balance(debtor) })}
         />
       )}
     </section>
   );
 }
 
-function Staff({ staff }: { staff: readonly Member[] }) {
+function Staff({ staff, currency }: { staff: readonly Member[]; currency: Currency }) {
   const { membershipId } = useWorkspace();
   const { t, language } = useI18n();
-  const money = (amount: number) => formatMoney(amount, language);
+  const money = (amount: number) => formatMoney(amount, language, currency);
   // The API names no one: a member of staff is their role and the end of their membership's identifier.
   const name = (member: Member) => {
     const label = t("reports.staff.member", {
@@ -304,7 +318,18 @@ function Staff({ staff }: { staff: readonly Member[] }) {
   );
 }
 
-function PeriodFigures({ period, onRefused }: { period: Period; onRefused: (problems: PeriodProblems) => void }) {
+function PeriodFigures({
+  period,
+  onRefused,
+  currency: chosen,
+  onCurrency,
+}: {
+  period: Period;
+  onRefused: (problems: PeriodProblems) => void;
+  /** The book the reports are read from. Only a shop that works in dollars is offered the choice. */
+  currency: Currency;
+  onCurrency: (currency: Currency) => void;
+}) {
   const { api } = useWorkspace();
   const { t, language } = useI18n();
   const calls = useMemo(() => reports(api), [api]);
@@ -327,6 +352,9 @@ function PeriodFigures({ period, onRefused }: { period: Period; onRefused: (prob
     return <Failure error={state.error} onRetry={reload} />;
   }
   const report = state.data;
+  // Dollars are a book of their own: the same sections again, from the dollar entries only.
+  const currency: Currency = report.usd ? chosen : "UZS";
+  const money: PeriodMoney = currency === "USD" && report.usd ? report.usd : report;
   const title =
     report.from === report.to
       ? t("reports.period.oneDay", { date: dayText(report.from, language) })
@@ -334,11 +362,12 @@ function PeriodFigures({ period, onRefused }: { period: Period; onRefused: (prob
   return (
     <section aria-labelledby="reports-period">
       <h2 id="reports-period">{title}</h2>
-      <Totals report={report} />
-      <OnTime report={report} />
-      <Days days={report.days} />
-      <TopDebtors debtors={report.topDebtors} />
-      <Staff staff={report.staff} />
+      {report.usd ? <CurrencyToggle value={currency} onChange={onCurrency} /> : null}
+      <Totals report={money} counts={report} currency={currency} />
+      <OnTime report={money} currency={currency} />
+      <Days days={money.days} currency={currency} />
+      <TopDebtors debtors={money.topDebtors} currency={currency} />
+      <Staff staff={money.staff} currency={currency} />
     </section>
   );
 }
@@ -349,7 +378,7 @@ function bandName(band: OverdueBand, t: Translate): string {
     : t("reports.band.range", { from: band.fromDays, to: band.toDays });
 }
 
-function OverdueByAge() {
+function OverdueByAge({ currency: chosen }: { currency: Currency }) {
   const { api } = useWorkspace();
   const { t, language } = useI18n();
   const calls = useMemo(() => reports(api), [api]);
@@ -361,8 +390,9 @@ function OverdueByAge() {
   } else if (state.status === "error") {
     body = <Failure error={state.error} onRetry={reload} />;
   } else {
-    const report: OverdueReport = state.data;
-    const money = (amount: number) => formatMoney(amount, language);
+    const currency: Currency = state.data.usd ? chosen : "UZS";
+    const report: OverdueMoney = currency === "USD" && state.data.usd ? state.data.usd : state.data;
+    const money = (amount: number) => formatMoney(amount, language, currency);
     const columns: Column<OverdueBand>[] = [
       { id: "band", header: t("reports.overdue.band"), rowHeader: true, cell: (band) => bandName(band, t) },
       { id: "amount", header: t("reports.overdue.amount"), numeric: true, cell: (band) => money(band.amount) },
@@ -375,7 +405,7 @@ function OverdueByAge() {
     ];
     body = (
       <>
-        <p className="row__meta">{t("reports.overdue.asOf", { date: dayText(report.asOf, language) })}</p>
+        <p className="row__meta">{t("reports.overdue.asOf", { date: dayText(state.data.asOf, language) })}</p>
         {report.total.amount === 0 ? (
           <Empty>{t("reports.overdue.none")}</Empty>
         ) : (
@@ -419,6 +449,7 @@ function Reports() {
   const [from, setFrom] = useState(period.from);
   const [to, setTo] = useState(period.to);
   const [problems, setProblems] = useState<PeriodProblems>(NO_PROBLEMS);
+  const [currency, setCurrency] = useState<Currency>("UZS");
   const active = presetOf(period, today);
 
   const show = (next: Period) => {
@@ -498,8 +529,8 @@ function Reports() {
           {t("reports.period.hint", { days: MAX_PERIOD_DAYS })}
         </p>
       </form>
-      <PeriodFigures period={period} onRefused={setProblems} />
-      <OverdueByAge />
+      <PeriodFigures period={period} onRefused={setProblems} currency={currency} onCurrency={setCurrency} />
+      <OverdueByAge currency={currency} />
     </>
   );
 }

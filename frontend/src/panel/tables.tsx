@@ -5,6 +5,8 @@ import type { CatalogItem, Customer, Debtor } from "../shared/api";
 import { formatMoney } from "../shared/format";
 import { type DesktopParts, DesktopProvider } from "../shared/layout";
 import { Link } from "../shared/router";
+import { owesAnything } from "../shared/workspace/CustomersScreen";
+import { Money } from "../shared/workspace/parts";
 import { type Column, DataTable } from "./DataTable";
 import "./messages";
 
@@ -14,7 +16,7 @@ export const DESKTOP_QUERY = "(min-width: 1024px)";
 const NONE = "—";
 
 function CustomersTable({ items, pick }: { items: readonly Customer[]; pick: boolean }) {
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const columns: Column<Customer>[] = [
     {
       id: "customer",
@@ -24,7 +26,12 @@ function CustomersTable({ items, pick }: { items: readonly Customer[]; pick: boo
       cell: (customer) => (pick ? customer.displayName : <Link to={`/customers/${customer.id}`}>{customer.displayName}</Link>),
     },
     { id: "phone", header: t("table.phone"), cell: (customer) => customer.phone ?? NONE },
-    { id: "balance", header: t("table.balance"), numeric: true, cell: (customer) => formatMoney(customer.balance, language) },
+    {
+      id: "balance",
+      header: t("table.balance"),
+      numeric: true,
+      cell: (customer) => <Money uzs={customer.balance} usd={customer.usd?.balance} />,
+    },
   ];
   if (pick) {
     columns.push({
@@ -36,7 +43,7 @@ function CustomersTable({ items, pick }: { items: readonly Customer[]; pick: boo
             {t("entry.credit.short")}
           </Link>
           {/* A payment cannot exceed the debt, so there is nothing to pay when nothing is owed. */}
-          {customer.balance > 0 ? (
+          {owesAnything(customer) ? (
             <Link to={`/customers/${customer.id}/payment`} className="button button--small">
               {t("entry.payment.short")}
             </Link>
@@ -50,7 +57,9 @@ function CustomersTable({ items, pick }: { items: readonly Customer[]; pick: boo
 
 function DebtorsTable({ items }: { items: readonly Debtor[] }) {
   const { t, language } = useI18n();
-  const money = (amount: number) => (amount > 0 ? formatMoney(amount, language) : NONE);
+  // A figure of nothing is a dash. With dollars each figure has its dollar twin under it, never added.
+  const money = (amount: number, usd?: number) =>
+    usd === undefined ? amount > 0 ? formatMoney(amount, language) : NONE : <Money uzs={amount} usd={usd} />;
   const columns: Column<Debtor>[] = [
     {
       id: "customer",
@@ -58,15 +67,30 @@ function DebtorsTable({ items }: { items: readonly Debtor[] }) {
       rowHeader: true,
       cell: (debtor) => <Link to={`/customers/${debtor.id}`}>{debtor.displayName}</Link>,
     },
-    { id: "balance", header: t("table.balance"), numeric: true, cell: (debtor) => formatMoney(debtor.balance, language) },
-    { id: "overdue", header: t("table.overdue"), numeric: true, cell: (debtor) => money(debtor.overdue.amount) },
+    {
+      id: "balance",
+      header: t("table.balance"),
+      numeric: true,
+      cell: (debtor) => <Money uzs={debtor.balance} usd={debtor.usd?.balance} />,
+    },
+    {
+      id: "overdue",
+      header: t("table.overdue"),
+      numeric: true,
+      cell: (debtor) => money(debtor.overdue.amount, debtor.usd?.overdue?.amount),
+    },
     {
       id: "late",
       header: t("table.late"),
       cell: (debtor) =>
         debtor.overdue.amount > 0 && debtor.overdue.days > 0 ? t("overdue.days", { count: debtor.overdue.days }) : NONE,
     },
-    { id: "dueToday", header: t("table.dueToday"), numeric: true, cell: (debtor) => money(debtor.overdue.dueToday) },
+    {
+      id: "dueToday",
+      header: t("table.dueToday"),
+      numeric: true,
+      cell: (debtor) => money(debtor.overdue.dueToday, debtor.usd?.overdue?.dueToday),
+    },
   ];
   return <DataTable caption={t("overview.debtors")} columns={columns} items={items} rowKey={(debtor) => debtor.id} />;
 }

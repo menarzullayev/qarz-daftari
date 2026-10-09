@@ -61,6 +61,17 @@
             ],
             "title": "Default Credit Limit"
           },
+          "default_credit_limit_usd": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Credit Limit Usd"
+          },
           "sellers_may_exceed": {
             "anyOf": [
               {
@@ -120,6 +131,16 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "usd": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerDollars"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -209,6 +230,16 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "usd": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerDollars"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -226,6 +257,53 @@
           "payment_notices"
         ],
         "title": "CustomerDetail",
+        "type": "object"
+      },
+      "CustomerDollars": {
+        "additionalProperties": false,
+        "description": "What a customer owes in US dollars: whole cents, beside the so'm figures and never added to them.",
+        "properties": {
+          "balance": {
+            "title": "Balance",
+            "type": "integer"
+          },
+          "credit_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit Limit"
+          },
+          "overdue": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Overdue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "payment_history": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentHistory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "balance",
+          "credit_limit"
+        ],
+        "title": "CustomerDollars",
         "type": "object"
       },
       "CustomerPage": {
@@ -270,6 +348,17 @@
               }
             ],
             "title": "Credit Limit"
+          },
+          "credit_limit_usd": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit Limit Usd"
           },
           "display_name": {
             "anyOf": [
@@ -446,6 +535,16 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "usd": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerDollars"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -534,6 +633,17 @@
           "created_at": {
             "title": "Created At",
             "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
           },
           "date_request": {
             "anyOf": [
@@ -1046,6 +1156,18 @@
             ],
             "title": "Amount"
           },
+          "currency": {
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
           "kind": {
             "maxLength": 16,
             "title": "Kind",
@@ -1244,6 +1366,16 @@
           },
           "overdue": {
             "$ref": "#/components/schemas/OverviewOverdue"
+          },
+          "usd": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverviewFigures"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1253,6 +1385,34 @@
           "due_today"
         ],
         "title": "Overview",
+        "type": "object"
+      },
+      "OverviewFigures": {
+        "additionalProperties": false,
+        "properties": {
+          "debtors": {
+            "title": "Debtors",
+            "type": "integer"
+          },
+          "due_today": {
+            "title": "Due Today",
+            "type": "integer"
+          },
+          "outstanding": {
+            "title": "Outstanding",
+            "type": "integer"
+          },
+          "overdue": {
+            "$ref": "#/components/schemas/OverviewOverdue"
+          }
+        },
+        "required": [
+          "outstanding",
+          "debtors",
+          "overdue",
+          "due_today"
+        ],
+        "title": "OverviewFigures",
         "type": "object"
       },
       "OverviewOverdue": {
@@ -1578,6 +1738,16 @@
               }
             ],
             "title": "Shop Phone"
+          },
+          "usd": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SharedDollars"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1594,6 +1764,25 @@
         "title": "SharedAccount",
         "type": "object"
       },
+      "SharedDollars": {
+        "additionalProperties": false,
+        "description": "What the customer owes in US dollars, in whole cents: beside the so'm figures, never added to them.",
+        "properties": {
+          "balance": {
+            "title": "Balance",
+            "type": "integer"
+          },
+          "overdue": {
+            "$ref": "#/components/schemas/SharedOverdue"
+          }
+        },
+        "required": [
+          "balance",
+          "overdue"
+        ],
+        "title": "SharedDollars",
+        "type": "object"
+      },
       "SharedEntry": {
         "additionalProperties": false,
         "properties": {
@@ -1604,6 +1793,17 @@
           "created_at": {
             "title": "Created At",
             "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
           },
           "kind": {
             "title": "Kind",
@@ -1714,6 +1914,17 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "usd_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usd On"
           }
         },
         "required": [
@@ -1779,6 +1990,17 @@
               }
             ],
             "title": "Name"
+          },
+          "usd_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usd On"
           }
         },
         "title": "ShopPatch",
@@ -1805,6 +2027,17 @@
           "created_at": {
             "title": "Created At",
             "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
           },
           "decline_reason": {
             "anyOf": [
@@ -7292,6 +7525,23 @@
               "default": 50,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "currency",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Currency"
             }
           }
         ],

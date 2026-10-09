@@ -4,6 +4,7 @@ import { useI18n } from "../../i18n/I18nProvider";
 import type { MessageKey } from "../../i18n/types";
 import { formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
+import { currencyOf } from "../money";
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
 import { useMay, useWorkspace } from "./context";
@@ -53,7 +54,7 @@ function OpenDisputes() {
           <li key={dispute.id} className="row">
             <Link to={`/customers/${dispute.customerId}`} className="row__link">
               <span className="row__name">{dispute.customerName}</span>
-              <span className="row__amount">{formatMoney(dispute.amount, language)}</span>
+              <span className="row__amount">{formatMoney(dispute.amount, language, currencyOf(dispute))}</span>
             </Link>
             <p className="row__note">{t("disputes.reason", { reason: dispute.reason })}</p>
             <p className="row__meta">{t("disputes.since", { date: formatInstant(dispute.createdAt, language) })}</p>
@@ -78,7 +79,7 @@ function OpenDisputes() {
               </p>
             ) : panel.kind === "reverse" ? (
               <Confirm
-                question={t("reversal.confirm", { amount: formatMoney(dispute.amount, language) })}
+                question={t("reversal.confirm", { amount: formatMoney(dispute.amount, language, currencyOf(dispute)) })}
                 yes={t("reversal.confirm.yes")}
                 no={t("reversal.confirm.no")}
                 pending={busy}

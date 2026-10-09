@@ -148,6 +148,21 @@ export function money(language: Language, amount: number): string {
   return say(language, "money", { amount: (amount < 0 ? "-" : "") + digits });
 }
 
+/**
+ * Whole cents as US dollars, the same in both languages: "1 250.50 $", always two decimals, with
+ * non-breaking spaces between thousands and before the sign. The cents are split by whole division,
+ * so no fraction is ever computed.
+ */
+export function dollars(cents: number): string {
+  if (!Number.isSafeInteger(cents)) {
+    throw new RangeError("amount must be a whole number of cents");
+  }
+  const size = Math.abs(cents);
+  const rest = size % 100;
+  const whole = ((size - rest) / 100).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0");
+  return `${cents < 0 ? "-" : ""}${whole}.${rest < 10 ? "0" : ""}${rest}\u00a0$`;
+}
+
 // Timestamps are UTC and shown in Tashkent time, UTC+5 all year: a fixed offset gives the same day on
 // every phone, including one whose browser has no time zone data.
 const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;

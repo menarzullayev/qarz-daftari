@@ -11,10 +11,12 @@ from typing import Any
 from uuid import UUID
 
 from qarz.application import removal
+from qarz.application.currencies import USD, UZS, dollars_on, platform_dollars, tag
 from qarz.application.errors import NotFound
 from qarz.application.goods_lines import line_body
 from qarz.application.ledger_service import (
     HISTORY_PAGE,
+    balances_of,
     date_request_body,
     latest_date_requests,
     payment_history_body,
@@ -22,7 +24,7 @@ from qarz.application.ledger_service import (
 )
 from qarz.application.notice_view import NOTICES_SHOWN, notice_body
 from qarz.application.operations import self_operation
-from qarz.application.ports import DisputeRecord, Storage
+from qarz.application.ports import DisputeRecord, ShopTotals, Storage
 from qarz.domain import ledger
 from qarz.domain.access import Role
 from qarz.domain.promise import tashkent_date
@@ -69,6 +71,7 @@ class CustomerAccountService:
     async def accounts(self, user_id: UUID) -> dict[str, Any]:
         async with self._storage.platform() as session:
             rows = await session.my_accounts(user_id)
+            dollars = await platform_dollars(session)
         return {
             "items": [
                 {
@@ -76,6 +79,8 @@ class CustomerAccountService:
                     "shop_name": row.shop_name,
                     "display_name": row.display_name,
                     "balance": row.balance,
+                    # Beside the so'm balance, never added to it; only for a shop that works in dollars.
+                    **({"usd": {"balance": row.balance_usd}} if dollars and row.usd_on else {}),
                 }
                 for row in rows
             ]
@@ -88,10 +93,13 @@ class CustomerAccountService:
             settings = await session.shop_settings()
             if customer is None or settings is None:
                 raise NotFound()
-            account = await session.entries_of(customer_id)
-            entries = [row.entry for row in account]
+            dollars = await dollars_on(session)
+            account = [row for row in await session.entries_of(customer_id) if dollars or row.entry.currency is UZS]
+            entries = ledger.in_currency([row.entry for row in account], UZS)
+            in_dollars = ledger.in_currency([row.entry for row in account], USD)
             today = self._today()
             status = ledger.overdue(entries, today)
+            usd_status = ledger.overdue(in_dollars, today)
             disputes = await session.disputes_of_customer(customer_id)
             reversed_ids = {row.entry.reverses_id for row in account if row.entry.reverses_id is not None}
             newest_first = sorted(account, key=lambda row: row.entry.seq, reverse=True)
@@ -109,11 +117,24 @@ class CustomerAccountService:
                 "balance": ledger.balance(entries),
                 "overdue": {"amount": status.overdue_amount, "due_today": status.due_today_amount},
                 "payment_history": payment_history_body(ledger.payment_history(entries, today)),
+                # The dollar book's own figures, beside the so'm ones and never added to them.
+                **(
+                    {
+                        "usd": {
+                            "balance": ledger.balance(in_dollars),
+                            "overdue": {"amount": usd_status.overdue_amount, "due_today": usd_status.due_today_amount},
+                            "payment_history": payment_history_body(ledger.payment_history(in_dollars, today)),
+                        }
+                    }
+                    if dollars
+                    else {}
+                ),
                 "removal_requested": await session.removal_waiting(customer_id),
                 "entries": [
                     {
                         "id": str(row.entry.id),
                         "kind": row.entry.kind.value,
+                        **tag({}, row.entry.currency),
                         "amount": row.entry.amount,
                         "created_at": row.entry.created_at.isoformat(),
                         "promised_date": None
@@ -153,9 +174,14 @@ class CustomerAccountService:
             customer = await session.get_customer(customer_id, for_update=True)
             if customer is None:
                 raise NotFound()
-            balance = ledger.balance([row.entry for row in await session.entries_of(customer_id)])
-            outcome = await removal.request_removal(session, customer_id, balance, self._now())
-        return {"removed": outcome == "done", "waiting_for_balance": balance if outcome == "waiting" else None}
+            # Every currency counts, whether or not the shop shows dollars now (BR-32).
+            balances = balances_of([row.entry for row in await session.entries_of(customer_id)])
+            outcome = await removal.request_removal(session, customer_id, any(balances.values()), self._now())
+            waiting = outcome == "waiting"
+            body: dict[str, Any] = {"removed": not waiting, "waiting_for_balance": balances[UZS] if waiting else None}
+            if waiting and await dollars_on(session):
+                body["usd"] = {"waiting_for_balance": balances[USD]}
+        return body
 
     async def owner_totals(self, user_id: UUID) -> dict[str, Any]:
         """Totals of every shop the caller owns, and their sum (REQ-065)."""
@@ -170,19 +196,26 @@ class CustomerAccountService:
                 if membership is None or membership.role is not Role.OWNER:
                     continue
                 totals = await tenant.shop_totals(today)
-            items.append(
-                {
-                    "shop_id": str(shop.shop_id),
-                    "name": shop.name,
-                    "outstanding": totals.outstanding,
-                    "debtors": totals.debtors,
-                    "overdue": totals.overdue_amount,
-                    "due_today": totals.due_today_amount,
-                }
-            )
-        return {
-            "items": items,
-            "total": {
-                key: sum(int(item[key]) for item in items) for key in ("outstanding", "debtors", "overdue", "due_today")
-            },
-        }
+                in_dollars = await tenant.shop_totals(today, USD) if await dollars_on(tenant) else None
+            item = _owner_figures(totals)
+            if in_dollars is not None:
+                item["usd"] = _owner_figures(in_dollars)
+            items.append({"shop_id": str(shop.shop_id), "name": shop.name, **item})
+        total: dict[str, Any] = {key: sum(int(item[key]) for item in items) for key in _OWNER_KEYS}
+        with_dollars = [item["usd"] for item in items if "usd" in item]
+        if with_dollars:
+            # The dollars of the shops that work in them, added to each other and to nothing else.
+            total["usd"] = {key: sum(int(item[key]) for item in with_dollars) for key in _OWNER_KEYS}
+        return {"items": items, "total": total}
+
+
+_OWNER_KEYS = ("outstanding", "debtors", "overdue", "due_today")
+
+
+def _owner_figures(totals: ShopTotals) -> dict[str, Any]:
+    return {
+        "outstanding": totals.outstanding,
+        "debtors": totals.debtors,
+        "overdue": totals.overdue_amount,
+        "due_today": totals.due_today_amount,
+    }

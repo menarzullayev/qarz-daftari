@@ -501,7 +501,8 @@ BEGIN
   -- The row stays as a tombstone with nothing of the shop left in it.
   UPDATE shop
      SET status = 'erased', name = 'erased', deletion_due = NULL, reminders_on = false, sms_on = false,
-         default_credit_limit = NULL, share_phone = NULL, stock_refuse_negative = false
+         default_credit_limit = NULL, share_phone = NULL, usd_on = false, default_credit_limit_usd = NULL,
+         stock_refuse_negative = false
    WHERE id = p_shop_id;
 
   IF people IS NOT NULL THEN

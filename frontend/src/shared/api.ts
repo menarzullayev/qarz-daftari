@@ -1,5 +1,6 @@
 import type { components } from "./api.generated";
 import { lineTotal, MAX_LINES, qtyToApi, readServerQty } from "./goods";
+import type { Currency } from "./money";
 import { isRole, type Role } from "./navigation";
 
 /**
@@ -74,7 +75,24 @@ export type Customer = {
   creditLimit: number | null;
   /** Whole UZS the customer owes. */
   balance: number;
+  /** The same in US dollars, beside the so'm and never added to them. Absent: the shop has no dollars. */
+  usd?: CustomerDollars;
 };
+
+/**
+ * What a customer owes in dollars, in whole cents. `creditLimit` is the customer's own dollar limit
+ * (null: the shop's default applies). `overdue` comes with a debtor and with a customer's page,
+ * `paymentHistory` with the page only.
+ */
+export type CustomerDollars = {
+  balance: number;
+  creditLimit: number | null;
+  overdue?: Overdue;
+  paymentHistory?: PaymentHistory | null;
+};
+
+/** "USD" beside an amount that is whole cents; absent, the amount is whole so'm (see `currencyOf`). */
+export type Tagged = { currency?: Currency };
 
 export type Overdue = { amount: number; since: string | null; days: number; dueToday: number };
 export type Debtor = Customer & { overdue: Overdue };
@@ -125,7 +143,7 @@ export type Entry = {
   promises: PromiseRecord[];
   /** The newest request to move the entry's date, whatever its state; null when there was none. */
   dateRequest: DateRequest | null;
-};
+} & Tagged;
 
 /**
  * One promised date of an entry (INV-9). `actor` says where it came from: "default" (the shop's usual
@@ -154,7 +172,7 @@ export type OpenDateRequest = DateRequest & {
   customerName: string;
   amount: number;
   promisedDate: string | null;
-};
+} & Tagged;
 
 /** What the server answers to a changed promised date: both dates, and a request the change closed. */
 export type ChangedPromise = {
@@ -193,9 +211,9 @@ export type PaymentNotice = {
   expiresAt: string;
   /** For staff only: the same receipt file was sent to this shop before. */
   receiptSeenBefore: boolean;
-};
+} & Tagged;
 
-/** An open notice as staff see it in the shop's list. */
+/** An open notice as staff see it in the shop's list; the balance is in the notice's currency. */
 export type OpenPaymentNotice = PaymentNotice & { customerId: string; customerName: string; customerBalance: number };
 
 /** Where a receipt can be opened for a few minutes. The address is a credential: it is never stored. */
@@ -205,31 +223,36 @@ export type ReceiptLink = { url: string; expiresAt: string };
 export const RECEIPT_MAX_BYTES = 5 * 1024 * 1024;
 export const RECEIPT_TYPES: readonly string[] = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 
-export type Overview = {
+export type OverviewFigures = {
   outstanding: number;
   debtors: number;
   overdueAmount: number;
   overdueCustomers: number;
   dueToday: number;
 };
+/** `usd`: the same figures of the dollar debts, in cents; absent when the shop has no dollars. */
+export type Overview = OverviewFigures & { usd?: OverviewFigures };
 
 export type Page<T> = { items: T[]; nextCursor: string | null };
 
 export type EntryKind = "credit" | "payment";
-/** With `lines` the amount is not sent: the server uses the sum of the lines (REQ-037). */
+/**
+ * With `lines` the amount is not sent: the server uses the sum of the lines (REQ-037). With
+ * `currency: "USD"` the amount is whole cents, and there are no lines: goods are priced in so'm.
+ */
 export type NewEntry = { kind: EntryKind; note: string | null; promisedDate: string | null } & (
-  | { amount: number; lines?: never }
-  | { lines: readonly NewLine[]; amount?: never }
+  | { amount: number; currency?: Currency; lines?: never }
+  | { lines: readonly NewLine[]; amount?: never; currency?: never }
 );
 export type RecordedEntry = {
-  entry: { id: string; kind: string; amount: number; promisedDate: string | null; lines: GoodsLine[] };
+  entry: { id: string; kind: string; amount: number; promisedDate: string | null; lines: GoodsLine[] } & Tagged;
   /** The customer after the entry; `balance` is the new balance. */
   customer: Customer;
   /** Set when the sale was saved although it took the balance above the limit that applies (REQ-044). */
   limitWarning: LimitFigures | null;
 };
 
-/** A credit limit and the balance that met it, both in whole UZS. */
+/** A credit limit and the balance that met it, both in the entry's currency. */
 export type LimitFigures = { limit: number; balance: number };
 
 /** `creditLimit`: a number sets the customer's own limit, null removes it, absent leaves it. */
@@ -238,15 +261,25 @@ export type CustomerPatch = {
   phone?: string | null;
   remindersOff?: boolean;
   creditLimit?: number | null;
+  /** The dollar limit in cents, the same way; only in a shop that works in dollars. */
+  creditLimitUsd?: number | null;
 };
 
-/** The shop's rules for selling on credit (REQ-044). `bounds` are what the server accepts as a limit. */
+/**
+ * The shop's rules for selling on credit (REQ-044). `bounds` are what the server accepts as a limit.
+ * `usd` is the default dollar limit with its own bounds, in cents: a separate limit for a separate debt.
+ */
 export type CreditSettings = {
   defaultLimit: number | null;
   sellersMayExceed: boolean;
   bounds: { min: number; max: number };
+  usd?: { defaultLimit: number | null; bounds: { min: number; max: number } };
 };
-export type CreditSettingsPatch = { defaultLimit?: number | null; sellersMayExceed?: boolean };
+export type CreditSettingsPatch = {
+  defaultLimit?: number | null;
+  sellersMayExceed?: boolean;
+  defaultLimitUsd?: number | null;
+};
 
 /** One fixed wording of a reminder, in every language the server has it: language code to text. */
 export type ReminderTemplate = {
@@ -267,10 +300,17 @@ export type ReminderSettings = {
 export type ReminderSettingsPatch = { on?: boolean; hour?: number; template?: number; smsOn?: boolean };
 
 /** A reminder that was sent by hand: through which channel ("telegram" or "sms") and for what amount. */
-export type SentReminder = { channel: string; amount: number };
+export type SentReminder = { channel: string; amount: number; usdAmount?: number };
 
 /** A customer with something due and no channel to be reminded through (REQ-043). */
-export type UnreachableCustomer = { customerId: string; displayName: string; phone: string | null; amount: number };
+export type UnreachableCustomer = {
+  customerId: string;
+  displayName: string;
+  phone: string | null;
+  amount: number;
+  /** What is due in dollars, in cents; absent when the shop has no dollars. */
+  usdAmount?: number;
+};
 
 /**
  * The free plan as it stands for the shop, sent only while the platform has it switched on: how many
@@ -334,8 +374,12 @@ export type NewCatalogItem = { name: string; unit: string | null; price: number 
 export type CatalogItemPatch = { name?: string; unit?: string; price?: number };
 export type CatalogAction = "hide" | "unhide" | "accept" | "dismiss";
 
-export type ShopSettings = { id: string; name: string; lang: string; defaultPromiseDays: number };
-export type ShopSettingsPatch = { name?: string; lang?: string; defaultPromiseDays?: number };
+/**
+ * `usdOn` is there only while the platform offers dollars: whether this shop also works in them.
+ * Absent, dollars do not exist for this shop and nothing about them is shown.
+ */
+export type ShopSettings = { id: string; name: string; lang: string; defaultPromiseDays: number; usdOn?: boolean };
+export type ShopSettingsPatch = { name?: string; lang?: string; defaultPromiseDays?: number; usdOn?: boolean };
 
 export type ShopMembership = {
   shopId: string;
@@ -360,7 +404,7 @@ export type OpenDispute = Dispute & {
   customerId: string;
   customerName: string;
   amount: number;
-};
+} & Tagged;
 
 /** Whether a customer is connected to a Telegram account. `status` is the server's word for the link. */
 export type LinkState = { linked: boolean; status: string | null; since: string | null };
@@ -376,7 +420,14 @@ export type CounterCode = { exists: boolean; since: string | null };
 export type WaitingPerson = { id: string; name: string; since: string };
 
 /** One of the signed-in person's own customer accounts. */
-export type MyAccount = { linkId: string; shopName: string; displayName: string; balance: number };
+export type MyAccount = {
+  linkId: string;
+  shopName: string;
+  displayName: string;
+  balance: number;
+  /** What is owed in dollars, in cents; absent when the shop has no dollars. */
+  usd?: { balance: number };
+};
 
 /** An entry as the customer sees it: no note and no author, which are the shop's own (REQ-045). */
 export type AccountEntry = {
@@ -392,9 +443,18 @@ export type AccountEntry = {
   lines: GoodsLine[];
   promises: PromiseRecord[];
   dateRequest: DateRequest | null;
+} & Tagged;
+
+/** The dollar book of a customer's own account, in cents. */
+export type AccountDollars = {
+  balance: number;
+  overdueAmount: number;
+  dueToday: number;
+  paymentHistory: PaymentHistory | null;
 };
 
-export type AccountDetail = MyAccount & {
+export type AccountDetail = Omit<MyAccount, "usd"> & {
+  usd?: AccountDollars;
   overdueAmount: number;
   dueToday: number;
   removalRequested: boolean;
@@ -407,7 +467,7 @@ export type AccountDetail = MyAccount & {
 };
 
 /** `removed`: the data is gone now. Otherwise it waits until `waitingForBalance` UZS are paid. */
-export type RemovalOutcome = { removed: boolean; waitingForBalance: number | null };
+export type RemovalOutcome = { removed: boolean; waitingForBalance: number | null; waitingForUsd?: number };
 
 /** The text of a dispute or decline reason: 3 to 300 characters once white space is tidied. */
 export const REASON_MIN = 3;
@@ -486,9 +546,38 @@ function fieldsOf<T>(value: unknown) {
   };
 }
 
+/** The currency beside an amount: nothing for so'm, "USD" for dollars; any other word is not the contract. */
+function tagged(value: unknown): Tagged {
+  if (value === undefined || value === null || value === "UZS") {
+    return {};
+  }
+  if (value !== "USD") {
+    throw new Malformed();
+  }
+  return { currency: "USD" };
+}
+
+/** `{ usd: ... }` when the answer carries dollar figures, and nothing when it does not. */
+function dollars<T>(value: unknown, read: (value: unknown) => T): { usd?: T } {
+  return value === undefined || value === null ? {} : { usd: read(value) };
+}
+
+function customerDollars(value: unknown): CustomerDollars {
+  const body = fieldsOf<Wire["CustomerDollars"]>(value);
+  const late = body.raw("overdue");
+  const history = body.raw("payment_history");
+  return {
+    balance: body.get("balance", whole),
+    creditLimit: body.get("credit_limit", wholeOrNull),
+    ...(late === undefined || late === null ? {} : { overdue: overdue(late) }),
+    ...(history === undefined ? {} : { paymentHistory: paymentHistory(history) }),
+  };
+}
+
 function customer(value: unknown): Customer {
   const body = fieldsOf<Wire["Customer"]>(value);
   return {
+    ...dollars(body.raw("usd"), customerDollars),
     id: body.get("id", text),
     displayName: body.get("display_name", text),
     phone: body.get("phone", textOrNull),
@@ -576,6 +665,7 @@ function openDateRequest(value: unknown): OpenDateRequest {
     customerName: text(body["customer_name"]),
     amount: whole(body["amount"]),
     promisedDate: textOrNull(body["promised_date"]),
+    ...tagged(body["currency"]),
   };
 }
 
@@ -607,6 +697,7 @@ function entry(value: unknown): Entry {
     lines: goodsLines(body.raw("lines")),
     promises: promiseRecords(body.raw("promises")),
     dateRequest: dateRequestOrNull(body.raw("date_request")),
+    ...tagged(body.raw("currency")),
   };
 }
 
@@ -649,6 +740,7 @@ function paymentNotice(value: unknown): PaymentNotice {
     closedAt: body.get("closed_at", textOrNull),
     expiresAt: body.get("expires_at", text),
     receiptSeenBefore: body.raw("receipt_seen_before") === true,
+    ...tagged(body.raw("currency")),
   };
 }
 
@@ -680,8 +772,8 @@ function page<T>(item: (element: unknown) => T): (value: unknown) => Page<T> {
   };
 }
 
-function overview(value: unknown): Overview {
-  const body = fieldsOf<Wire["Overview"]>(value);
+function overviewFigures(value: unknown): OverviewFigures {
+  const body = fieldsOf<Wire["OverviewFigures"]>(value);
   const late = fieldsOf<Wire["OverviewOverdue"]>(body.raw("overdue"));
   return {
     outstanding: body.get("outstanding", whole),
@@ -690,6 +782,10 @@ function overview(value: unknown): Overview {
     overdueCustomers: late.get("customers", whole),
     dueToday: body.get("due_today", whole),
   };
+}
+
+function overview(value: unknown): Overview {
+  return { ...overviewFigures(value), ...dollars(fieldsOf<Wire["Overview"]>(value).raw("usd"), overviewFigures) };
 }
 
 function recordedEntry(value: unknown): RecordedEntry {
@@ -702,6 +798,7 @@ function recordedEntry(value: unknown): RecordedEntry {
       amount: whole(made["amount"]),
       promisedDate: textOrNull(made["promised_date"]),
       lines: goodsLines(made["lines"]),
+      ...tagged(made["currency"]),
     },
     customer: customer(body["customer"]),
     limitWarning: limitFigures(body["limit_warning"]),
@@ -733,7 +830,17 @@ function creditSettings(value: unknown): CreditSettings {
     defaultLimit: wholeOrNull(body["default_credit_limit"]),
     sellersMayExceed: flag(body["sellers_may_exceed"]),
     bounds: { min, max },
+    ...dollars(body["usd"], (value) => {
+      const inDollars = record(value);
+      const [least, most] = range(inDollars["limit_bounds"]);
+      return { defaultLimit: wholeOrNull(inDollars["default_credit_limit"]), bounds: { min: least, max: most } };
+    }),
   };
+}
+
+/** `{ usdAmount }` from the `usd: { amount }` beside a reminder's so'm amount, when it is there. */
+function usdAmount(value: unknown): { usdAmount?: number } {
+  return value === undefined || value === null ? {} : { usdAmount: whole(record(value)["amount"]) };
 }
 
 function wordings(value: unknown): Record<string, string> {
@@ -766,7 +873,7 @@ function reminderSettings(value: unknown): ReminderSettings {
 
 function sentReminder(value: unknown): SentReminder {
   const body = record(value);
-  return { channel: text(body["channel"]), amount: whole(body["amount"]) };
+  return { channel: text(body["channel"]), amount: whole(body["amount"]), ...usdAmount(body["usd"]) };
 }
 
 function unreachableCustomer(value: unknown): UnreachableCustomer {
@@ -776,6 +883,7 @@ function unreachableCustomer(value: unknown): UnreachableCustomer {
     displayName: text(body["display_name"]),
     phone: textOrNull(body["phone"]),
     amount: whole(body["amount"]),
+    ...usdAmount(body["usd"]),
   };
 }
 
@@ -843,6 +951,8 @@ function shopSettings(value: unknown): ShopSettings {
     name: body.get("name", text),
     lang: body.get("lang", text),
     defaultPromiseDays: body.get("default_promise_days", whole),
+    // The key itself is the platform's switch: without it the shop has no such setting at all.
+    ...(typeof body.raw("usd_on") === "boolean" ? { usdOn: body.raw("usd_on") === true } : {}),
   };
 }
 
@@ -915,6 +1025,7 @@ function openDispute(value: unknown): OpenDispute {
     customerId: text(body["customer_id"]),
     customerName: text(body["customer_name"]),
     amount: whole(body["amount"]),
+    ...tagged(body["currency"]),
   };
 }
 
@@ -945,6 +1056,7 @@ function myAccount(value: unknown): MyAccount {
     shopName: text(body["shop_name"]),
     displayName: text(body["display_name"]),
     balance: whole(body["balance"]),
+    ...dollars(body["usd"], (value) => ({ balance: whole(record(value)["balance"]) })),
   };
 }
 
@@ -964,6 +1076,18 @@ function accountEntry(value: unknown): AccountEntry {
     lines: goodsLines(body["lines"]),
     promises: promiseRecords(body["promises"]),
     dateRequest: dateRequestOrNull(body["date_request"]),
+    ...tagged(body["currency"]),
+  };
+}
+
+function accountDollars(value: unknown): AccountDollars {
+  const body = record(value);
+  const late = record(body["overdue"]);
+  return {
+    balance: whole(body["balance"]),
+    overdueAmount: whole(late["amount"]),
+    dueToday: whole(late["due_today"]),
+    paymentHistory: paymentHistory(body["payment_history"]),
   };
 }
 
@@ -971,7 +1095,11 @@ function accountDetail(value: unknown): AccountDetail {
   const body = record(value);
   const late = record(body["overdue"]);
   return {
-    ...myAccount(body),
+    linkId: text(body["link_id"]),
+    shopName: text(body["shop_name"]),
+    displayName: text(body["display_name"]),
+    balance: whole(body["balance"]),
+    ...dollars(body["usd"], accountDollars),
     overdueAmount: whole(late["amount"]),
     dueToday: whole(late["due_today"]),
     removalRequested: flag(body["removal_requested"]),
@@ -984,7 +1112,14 @@ function accountDetail(value: unknown): AccountDetail {
 
 function removalOutcome(value: unknown): RemovalOutcome {
   const body = record(value);
-  return { removed: flag(body["removed"]), waitingForBalance: wholeOrNull(body["waiting_for_balance"]) };
+  const inDollars = body["usd"];
+  return {
+    removed: flag(body["removed"]),
+    waitingForBalance: wholeOrNull(body["waiting_for_balance"]),
+    ...(inDollars === undefined || inDollars === null
+      ? {}
+      : { waitingForUsd: whole(record(inDollars)["waiting_for_balance"]) }),
+  };
 }
 
 function items<T>(item: (element: unknown) => T): (value: unknown) => T[] {
@@ -1233,6 +1368,12 @@ function shopApi(transport: Transport, shopId: string) {
         }
         body.credit_limit = patch.creditLimit; // null removes the customer's own limit
       }
+      if (patch.creditLimitUsd !== undefined) {
+        if (patch.creditLimitUsd !== null && !Number.isSafeInteger(patch.creditLimitUsd)) {
+          throw new RangeError("a dollar credit limit must be a whole number of cents");
+        }
+        body.credit_limit_usd = patch.creditLimitUsd;
+      }
       return call(transport, {
         method: "PATCH",
         path: `${base}/customers/${segment(customerId)}`,
@@ -1254,14 +1395,18 @@ function shopApi(transport: Transport, shopId: string) {
     recordEntry(customerId: string, input: NewEntry, idempotencyKey: string): Promise<RecordedEntry> {
       const body: Wire["NewEntry"] = { kind: input.kind };
       if (input.lines !== undefined) {
-        if (input.kind !== "credit") {
-          throw new RangeError("only a credit sale has goods lines");
+        // The type says so too; a caller that got around it must not send goods priced in so'm as dollars.
+        if (input.kind !== "credit" || (input as { currency?: Currency }).currency === "USD") {
+          throw new RangeError("only a credit sale in so'm has goods lines");
         }
         body.lines = linesBody(input.lines);
       } else if (Number.isSafeInteger(input.amount)) {
         body.amount = input.amount;
+        if (input.currency === "USD") {
+          body.currency = "USD"; // so'm is the absence of the field, as before dollars existed
+        }
       } else {
-        throw new RangeError("amount must be a whole number of UZS");
+        throw new RangeError("amount must be a whole number of UZS, or of cents");
       }
       if (input.note !== null) {
         body.note = input.note;
@@ -1564,6 +1709,9 @@ function shopApi(transport: Transport, shopId: string) {
         }
         body["default_promise_days"] = patch.defaultPromiseDays;
       }
+      if (patch.usdOn !== undefined) {
+        body["usd_on"] = patch.usdOn;
+      }
       return call(transport, { method: "PATCH", path: base, body, idempotencyKey, read: shopSettings });
     },
 
@@ -1580,6 +1728,12 @@ function shopApi(transport: Transport, shopId: string) {
           throw new RangeError("a credit limit must be a whole number of UZS");
         }
         body["default_credit_limit"] = patch.defaultLimit;
+      }
+      if (patch.defaultLimitUsd !== undefined) {
+        if (patch.defaultLimitUsd !== null && !Number.isSafeInteger(patch.defaultLimitUsd)) {
+          throw new RangeError("a dollar credit limit must be a whole number of cents");
+        }
+        body["default_credit_limit_usd"] = patch.defaultLimitUsd;
       }
       if (patch.sellersMayExceed !== undefined) {
         body["sellers_may_exceed"] = patch.sellersMayExceed;
@@ -1649,14 +1803,21 @@ function shopApi(transport: Transport, shopId: string) {
       return call(transport, { method: "GET", path: `${base}/overview`, signal, read: overview });
     },
 
+    /** Who owes, largest debt first: by the so'm debt, or with `currency: "USD"` by the dollar debt. */
     debtors(
-      params: { overdue: boolean; cursor?: string | null; limit?: number },
+      params: { overdue: boolean; cursor?: string | null; limit?: number; currency?: Currency },
       signal?: AbortSignal,
     ): Promise<Page<Debtor>> {
       return call(transport, {
         method: "GET",
         path: `${base}/overview/debtors`,
-        query: { overdue: params.overdue ? "true" : "false", cursor: params.cursor, limit: params.limit?.toString() },
+        query: {
+          overdue: params.overdue ? "true" : "false",
+          cursor: params.cursor,
+          limit: params.limit?.toString(),
+          // So'm is the server's default and is not named, so the request is the one it always was.
+          currency: params.currency === "USD" ? "USD" : undefined,
+        },
         signal,
         read: page(debtor),
       });
@@ -1695,16 +1856,27 @@ function accountApi(transport: Transport, linkId: string) {
      * a multipart form with the fields `amount` and `receipt`, otherwise JSON. The key makes a repeat
      * return the first notice instead of sending a second.
      */
-    sendPaymentNotice(amount: number, receipt: Blob | null, idempotencyKey: string): Promise<PaymentNotice> {
+    sendPaymentNotice(
+      amount: number,
+      receipt: Blob | null,
+      idempotencyKey: string,
+      currency: Currency = "UZS",
+    ): Promise<PaymentNotice> {
       if (!Number.isSafeInteger(amount)) {
-        throw new RangeError("amount must be a whole number of UZS");
+        throw new RangeError("amount must be a whole number of UZS, or of cents");
       }
       const path = `${base}/payment-notices`;
+      // Dollars are named, with the amount in cents; so'm is the absence of the field, as it always was.
+      const inDollars = currency === "USD";
       if (receipt === null) {
-        return call(transport, { method: "POST", path, body: { amount }, idempotencyKey, read: paymentNotice });
+        const body = inDollars ? { amount, currency } : { amount };
+        return call(transport, { method: "POST", path, body, idempotencyKey, read: paymentNotice });
       }
       const form = new FormData();
       form.set("amount", String(amount));
+      if (inDollars) {
+        form.set("currency", currency);
+      }
       form.set("receipt", receipt);
       return call(transport, { method: "POST", path, form, idempotencyKey, read: paymentNotice });
     },

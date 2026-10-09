@@ -74,6 +74,13 @@ function ReadOnly({ settings }: { settings: ShopSettings }) {
         <dd>{language ? t(`lang.${language}`) : settings.lang}</dd>
         <dt>{t("settings.promiseDays")}</dt>
         <dd>{t("settings.promiseDays.value", { count: settings.defaultPromiseDays })}</dd>
+        {/* Only while the platform offers dollars: otherwise the shop has no such setting to read. */}
+        {settings.usdOn === undefined ? null : (
+          <>
+            <dt>{t("settings.usd")}</dt>
+            <dd>{t(settings.usdOn ? "settings.usd.on" : "settings.usd.off")}</dd>
+          </>
+        )}
       </dl>
     </>
   );
@@ -87,14 +94,27 @@ function SettingsForm({ settings }: { settings: ShopSettings }) {
   const [name, setName] = useState(settings.name);
   const [lang, setLang] = useState(settings.lang);
   const [days, setDays] = useState(String(settings.defaultPromiseDays));
+  // "This shop also works in dollars." There is a switch only while the server sends the setting.
+  const [usdOn, setUsdOn] = useState(settings.usdOn === true);
   const [errors, setErrors] = useState<FieldErrors>(NO_ERRORS);
   const { state, submit, reset } = useSubmit((patch: ShopSettingsPatch, key) =>
-    api.updateSettings(patch, key).then((updated) => {
-      setSaved(updated);
-      setName(updated.name);
-      setLang(updated.lang);
-      setDays(String(updated.defaultPromiseDays));
-    }),
+    api.updateSettings(patch, key).then(
+      (updated) => {
+        setSaved(updated);
+        setName(updated.name);
+        setLang(updated.lang);
+        setDays(String(updated.defaultPromiseDays));
+        setUsdOn(updated.usdOn === true);
+      },
+      (error: ApiError) => {
+        // Dollars stay on while a customer owes dollars: the switch goes back to what the server holds,
+        // and the server's own words say why.
+        if (error.code === "USD_BALANCE_OPEN") {
+          setUsdOn(true);
+        }
+        throw error;
+      },
+    ),
   );
 
   const onSubmit = (event: FormEvent) => {
@@ -119,6 +139,9 @@ function SettingsForm({ settings }: { settings: ShopSettings }) {
     }
     if (parsedDays !== saved.defaultPromiseDays) {
       patch.defaultPromiseDays = parsedDays;
+    }
+    if (saved.usdOn !== undefined && usdOn !== saved.usdOn) {
+      patch.usdOn = usdOn;
     }
     if (Object.keys(patch).length > 0) {
       submit(patch);
@@ -202,6 +225,25 @@ function SettingsForm({ settings }: { settings: ShopSettings }) {
         />
         <FieldError id="settings-days-error" message={shown.days} />
       </div>
+      {saved.usdOn === undefined ? null : (
+        <div className="field">
+          <label className="choice">
+            <input
+              type="checkbox"
+              checked={usdOn}
+              aria-describedby="settings-usd-hint"
+              onChange={(event) => {
+                setUsdOn(event.target.checked);
+                touched(null);
+              }}
+            />
+            <span>{t("settings.usd")}</span>
+          </label>
+          <p className="field__hint" id="settings-usd-hint">
+            {t("settings.usd.hint")}
+          </p>
+        </div>
+      )}
       <p className="actions">
         <button type="submit" className="button button--primary" disabled={pending}>
           {pending ? t("state.saving") : t("action.save")}

@@ -10,7 +10,9 @@ from typing import Any
 from uuid import UUID
 
 from qarz.application.chat_texts import day, money, say
+from qarz.application.currencies import UZS, balance_in, currency_of
 from qarz.application.ports import TenantSession
+from qarz.domain.money import Currency
 
 MAX_LINES_SHOWN = 20
 
@@ -34,15 +36,18 @@ def _goods(lang: str, lines: list[dict[str, Any]]) -> str:
     return "\n".join(shown) + "\n"
 
 
-async def _send(session: TenantSession, customer_id: UUID, dedupe_key: str, key: str, **values: Any) -> None:
+async def _send(
+    session: TenantSession, customer_id: UUID, dedupe_key: str, key: str, currency: Currency = UZS, **values: Any
+) -> None:
+    """`amount` and `balance` are both in `currency`: a message about dollars states the dollar balance."""
     recipient = await session.customer_recipient(customer_id)
     if recipient is None:
         return
     tg_id, lang = recipient
     settings = await session.shop_settings()
     shop = "" if settings is None else settings.name
-    amount = money(lang, int(values.pop("amount")))
-    balance = money(lang, int(values.pop("balance")))
+    amount = money(lang, int(values.pop("amount")), currency)
+    balance = money(lang, int(values.pop("balance")), currency)
     lines = values.pop("lines", None)
     if lines is not None:
         values["goods"] = _goods(lang, lines)
@@ -66,7 +71,13 @@ async def _send(session: TenantSession, customer_id: UUID, dedupe_key: str, key:
 async def entry_recorded(session: TenantSession, customer_id: UUID, body: dict[str, Any]) -> None:
     """Tell the customer about a credit sale or a payment just added to their account."""
     entry, customer = body["entry"], body["customer"]
-    common = {"name": customer["display_name"], "amount": entry["amount"], "balance": customer["balance"]}
+    currency = currency_of(entry)
+    common = {
+        "name": customer["display_name"],
+        "amount": entry["amount"],
+        "balance": balance_in(customer, currency),
+        "currency": currency,
+    }
     if entry["kind"] == "credit":
         await _send(
             session,
@@ -89,9 +100,10 @@ async def entry_reversed(session: TenantSession, customer_id: UUID, body: dict[s
         customer_id,
         f"entry:{entry['id']}:notify",
         "n_reversed_payment" if reversed_kind == "payment" else "n_reversed_credit",
+        currency_of(entry),
         name=customer["display_name"],
         amount=entry["amount"],
-        balance=customer["balance"],
+        balance=balance_in(customer, currency_of(entry)),
     )
 
 
@@ -103,9 +115,10 @@ async def promise_chosen(session: TenantSession, customer_id: UUID, body: dict[s
         customer_id,
         f"entry:{entry['id']}:promise:{entry['promised_date']}",
         "n_promise",
+        currency_of(entry),
         name=customer["display_name"],
         amount=entry["amount"],
-        balance=customer["balance"],
+        balance=balance_in(customer, currency_of(entry)),
         promised=date.fromisoformat(entry["promised_date"]),
     )
 
@@ -119,7 +132,13 @@ def with_reason(lang: str, text: str, reason: str | None) -> str:
 
 
 async def _tell_customer(
-    session: TenantSession, customer_id: UUID, dedupe_key: str, key: str, reason: str | None, **values: Any
+    session: TenantSession,
+    customer_id: UUID,
+    dedupe_key: str,
+    key: str,
+    reason: str | None,
+    currency: Currency = UZS,
+    **values: Any,
 ) -> None:
     recipient = await session.customer_recipient(customer_id)
     if recipient is None:
@@ -130,7 +149,7 @@ async def _tell_customer(
         lang,
         key,
         shop="" if settings is None else settings.name,
-        amount=money(lang, int(values.pop("amount"))),
+        amount=money(lang, int(values.pop("amount")), currency),
         **{name: day(value) if isinstance(value, date) else value for name, value in values.items()},
     )
     await session.enqueue(
@@ -149,6 +168,7 @@ async def promise_changed(
     promised: date,
     reason: str | None,
     at: datetime,
+    currency: Currency = UZS,
 ) -> None:
     """A manager or owner moved the date. The time is in the key: a date may be set, changed and set again."""
     await _tell_customer(
@@ -157,6 +177,7 @@ async def promise_changed(
         f"entry:{entry_id}:promise-changed:{at.isoformat()}",
         "n_date_changed",
         reason,
+        currency,
         name=name,
         amount=amount,
         old=previous,
@@ -173,6 +194,7 @@ async def date_request_decided(
     amount: int,
     requested: date,
     reason: str | None,
+    currency: Currency = UZS,
 ) -> None:
     """Tell the customer what became of their request to move a date."""
     await _tell_customer(
@@ -181,6 +203,7 @@ async def date_request_decided(
         f"date-request:{request_id}:{'accepted' if accepted else 'declined'}",
         "n_date_accepted" if accepted else "n_date_declined",
         reason,
+        currency,
         amount=amount,
         date=requested,
     )
@@ -195,6 +218,7 @@ async def opening_imported(
     amount: int,
     balance: int,
     promised: date,
+    currency: Currency = UZS,
 ) -> None:
     """An opening balance was added to the account of a customer who is linked (REQ-063).
 
@@ -205,6 +229,7 @@ async def opening_imported(
         customer_id,
         f"entry:{entry_id}:notify",
         "n_opening",
+        currency,
         name=name,
         amount=amount,
         balance=balance,

@@ -1,6 +1,6 @@
 import { translate } from "../i18n/catalog";
 import type { Language, MessageKey } from "../i18n/types";
-import { formatUzs } from "./money";
+import { type Currency, formatDollars, formatUzs } from "./money";
 
 /**
  * Timestamps are stored in UTC and shown in Tashkent time, which is UTC+5 all year (technical
@@ -74,9 +74,12 @@ export function formatDueStatus(due: Date, now: Date, lang: Language): string {
   return translate(lang, "due.inDays", { count: -daysLate });
 }
 
-/** Whole UZS with the currency word: "45 000 so'm" or "45 000 сум". */
-export function formatMoney(amount: number, lang: Language): string {
-  return translate(lang, "money.uzs", { amount: formatUzs(amount) });
+/**
+ * An amount with its currency: whole UZS with the currency word, "45 000 so'm" or "45 000 сум", and
+ * cents as dollars with the sign after, "1 250.50 $", in both languages.
+ */
+export function formatMoney(amount: number, lang: Language, currency: Currency = "UZS"): string {
+  return currency === "USD" ? formatDollars(amount) : translate(lang, "money.uzs", { amount: formatUzs(amount) });
 }
 
 /** "5 ta mijoz" or "5 клиентов". */

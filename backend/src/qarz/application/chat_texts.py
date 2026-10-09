@@ -7,6 +7,7 @@ same placeholders.
 from datetime import date
 
 from qarz.application.ops_texts import OPS_RU, OPS_UZ
+from qarz.domain.money import Currency, format_money
 
 UZ = {
     "welcome_new": (
@@ -81,6 +82,16 @@ UZ = {
     "parse_ambiguous": "Qaysi son summa ekanini ajrata olmadim. Avval ism, keyin bitta summa yozing: Ali 45000",
     "parse_too_long": "Xabar juda uzun. Qisqaroq yozing: Ali 45000 izoh",
     "amount_range": "Summa 100 so'mdan 100 000 000 so'mgacha bo'lishi kerak.",
+    # Only a shop that works in dollars is ever told these.
+    "amount_range_usd": "Dollardagi summa 0.01 $ dan 10 000 $ gacha bo'lishi kerak.",
+    "parse_amount_too_precise": "Dollar summasida nuqtadan keyin ko'pi bilan ikki raqam yoziladi. Namuna: Ali 50.25$",
+    "parse_ambiguous_usd": (
+        "Dollar summasini aniq tushuna olmadim. Bitta summa va bitta valyuta yozing: Ali 50$ yoki Ali 1250.50$"
+    ),
+    "notice_amount_invalid_usd": (
+        "Faqat summani yozing. So'mda: 50000. Dollarda summadan keyin $ belgisini qo'ying: 50$ yoki 50.25$"
+    ),
+    "two_amounts": "{first} va {second}",
     "PROMISE_BEFORE_SALE": "Muddat savdo kunidan oldin bo'lishi mumkin emas.",
     "PROMISE_TOO_FAR": "Muddat savdo kunidan ko'pi bilan 365 kun keyin bo'lishi mumkin.",
     "SUBSCRIPTION_LIMITED": "Obuna tugagan: yangi nasiya yozilmaydi. To'lov qabul qilish ishlayveradi. /obuna",
@@ -196,6 +207,9 @@ UZ = {
     ),
     "support_closed": "«{shop}»: xizmat ma'muri do'kon ma'lumotlarini ko'rish ruxsatini yopdi.",
     "LIMIT_REACHED": "Bu savdo mijozning nasiya limitidan oshadi. Uni menejer yoki do'kon egasi yoza oladi.",
+    "USD_BALANCE_OPEN": (
+        "Dollarni o'chirib bo'lmaydi: mijozlarda dollarda qarz bor. Avval dollardagi barcha qarzlar yopilsin."
+    ),
     "limit_warning": "⚠️ Qarz limitdan oshdi: limit {limit}, qarz {balance}.",
     "sub_header": "«{shop}» — obuna",
     "sub_state_trial": "Sinov muddati: {date} gacha ({days} kun qoldi).",
@@ -455,6 +469,15 @@ RU = {
     "parse_ambiguous": "Не удалось понять, какое число — сумма. Сначала имя, затем одна сумма: Али 45000",
     "parse_too_long": "Сообщение слишком длинное. Напишите короче: Али 45000 заметка",
     "amount_range": "Сумма должна быть от 100 до 100 000 000 сумов.",
+    "amount_range_usd": "Сумма в долларах должна быть от 0.01 $ до 10 000 $.",
+    "parse_amount_too_precise": "В сумме в долларах после точки не больше двух цифр. Пример: Али 50.25$",
+    "parse_ambiguous_usd": (
+        "Не удалось точно понять сумму в долларах. Напишите одну сумму и одну валюту: Али 50$ или Али 1250.50$"
+    ),
+    "notice_amount_invalid_usd": (
+        "Напишите только сумму. В сумах: 50000. В долларах поставьте знак $ после суммы: 50$ или 50.25$"
+    ),
+    "two_amounts": "{first} и {second}",
     "PROMISE_BEFORE_SALE": "Срок не может быть раньше дня продажи.",
     "PROMISE_TOO_FAR": "Срок может быть не позже чем через 365 дней после продажи.",
     "SUBSCRIPTION_LIMITED": "Подписка истекла: новые продажи в долг недоступны. Приём оплат работает. /obuna",
@@ -566,6 +589,9 @@ RU = {
     ),
     "support_closed": "«{shop}»: администратор сервиса закрыл доступ к просмотру данных магазина.",
     "LIMIT_REACHED": "Эта продажа превысит лимит клиента. Записать её может менеджер или владелец.",
+    "USD_BALANCE_OPEN": (
+        "Доллары нельзя выключить: у клиентов есть долг в долларах. Сначала закройте все долги в долларах."
+    ),
     "limit_warning": "⚠️ Долг превысил лимит: лимит {limit}, долг {balance}.",
     "sub_header": "«{shop}» — подписка",
     "sub_state_trial": "Пробный период: до {date} (осталось дней: {days}).",
@@ -752,9 +778,24 @@ def say(lang: str, key: str, **values: object) -> str:
     return CATALOGS.get(lang, UZ)[key].format(**values)
 
 
-def money(lang: str, amount: int) -> str:
-    """45000 -> "45 000 so'm". The separator is a no-break space so an amount never wraps."""
-    return f"{amount:,}".replace(",", " ") + " " + CATALOGS.get(lang, UZ)["currency"]
+def money(lang: str, amount: int, currency: Currency = Currency.UZS) -> str:
+    """45000 -> "45 000 so'm"; 125050 cents -> "1 250.50 $" (qarz.domain.money).
+
+    The separator is a no-break space so an amount never wraps.
+    """
+    return format_money(currency, amount, lang if lang in CATALOGS else "uz")
+
+
+def both(lang: str, amount: int, dollars: int | None) -> str:
+    """What is owed in so'm and in dollars, side by side and never added: "45 000 so'm va 12.50 $".
+
+    `dollars` is None for a shop without dollars, and the text is then the so'm amount alone, as it
+    always was. Of the two, an amount of zero is left out when the other is not.
+    """
+    if not dollars:
+        return money(lang, amount)
+    in_dollars = money(lang, dollars, Currency.USD)
+    return in_dollars if amount == 0 else say(lang, "two_amounts", first=money(lang, amount), second=in_dollars)
 
 
 def day(value: date) -> str:

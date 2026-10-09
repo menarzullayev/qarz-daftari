@@ -165,6 +165,7 @@ export const uzAdmin = {
   "admin.setting.free_plan_customers": "Bepul tarifdagi mijozlar soni (do'kon boshiga)",
   "admin.setting.permissions_on": "Xodimlarga alohida ruxsatlar yoqilgan",
   "admin.setting.customer_links_on": "Mijoz uchun havola va QR kod (Telegramsiz) yoqilgan",
+  "admin.setting.usd_on": "Dollar (USD) yoqilgan",
 
   "admin.audit.filters": "Audit filtrlari",
   "admin.audit.at": "Vaqt",

@@ -5,7 +5,7 @@ next use of a pooled connection, and the row-level security policies hide every 
 """
 
 import json
-from collections.abc import AsyncIterator, Iterator, Mapping
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -75,6 +75,7 @@ from qarz.application.ports import (
 )
 from qarz.domain.access import Role
 from qarz.domain.ledger import Entry, EntryKind
+from qarz.domain.money import Currency
 from qarz.domain.ops_alerts import LEDGER_SERIES, Alert, DatabaseFigures
 from qarz.infrastructure.db_stock import StockQueries
 
@@ -82,7 +83,7 @@ from qarz.infrastructure.db_stock import StockQueries
 # identifier itself (ADR-010).
 _MEASURE_NAMESPACE = UUID("6f1d1c0e-8f0b-5d55-9d0a-51a7c0de0a10")
 
-_CUSTOMER_COLUMNS = "c.id, c.display_name, c.phone, c.status, c.reminders_off, c.credit_limit"
+_CUSTOMER_COLUMNS = "c.id, c.display_name, c.phone, c.status, c.reminders_off, c.credit_limit, c.credit_limit_usd"
 _CUSTOMER_BY_ID = f"SELECT {_CUSTOMER_COLUMNS} FROM customer c WHERE c.id = :id"
 _CUSTOMER_LOCKED = f"{_CUSTOMER_BY_ID} FOR UPDATE"
 
@@ -96,10 +97,15 @@ _PROMISED = (
     "ORDER BY p.created_at DESC, p.id DESC LIMIT 1)"
 )
 
-# Entries that still count: not a reversal and not reversed (INV-2).
+# Every statement below that adds amounts up names one currency, bound as :currency. So'm and dollars are
+# separate books (qarz.domain.money): no statement here ever adds an amount of one to an amount of the
+# other, and a caller that does not say which currency it wants gets so'm, as before dollars existed.
+#
+# Entries of one currency that still count: not a reversal and not reversed (INV-2).
 _LIVE = (
     "SELECT e.id, e.customer_id, e.seq, e.kind, e.amount FROM ledger_entry e "
-    "WHERE e.kind <> 'reversal' AND NOT EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id)"
+    "WHERE e.currency = :currency AND e.kind <> 'reversal' "
+    "AND NOT EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id)"
 )
 
 _BALANCES = (
@@ -113,7 +119,7 @@ _BALANCES = (
 # adds up every entry of the shop, and the planner may do that once per customer (S19.1 load test).
 _BALANCE_OF_C = (
     "(SELECT coalesce(sum(CASE WHEN e.kind IN ('credit', 'opening') THEN e.amount ELSE -e.amount END), 0)::bigint "
-    "FROM ledger_entry e WHERE e.customer_id = c.id AND e.kind <> 'reversal' "
+    "FROM ledger_entry e WHERE e.customer_id = c.id AND e.currency = :currency AND e.kind <> 'reversal' "
     "AND NOT EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id))"
 )
 
@@ -130,7 +136,7 @@ _FIGURES = (
     "         coalesce(sum(remaining) FILTER (WHERE promised_date < :today), 0)::bigint AS overdue, "
     "         min(promised_date) FILTER (WHERE promised_date < :today) AS since, "
     "         coalesce(sum(remaining) FILTER (WHERE promised_date = :today), 0)::bigint AS due_today "
-    "    FROM open_debt GROUP BY customer_id) "
+    "    FROM open_debt WHERE currency = :currency GROUP BY customer_id) "
 )
 
 
@@ -138,7 +144,8 @@ _FIGURES = (
 # Entries that still count, as `_LIVE`, with when and by whom they were recorded.
 _LIVE_RECORDED = (
     "SELECT e.id, e.customer_id, e.seq, e.kind, e.amount, e.author_id, e.created_at FROM ledger_entry e "
-    "WHERE e.kind <> 'reversal' AND NOT EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id)"
+    "WHERE e.currency = :currency AND e.kind <> 'reversal' "
+    "AND NOT EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id)"
 )
 _TASHKENT_DAY = "(l.created_at AT TIME ZONE 'Asia/Tashkent')::date"
 _SIGNED = "CASE WHEN l.kind IN ('credit', 'opening') THEN l.amount ELSE -l.amount END"
@@ -161,7 +168,7 @@ _PERIOD_TOTALS = (
     "  count(*) FILTER (WHERE l.inside AND l.kind = 'opening') AS opening_count "
     f"  FROM (SELECT e.*, e.created_at >= :start AS inside FROM ({_LIVE_RECORDED}) e WHERE e.created_at < :end) l) t, "
     "  (SELECT count(*) AS reversal_count, coalesce(sum(r.amount), 0) AS reversal_amount FROM ledger_entry r "
-    f"    WHERE r.kind = 'reversal' AND {_RECORDED_IN.format(row='r')}) r, "
+    f"    WHERE r.kind = 'reversal' AND r.currency = :currency AND {_RECORDED_IN.format(row='r')}) r, "
     f"  (SELECT count(*) AS new_customers FROM customer c WHERE {_RECORDED_IN.format(row='c')}) c, "
     f"  (SELECT count(*) AS disputes_opened FROM dispute d WHERE {_RECORDED_IN.format(row='d')}) d"
 )
@@ -221,13 +228,14 @@ _FELL_DUE = (
 # overdue, and for how long, is decided by `qarz.domain.reports.age_band`.
 _UNCOVERED = (
     "SELECT customer_id, promised_date AS promised, sum(remaining)::bigint AS remaining FROM open_debt "
-    "WHERE promised_date IS NOT NULL GROUP BY customer_id, promised_date"
+    "WHERE currency = :currency AND promised_date IS NOT NULL GROUP BY customer_id, promised_date"
 )
 
 
 _DISPUTE_SELECT = (
     "SELECT d.id, d.entry_id, e.customer_id, e.amount, d.reason, d.status, d.decline_reason, d.created_at, "
-    "c.display_name FROM dispute d JOIN ledger_entry e ON e.id = d.entry_id JOIN customer c ON c.id = e.customer_id "
+    "c.display_name, e.currency FROM dispute d JOIN ledger_entry e ON e.id = d.entry_id "
+    "JOIN customer c ON c.id = e.customer_id "
 )
 _DISPUTE_BY_ID = f"{_DISPUTE_SELECT} WHERE d.id = :id"
 _DISPUTE_BY_ENTRY = f"{_DISPUTE_SELECT} WHERE d.entry_id = :id"
@@ -236,7 +244,7 @@ _OPEN_DISPUTES = f"{_DISPUTE_SELECT} WHERE d.status = 'open' ORDER BY d.created_
 
 _DATE_REQUEST_SELECT = (
     "SELECT r.id, r.entry_id, e.customer_id, e.amount, r.requested_date, r.reason, r.status, r.decline_reason, "
-    f"r.created_at, r.closed_at, c.display_name, {_PROMISED.format(entry='e')} AS promised_date "
+    f"r.created_at, r.closed_at, c.display_name, e.currency, {_PROMISED.format(entry='e')} AS promised_date "
     "FROM date_change_request r JOIN ledger_entry e ON e.id = r.entry_id JOIN customer c ON c.id = e.customer_id "
 )
 _DATE_REQUEST_BY_ID = f"{_DATE_REQUEST_SELECT} WHERE r.id = :id"
@@ -272,7 +280,8 @@ _WEEK_FIGURES = (
     "  / nullif(sum(amount) FILTER (WHERE kind IN ('repaid_in_time', 'repaid_late')), 0) AS in_time_share, "
     "percentile_cont(0.5) WITHIN GROUP (ORDER BY handle_ms) "
     "  FILTER (WHERE kind = 'credit' AND handle_ms IS NOT NULL) AS median_credit_handle_ms "
-    "FROM measure.event WHERE at >= :start AND at < :end"
+    # So'm only: a sum or a share of amounts is of one currency, and dollars are not in these figures yet.
+    "FROM measure.event WHERE currency = 'UZS' AND at >= :start AND at < :end"
 )
 _SUPPORT_COLUMNS = "id, shop_id, admin_id, reason, starts_at, ends_at, closed_at, closed_by"
 _SUPPORT_BY_ID = f"SELECT {_SUPPORT_COLUMNS} FROM support_access WHERE id = :id AND shop_id = :shop_id"
@@ -324,7 +333,7 @@ _ADMIN_RECEIPT_COLUMNS = (
 )
 _NOTICE_SELECT = (
     "SELECT n.id, n.customer_id, n.amount, n.file_id, n.status, n.payment_entry, e.amount AS recorded_amount, "
-    "n.decline_reason, n.created_at, n.closed_at, c.display_name, "
+    "n.decline_reason, n.created_at, n.closed_at, c.display_name, n.currency, "
     # Row-level security keeps this inside the shop: another shop's file with the same content is not seen.
     "EXISTS (SELECT 1 FROM stored_file f JOIN stored_file g ON g.sha256 = f.sha256 "
     "AND (g.created_at, g.id) < (f.created_at, f.id) WHERE f.id = n.file_id) AS receipt_seen_before "
@@ -349,7 +358,7 @@ _EXPORT_JOBS = f"{_EXPORT_JOB_SELECT} ORDER BY j.created_at DESC, j.id LIMIT :li
 # the sheet agrees with itself.
 _EXPORT_ENTRIES = (
     "SELECT e.id, e.customer_id, c.display_name, e.seq, e.kind, e.amount, e.note, e.reverses_id, "
-    "t.kind AS reversed_kind, e.author_id, m.role AS author_role, e.created_at, "
+    "t.kind AS reversed_kind, e.author_id, m.role AS author_role, e.created_at, e.currency, "
     f"{_PROMISED.format(entry='e')} AS promised_date, "
     "EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id AND r.created_at <= :until) AS is_reversed "
     "FROM ledger_entry e JOIN customer c ON c.id = e.customer_id JOIN membership m ON m.id = e.author_id "
@@ -362,7 +371,8 @@ _EXPORT_PROMISES = (
     "WHERE p.entry_id = ANY(CAST(:ids AS uuid[])) ORDER BY p.entry_id, p.created_at, p.id"
 )
 _EXPORT_CUSTOMERS = (
-    "SELECT c.id, c.display_name, c.name_norm, c.phone, c.status, c.credit_limit, c.created_at FROM customer c "
+    "SELECT c.id, c.display_name, c.name_norm, c.phone, c.status, c.credit_limit, c.created_at, "
+    "c.credit_limit_usd FROM customer c "
     "WHERE c.id > :after ORDER BY c.id LIMIT :limit"
 )
 _FIRST_UUID = UUID(int=0)
@@ -474,10 +484,44 @@ class PgTenantSession(StockQueries):
     async def shop_settings(self) -> ShopSettings | None:
         row = (
             await self._conn.execute(
-                text("SELECT id, name, lang, default_promise_days FROM shop WHERE status <> 'erased'")
+                text("SELECT id, name, lang, default_promise_days, usd_on FROM shop WHERE status <> 'erased'")
             )
         ).first()
-        return None if row is None else ShopSettings(row.id, row.name, row.lang, row.default_promise_days)
+        if row is None:
+            return None
+        return ShopSettings(row.id, row.name, row.lang, row.default_promise_days, bool(row.usd_on))
+
+    async def dollars_setting(self, *, lock: bool = False) -> bool:
+        # A writer of a dollar amount holds the row shared until it commits, and turning dollars off
+        # updates the row first: so the two cannot pass each other (set_dollars_setting).
+        row = (
+            await self._conn.execute(
+                text("SELECT usd_on FROM shop WHERE id = :shop_id" + (" FOR SHARE" if lock else "")),
+                {"shop_id": self._shop_id},
+            )
+        ).first()
+        return row is not None and bool(row.usd_on)
+
+    async def set_dollars_setting(self, on: bool) -> None:
+        await self._conn.execute(
+            text("UPDATE shop SET usd_on = :on WHERE id = :shop_id"), {"on": on, "shop_id": self._shop_id}
+        )
+
+    async def dollars_recorded(self) -> bool:
+        row = (
+            await self._conn.execute(
+                # The shop is named so that its entries are found through the (shop_id, ...) indexes.
+                text("SELECT EXISTS (SELECT 1 FROM ledger_entry WHERE shop_id = :shop_id AND currency = 'USD') AS any"),
+                {"shop_id": self._shop_id},
+            )
+        ).one()
+        return bool(row.any)
+
+    async def dollars_owed(self) -> bool:
+        row = (
+            await self._conn.execute(text("SELECT EXISTS (SELECT 1 FROM open_debt WHERE currency = 'USD') AS owed"))
+        ).one()
+        return bool(row.owed)
 
     async def update_shop_settings(
         self, *, name: str | None, lang: str | None, default_promise_days: int | None
@@ -487,12 +531,12 @@ class PgTenantSession(StockQueries):
                 text(
                     "UPDATE shop SET name = coalesce(:name, name), lang = coalesce(:lang, lang), "
                     "default_promise_days = coalesce(:days, default_promise_days) "
-                    "WHERE id = :shop_id RETURNING id, name, lang, default_promise_days"
+                    "WHERE id = :shop_id RETURNING id, name, lang, default_promise_days, usd_on"
                 ),
                 {"name": name, "lang": lang, "days": default_promise_days, "shop_id": self._shop_id},
             )
         ).one()
-        return ShopSettings(row.id, row.name, row.lang, row.default_promise_days)
+        return ShopSettings(row.id, row.name, row.lang, row.default_promise_days, bool(row.usd_on))
 
     async def record_activity(
         self,
@@ -762,6 +806,7 @@ class PgTenantSession(StockQueries):
             row.status,
             row.reminders_off,
             None if row.credit_limit is None else int(row.credit_limit),
+            None if row.credit_limit_usd is None else int(row.credit_limit_usd),
         )
 
     async def active_customers(self, *, lock: bool = False) -> int:
@@ -804,6 +849,8 @@ class PgTenantSession(StockQueries):
         reminders_off: bool | None,
         set_limit: bool = False,
         credit_limit: int | None = None,
+        set_limit_usd: bool = False,
+        credit_limit_usd: int | None = None,
     ) -> CustomerRecord:
         row = (
             await self._conn.execute(
@@ -812,7 +859,9 @@ class PgTenantSession(StockQueries):
                     "name_norm = coalesce(:norm, c.name_norm), "
                     "phone = CASE WHEN :set_phone THEN CAST(:phone AS text) ELSE c.phone END, "
                     "reminders_off = coalesce(:reminders_off, c.reminders_off), "
-                    "credit_limit = CASE WHEN :set_limit THEN CAST(:credit_limit AS bigint) ELSE c.credit_limit END "
+                    "credit_limit = CASE WHEN :set_limit THEN CAST(:credit_limit AS bigint) ELSE c.credit_limit END, "
+                    "credit_limit_usd = CASE WHEN :set_limit_usd THEN CAST(:credit_limit_usd AS bigint) "
+                    "                   ELSE c.credit_limit_usd END "
                     f"WHERE c.id = :id RETURNING {_CUSTOMER_COLUMNS}"
                 ),
                 {
@@ -824,6 +873,8 @@ class PgTenantSession(StockQueries):
                     "reminders_off": reminders_off,
                     "set_limit": set_limit,
                     "credit_limit": credit_limit,
+                    "set_limit_usd": set_limit_usd,
+                    "credit_limit_usd": credit_limit_usd,
                 },
             )
         ).one()
@@ -862,6 +913,7 @@ class PgTenantSession(StockQueries):
                     "ORDER BY c.name_norm, c.id LIMIT :limit) c ORDER BY c.name_norm, c.id"
                 ),
                 {
+                    "currency": Currency.UZS.value,
                     "status": status,
                     "name": _like_pattern(name_part) if name_part else None,
                     "digits": f"%{phone_digits}%" if phone_digits else None,
@@ -880,19 +932,19 @@ class PgTenantSession(StockQueries):
                     f"SELECT {_CUSTOMER_COLUMNS}, {_BALANCE_OF_C} AS balance FROM customer c "
                     "WHERE c.status = 'active' AND c.name_norm = :name ORDER BY c.created_at, c.id"
                 ),
-                {"name": name_norm},
+                {"name": name_norm, "currency": Currency.UZS.value},
             )
         ).all()
         return [(self._customer(row), int(row.balance)) for row in rows]
 
-    async def balances(self, customer_ids: list[UUID]) -> dict[UUID, int]:
+    async def balances(self, customer_ids: list[UUID], currency: Currency = Currency.UZS) -> dict[UUID, int]:
         rows = (
             await self._conn.execute(
                 text(
                     f"SELECT b.customer_id, b.balance FROM ({_BALANCES}) b "
                     "WHERE b.customer_id = ANY(CAST(:ids AS uuid[]))"
                 ),
-                {"ids": customer_ids},
+                {"ids": customer_ids, "currency": currency.value},
             )
         ).all()
         return {row.customer_id: int(row.balance) for row in rows}
@@ -902,7 +954,7 @@ class PgTenantSession(StockQueries):
             await self._conn.execute(
                 text(
                     "SELECT e.id, e.seq, e.kind, e.amount, e.note, e.reverses_id, e.author_id, e.created_at, "
-                    "       e.import_batch_id, "
+                    "       e.import_batch_id, e.currency, "
                     f"       {_PROMISED.format(entry='e')} AS promised_date, "
                     "       (e.kind IN ('credit', 'opening') AND EXISTS ("
                     "          SELECT 1 FROM dispute d WHERE d.entry_id = e.id AND d.status = 'open')) AS disputed "
@@ -922,6 +974,7 @@ class PgTenantSession(StockQueries):
                     reverses_id=row.reverses_id,
                     promised_date=row.promised_date,
                     disputed=bool(row.disputed),
+                    currency=Currency(row.currency),
                 ),
                 row.note,
                 row.author_id,
@@ -962,14 +1015,17 @@ class PgTenantSession(StockQueries):
         reverses_id: UUID | None,
         author_id: UUID,
         created_at: datetime,
+        currency: Currency = Currency.UZS,
     ) -> None:
         await self._conn.execute(
             text(
                 "INSERT INTO ledger_entry "
-                "(id, shop_id, customer_id, seq, kind, amount, note, reverses_id, author_id, created_at) "
-                "VALUES (:id, :shop_id, :customer_id, :seq, :kind, :amount, :note, :reverses_id, :author_id, :at)"
+                "(id, shop_id, customer_id, seq, kind, amount, note, reverses_id, author_id, created_at, currency) "
+                "VALUES (:id, :shop_id, :customer_id, :seq, :kind, :amount, :note, :reverses_id, :author_id, :at, "
+                "        :currency)"
             ),
             {
+                "currency": currency.value,
                 "id": entry_id,
                 "shop_id": self._shop_id,
                 "customer_id": customer_id,
@@ -1022,14 +1078,22 @@ class PgTenantSession(StockQueries):
         return history
 
     async def record_measure(
-        self, *, kind: str, entry_ref: UUID, amount: int, promised: date | None, handle_ms: int | None = None
+        self,
+        *,
+        kind: str,
+        entry_ref: UUID,
+        amount: int,
+        promised: date | None,
+        handle_ms: int | None = None,
+        currency: Currency = Currency.UZS,
     ) -> None:
         await self._conn.execute(
             text(
-                "INSERT INTO measure.event (id, shop_ref, entry_ref, kind, amount, promised, handle_ms) "
-                "VALUES (:id, :shop_ref, :entry_ref, :kind, :amount, :promised, :handle_ms)"
+                "INSERT INTO measure.event (id, shop_ref, entry_ref, kind, amount, promised, handle_ms, currency) "
+                "VALUES (:id, :shop_ref, :entry_ref, :kind, :amount, :promised, :handle_ms, :currency)"
             ),
             {
+                "currency": currency.value,
                 "id": uuid4(),
                 "shop_ref": uuid5(_MEASURE_NAMESPACE, str(self._shop_id)),
                 "entry_ref": uuid5(_MEASURE_NAMESPACE, str(entry_ref)),
@@ -1094,7 +1158,7 @@ class PgTenantSession(StockQueries):
             )
         return found
 
-    async def shop_totals(self, today: date) -> ShopTotals:
+    async def shop_totals(self, today: date, currency: Currency = Currency.UZS) -> ShopTotals:
         row = (
             await self._conn.execute(
                 text(
@@ -1104,7 +1168,7 @@ class PgTenantSession(StockQueries):
                     "count(*) FILTER (WHERE overdue > 0) AS overdue_customers, "
                     "coalesce(sum(due_today), 0) AS due_today FROM figures"
                 ),
-                {"today": today},
+                {"today": today, "currency": currency.value},
             )
         ).one()
         return ShopTotals(
@@ -1112,7 +1176,13 @@ class PgTenantSession(StockQueries):
         )
 
     async def debtors_page(
-        self, *, today: date, only_overdue: bool, before: tuple[int, UUID] | None, limit: int
+        self,
+        *,
+        today: date,
+        only_overdue: bool,
+        before: tuple[int, UUID] | None,
+        limit: int,
+        currency: Currency = Currency.UZS,
     ) -> list[tuple[CustomerRecord, DebtFigures]]:
         rows = (
             await self._conn.execute(
@@ -1126,6 +1196,7 @@ class PgTenantSession(StockQueries):
                     "ORDER BY f.balance DESC, c.id DESC LIMIT :limit"
                 ),
                 {
+                    "currency": currency.value,
                     "today": today,
                     "only_overdue": only_overdue,
                     "before_balance": before[0] if before else None,
@@ -1139,8 +1210,33 @@ class PgTenantSession(StockQueries):
             for row in rows
         ]
 
-    async def period_totals(self, start: datetime, end: datetime) -> PeriodTotals:
-        row = (await self._conn.execute(text(_PERIOD_TOTALS), {"start": start, "end": end})).one()
+    async def debt_figures(
+        self, customer_ids: list[UUID], today: date, currency: Currency = Currency.UZS
+    ) -> dict[UUID, DebtFigures]:
+        rows = (
+            await self._conn.execute(
+                text(
+                    # By customer, through open_debt's customer index: what a page of customers owes in
+                    # one currency costs what the page holds.
+                    "SELECT customer_id, sum(remaining)::bigint AS balance, "
+                    "       coalesce(sum(remaining) FILTER (WHERE promised_date < :today), 0)::bigint AS overdue, "
+                    "       min(promised_date) FILTER (WHERE promised_date < :today) AS since, "
+                    "       coalesce(sum(remaining) FILTER (WHERE promised_date = :today), 0)::bigint AS due_today "
+                    "  FROM open_debt WHERE customer_id = ANY(CAST(:ids AS uuid[])) AND currency = :currency "
+                    " GROUP BY customer_id"
+                ),
+                {"ids": customer_ids, "today": today, "currency": currency.value},
+            )
+        ).all()
+        return {
+            row.customer_id: DebtFigures(int(row.balance), int(row.overdue), row.since, int(row.due_today))
+            for row in rows
+        }
+
+    async def period_totals(self, start: datetime, end: datetime, currency: Currency = Currency.UZS) -> PeriodTotals:
+        row = (
+            await self._conn.execute(text(_PERIOD_TOTALS), {"start": start, "end": end, "currency": currency.value})
+        ).one()
         return PeriodTotals(
             outstanding_start=int(row.outstanding_start),
             outstanding_end=int(row.outstanding_end),
@@ -1158,12 +1254,18 @@ class PgTenantSession(StockQueries):
             disputes_opened=int(row.disputes_opened),
         )
 
-    async def period_days(self, start: datetime, end: datetime) -> list[DayFigures]:
-        rows = (await self._conn.execute(text(_PERIOD_DAYS), {"start": start, "end": end})).all()
+    async def period_days(self, start: datetime, end: datetime, currency: Currency = Currency.UZS) -> list[DayFigures]:
+        rows = (
+            await self._conn.execute(text(_PERIOD_DAYS), {"start": start, "end": end, "currency": currency.value})
+        ).all()
         return [DayFigures(row.day, int(row.credit), int(row.payments)) for row in rows]
 
-    async def period_staff(self, start: datetime, end: datetime) -> list[StaffFigures]:
-        rows = (await self._conn.execute(text(_PERIOD_STAFF), {"start": start, "end": end})).all()
+    async def period_staff(
+        self, start: datetime, end: datetime, currency: Currency = Currency.UZS
+    ) -> list[StaffFigures]:
+        rows = (
+            await self._conn.execute(text(_PERIOD_STAFF), {"start": start, "end": end, "currency": currency.value})
+        ).all()
         return [
             StaffFigures(
                 row.author_id,
@@ -1176,16 +1278,22 @@ class PgTenantSession(StockQueries):
             for row in rows
         ]
 
-    async def debtors_as_of(self, end: datetime, limit: int) -> list[tuple[UUID, str, int]]:
-        rows = (await self._conn.execute(text(_DEBTORS_AS_OF), {"end": end, "limit": limit})).all()
+    async def debtors_as_of(
+        self, end: datetime, limit: int, currency: Currency = Currency.UZS
+    ) -> list[tuple[UUID, str, int]]:
+        rows = (
+            await self._conn.execute(text(_DEBTORS_AS_OF), {"end": end, "limit": limit, "currency": currency.value})
+        ).all()
         return [(row.id, str(row.display_name), int(row.balance)) for row in rows]
 
-    async def fell_due(self, first: date, before: date) -> tuple[int, int]:
-        row = (await self._conn.execute(text(_FELL_DUE), {"first": first, "before": before})).one()
+    async def fell_due(self, first: date, before: date, currency: Currency = Currency.UZS) -> tuple[int, int]:
+        row = (
+            await self._conn.execute(text(_FELL_DUE), {"first": first, "before": before, "currency": currency.value})
+        ).one()
         return int(row.on_time_amount), int(row.due_amount)
 
-    async def uncovered_debts(self) -> list[UncoveredDebt]:
-        rows = (await self._conn.execute(text(_UNCOVERED))).all()
+    async def uncovered_debts(self, currency: Currency = Currency.UZS) -> list[UncoveredDebt]:
+        rows = (await self._conn.execute(text(_UNCOVERED), {"currency": currency.value})).all()
         return [UncoveredDebt(row.customer_id, row.promised, int(row.remaining)) for row in rows]
 
     @staticmethod
@@ -1605,6 +1713,7 @@ class PgTenantSession(StockQueries):
             str(row.status),
             row.decline_reason,
             row.created_at,
+            Currency(row.currency),
         )
 
     async def dispute_of_entry(self, entry_id: UUID) -> DisputeRecord | None:
@@ -1668,6 +1777,7 @@ class PgTenantSession(StockQueries):
             row.decline_reason,
             row.created_at,
             row.closed_at,
+            Currency(row.currency),
         )
 
     async def get_date_request(self, request_id: UUID) -> DateRequestRecord | None:
@@ -1956,11 +2066,14 @@ class PgTenantSession(StockQueries):
             await self._conn.execute(
                 text(
                     "INSERT INTO ledger_entry "
-                    "(id, shop_id, customer_id, seq, kind, amount, note, author_id, import_batch_id, created_at) "
-                    "VALUES (:id, :shop_id, :customer_id, :seq, 'opening', :amount, :note, :author_id, :batch_id, :now)"
+                    "(id, shop_id, customer_id, seq, kind, amount, note, author_id, import_batch_id, created_at, "
+                    " currency) "
+                    "VALUES (:id, :shop_id, :customer_id, :seq, 'opening', :amount, :note, :author_id, :batch_id, "
+                    "        :now, :currency)"
                 ),
                 [
                     {
+                        "currency": entry.currency.value,
                         "id": entry.entry_id,
                         "shop_id": self._shop_id,
                         "customer_id": entry.customer_id,
@@ -1993,11 +2106,12 @@ class PgTenantSession(StockQueries):
             )
             await self._conn.execute(
                 text(
-                    "INSERT INTO measure.event (id, shop_ref, entry_ref, kind, amount, promised) "
-                    "VALUES (:id, :shop_ref, :entry_ref, 'opening', :amount, :promised)"
+                    "INSERT INTO measure.event (id, shop_ref, entry_ref, kind, amount, promised, currency) "
+                    "VALUES (:id, :shop_ref, :entry_ref, 'opening', :amount, :promised, :currency)"
                 ),
                 [
                     {
+                        "currency": entry.currency.value,
                         "id": uuid4(),
                         "shop_ref": shop_ref,
                         "entry_ref": uuid5(_MEASURE_NAMESPACE, str(entry.entry_id)),
@@ -2017,18 +2131,19 @@ class PgTenantSession(StockQueries):
         ).all()
         return [row.customer_id for row in rows]
 
-    async def standing_entries_of_import(self, batch_id: UUID) -> list[tuple[UUID, UUID, int]]:
+    async def standing_entries_of_import(self, batch_id: UUID) -> list[tuple[UUID, UUID, int, Currency]]:
         rows = (
             await self._conn.execute(
                 text(
-                    "SELECT e.id, e.customer_id, e.amount FROM ledger_entry e WHERE e.import_batch_id = :id "
+                    "SELECT e.id, e.customer_id, e.amount, e.currency FROM ledger_entry e "
+                    "WHERE e.import_batch_id = :id "
                     "AND NOT EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id) "
                     "ORDER BY e.customer_id, e.seq"
                 ),
                 {"id": batch_id},
             )
         ).all()
-        return [(row.id, row.customer_id, int(row.amount)) for row in rows]
+        return [(row.id, row.customer_id, int(row.amount), Currency(row.currency)) for row in rows]
 
     async def add_reversals(self, author_id: UUID, now: datetime, reversals: list[NewReversal]) -> None:
         shop_ref = uuid5(_MEASURE_NAMESPACE, str(self._shop_id))
@@ -2037,11 +2152,13 @@ class PgTenantSession(StockQueries):
             await self._conn.execute(
                 text(
                     "INSERT INTO ledger_entry "
-                    "(id, shop_id, customer_id, seq, kind, amount, reverses_id, author_id, created_at) "
-                    "VALUES (:id, :shop_id, :customer_id, :seq, 'reversal', :amount, :reverses_id, :author_id, :now)"
+                    "(id, shop_id, customer_id, seq, kind, amount, reverses_id, author_id, created_at, currency) "
+                    "VALUES (:id, :shop_id, :customer_id, :seq, 'reversal', :amount, :reverses_id, :author_id, :now, "
+                    "        :currency)"
                 ),
                 [
                     {
+                        "currency": reversal.currency.value,
                         "id": reversal.reversal_id,
                         "shop_id": self._shop_id,
                         "customer_id": reversal.customer_id,
@@ -2066,11 +2183,12 @@ class PgTenantSession(StockQueries):
             )
             await self._conn.execute(
                 text(
-                    "INSERT INTO measure.event (id, shop_ref, entry_ref, kind, amount) "
-                    "VALUES (:id, :shop_ref, :entry_ref, 'reversal', :amount)"
+                    "INSERT INTO measure.event (id, shop_ref, entry_ref, kind, amount, currency) "
+                    "VALUES (:id, :shop_ref, :entry_ref, 'reversal', :amount, :currency)"
                 ),
                 [
                     {
+                        "currency": reversal.currency.value,
                         "id": uuid4(),
                         "shop_ref": shop_ref,
                         "entry_ref": uuid5(_MEASURE_NAMESPACE, str(reversal.reversal_id)),
@@ -2200,17 +2318,26 @@ class PgTenantSession(StockQueries):
             row.created_at,
             row.closed_at,
             bool(row.receipt_seen_before),
+            Currency(row.currency),
         )
 
     async def add_payment_notice(
-        self, *, notice_id: UUID, customer_id: UUID, amount: int, file_id: UUID | None, now: datetime
+        self,
+        *,
+        notice_id: UUID,
+        customer_id: UUID,
+        amount: int,
+        file_id: UUID | None,
+        now: datetime,
+        currency: Currency = Currency.UZS,
     ) -> PaymentNoticeRecord:
         await self._conn.execute(
             text(
-                "INSERT INTO payment_notice (id, shop_id, customer_id, amount, file_id, status, created_at) "
-                "VALUES (:id, :shop_id, :customer_id, :amount, :file_id, 'sent', :now)"
+                "INSERT INTO payment_notice (id, shop_id, customer_id, amount, file_id, status, created_at, currency) "
+                "VALUES (:id, :shop_id, :customer_id, :amount, :file_id, 'sent', :now, :currency)"
             ),
             {
+                "currency": currency.value,
                 "id": notice_id,
                 "shop_id": self._shop_id,
                 "customer_id": customer_id,
@@ -2403,6 +2530,7 @@ class PgTenantSession(StockQueries):
                 row.author_id,
                 str(row.author_role),
                 row.created_at,
+                Currency(row.currency),
             )
             for row in rows
         ]
@@ -2426,6 +2554,7 @@ class PgTenantSession(StockQueries):
                 str(row.status),
                 None if row.credit_limit is None else int(row.credit_limit),
                 row.created_at,
+                None if row.credit_limit_usd is None else int(row.credit_limit_usd),
             )
             for row in rows
         ]
@@ -2482,18 +2611,30 @@ class PgTenantSession(StockQueries):
             {"on": on, "hour": hour, "template": template, "sms_on": sms_on, "shop_id": self._shop_id},
         )
 
-    async def reminder_candidates(self, *, after: UUID | None, limit: int) -> list[ReminderCandidate]:
+    async def reminder_candidates(
+        self, *, after: UUID | None, limit: int, currencies: Sequence[Currency] = (Currency.UZS,)
+    ) -> list[ReminderCandidate]:
         rows = (
             await self._conn.execute(
                 text(
+                    # Whoever owes something in one of the currencies: a balance is worked out for each
+                    # currency by itself, and one above zero is enough. Read from the ledger, as before
+                    # dollars existed: the worker runs this, and the stored open debts are closed to it.
                     "SELECT c.id, c.display_name, c.phone, c.lang, c.reminders_off, u.tg_id, u.lang AS user_lang "
-                    f"FROM customer c JOIN ({_BALANCES}) b ON b.customer_id = c.id AND b.balance > 0 "
+                    "FROM customer c JOIN ("
+                    "  SELECT DISTINCT owed.customer_id FROM ("
+                    "    SELECT e.customer_id, e.currency FROM ledger_entry e "
+                    "     WHERE e.currency = ANY(CAST(:currencies AS text[])) AND e.kind <> 'reversal' "
+                    "       AND NOT EXISTS (SELECT 1 FROM ledger_entry r WHERE r.reverses_id = e.id) "
+                    "     GROUP BY e.customer_id, e.currency "
+                    "    HAVING sum(CASE WHEN e.kind IN ('credit', 'opening') THEN e.amount ELSE -e.amount END) > 0"
+                    "  ) owed) b ON b.customer_id = c.id "
                     "LEFT JOIN customer_link l ON l.customer_id = c.id AND l.status = 'active' "
                     "LEFT JOIN app_user u ON u.id = l.user_id AND u.tg_id IS NOT NULL "
                     "WHERE c.status = 'active' AND (CAST(:after AS uuid) IS NULL OR c.id > CAST(:after AS uuid)) "
                     "ORDER BY c.id LIMIT :limit"
                 ),
-                {"after": after, "limit": limit},
+                {"after": after, "limit": limit, "currencies": [currency.value for currency in currencies]},
             )
         ).all()
         return [
@@ -2536,7 +2677,7 @@ class PgTenantSession(StockQueries):
         rows = (
             await self._conn.execute(
                 text(
-                    "SELECT e.customer_id, e.id, e.seq, e.kind, e.amount, e.reverses_id, e.created_at, "
+                    "SELECT e.customer_id, e.id, e.seq, e.kind, e.amount, e.reverses_id, e.created_at, e.currency, "
                     f"       {_PROMISED.format(entry='e')} AS promised_date, "
                     "       (e.kind IN ('credit', 'opening') AND EXISTS ("
                     "          SELECT 1 FROM dispute d WHERE d.entry_id = e.id AND d.status = 'open')) AS disputed "
@@ -2557,6 +2698,7 @@ class PgTenantSession(StockQueries):
                     reverses_id=row.reverses_id,
                     promised_date=row.promised_date,
                     disputed=bool(row.disputed),
+                    currency=Currency(row.currency),
                 )
             )
         return accounts
@@ -2573,15 +2715,18 @@ class PgTenantSession(StockQueries):
         ).all()
         return {row.customer_id: row.last for row in rows}
 
-    async def add_reminder(self, *, customer_id: UUID, kind: str, channel: str, amount: int, sent_on: date) -> bool:
+    async def add_reminder(
+        self, *, customer_id: UUID, kind: str, channel: str, amount: int, sent_on: date, amount_usd: int = 0
+    ) -> bool:
         row = (
             await self._conn.execute(
                 text(
-                    "INSERT INTO reminder (id, shop_id, customer_id, kind, channel, amount, sent_on) "
-                    "VALUES (:id, :shop_id, :customer_id, :kind, :channel, :amount, :sent_on) "
+                    "INSERT INTO reminder (id, shop_id, customer_id, kind, channel, amount, amount_usd, sent_on) "
+                    "VALUES (:id, :shop_id, :customer_id, :kind, :channel, :amount, :amount_usd, :sent_on) "
                     "ON CONFLICT (customer_id, kind, sent_on) DO NOTHING RETURNING id"
                 ),
                 {
+                    "amount_usd": amount_usd,
                     "id": uuid4(),
                     "shop_id": self._shop_id,
                     "customer_id": customer_id,
@@ -2612,23 +2757,38 @@ class PgTenantSession(StockQueries):
     async def credit_settings(self) -> CreditSettings:
         row = (
             await self._conn.execute(
-                text("SELECT default_credit_limit, sellers_may_exceed FROM shop WHERE status <> 'erased'")
+                text(
+                    "SELECT default_credit_limit, sellers_may_exceed, default_credit_limit_usd FROM shop "
+                    "WHERE status <> 'erased'"
+                )
             )
         ).one()
         return CreditSettings(
-            None if row.default_credit_limit is None else int(row.default_credit_limit), bool(row.sellers_may_exceed)
+            None if row.default_credit_limit is None else int(row.default_credit_limit),
+            bool(row.sellers_may_exceed),
+            None if row.default_credit_limit_usd is None else int(row.default_credit_limit_usd),
         )
 
     async def update_credit_settings(
-        self, *, set_default: bool, default_limit: int | None, sellers_may_exceed: bool | None
+        self,
+        *,
+        set_default: bool,
+        default_limit: int | None,
+        sellers_may_exceed: bool | None,
+        set_default_usd: bool = False,
+        default_limit_usd: int | None = None,
     ) -> None:
         await self._conn.execute(
             text(
                 "UPDATE shop SET default_credit_limit = CASE WHEN :set_default THEN CAST(:default_limit AS bigint) "
-                "ELSE default_credit_limit END, sellers_may_exceed = coalesce(:may_exceed, sellers_may_exceed) "
+                "ELSE default_credit_limit END, sellers_may_exceed = coalesce(:may_exceed, sellers_may_exceed), "
+                "default_credit_limit_usd = CASE WHEN :set_default_usd THEN CAST(:default_limit_usd AS bigint) "
+                "ELSE default_credit_limit_usd END "
                 "WHERE id = :shop_id"
             ),
             {
+                "set_default_usd": set_default_usd,
+                "default_limit_usd": default_limit_usd,
                 "set_default": set_default,
                 "default_limit": default_limit,
                 "may_exceed": sellers_may_exceed,
@@ -4085,14 +4245,22 @@ class PgPlatformSession:
         rows = (
             await self._conn.execute(
                 text(
-                    "SELECT link_id, shop_id, shop_name, customer_id, display_name, balance FROM my_accounts(:user_id)"
+                    "SELECT link_id, shop_id, shop_name, customer_id, display_name, balance, balance_usd, usd_on "
+                    "FROM my_accounts(:user_id)"
                 ),
                 {"user_id": user_id},
             )
         ).all()
         return [
             CustomerAccount(
-                row.link_id, row.shop_id, str(row.shop_name), row.customer_id, str(row.display_name), int(row.balance)
+                row.link_id,
+                row.shop_id,
+                str(row.shop_name),
+                row.customer_id,
+                str(row.display_name),
+                int(row.balance),
+                int(row.balance_usd),
+                bool(row.usd_on),
             )
             for row in rows
         ]
