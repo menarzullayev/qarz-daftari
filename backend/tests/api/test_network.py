@@ -688,6 +688,78 @@ def test_if_either_side_cannot_be_written_neither_is(
         assert mismatches(owner, *d.shops) == []
 
 
+@pytest.mark.parametrize(
+    "slip",
+    [
+        "the receipt has the lines in another order",
+        "the receipt has another quantity at another price for the same line total",
+        "nothing leaves the supplier's stock",
+        "another quantity leaves the supplier's stock",
+    ],
+)
+def test_a_note_is_not_received_when_either_book_would_disagree_with_it_on_a_line(
+    client: TestClient,
+    world: World,
+    on: None,
+    owner: psycopg.Connection,
+    monkeypatch: pytest.MonkeyPatch,
+    slip: str,
+) -> None:
+    """The application writes both books from the note's own lines, so the two cannot differ from it
+    through the API. Should the application ever slip, the database is asked last (`network_receipt_finish`,
+    migration 0047) and refuses line by line: here the application is made to slip, each way in turn and
+    whichever shop is written first, with the totals still the note's. Nothing is written anywhere."""
+    from dataclasses import replace
+    from decimal import Decimal
+
+    from qarz.application import network_orders
+    from qarz.domain import stock as stock_rules
+
+    receipt = network_orders.NoteService._receipt
+    move = network_orders.move
+
+    async def slipped_receipt(*args: Any, **kwargs: Any) -> Any:
+        request = await receipt(*args, **kwargs)
+        if slip == "the receipt has the lines in another order":
+            return replace(request, lines=list(reversed(request.lines)))
+        rice, sugar = request.lines
+        assert (rice.qty, rice.unit_cost) == ("10", 12_000)
+        return replace(request, lines=[replace(rice, qty="12", unit_cost=10_000), sugar])
+
+    async def slipped_move(*args: Any, **kwargs: Any) -> Any:
+        if kwargs["kind"] != "sale":
+            return await move(*args, **kwargs)
+        if slip == "nothing leaves the supplier's stock":
+            return None
+        kwargs["compute"] = lambda level: stock_rules.go_out(level, Decimal("9"), may_go_negative=True)
+        return await move(*args, **kwargs)
+
+    for buyer, supplier in (
+        (Side(world.shop_a, world.owner_a), Side(world.shop_b, world.owner_b)),
+        (Side(world.shop_b, world.owner_b), Side(world.shop_a, world.owner_a)),
+    ):
+        d = connect(client, buyer, supplier)
+        theirs = item(client, supplier.shop, supplier.user, f"Guruch {uuid.uuid4().hex[:5]}")
+        stock_in(client, supplier.shop, supplier.user, theirs, "50", 9_000)
+        _, note_id = delivered(client, d, paid=20_000, own={"supplier_rice": theirs})
+        taken = goods(owner, buyer.shop)
+        before = snapshot(owner, *d.shops)
+        with monkeypatch.context() as patched:
+            if slip.startswith("the receipt"):
+                patched.setattr(network_orders.NoteService, "_receipt", staticmethod(slipped_receipt))
+            else:
+                patched.setattr(network_orders, "move", slipped_move)
+            error = refused(confirm(client, d, note_id, **taken), 409, "NETWORK_BOOKS_MISMATCH")
+        assert error["fields"] == {}
+        assert snapshot(owner, *d.shops) == before, "neither shop's books, nor the note, changed"
+        assert ok(read(client, buyer.user, f"{net(buyer.shop)}/notes/{note_id}"))["status"] == "issued"
+        assert on_hand(owner, theirs) == "50"
+        assert mismatches(owner, *d.shops) == []
+        # The application as it is writes what the note says, and the same note is then received.
+        assert ok(confirm(client, d, note_id, **taken))["status"] == "received"
+        assert on_hand(owner, theirs) == "40"
+
+
 def test_a_rejected_note_posts_nothing_and_a_corrected_one_takes_its_place(
     client: TestClient, world: World, on: None, owner: psycopg.Connection
 ) -> None:

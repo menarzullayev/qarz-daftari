@@ -373,6 +373,14 @@ class StockSession(Protocol):
         """By line: what the goods of a sale cost. A line of an item that is not counted has none."""
         ...
 
+    async def document_lines_of(self, document_ids: list[UUID]) -> dict[UUID, list[DocumentLine]]:
+        """The lines of each of these documents, in their order: one read for a page of sales."""
+        ...
+
+    async def cash_entry_of_document(self, document_id: UUID) -> bool:
+        """Whether the document's money is in the cash book (cancelled or not)."""
+        ...
+
     async def add_sale_cash_entry(
         self,
         *,

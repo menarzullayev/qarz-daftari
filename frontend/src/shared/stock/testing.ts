@@ -111,3 +111,32 @@ export function supplierEntryBody(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+/** `count` suppliers named "Ta'minotchi 01", "Ta'minotchi 02", ...: more than one page of a choice. */
+export function manySuppliers(count: number, overrides: Record<string, unknown> = {}) {
+  return Array.from({ length: count }, (_, index) =>
+    supplierBody({
+      id: `77777777-7777-4777-8777-${String(index + 1).padStart(12, "0")}`,
+      name: `Ta'minotchi ${String(index + 1).padStart(2, "0")}`,
+      ...overrides,
+    }),
+  );
+}
+
+/**
+ * GET suppliers as the server answers it over `all`: one status, narrowed by a part of the name, a page
+ * at a time with a cursor of its own (`SupplierService.list`). A list filled from its first page alone
+ * cannot find what this keeps for a later page.
+ */
+export function supplierListBody(all: readonly Record<string, unknown>[], query: Record<string, string>) {
+  const status = query["status"] ?? "active";
+  const part = (query["q"] ?? "").toLowerCase();
+  const limit = Number(query["limit"] ?? "50");
+  const matching = all.filter((supplier) => supplier["status"] === status && String(supplier["name"]).toLowerCase().includes(part));
+  const start = query["cursor"] === undefined ? 0 : Number(query["cursor"].slice(1));
+  return {
+    suppliers: matching.slice(start, start + limit),
+    totals: [],
+    next_cursor: start + limit < matching.length ? `c${start + limit}` : null,
+  };
+}

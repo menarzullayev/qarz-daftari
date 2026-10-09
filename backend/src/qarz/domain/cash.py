@@ -55,17 +55,14 @@ DEBT_REPAID = "debt_repaid"
 # customer for goods returned. Their totals are then exactly what the stock's documents say.
 GOODS_PURCHASE = "goods_purchase"
 CUSTOMER_REFUND = "customer_refund"
-STOCK_CATEGORIES: dict[str, tuple[str, str]] = {
-    GOODS_PURCHASE: ("Ombor: tovar xaridi", "Склад: закупка товара"),
-    CUSTOMER_REFUND: ("Ombor: mijozga qaytarildi", "Склад: возврат клиенту"),
-}
-# The categories only the service writes under: a person records nothing there by hand.
 # The stock's one category of income: what a sale for cash, without a customer, brought in. Apart from
 # the shop's own "Savdo", which stays for what a shop writes by hand, so its total is what the sales say.
 CASH_SALE = "cash_sale"
-STOCK_INCOME_CATEGORIES: dict[str, tuple[str, str]] = {
-    CASH_SALE: ("Ombor: naqd savdo", "Склад: продажа за наличные"),
-}
+# Each is named, in the shop's language when it is made, by the text `cash_category_<system key>` of
+# `qarz.application.export_texts`.
+STOCK_CATEGORIES: tuple[str, ...] = (GOODS_PURCHASE, CUSTOMER_REFUND, CASH_SALE)
+STOCK_INCOME = frozenset({CASH_SALE})
+# The categories only the service writes under: a person records nothing there by hand.
 _WRITTEN_BY_THE_SERVICE = frozenset({DEBT_REPAID, GOODS_PURCHASE, CUSTOMER_REFUND, CASH_SALE})
 
 
@@ -94,33 +91,26 @@ class DayProblem(StrEnum):
 @dataclass(frozen=True, slots=True)
 class DefaultCategory:
     direction: Direction
-    uz: str
-    ru: str
+    key: str  # its name is the text `cash_category_<key>` of `qarz.application.export_texts`
     system_key: str | None = None
 
 
-# Created for a shop the first time its cash book is used, in the shop's language. A shop renames,
-# archives and adds to them as it likes; only the one with a system key is the service's own.
+# Created for a shop the first time its cash book is used, named in the shop's language at that moment
+# (`qarz.application.cash_feed.default_names`). A name is then the shop's own data: the shop renames,
+# archives and adds to them as it likes, and nothing renames them when the shop's language changes. Only
+# the one with a system key is the service's own.
 DEFAULT_CATEGORIES: tuple[DefaultCategory, ...] = (
-    DefaultCategory(Direction.INCOME, "Savdo", "Продажи"),
-    DefaultCategory(Direction.INCOME, "Qarz qaytdi", "Возврат долга", DEBT_REPAID),
-    DefaultCategory(Direction.INCOME, "Boshlang'ich qoldiq", "Начальный остаток"),
-    DefaultCategory(Direction.INCOME, "Boshqa kirim", "Прочий приход"),
-    DefaultCategory(Direction.EXPENSE, "Tovar xaridi", "Закупка товара"),
-    DefaultCategory(Direction.EXPENSE, "Ijara", "Аренда"),
-    DefaultCategory(Direction.EXPENSE, "Ish haqi", "Зарплата"),
-    DefaultCategory(Direction.EXPENSE, "Transport", "Транспорт"),
-    DefaultCategory(Direction.EXPENSE, "Kommunal to'lovlar", "Коммунальные услуги"),
-    DefaultCategory(Direction.EXPENSE, "Boshqa chiqim", "Прочий расход"),
+    DefaultCategory(Direction.INCOME, "sales"),
+    DefaultCategory(Direction.INCOME, "debt_repaid", DEBT_REPAID),
+    DefaultCategory(Direction.INCOME, "opening_balance"),
+    DefaultCategory(Direction.INCOME, "other_income"),
+    DefaultCategory(Direction.EXPENSE, "purchase"),
+    DefaultCategory(Direction.EXPENSE, "rent"),
+    DefaultCategory(Direction.EXPENSE, "wages"),
+    DefaultCategory(Direction.EXPENSE, "transport"),
+    DefaultCategory(Direction.EXPENSE, "utilities"),
+    DefaultCategory(Direction.EXPENSE, "other_expense"),
 )
-
-
-def default_names(lang: str) -> list[tuple[Direction, str, str | None]]:
-    """Direction, name and system key of each default category, named in the shop's language."""
-    return [
-        (category.direction, category.ru if lang == "ru" else category.uz, category.system_key)
-        for category in DEFAULT_CATEGORIES
-    ]
 
 
 def parse_direction(value: object) -> Direction | None:

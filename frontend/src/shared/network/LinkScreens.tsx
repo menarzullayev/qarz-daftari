@@ -1,13 +1,15 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { type Translate, useI18n } from "../../i18n/I18nProvider";
 import type { MessageKey } from "../../i18n/types";
-import { type Loaded, useLoad, useSubmit } from "../hooks";
+import { useLoad, useSubmit } from "../hooks";
 import { UsersIcon } from "../icons";
 import type { Column } from "../layout";
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
+import { OptionPicker, type PickLoader, type PickOption } from "../stock/OptionPicker";
 import { Fact, Listing, useStock } from "../stock/parts";
+import { supplierLoader } from "../stock/SupplierPicker";
 import { useMay, useWorkspace } from "../workspace/context";
 import { Confirm, Empty, errorText, Failure, formatInstant, Loading } from "../workspace/parts";
 import { type Invite, type IssuedInvite, LINK_ROLES, type LinkRole, type NetLink, type Overview, type Reconciliation, type Waiting } from "./networkApi";
@@ -273,14 +275,13 @@ function ConnectForm({ onDone }: { onDone: () => void }) {
   );
 }
 
-type Option = { id: string; name: string };
-/** How many suppliers or customers the picker asks for at once: the rest are reached by searching. */
-const PICKER_PAGE = 50;
+/** How many customers the choice asks for at once; the suppliers' page is the stock's own. */
+const PICKER_PAGE = 20;
 
 /**
  * The row of this shop's own books a link stands for: one of its suppliers when it is the buyer, one
- * of its customers when it is the supplier. Chosen from the first of them by name; with none chosen,
- * accepting makes a new row.
+ * of its customers when it is the supplier. Chosen out of all of them, by a part of the name, a page
+ * at a time; with none chosen, accepting makes a new row.
  */
 function CounterpartPicker({
   role,
@@ -290,66 +291,37 @@ function CounterpartPicker({
   onChange,
 }: {
   role: LinkRole;
-  value: string;
+  value: PickOption | null;
   disabled: boolean;
   /** Offer "a new row" as a choice: when accepting, not when one must be named. */
   allowNew: boolean;
-  onChange: (id: string) => void;
+  onChange: (chosen: PickOption | null) => void;
 }) {
   const { t } = useI18n();
   const { api } = useWorkspace();
   const stock = useStock();
-  const [words, setWords] = useState("");
-  const [query, setQuery] = useState("");
-  const options: { state: Loaded<Option[]> } = useLoad(
-    (signal) =>
+  const load = useMemo<PickLoader>(
+    () =>
       role === "buyer"
-        ? stock.suppliers({ q: query, status: "active", limit: PICKER_PAGE }, signal).then((page) => page.suppliers.map((row) => ({ id: row.id, name: row.name })))
-        : api
-            .listCustomers({ q: query, status: "active", limit: PICKER_PAGE }, signal)
-            .then((page) => page.items.map((row) => ({ id: row.id, name: row.displayName }))),
-    [api, stock, role, query],
+        ? supplierLoader(stock, ["active"], "")
+        : (query, cursor, signal) =>
+            api.listCustomers({ q: query, status: "active", cursor, limit: PICKER_PAGE }, signal).then((page) => ({
+              options: page.items.map((row) => ({ id: row.id, name: row.displayName, detail: row.phone ?? undefined })),
+              nextCursor: page.nextCursor,
+            })),
+    [api, stock, role],
   );
-  const label = t(role === "buyer" ? "net.counterpart.supplier" : "net.counterpart.customer");
   return (
-    <>
-      <div className="search">
-        <input
-          type="search"
-          className="input"
-          value={words}
-          maxLength={80}
-          disabled={disabled}
-          aria-label={t("net.counterpart.search")}
-          placeholder={t("net.counterpart.search")}
-          onChange={(event) => setWords(event.target.value)}
-        />
-        <button type="button" className="button" disabled={disabled} onClick={() => setQuery(words.trim())}>
-          {t("action.search")}
-        </button>
-      </div>
-      <div className="field">
-        <label htmlFor="net-counterpart">{label}</label>
-        <select id="net-counterpart" className="input" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
-          <option value="">{t(allowNew ? "net.counterpart.new" : "net.counterpart.choose")}</option>
-          {options.state.status === "ready"
-            ? options.state.data.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.name}
-                </option>
-              ))
-            : null}
-        </select>
-        {options.state.status === "ready" && options.state.data.length >= PICKER_PAGE ? (
-          <p className="field__hint">{t("net.counterpart.more", { count: PICKER_PAGE })}</p>
-        ) : null}
-        {options.state.status === "error" ? (
-          <p className="field__error" role="alert">
-            {errorText(options.state.error, t)}
-          </p>
-        ) : null}
-      </div>
-    </>
+    <OptionPicker
+      id="net-counterpart"
+      label={t(role === "buyer" ? "net.counterpart.supplier" : "net.counterpart.customer")}
+      value={value}
+      load={load}
+      disabled={disabled}
+      noneLabel={allowNew ? t("net.counterpart.new") : undefined}
+      placeholder={allowNew ? undefined : t("net.counterpart.choose")}
+      onChange={onChange}
+    />
   );
 }
 
@@ -364,7 +336,7 @@ function LinkActions({ link, full, onChanged }: { link: NetLink; full: boolean; 
   const can = useMay();
   const network = useNetwork();
   const [mode, setMode] = useState<LinkMode>("view");
-  const [counterpart, setCounterpart] = useState("");
+  const [counterpart, setCounterpart] = useState<PickOption | null>(null);
   const done = () => {
     setMode("view");
     onChanged();
@@ -396,7 +368,7 @@ function LinkActions({ link, full, onChanged }: { link: NetLink; full: boolean; 
         <p className="hint">{t(link.role === "buyer" ? "net.link.accept.hint.buyer" : "net.link.accept.hint.supplier")}</p>
         <CounterpartPicker role={link.role} value={counterpart} disabled={pending} allowNew onChange={setCounterpart} />
         <p className="actions">
-          <button type="button" className="button button--primary" disabled={pending} onClick={() => accept.submit(counterpart === "" ? null : counterpart)}>
+          <button type="button" className="button button--primary" disabled={pending} onClick={() => accept.submit(counterpart?.id ?? null)}>
             {pending ? t("state.saving") : t("net.link.accept")}
           </button>
           <button type="button" className="button" disabled={pending} onClick={close(accept.reset)}>
@@ -417,7 +389,7 @@ function LinkActions({ link, full, onChanged }: { link: NetLink; full: boolean; 
         ) : null}
         <CounterpartPicker role={link.role} value={counterpart} disabled={pending} allowNew={false} onChange={setCounterpart} />
         <p className="actions">
-          <button type="button" className="button button--primary" disabled={pending || counterpart === ""} onClick={() => attach.submit(counterpart)}>
+          <button type="button" className="button button--primary" disabled={pending || counterpart === null} onClick={() => counterpart && attach.submit(counterpart.id)}>
             {pending ? t("state.saving") : t("action.save")}
           </button>
           <button type="button" className="button" disabled={pending} onClick={close(attach.reset)}>

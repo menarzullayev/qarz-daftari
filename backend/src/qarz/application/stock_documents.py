@@ -33,6 +33,7 @@ from qarz.application import idempotency, stock_cash
 from qarz.application import suppliers as supplier_account
 from qarz.application.authorization import require_permission
 from qarz.application.catalog import CatalogNameTaken
+from qarz.application.chat_texts import say
 from qarz.application.customers import (
     MAX_PAGE,
     CustomerArchived,
@@ -79,8 +80,10 @@ PERMISSION_OF_KIND = {
 # How far back a document may be dated. Its movements always carry the moment it was posted.
 OLDEST_DAYS = 365
 # The note of the ledger entry a customer's return writes, by the shop's language.
-_RETURN_NOTE = {"uz": "Tovar qaytarildi, hujjat № {number}", "ru": "Возврат товара, документ № {number}"}
-_PURCHASE_NOTE = {"uz": "Kirim № {number}", "ru": "Приход № {number}"}
+# The note a document writes beside what it enters into a customer's or a supplier's account and into the
+# cash book, in the shop's language at that moment (texts of `qarz.application.chat_texts`).
+_RETURN_NOTE = "stock_return_note"
+_PURCHASE_NOTE = "stock_purchase_note"
 
 
 class DocumentNotDraft(AppError):
@@ -571,7 +574,7 @@ async def post_in(session: TenantSession, actor: Membership, document_id: UUID, 
                 document.customer_id,
                 kind=EntryKind.PAYMENT,
                 amount=owed_less,
-                note=_RETURN_NOTE.get(lang, _RETURN_NOTE["uz"]).format(number=document.number),
+                note=say(lang, _RETURN_NOTE, number=document.number),
                 promised_date=None,
                 now=now,
                 money_received=False,
@@ -597,7 +600,7 @@ async def post_in(session: TenantSession, actor: Membership, document_id: UUID, 
         await _move_line(session, actor, document, line, ledger_entry_id=ledger_entry_id, now=now)
 
     if document.supplier_id is not None:
-        note = _PURCHASE_NOTE.get(lang, _PURCHASE_NOTE["uz"]).format(number=document.number)
+        note = say(lang, _PURCHASE_NOTE, number=document.number)
         if kind == stock.DOC_RECEIPT:
             if document.total:
                 await supplier_account.append_entry_in(
@@ -646,7 +649,7 @@ async def post_in(session: TenantSession, actor: Membership, document_id: UUID, 
             amount=document.paid,
             currency=document.currency,
             method=method,
-            note=_PURCHASE_NOTE.get(lang, _PURCHASE_NOTE["uz"]).format(number=document.number),
+            note=say(lang, _PURCHASE_NOTE, number=document.number),
             now=now,
             stock_document_id=document_id,
         )
@@ -659,7 +662,7 @@ async def post_in(session: TenantSession, actor: Membership, document_id: UUID, 
             amount=document.paid,
             currency=document.currency,
             method=method,
-            note=_RETURN_NOTE.get(lang, _RETURN_NOTE["uz"]).format(number=document.number),
+            note=say(lang, _RETURN_NOTE, number=document.number),
             now=now,
             stock_document_id=document_id,
         )

@@ -116,6 +116,9 @@ export const kaaStock: PartialCatalog<typeof uzStock> = {
   "stock.docs.show": "Qaysı hújjetler",
   "stock.docs.open": "Hújjetler hám qaralamalar",
   "stock.docs.continue": "Dawam ettiriw",
+  "stock.docs.view": "Ashıw",
+  "stock.docs.needView":
+    "Jańa hújjet jazıw hám qaralamanı ózgertiw ushın «Skladtı kóriw» ruqsatı da kerek. Bar hújjetlerdi ashıw, ótkeriw hám biykarlaw múmkin.",
   "stock.docs.dropped": "Qaralama óshirildi.",
   "stock.docs.drafts.none": "Qaralama joq. Saqlap qoyılǵan kiris usı jerde turadı.",
 
@@ -169,6 +172,7 @@ export const kaaStock: PartialCatalog<typeof uzStock> = {
   "stock.find.label": "Tovar: shtrix-kodtı skanerleń yamasa atın jazıń",
   "stock.find.list": "Tabılǵan tovarlar",
   "stock.find.none": "Bunday tovar tabılmadı.",
+  "stock.pick.hint": "Izlew ushın atın jazıń yamasa dizimnen tańlań.",
 
   "stock.new.open": "Jańa tovar qosıw",
   "stock.new.withCode": "Usı kod penen jańa tovar qosıw",

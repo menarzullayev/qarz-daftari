@@ -8,6 +8,10 @@ and a file with a currency column is refused as an unknown column, as it always 
 In `world`, Ali (`customer_a`) owes 50 000 so'm and is linked to a Telegram account.
 """
 
+import asyncio
+import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import timedelta
 from typing import Any
 
@@ -19,6 +23,7 @@ from qarz.application.chat_texts import both, day, money, say
 from qarz.application.imports import template
 from qarz.domain import imports
 from qarz.domain.money import Currency
+from qarz.infrastructure.db import Database
 
 from .conftest import World, as_user
 from .test_customers_ledger import _subscription, key, shop, today, write
@@ -458,3 +463,97 @@ def test_asking_twice_with_one_key_applies_a_dollar_import_once(
     assert apply(client, world, batch, plan, headers=asked).status_code == 202
     assert work() == 1 and work() == 0
     assert ledger(owner, world, batch) == [("Lola", 1, "opening", 1250, "USD")]
+
+
+# --- the setting and an import being applied, at the same moment ---------------------------------------------
+
+
+def waiting_for_a_lock(owner: psycopg.Connection, at_least: int = 1) -> None:
+    """Return once that many sessions of this database wait for a lock; fail if they never do."""
+    for _ in range(200):
+        row = owner.execute(
+            "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'"
+        ).fetchone()
+        assert row is not None
+        if row[0] >= at_least:
+            return
+        time.sleep(0.05)
+    raise AssertionError("nothing came to wait for a lock")
+
+
+def test_dollars_are_not_turned_off_under_an_import_that_is_writing_dollar_rows(
+    client: TestClient,
+    world: World,
+    owner: psycopg.Connection,
+    database_url: str,
+    dollars: None,  # noqa: F811
+) -> None:
+    """The owner turns the shop's dollars off in the very moment their own import with a dollar row is
+    being applied. The worker cannot hold the shop's row as a request does (its role only reads it), so it
+    holds the shop's lock for the setting, and turning dollars off waits for it. Here the worker is stopped
+    in the middle, after it read the setting and before it wrote, by holding the customer it is about to
+    lock: without the lock the setting is turned off at once and the import then writes a dollar debt into
+    a shop without dollars."""
+    batch = uploaded(client, world, table("Ali,,8,USD,,"))
+    assert apply(client, world, batch).status_code == 202
+    with psycopg.connect(database_url) as gate, ThreadPoolExecutor(max_workers=2) as pool:
+        try:
+            gate.execute("SELECT 1 FROM customer WHERE id = %s FOR UPDATE", (world.customer_a,))
+            applying = pool.submit(work)
+            waiting_for_a_lock(owner)  # the worker read "dollars are on" and now waits for Ali
+            turning = pool.submit(write, client, world.owner_a, "PATCH", shop(world), {"usd_on": False})
+            try:
+                early = turning.result(timeout=2).status_code
+            except FutureTimeout:
+                early = None  # the owner's change waits for the worker, as it must
+        finally:
+            gate.rollback()  # let Ali go, whatever happened: the worker goes on
+        assert applying.result(timeout=30) == 1
+        answer = turning.result(timeout=30)
+    assert early is None, f"dollars were turned off ({early}) while an import was writing a dollar row"
+    # The import went first and wrote the dollar row; the change then found a dollar debt and was refused.
+    assert state(client, world, batch)["status"] == "applied"
+    assert ledger(owner, world, batch) == [("Ali", 2, "opening", 800, "USD")]
+    assert (answer.status_code, answer.json()["error"]["code"]) == (409, "USD_BALANCE_OPEN")
+    assert owner.execute("SELECT usd_on FROM shop WHERE id = %s", (world.shop_a,)).fetchone() == (True,)
+
+
+def test_an_import_waits_for_a_change_of_the_setting_that_is_being_made_and_then_sees_it(
+    world: World,
+    owner: psycopg.Connection,
+    app_database_url: str,
+    worker_database_url: str,
+    dollars: None,  # noqa: F811
+) -> None:
+    """The other order, at the storage: while a transaction that turned dollars off is still open, a writer
+    that holds the setting the worker's way waits; when it is committed the writer reads "off". And two
+    such writers do not wait for each other, nor does one that only reads."""
+
+    async def run() -> tuple[bool, bool, bool]:
+        api, worker_side = Database(app_database_url), Database(worker_database_url)
+        try:
+            async with worker_side.tenant(world.shop_a) as one, worker_side.tenant(world.shop_a) as two:
+                together = (
+                    await asyncio.wait_for(one.hold_dollars_setting(), 5),
+                    await asyncio.wait_for(two.hold_dollars_setting(), 5),
+                )
+            assert together == (True, True)
+            async with api.tenant(world.shop_a) as changing:
+                await changing.set_dollars_setting(False)
+                async with worker_side.tenant(world.shop_a) as reading:
+                    assert await asyncio.wait_for(reading.dollars_setting(), 5) is True  # a reader never waits
+
+                async def held() -> bool:
+                    async with worker_side.tenant(world.shop_a) as writing:
+                        return await writing.hold_dollars_setting()
+
+                writer = asyncio.create_task(held())
+                await asyncio.sleep(0.5)
+                waited = not writer.done()
+            return together[0], waited, await asyncio.wait_for(writer, 10)
+        finally:
+            await api.dispose()
+            await worker_side.dispose()
+
+    assert asyncio.run(run()) == (True, True, False)
+    owner.execute("UPDATE shop SET usd_on = true WHERE id = %s", (world.shop_a,))

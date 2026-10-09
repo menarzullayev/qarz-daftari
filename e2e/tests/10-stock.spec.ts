@@ -118,7 +118,12 @@ test("the stock: a receipt on credit from a supplier, a barcode, a sale that tak
     await nav().getByRole("link", { name: "Ombor", exact: true }).click();
     await page.getByRole("link", { name: "Tez kirim" }).click();
     await expect(page.getByRole("heading", { level: 2, name: "Kirim" })).toBeVisible();
-    await page.getByLabel("Ta'minotchi", { exact: true }).selectOption({ label: supplierName });
+    // The supplier is searched for by name among all of them, not picked from a first page: typed into
+    // the field, found by the server, and chosen from the list.
+    const whose = page.getByRole("combobox", { name: "Ta'minotchi", exact: true });
+    await whose.fill(supplierName);
+    await page.getByRole("listbox", { name: "Ta'minotchi" }).getByRole("option", { name: supplierName }).click();
+    await expect(whose).toHaveValue(supplierName);
 
     await page.getByRole("button", { name: "Yangi tovar qo'shish" }).click();
     await page.getByLabel("Nomi", { exact: true }).fill(itemName);

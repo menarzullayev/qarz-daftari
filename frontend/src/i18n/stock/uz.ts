@@ -115,6 +115,9 @@ export const uzStock = {
   "stock.docs.show": "Qaysi hujjatlar",
   "stock.docs.open": "Hujjatlar va qoralamalar",
   "stock.docs.continue": "Davom ettirish",
+  "stock.docs.view": "Ochish",
+  "stock.docs.needView":
+    "Yangi hujjat yozish va qoralamani o'zgartirish uchun «Omborni ko'rish» ruxsati ham kerak. Bor hujjatlarni ochish, o'tkazish va bekor qilish mumkin.",
   "stock.docs.dropped": "Qoralama o'chirildi.",
   "stock.docs.drafts.none": "Qoralama yo'q. Saqlab qo'yilgan kirim shu yerda turadi.",
 
@@ -167,6 +170,7 @@ export const uzStock = {
   "stock.find.label": "Tovar: shtrix-kodni skanerlang yoki nom yozing",
   "stock.find.list": "Topilgan tovarlar",
   "stock.find.none": "Bunday tovar topilmadi.",
+  "stock.pick.hint": "Nomini yozib qidiring yoki ro'yxatdan tanlang.",
 
   "stock.new.open": "Yangi tovar qo'shish",
   "stock.new.withCode": "Shu kod bilan yangi tovar qo'shish",

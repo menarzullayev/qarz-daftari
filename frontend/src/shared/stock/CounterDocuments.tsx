@@ -8,7 +8,7 @@ import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
 import { useMay } from "../workspace/context";
 import { Empty, Failure, Loading, LoadMore } from "../workspace/parts";
-import { dateText, mayWriteDocuments, StatusBadge } from "./DocumentScreens";
+import { dateText, mayComposeDocuments, mayWriteDocuments, NeedsView, StatusBadge } from "./DocumentScreens";
 import { CancelForm, DOCUMENT_KIND_LABELS, DOCUMENT_STATUS_LABELS, permissionOfKind, useStock } from "./parts";
 import { DOCUMENT_STATUSES, type DocumentStatus, type DocumentSummary } from "./stockApi";
 
@@ -22,6 +22,10 @@ const SHOWN_LABELS: Readonly<Record<Shown, MessageKey>> = { ...DOCUMENT_STATUS_L
  * drafts to begin with. A draft left by the quick receipt is found here, continued in its form, or
  * thrown away, which is a cancellation with a reason like any other. Read by whoever writes some kind
  * of document; each row offers its actions only to a member who may write that kind.
+ *
+ * It is also the first screen of the stock's section for a member who writes documents and may not see
+ * the stock: the list and a document are theirs to read, the items and the form that searches them are
+ * not, so neither is linked from here for them.
  */
 export function CounterDocumentsScreen() {
   const can = useMay();
@@ -32,6 +36,7 @@ function CounterDocuments() {
   const { t, language } = useI18n();
   const can = useMay();
   const stock = useStock();
+  const composes = mayComposeDocuments(can);
   const [shown, setShown] = useState<Shown>("draft");
   const [dropping, setDropping] = useState<string | null>(null);
   const [dropped, setDropped] = useState(false);
@@ -67,7 +72,7 @@ function CounterDocuments() {
         {mine && dropping !== document.id ? (
           <p className="actions">
             <Link to={address} className="button button--primary">
-              {t("stock.docs.continue")}
+              {t(composes ? "stock.docs.continue" : "stock.docs.view")}
             </Link>
             <button
               type="button"
@@ -135,23 +140,27 @@ function CounterDocuments() {
             </button>
           ))}
         </div>
-        {can("stock.receive") ? (
+        {can("stock.receive") && composes ? (
           <Link to="/stock/receipt" className="button button--primary">
             {t("stock.receipt.quick")}
           </Link>
         ) : null}
       </div>
+      <NeedsView />
       {dropped ? (
         <p className="notice notice--done" role="status">
           {t("stock.docs.dropped")}
         </p>
       ) : null}
       {body}
-      <p className="actions">
-        <Link to="/stock" className="button">
-          {t("nav.stock")}
-        </Link>
-      </p>
+      {/* The stock's items, for one who may see them; for anyone else that address is this list. */}
+      {can("stock.view") ? (
+        <p className="actions">
+          <Link to="/stock" className="button">
+            {t("nav.stock")}
+          </Link>
+        </p>
+      ) : null}
     </>
   );
 }

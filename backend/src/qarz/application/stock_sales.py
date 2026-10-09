@@ -33,6 +33,7 @@ from uuid import UUID, uuid4
 
 from qarz.application import idempotency, stock_cash
 from qarz.application.authorization import may
+from qarz.application.chat_texts import say
 from qarz.application.customers import MAX_PAGE, decode_cursor, encode_cursor, require_viewable, require_writable
 from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import operation
@@ -56,8 +57,8 @@ CANCEL_SALE = operation("stock.sales.cancel", Capability.MANAGE)
 UZS = "UZS"
 # The longest stretch of days one list covers, like a report's.
 MAX_DAYS = 366
-# The note of the cash entry, by the shop's language.
-_CASH_NOTE = {"uz": "Naqd savdo № {number}", "ru": "Продажа за наличные № {number}"}
+# The note of the cash entry, in the shop's language (a text of `chat_texts`).
+_CASH_NOTE = "stock_sale_note"
 
 
 class SaleCancelled(AppError):
@@ -313,7 +314,7 @@ async def sell_in(
         actor,
         amount=total,
         method=clean.method,
-        note=_CASH_NOTE.get(lang, _CASH_NOTE["uz"]).format(number=number),
+        note=say(lang, _CASH_NOTE, number=number),
         now=now,
         stock_document_id=document_id,
     )

@@ -1,19 +1,19 @@
-"""A sale for cash without a customer: a sixth kind of stock document, and its income in the cash book.
+"""A delivery note is compared line by line when it is received; the documents list finds a state by index.
 
-Revision ID: 0049
-Revises: 0047
+Revision ID: 0047
+Revises: 0046
 """
 
 from pathlib import Path
 
 from alembic import op
 
-revision = "0049"
-down_revision = "0047"
+revision = "0047"
+down_revision = "0046"
 branch_labels = None
 depends_on = None
 
-_SQL = Path(__file__).resolve().parent.parent / "sql" / "0049_cash_sale.sql"
+_SQL = Path(__file__).resolve().parent.parent / "sql" / "0047_leftovers.sql"
 
 
 def upgrade() -> None:

@@ -78,6 +78,67 @@ describe("the style sheets use the design tokens and nothing else", () => {
   });
 });
 
+/**
+ * What in a phone's shell keeps the tab bar off the content: nothing, if the bar is taken out of the
+ * flow and the shell keeps a height free for it that is written down apart (the bar grows with the
+ * text; the number does not). Empty when the room the bar takes is the bar's own height.
+ */
+function tabBarProblems(css: string): string[] {
+  // The phone's rules are the ones outside every media query.
+  const phone = css.replace(/@media[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, "");
+  const shell = ruleOf(phone, ".shell");
+  const bar = ruleOf(phone, ".shell__nav");
+  const problems: string[] = [];
+  if (!/position: sticky;/.test(bar) || !/\n\s*bottom: 0;/.test(bar)) {
+    problems.push("the bar is not held to the bottom edge inside the flow");
+  }
+  if (/position: (?:fixed|absolute)/.test(bar)) {
+    problems.push("the bar is out of the flow");
+  }
+  if (!/display: flex;/.test(shell) || !/flex-direction: column;/.test(shell)) {
+    problems.push("the shell is not a column the bar is the last item of");
+  }
+  if (/padding-bottom|margin-bottom/.test(shell)) {
+    problems.push("the shell keeps a height of its own free for the bar");
+  }
+  if (!/\n\s*order: 1;/.test(bar)) {
+    problems.push("the bar is not after the content");
+  }
+  return problems;
+}
+
+describe("the phone's tab bar takes the room it needs, at any text size", () => {
+  const css = readStyleSheet("shared", "shell.css");
+
+  it("is the last item of the shell's column and sticks to the bottom, so no height is written down for it", () => {
+    expect(tabBarProblems(css)).toEqual([]);
+    // The content takes what is left and is never squeezed under the bar.
+    expect(ruleOf(css, ".shell__main")).toContain("flex: 1 0 auto;");
+  });
+
+  it("is still the side list from 720px, where the shell is the grid it was", () => {
+    const wide = /@media \(min-width: 720px\) \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? "";
+    expect(ruleOf(wide, "  .shell")).toContain("display: grid;");
+    const bar = ruleOf(wide, "  .shell__nav");
+    expect(bar).toContain("top: 0;");
+    expect(bar).toContain("bottom: auto;");
+    expect(bar).toContain("margin-top: 0;");
+  });
+
+  it("would be noticed: a bar fixed over the content with a height kept free by a number", () => {
+    const before = ".shell {\n  display: grid;\n  padding-bottom: calc(var(--qd-nav-height) + env(safe-area-inset-bottom, 0px));\n}\n.shell__nav {\n  position: fixed;\n  bottom: 0;\n}";
+    expect(tabBarProblems(before)).toEqual([
+      "the bar is not held to the bottom edge inside the flow",
+      "the bar is out of the flow",
+      "the shell is not a column the bar is the last item of",
+      "the shell keeps a height of its own free for the bar",
+      "the bar is not after the content",
+    ]);
+    // And a media query's own rules are not taken for the phone's.
+    expect(tabBarProblems(css.replace(/\n\.shell__nav \{[^}]*\}/, "\n.shell__nav {\n  position: fixed;\n}"))).toContain("the bar is out of the flow");
+  });
+});
+
 describe("the guard itself", () => {
   it("refuses a color written out in any notation", () => {
     expect(styleProblems(".a { color: #c00; }", tokens)).toEqual(["color written out: #c00"]);

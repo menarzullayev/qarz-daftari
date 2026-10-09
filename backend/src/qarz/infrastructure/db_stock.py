@@ -714,6 +714,41 @@ class StockQueries:
             for row in rows
         }
 
+    async def document_lines_of(self, document_ids: list[UUID]) -> dict[UUID, list[DocumentLine]]:
+        if not document_ids:
+            return {}
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT n.document_id, n.line_no, n.item_id, n.qty, n.unit_cost, n.line_total "
+                    "FROM stock_document_line n WHERE n.document_id = ANY(CAST(:ids AS uuid[])) "
+                    "ORDER BY n.document_id, n.line_no"
+                ),
+                {"ids": document_ids},
+            )
+        ).all()
+        found: dict[UUID, list[DocumentLine]] = {}
+        for row in rows:
+            found.setdefault(row.document_id, []).append(
+                DocumentLine(
+                    line_no=int(row.line_no),
+                    item_id=row.item_id,
+                    qty=row.qty,
+                    unit_cost=None if row.unit_cost is None else int(row.unit_cost),
+                    line_total=None if row.line_total is None else int(row.line_total),
+                )
+            )
+        return found
+
+    async def cash_entry_of_document(self, document_id: UUID) -> bool:
+        row = (
+            await self._conn.execute(
+                text("SELECT EXISTS (SELECT 1 FROM cash_entry k WHERE k.stock_document_id = :id) AS found"),
+                {"id": document_id},
+            )
+        ).one()
+        return bool(row.found)
+
     async def add_sale_cash_entry(
         self,
         *,

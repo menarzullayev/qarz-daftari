@@ -727,8 +727,15 @@ class TenantSession(CashSession, StockSession, NetworkSession, Protocol):
         """
         ...
 
+    async def hold_dollars_setting(self) -> bool:
+        """The same setting, held until the transaction ends by a writer that may not lock the shop's row
+        (the worker's role only reads it): a lock of the shop's own for this setting, taken shared here
+        and exclusively by `set_dollars_setting`. Many writers hold it at once; the setting waits for all."""
+        ...
+
     async def set_dollars_setting(self, on: bool) -> None:
-        """Store the setting. Takes the shop's row, so it waits for every writer of a dollar amount."""
+        """Store the setting. Takes the shop's lock for it and then the shop's row, so it waits for every
+        writer of a dollar amount, whichever of the two that writer holds."""
         ...
 
     async def dollars_recorded(self) -> bool:

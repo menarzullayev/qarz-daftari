@@ -177,14 +177,31 @@ completeness strict (above). What it did, for a reviewer to know where the newes
    no word came out wrong on a reading of the output (`npm run i18n:missing` lists the same 25 Latin
    words as before, all brands and codes), so the three override tables did not change.
 
-**Not translated, and not measured by the two scripts**, because they are tables of two languages in
-the code and not catalog entries. A reader of another language is shown the Uzbek word:
+**Tables of two languages in the code: closed after the expansion (2026-10-09).** The final pass left
+four of them, unmeasured by the two scripts, so a reader of another language was shown the Uzbek word.
+They are catalog entries now, in every language, and a reviewer reads them with the rest:
 
-- names of stock units and write-off reasons (`qarz.domain.stock.UNITS`, `WRITE_OFF_REASONS`);
-- the stock's own cash-book categories and the note a stock document writes into a supplier's or a
-  customer's account (`qarz.domain.cash.STOCK_CATEGORIES`, `stock_documents._PURCHASE_NOTE`, `_RETURN_NOTE`);
-- the states of a partnership, an order, a delivery note and a payment in the network's export sheets,
-  which are the server's own words (`active`, `sent`, `issued`, `awaiting`, …) in every language.
+- names of stock units (`unit_*`) and write-off reasons (`reason_*`) in `EXPORT`: `GET …/stock/settings`
+  sends each name in all six languages and the screens show the reader's;
+- the cash book's default categories and the stock's own two (`cash_category_*` in `EXPORT`), and the
+  notes a stock document writes into a supplier's or a customer's account and the cash book
+  (`stock_purchase_note`, `stock_return_note` in `CHAT`). These are written in the shop's language at the
+  moment they are made and are the shop's data from then on: a shop that already has its categories keeps
+  their names (nothing renames them, and a shop may have renamed them itself); a shop that first uses the
+  cash book after this gets them in its own language, Uzbek Cyrillic included;
+- the states of a partnership, an order, a delivery note and a payment in the network's export sheets
+  (`net_link_*`, `net_order_*`, `net_note_*`, `net_payment_*` in `EXPORT`), with the words the screens use.
+
+`backend/tests/test_text_tables.py` holds each list of the domain (units, reasons, categories, states) to
+a name in the catalog, and fails on any table in the source that names some languages and not all (a
+dictionary with `uz` and `ru`, a class with such fields, a choice on `lang == "ru"`) outside the catalogs
+and a short list of exceptions, each with its reason.
+
+**Still English, on purpose:** the remark beside a refused field (`error.fields`, for example
+`"between 1 and 100 lines"`). About 310 of them; they are identifiers for a client and no screen shows
+one: every screen says in its own words what is wrong with the field it names, and the sentence a person
+reads is `error.message`, which is in all six languages. Translating them would put 1 500 unread texts
+before the reviewers.
 
 **For the reviewers of Tajik and Karakalpak, the network first.** Its terms were chosen by a model with
 no earlier text to lean on, and several have a plausible rival. Read the glossary rows added for it, then
