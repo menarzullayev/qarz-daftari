@@ -180,9 +180,18 @@ Not part of the 7 hours 3 minutes above. The founder took further decisions and 
 | #107 | One definition of the product's name (`backend/src/qarz/domain/brand.json`) and the name HisoBox, with a mark chosen by the founder; the `single-host` flake fixed | - |
 | #108 | A sale for cash without a customer | 0049 |
 
-`main` is at `f205323`, migration 0049. **Not deployed:** the CI run on that commit failed three times on
-Docker Hub (500, 504 and 429 from `auth.docker.io` and `registry-1.docker.io`), not on the code; every pull
-request was green before its merge. Production still runs `2c638ba`, migration 0037.
+`main` was at `f205323`, migration 0049, when this table was written, and was not deployed then: the CI
+run on that commit failed three times on Docker Hub (500, 504 and 429 from `auth.docker.io` and
+`registry-1.docker.io`), not on the code; every pull request was green before its merge.
+
+What has happened since:
+
+- **Production was deployed on 2026-10-09 at migration 0049** (it had run `2c638ba`, migration 0037). Every
+  switch of the expansion stayed off.
+- **The public host moved to `hisobox.bugvector.uz`**; `qarz.bugvector.uz` answers with a 302 to it.
+- **#110 is merged:** the local stack's teardown (`deploy/production/scripts/local.sh down`) removes only
+  the images of its own release, so it no longer takes the images production runs, or its rollback
+  images, with it (item 2 of the list below).
 
 ### What the expansion cost
 
@@ -214,4 +223,97 @@ In this order, one agent at a time, each told not to start helpers:
 Languages stay at six. Open questions for the founder are in the table above, plus: whether members with
 `stock.receive` but without `stock.view` may see the items list (question 9); whether the consent text's
 version must change because the product's name in it changed.
+
+## The shared product catalogue (10 October 2026)
+
+One catalogue for the whole platform, behind the switch `catalog_on` (off by default, changed with a
+code from the authenticator like every switch), migration 0050. Built by one agent, in one pull request.
+Nothing was deployed and nothing was imported into production.
+
+### What the founder decided
+
+| # | Decision |
+|---|---|
+| 1 | The catalogue is the platform's, not a shop's. An owner adding an item searches it, picks one and types only the shop's own price. What is not in it is added by hand exactly as before. |
+| 2 | **The photos are copied to our own storage.** This is the founder's decision, taken knowing that the photos come from third-party retailers and that the risk about the rights to them is his. |
+| 3 | Names are the Russian original and Uzbek in Latin; Uzbek in Cyrillic is made by the transliterator that already exists. A search reads both. Most seed rows have no Uzbek name yet: the field may be empty and the Russian name is shown; translating is a later task on the data. |
+| 4 | An item a shop adds by hand reaches the catalogue only after the platform's administrator approves it. In the shop it works at once either way. |
+| 5 | Barcodes are filled in by shops. The catalogue starts with none; when a shop attaches a barcode to an item it picked from the catalogue, the code is proposed through the same queue, and once approved any shop that scans it is offered the item. |
+| 6 | The catalogue keeps an approximate retail price in Tashkent. The form shows it under the price field as advice ("Toshkentda taxminan 12 990 so'm") and never fills it in or saves it. |
+| 7 | A new switch, `catalog_on`, off by default and protected by the second factor like the others. Off, nothing changes anywhere. |
+
+### What was built
+
+- **Tables that belong to no shop** (`shared_item`, `shared_barcode`), the first of their kind beside forced
+  row-level security. The ordinary application reads them and can write neither; the administrators' role
+  loads items (the import), and a barcode gets there only through the approval function. A shop's proposal
+  (`shared_suggestion`) is a shop's row under the tenant policy: a shop reads its own and no other's, can
+  add one only as a waiting proposal, and can neither decide, change nor delete one
+  (`backend/tests/db/test_shared_catalog_schema.py`). A shop's item says which catalogue item it was
+  picked from, and a shop holds a catalogue item once.
+- **What leaves a shop in a proposal: the item's name, its unit and a barcode.** Never a price, a
+  quantity, a cost, a supplier or a customer: the table has no column for one. The administrators' queue,
+  and the audit of its decisions, do not say which shop a proposal came from; the queue shows only how
+  many other shops proposed the same. A shop's proposals are erased with the shop; what was approved
+  stays in the catalogue and says nothing of its origin. At most 200 proposals of one shop wait at a
+  time: past that its additions still work in the shop and are not proposed.
+- **Search and pick** (`/api/v1/shops/{shop}/shared-catalog`): every typed word must be in the names or
+  the package size, in either language and either script (the names' matching form, with a trigram
+  index); an optional category; pages. Picking makes the shop's own item, named in the picker's language
+  with the package size, at the price typed; picking again answers with the item the shop already has; a
+  name the shop already uses is refused as for an item typed by hand. Whoever may add items
+  (`goods.edit`) may search and pick.
+- **Barcodes:** a scan that no item of the shop has falls through to the catalogue, wherever a barcode is
+  looked up, and a picked item carries the codes the catalogue has for it.
+- **Photos** are kept in our own file store under the SHA-256 of their content, without the metadata they
+  came with, and served by our own host at `/files/catalog/<hash>` with `Cache-Control: public,
+  max-age=31536000, immutable` (the proxy says `no-store` for every other answer there). No address of a
+  third party is stored, sent or shown: the import does not read `img_url`, the client drops a photo
+  address that is not `/files/catalog/<hash>`, and the pages' content policy allows images from this host
+  alone.
+- **The administrator's panel:** the switch among the settings; while it is on, a link from the settings
+  to the queue, where an item is approved under a Russian and an Uzbek name (at least one) and a
+  category, a barcode is approved as it is, and either is rejected. A suggestion is decided once; a
+  barcode that already names another catalogue item is not moved.
+- **Clients** (the panel and the Mini App share these screens): adding an item starts with the search;
+  "not found: add by hand" opens the form there always was. All texts are in six languages. Tajik and
+  Karakalpak were written by a model, as before, and wait for the same review
+  (`docs/10-operations/translation-review.md`).
+- **Twenty-one categories** (`qarz.domain.shared_catalog.CATEGORIES`), each named in six languages in the
+  client. The import maps the seed's own sections to them; a section it does not know is "other".
+
+### Loading the seed
+
+The seed is not in the repository and must stay out of it: `source.json` (the rows, each with a stable
+sixteen-digit key), `categories.json` (which section is which category) and `img/<key>.png|jpg|webp`. A
+row without a photo file is an item without a photo.
+
+    python -m qarz.interface.import_shared_catalog DIRECTORY
+
+It connects with `QD_ADMIN_DATABASE_URL` and writes photos to the file store the environment names. It is
+not a migration and CI does not run it. Running it again adds nothing: a row is known by its key; names,
+sizes, categories and prices are brought up to date; a photo already kept is not sent again; and an item
+keeps its photo when a later run finds no file for it. It turns no switch on.
+
+On the single host the command is `deploy/production/scripts/single-host.sh catalog-import DIRECTORY`: a
+one-off container of the API's image with the seed mounted read-only (the API's own `/tmp` holds 64 MB
+and the photos are many times that). **That subcommand was read and syntax-checked and has never been run
+against a real stack.**
+
+### Open
+
+- **Uzbek names.** 488 of the seed's 13 426 rows have one; the rest show the Russian name to every
+  reader. Running the import again with the names filled in brings them in.
+- **The rights to the photos** (decision 2) are the founder's risk. Nothing here checks them.
+- **A shop's own photo** of an item it adds by hand: there is no way to attach one, so an approved
+  suggestion has no photo.
+- **Telling a shop what became of its proposal.** Today it is told nothing, whichever way it was decided.
+- **A barcode on an item whose own proposal still waits** is not proposed: only a barcode attached to an
+  item already tied to the catalogue is.
+- **Correcting or hiding a catalogue item** (a wrong name, a duplicate) has no screen: the import brings a
+  seeded row up to date, and anything else is a statement run as the administrators' role.
+- **The unit of a seeded item is "dona"** (a piece): the seed says how big a package is, not how a shop
+  sells it. A shop changes the unit of its own item after picking it.
+- **The search is by words, not by meaning or misspelling**: "kola" does not find "cola".
+- **No screen of this module has been seen by a person**, like the rest of the expansion.
 

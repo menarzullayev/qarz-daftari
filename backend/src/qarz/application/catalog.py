@@ -14,6 +14,7 @@ from qarz.application.customers import MAX_PAGE, decode_cursor, encode_cursor, r
 from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import Operation, operation
 from qarz.application.ports import CatalogItemRecord, Membership, Storage, TenantSession
+from qarz.application.shared_catalog_feed import propose_item
 from qarz.application.shops import require_member
 from qarz.domain.access import Capability
 from qarz.domain.catalog import check_price, item_name, normalize_unit
@@ -201,6 +202,8 @@ class CatalogService:
                     subject_type="catalog_item",
                     subject_id=item.item_id,
                 )
+                # Proposed for the platform's catalogue while that is on; it works here either way.
+                await propose_item(session, item_id=item.item_id, name=item.name, unit=item.unit, barcode=None)
                 return item_body(item)
 
             return await idempotency.run_once(

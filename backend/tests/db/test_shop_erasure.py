@@ -163,6 +163,12 @@ def fill_stock(owner: psycopg.Connection, shop: Shop, entry: uuid.UUID) -> None:
     owner.execute(
         "INSERT INTO catalog_barcode (shop_id, code, item_id) VALUES (%s, '4780000000014', %s)", (shop.shop_id, item)
     )
+    # What the shop proposed for the shared catalogue (migration 0050) goes with the shop.
+    owner.execute(
+        "INSERT INTO shared_suggestion (id, shop_id, kind, name, name_norm, unit, item_id) "
+        "VALUES (gen_random_uuid(), %s, 'item', 'Shakar', 'shakar', 'kg', %s)",
+        (shop.shop_id, item),
+    )
     owner.execute(
         "INSERT INTO supplier (id, shop_id, name, name_norm) VALUES (%s, %s, 'Ulgurji', 'ulgurji')",
         (supplier, shop.shop_id),

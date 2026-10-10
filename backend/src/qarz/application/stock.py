@@ -22,6 +22,7 @@ from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.export_texts import in_every_language
 from qarz.application.operations import operation
 from qarz.application.ports import Membership, Storage, TenantSession
+from qarz.application.shared_catalog_feed import propose_barcodes
 from qarz.application.shops import require_member
 from qarz.application.stock_cash import cash_book_on
 from qarz.application.stock_currency import shop_currencies
@@ -350,6 +351,8 @@ class StockService:
                     taken = await session.replace_barcodes(item_id, codes)
                     if taken is not None:
                         raise BarcodeTaken({"code": taken})
+                    # A code attached to an item picked from the platform's catalogue is proposed for it.
+                    await propose_barcodes(session, item_id, codes)
                 await session.record_activity(
                     membership_id=actor.membership_id,
                     action="stock.item_changed",

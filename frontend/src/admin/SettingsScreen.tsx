@@ -3,6 +3,7 @@ import { type FormEvent, useRef, useState } from "react";
 import { useI18n, type Translate } from "../i18n/I18nProvider";
 import { type ApiError, toApiError } from "../shared/api";
 import { useLoad, useSubmit } from "../shared/hooks";
+import { Link } from "../shared/router";
 import { Confirm, errorText, Failure, FieldError, formatInstant, Loading } from "../shared/workspace/parts";
 import type { AdminApi, PaymentCard, PlatformSettings, SettingValue } from "./adminApi";
 import "./messages";
@@ -312,6 +313,14 @@ function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings
 
   return (
     <form className="form" onSubmit={onSubmit} noValidate>
+      {/* The queue of the shared catalogue exists only while its switch is on: no link to it before. */}
+      {saved.values["catalog_on"] === true ? (
+        <p className="actions">
+          <Link to="/settings/catalog" className="button">
+            {t("admin.catalog.open")}
+          </Link>
+        </p>
+      ) : null}
       {failure && codeRefused === null && !fieldRefused ? (
         <p className="notice notice--error" role="alert">
           {errorText(failure, t)}

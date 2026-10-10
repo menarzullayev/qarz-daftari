@@ -468,6 +468,28 @@ export type CatalogItem = {
   mergedInto: string | null;
 };
 export type NewCatalogItem = { name: string; unit: string | null; price: number };
+
+/**
+ * An item of the platform's shared catalogue: it belongs to no shop. A shop picks one and types its
+ * own price.
+ */
+export type SharedItem = {
+  id: string;
+  /** In the reader's language; the other name stands in for a missing one. */
+  name: string;
+  /** The package: "200 g", "1 l". Null when the catalogue does not say. */
+  amount: string | null;
+  /** A key of the catalogue's categories; its name is a text of ours. */
+  category: string;
+  unit: string;
+  /** An approximate retail price in Tashkent, in whole UZS: advice for the price field, never a price. */
+  priceHint: number | null;
+  /** The address of its photo on this host; null when it has none. */
+  image: string | null;
+  /** The shop's own item, when the shop has picked this one already. */
+  picked: { id: string; name: string; price: number } | null;
+};
+export type SharedPage = Page<SharedItem> & { categories: string[] };
 export type CatalogItemPatch = { name?: string; unit?: string; price?: number };
 export type CatalogAction = "hide" | "unhide" | "accept" | "dismiss";
 
@@ -499,6 +521,8 @@ export type MyShops = {
   stockOn: boolean;
   /** The platform has switched the network between shops on: a shop then answers its network routes. */
   networkOn: boolean;
+  /** The platform has switched the shared product catalogue on: adding an item then offers picking one. */
+  catalogOn: boolean;
 };
 
 /** A customer's objection to one entry. `status`: open, declined, withdrawn, or reversed (the shop agreed). */
@@ -1075,6 +1099,35 @@ function addedLines(value: unknown): AddedLines {
   };
 }
 
+/**
+ * The address of a catalogue photo: a path on this host and nothing else. Anything that could lead to
+ * another host is dropped, so no page of ours ever asks a third party for a picture.
+ */
+function ownImage(value: unknown): string | null {
+  const path = textOrNull(value);
+  return path !== null && /^\/files\/catalog\/[0-9a-f]{64}$/.test(path) ? path : null;
+}
+
+function sharedItem(value: unknown): SharedItem {
+  const body = record(value);
+  const picked = body["picked"];
+  const mine = picked === null || picked === undefined ? null : record(picked);
+  return {
+    id: text(body["id"]),
+    name: text(body["name"]),
+    amount: textOrNull(body["amount"]),
+    category: text(body["category"]),
+    unit: text(body["unit"]),
+    priceHint: wholeOrNull(body["price_hint"]),
+    image: ownImage(body["image"]),
+    picked: mine === null ? null : { id: text(mine["id"]), name: text(mine["name"]), price: whole(mine["price"]) },
+  };
+}
+
+function sharedPage(value: unknown): SharedPage {
+  return { ...page(sharedItem)(value), categories: list(record(value)["categories"], text) };
+}
+
 function chosenPromise(value: unknown): ChosenPromise {
   const made = record(record(value)["entry"]);
   return { id: text(made["id"]), amount: whole(made["amount"]), promisedDate: text(made["promised_date"]) };
@@ -1139,6 +1192,8 @@ export const CASH_BOOK_HEADER = "X-Qarz-Cash-Book";
 export const STOCK_HEADER = "X-Qarz-Stock";
 /** The header the server sends with a person's shops while the network between shops is switched on. */
 export const NETWORK_HEADER = "X-Qarz-Network";
+/** The header the server sends with a person's shops while the shared product catalogue is switched on. */
+export const CATALOG_HEADER = "X-Qarz-Catalog";
 
 function myShops(value: unknown, headers: Headers): MyShops {
   const body = fieldsOf<Wire["MyShops"]>(value);
@@ -1147,6 +1202,7 @@ function myShops(value: unknown, headers: Headers): MyShops {
     cashBookOn: headers.get(CASH_BOOK_HEADER) === "on",
     stockOn: headers.get(STOCK_HEADER) === "on",
     networkOn: headers.get(NETWORK_HEADER) === "on",
+    catalogOn: headers.get(CATALOG_HEADER) === "on",
     items: list(body.raw("items"), (element) => {
       const shop = fieldsOf<Wire["MyShop"]>(element);
       const role = shop.raw("role");
@@ -1807,6 +1863,42 @@ function shopApi(transport: Transport, shopId: string) {
         body["unit"] = input.unit;
       }
       return call(transport, { method: "POST", path: `${base}/catalog`, body, idempotencyKey, read: catalogItem });
+    },
+
+    /** A page of the shared catalogue: items whose names hold every typed word, in one category or all. */
+    searchSharedCatalog(
+      params: { q?: string; category?: string | null; cursor?: string | null; limit?: number },
+      signal?: AbortSignal,
+    ): Promise<SharedPage> {
+      return call(transport, {
+        method: "GET",
+        path: `${base}/shared-catalog`,
+        query: { q: params.q, category: params.category, cursor: params.cursor, limit: params.limit?.toString() },
+        signal,
+        read: sharedPage,
+      });
+    },
+
+    /** The catalogue item an approved barcode names; "not found" when the catalogue has no such code. */
+    lookupSharedCatalog(code: string, signal?: AbortSignal): Promise<SharedItem> {
+      return call(transport, { method: "GET", path: `${base}/shared-catalog/lookup`, query: { code }, signal, read: sharedItem });
+    },
+
+    /**
+     * Makes a catalogue item an item of the shop at the shop's own price. Picking what the shop already
+     * holds answers with the item it has, unchanged.
+     */
+    pickSharedItem(sharedId: string, price: number, idempotencyKey: string): Promise<CatalogItem> {
+      if (!Number.isSafeInteger(price)) {
+        throw new RangeError("price must be a whole number of UZS");
+      }
+      return call(transport, {
+        method: "POST",
+        path: `${base}/shared-catalog/${segment(sharedId)}/pick`,
+        body: { price },
+        idempotencyKey,
+        read: catalogItem,
+      });
     },
 
     updateCatalogItem(itemId: string, patch: CatalogItemPatch, idempotencyKey: string): Promise<CatalogItem> {

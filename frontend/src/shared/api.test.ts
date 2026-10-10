@@ -269,6 +269,7 @@ describe("responses", () => {
       cashBookOn: false,
       stockOn: false,
       networkOn: false,
+      catalogOn: false,
     });
     const named = fakeServer(() =>
       ok({ items: [{ shop_id: SHOP_ID, name: "Baraka", role: "seller", membership_id: "m-1" }], active_shop: null }),

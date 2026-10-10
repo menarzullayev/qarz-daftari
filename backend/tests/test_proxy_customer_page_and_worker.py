@@ -147,6 +147,38 @@ def test_everything_the_proxy_hands_to_the_api_is_on_the_workers_list_of_what_it
     assert {"/k/", "/admin/", "/app/"} <= never_handled()
 
 
+def test_a_photo_of_the_shared_catalogue_may_be_cached_and_nothing_else_under_files_may() -> None:
+    server = read("app-server.conf")
+    assert "include /etc/nginx/snippets/api-proxy.conf;" in location(server, "/files/")
+    assert header(read("headers-api.conf"), "Cache-Control") == ["no-store"]
+    photos = location(server, "/files/catalog/")
+    assert "include /etc/nginx/snippets/image-proxy.conf;" in photos and "api-proxy.conf" not in photos
+    assert "limit_except GET" in photos
+    handed = read("image-proxy.conf")
+    # The application's own header is dropped and the proxy says it once, from the map.
+    assert "proxy_hide_header Cache-Control;" in handed
+    assert header(handed, "Cache-Control") == ["$qd_image_cache"]
+    assert "headers-api.conf" not in handed, "that file says no-store, which would be said as well"
+    assert image_cache(read("http-common.conf")) == {
+        '"~immutable"': '"public, max-age=31536000, immutable"',
+        "default": '"no-store"',
+    }
+
+
+def image_cache(http: str) -> dict[str, str]:
+    """The map that decides what a cache is told about an answer of /files/catalog/."""
+    body = re.search(r"map \$upstream_http_cache_control \$qd_image_cache \{(.*?)\}", code(http), re.S)
+    assert body is not None
+    entries = [line.strip().rstrip(";").split(" ", 1) for line in body.group(1).splitlines() if line.strip()]
+    return {key: value.strip() for key, value in entries}
+
+
+def test_a_map_that_let_a_refusal_be_cached_would_be_noticed() -> None:
+    """The counterpart: with the default turned into "cache it", the same reading says so."""
+    careless = read("http-common.conf").replace('default "no-store";', 'default "public, max-age=31536000";')
+    assert image_cache(careless)["default"] != '"no-store"'
+
+
 def test_the_check_above_would_notice_a_new_proxied_route() -> None:
     added = read("app-server.conf") + "\nlocation /reports/ {\n    include /etc/nginx/snippets/api-proxy.conf;\n}\n"
     assert proxied_prefixes(added) - never_handled() == {"/reports/"}

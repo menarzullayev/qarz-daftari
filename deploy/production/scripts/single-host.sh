@@ -11,6 +11,9 @@
 #                                         and what the operations watch has firing
 #   single-host.sh alert-test             send one TEST alert to QD_ALERT_CHAT_IDS and say whether
 #                                         Telegram took it (runbook 16; launch criterion 9)
+#   single-host.sh catalog-import <dir>   load the seed of the shared product catalogue from <dir>
+#                                         (source.json, categories.json, img/) into the database and the
+#                                         file store; safe to run again; turns no switch on
 #   single-host.sh backup <full|diff>     one backup, now
 #   single-host.sh restore-test           restore the latest backup into a throwaway instance and check it
 #   single-host.sh restore [--time '<moment>']   restore the bucket into the EMPTY data volume
@@ -223,6 +226,13 @@ case "${1:-}" in
     use_current; dce exec -T backup /opt/qarz-single/job.sh "$2" ;;
   restore-test) use_current; dce exec -T backup /opt/qarz-single/job.sh restore-test ;;
   alert-test) use_current; dce exec -T worker python -m qarz.interface.alert_test ;;
+  catalog-import)
+    { [ $# -eq 2 ] && [ -d "$2" ]; } || die "usage: single-host.sh catalog-import <directory>"
+    # A one-off container of the API's image, with the API's settings and its volume of files. The seed
+    # is mounted read-only: the photos are many times the 64 MB the API's own /tmp holds.
+    use_current
+    seed="$(native_path "$(cd "$2" && pwd)")"
+    dce run --rm --no-deps --volume "$seed:/seed:ro" api python -m qarz.interface.import_shared_catalog /seed ;;
   restore) shift; restore "$@" ;;
   restore-files) use_current_or_head; compose run --rm --no-deps restore-files ;;
   pitr) pitr "${2:-}" ;;
@@ -235,5 +245,5 @@ case "${1:-}" in
     [ -n "$(env_value DEPLOY_PUBLIC_HOST)" ] || die "DEPLOY_PUBLIC_HOST has no value in $ENV_FILE"
     bash "$SCRIPTS_DIR/smoke.sh" "https://$(env_value DEPLOY_PUBLIC_HOST)" ;;
   logs) shift; use_current; compose logs --no-color --tail 80 "$@" ;;
-  *) die "usage: single-host.sh env-init [<file>] | up [<git-ref>] | start | stop | status | alert-test | backup <full|diff> | restore-test | restore [--time '<moment>'] | restore-files | pitr ['<moment>'] | pitr-down | rollback <git-ref> | smoke | logs [<service>...]" ;;
+  *) die "usage: single-host.sh env-init [<file>] | up [<git-ref>] | start | stop | status | alert-test | catalog-import <directory> | backup <full|diff> | restore-test | restore [--time '<moment>'] | restore-files | pitr ['<moment>'] | pitr-down | rollback <git-ref> | smoke | logs [<service>...]" ;;
 esac

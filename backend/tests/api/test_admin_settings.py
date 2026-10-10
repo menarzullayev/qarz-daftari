@@ -34,6 +34,7 @@ DEFAULTS = {
     "customer_links_on": False,
     "stock_on": False,
     "network_on": False,
+    "catalog_on": False,
     "usd_on": False,
     "cash_book_on": False,
 }
@@ -48,6 +49,7 @@ NEEDS_CODE = {
     "customer_links_on": True,
     "stock_on": True,
     "network_on": True,
+    "catalog_on": True,
     "cash_book_on": True,
     "review_group": -1001234567890,
     "free_plan_on": True,
@@ -536,6 +538,17 @@ def test_every_administrator_write_leaves_exactly_one_audit_row_saying_who_what_
         assert (target_type, target_id, target_shop) == ("receipt", receipt, world.shop_a)
         assert body is not None
         assert reason == body.get("reason")
+    elif "catalog" in op_name:
+        # The audit, like the queue, does not say which shop a suggestion came from.
+        suggestion = call.path(world).split("/")[-2]
+        decided = op_name.rsplit(".", 1)[-1].replace("approve", "approved").replace("reject", "rejected")
+        assert (action, target_type, target_id, target_shop, reason) == (
+            f"catalog.suggestion_{decided}",
+            "suggestion",
+            suggestion,
+            None,
+            None,
+        )
     else:
         assert (action, target_type, target_id, target_shop) == ("setting.changed", "setting", "trial_days", None)
 

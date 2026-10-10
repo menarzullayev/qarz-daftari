@@ -9,6 +9,7 @@ import { useDesktop } from "../layout";
 import { cleanItemName, itemNameProblem, MAX_ITEM_NAME, MAX_UNIT_INPUT, priceMessage } from "./catalogRules";
 import { useMay, useWorkspace } from "./context";
 import { Badge, Empty, errorText, Failure, FieldError, Loading, LoadMore } from "./parts";
+import { SharedPicker } from "./SharedPicker";
 
 /** How long typing must pause before the list is searched again. */
 export const CATALOG_SEARCH_DELAY_MS = 300;
@@ -263,7 +264,8 @@ function MergePanel({ item, onMerged, onCancel }: { item: CatalogItem; onMerged:
   );
 }
 
-type Panel = { kind: "create" } | { kind: "edit"; id: string } | { kind: "merge"; id: string } | null;
+/** `byHand`: the form for typing a new item, which is the whole of "create" while the shared catalogue is off. */
+type Panel = { kind: "create"; byHand?: true } | { kind: "edit"; id: string } | { kind: "merge"; id: string } | null;
 
 /**
  * The shop's goods: names, units and current prices (REQ-039). Every member of staff reads it; a
@@ -272,11 +274,14 @@ type Panel = { kind: "create" } | { kind: "edit"; id: string } | { kind: "merge"
  * (REQ-041): a goods line keeps its own name and price.
  */
 export function CatalogScreen() {
-  const { api } = useWorkspace();
+  const { api, features } = useWorkspace();
   const can = useMay();
   const { t, language } = useI18n();
   const desktop = useDesktop();
   const mayManage = can("goods.edit");
+  // While the platform's shared catalogue is on, adding starts by searching it; typing by hand is one
+  // button away and is exactly the form below.
+  const pickFirst = features?.catalog === true;
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
   const [view, setView] = useState<View>("active");
@@ -464,7 +469,10 @@ export function CatalogScreen() {
           </button>
         ) : null}
       </div>
-      {mayManage && panel?.kind === "create" ? (
+      {mayManage && panel?.kind === "create" && pickFirst && panel.byHand !== true ? (
+        <SharedPicker onPicked={done} onManual={() => setPanel({ kind: "create", byHand: true })} onCancel={() => setPanel(null)} />
+      ) : null}
+      {mayManage && panel?.kind === "create" && (!pickFirst || panel.byHand === true) ? (
         <ItemForm
           item={null}
           onSend={(input, key) => {

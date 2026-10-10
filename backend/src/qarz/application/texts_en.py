@@ -984,6 +984,8 @@ ERRORS: dict[str, str] = {
     ),
     "ENTRY_OF_DOCUMENT": "This entry was created by a document. To cancel it, cancel the document itself.",
     "BARCODE_TAKEN": "This barcode is attached to another item.",
+    "SUGGESTION_ALREADY_DECIDED": "A decision on this suggestion has already been made.",
+    "SHARED_BARCODE_TAKEN": "This barcode is attached to another item of the shared catalogue.",
     "ITEM_NOT_COUNTABLE": ("This item cannot be tracked in stock: review it first and choose its stock unit."),
     "DOCUMENT_NOT_DRAFT": "This document is already posted or cancelled.",
     "DOCUMENT_CANCELLED": "This document is already cancelled.",

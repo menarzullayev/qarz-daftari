@@ -79,6 +79,7 @@ from qarz.domain.money import Currency
 from qarz.domain.ops_alerts import LEDGER_SERIES, STOCK_SERIES, Alert, DatabaseFigures
 from qarz.infrastructure.db_cash import CashStatements
 from qarz.infrastructure.db_network import NetworkQueries
+from qarz.infrastructure.db_shared_catalog import SharedCatalogAdminQueries, SharedCatalogQueries
 from qarz.infrastructure.db_stock import StockQueries
 
 # Measurement rows refer to a shop or an entry by a value derived from its identifier, never by the
@@ -472,7 +473,7 @@ def _membership(row: Any) -> Membership:
     )
 
 
-class PgTenantSession(CashStatements, StockQueries, NetworkQueries):
+class PgTenantSession(CashStatements, StockQueries, NetworkQueries, SharedCatalogQueries):
     def __init__(self, conn: AsyncConnection, shop_id: UUID) -> None:
         self._conn = conn
         self._shop_id = shop_id
@@ -3084,7 +3085,7 @@ class PgTenantSession(CashStatements, StockQueries, NetworkQueries):
         )
 
 
-class PgPlatformSession:
+class PgPlatformSession(SharedCatalogAdminQueries):
     def __init__(self, conn: AsyncConnection) -> None:
         self._conn = conn
 

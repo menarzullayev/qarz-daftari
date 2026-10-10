@@ -3,7 +3,9 @@ import { type ReactNode, useCallback, useRef, useState } from "react";
 import { useI18n } from "../../i18n/I18nProvider";
 import { type ApiError, isAbort, toApiError } from "../api";
 import { useLoad } from "../hooks";
+import { useMay, useWorkspace } from "../workspace/context";
 import { errorText } from "../workspace/parts";
+import { SharedPickForm } from "../workspace/SharedPicker";
 import type { ScanHost } from "./barcode";
 import { qtyWithUnit, useStock } from "./parts";
 import { ScanField } from "./ScanField";
@@ -63,9 +65,37 @@ export function useLookup(onFound?: (item: StockItem, code: string) => void): {
   return { state, lookup, reset };
 }
 
-/** What a lookup that did not end in an item says: still looking, not found (with the code), or failed. */
-export function LookupNotice({ state, missing }: { state: Lookup; missing?: ((code: string) => ReactNode) | undefined }) {
+/**
+ * What a code no item of the shop has falls through to, while the platform's shared catalogue is on:
+ * the catalogue item an approved barcode names, with a field for the shop's own price. Once picked, the
+ * shop's new item carries the code, so the same lookup is run again and finds it. Shows nothing when the
+ * catalogue does not know the code either: "not found" then reads exactly as before.
+ */
+function SharedOffer({ code, again }: { code: string; again: (code: string) => void }) {
+  const { api } = useWorkspace();
   const { t } = useI18n();
+  const found = useLoad((signal) => api.lookupSharedCatalog(code, signal).catch(() => null), [api, code]);
+  if (found.state.status !== "ready" || found.state.data === null || found.state.data.picked !== null) {
+    return null;
+  }
+  return <SharedPickForm item={found.state.data} intro={t("catalog.shared.scan")} onPicked={() => again(code)} />;
+}
+
+/** What a lookup that did not end in an item says: still looking, not found (with the code), or failed. */
+export function LookupNotice({
+  state,
+  missing,
+  again,
+}: {
+  state: Lookup;
+  missing?: ((code: string) => ReactNode) | undefined;
+  /** Runs the lookup again; given, a code the shop does not have is also asked of the shared catalogue. */
+  again?: ((code: string) => void) | undefined;
+}) {
+  const { t } = useI18n();
+  const { features } = useWorkspace();
+  const can = useMay();
+  const offerShared = again !== undefined && features?.catalog === true && can("goods.edit");
   if (state.status === "pending") {
     return (
       <p className="state" role="status">
@@ -77,6 +107,7 @@ export function LookupNotice({ state, missing }: { state: Lookup; missing?: ((co
     return (
       <div className="notice notice--warning" role="alert">
         <p>{t("stock.scan.missing", { code: state.code })}</p>
+        {offerShared ? <SharedOffer key={state.code} code={state.code} again={again} /> : null}
         {missing?.(state.code) ?? null}
       </div>
     );
@@ -137,7 +168,7 @@ export function ItemFinder({
           setWords(typed);
         }}
       />
-      <LookupNotice state={state} missing={missing} />
+      <LookupNotice state={state} missing={missing} again={lookup} />
       {words !== "" && matches.state.status === "error" ? (
         <p className="field__error" role="alert">
           {errorText(matches.state.error, t)}

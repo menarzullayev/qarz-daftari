@@ -83,6 +83,8 @@ _STATUS = {
     "COST_CURRENCY_MISMATCH": 409,
     "ENTRY_OF_DOCUMENT": 409,
     "BARCODE_TAKEN": 409,
+    "SUGGESTION_ALREADY_DECIDED": 409,
+    "SHARED_BARCODE_TAKEN": 409,
     "ITEM_NOT_COUNTABLE": 409,
     "DOCUMENT_NOT_DRAFT": 409,
     "DOCUMENT_CANCELLED": 409,
@@ -221,6 +223,8 @@ _MESSAGES = {
         ),
         "ENTRY_OF_DOCUMENT": "Bu yozuvni hujjat yaratgan. Uni bekor qilish uchun hujjatning o'zini bekor qiling.",
         "BARCODE_TAKEN": "Bu shtrix-kod boshqa tovarga biriktirilgan.",
+        "SUGGESTION_ALREADY_DECIDED": "Bu taklif bo'yicha qaror allaqachon qabul qilingan.",
+        "SHARED_BARCODE_TAKEN": "Bu shtrix-kod umumiy katalogdagi boshqa tovarga biriktirilgan.",
         "ITEM_NOT_COUNTABLE": (
             "Bu tovarni omborda hisoblab bo'lmaydi: avval uni ko'rib chiqing va ombor o'lchov birligini tanlang."
         ),
@@ -363,6 +367,8 @@ _MESSAGES = {
         ),
         "ENTRY_OF_DOCUMENT": "Эту запись создал документ. Чтобы отменить её, отмените сам документ.",
         "BARCODE_TAKEN": "Этот штрихкод уже привязан к другому товару.",
+        "SUGGESTION_ALREADY_DECIDED": "По этому предложению решение уже принято.",
+        "SHARED_BARCODE_TAKEN": "Этот штрихкод уже привязан к другому товару общего каталога.",
         "ITEM_NOT_COUNTABLE": (
             "Этот товар нельзя учитывать на складе: сначала проверьте его и выберите складскую единицу измерения."
         ),

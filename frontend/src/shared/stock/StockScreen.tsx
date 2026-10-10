@@ -193,6 +193,7 @@ export function StockScreen({ host, office = false }: { host?: ScanHost | undefi
       />
       <LookupNotice
         state={found.state}
+        again={found.lookup}
         missing={(code) =>
           // Giving a code to an item changes the catalog: offered to those who may, and to nobody else.
           can("goods.edit") && attaching === null ? (

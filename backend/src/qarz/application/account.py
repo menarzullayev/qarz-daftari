@@ -14,6 +14,7 @@ from qarz.application.shops import require_member
 from qarz.domain.access import Capability
 from qarz.domain.cash import SWITCH as CASH_SWITCH
 from qarz.domain.network import SWITCH as NETWORK_SWITCH
+from qarz.domain.shared_catalog import SWITCH as CATALOG_SWITCH
 from qarz.domain.stock import SWITCH as STOCK_SWITCH
 
 LIST_MY_SHOPS = self_operation("me.shops.list")
@@ -56,6 +57,11 @@ class AccountService:
                 await session.platform_setting(NETWORK_SWITCH) is True
                 and await session.platform_setting(STOCK_SWITCH) is True
             )
+
+    async def catalog_on(self) -> bool:
+        """Whether the shared product catalogue is on. Said in a header, and only when it is on."""
+        async with self._storage.platform() as session:
+            return await session.platform_setting(CATALOG_SWITCH) is True
 
     async def my_shops(self, user_id: UUID) -> dict[str, Any]:
         async with self._storage.platform() as session:

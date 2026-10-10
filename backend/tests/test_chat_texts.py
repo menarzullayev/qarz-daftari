@@ -77,6 +77,8 @@ def test_every_refusal_the_ledger_can_give_has_a_chat_text() -> None:
         "SUPPORT_ACCESS_ALREADY_OPEN",
         "SUPPORT_ACCESS_NOT_OPEN",  # the owner ends it in the panel
         "RECEIPT_ALREADY_DECIDED",  # receipts are decided in the administrator's panel
+        "SUGGESTION_ALREADY_DECIDED",  # the shared catalogue's queue is decided in the administrator's panel
+        "SHARED_BARCODE_TAKEN",
         # The stock and the suppliers are worked in the Mini App and the panel. The one refusal of theirs
         # the chat can meet, cancelling the entry of a customer's return, has its text (ENTRY_OF_DOCUMENT).
         "STOCK_INSUFFICIENT",  # a sale typed in the chat names no goods, so it takes nothing from the stock
