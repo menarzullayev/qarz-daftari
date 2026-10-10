@@ -82,6 +82,10 @@ One workflow, `.github/workflows/ci.yml`, on every pull request and every push t
 
 **Superseded runs.** A new push to a pull request cancels the run of the push before it. A run on `main` is never cancelled.
 
+## Third-party data
+
+The territory reference (regions, districts and mahallas of Uzbekistan) is loaded from a seed that is not in this repository. That seed is derived from [`uzinfocom-org/digital-health-ig`](https://github.com/uzinfocom-org/digital-health-ig), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); apostrophes were normalised and the files reshaped. See "Territories and a customer's address" in `docs/09-development-plan/EXPANSION.md`.
+
 ## Dependencies
 
 `backend/requirements.lock` pins every backend dependency with hashes for Linux and Python 3.12, the platform of CI and deployment. Regenerate it with [uv](https://docs.astral.sh/uv/) after changing `pyproject.toml`:
