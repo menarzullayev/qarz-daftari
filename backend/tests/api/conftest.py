@@ -50,7 +50,7 @@ class HeaderAuthenticator:
 
 
 # Where the test application's passkeys are for: a deployment with QD_PASSKEY_HOST set.
-TEST_PASSKEY_HOST = "admin.hisobox.test"
+TEST_PASSKEY_HOST = "admin.shop.test"
 TEST_PASSKEY_SITE = PasskeySite(
     host=TEST_PASSKEY_HOST,
     key=challenge_key("a server secret of the tests"),

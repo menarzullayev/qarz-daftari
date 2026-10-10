@@ -3,7 +3,8 @@ import { type ComponentType, type FormEvent, type ReactNode, useCallback, useEff
 import { I18nProvider, useI18n } from "../i18n/I18nProvider";
 import type { Language } from "../i18n/types";
 import { type LoginReturn, NO_RETURN } from "../panel/loginReturn";
-import { signInPanel, signInWithPassword, signOutPanel } from "../panel/signIn";
+import { askPasskeyQuestion, signInPanel, signInWithPasskey, signInWithPassword, signOutPanel } from "../panel/signIn";
+import { browserPasskeys, PasskeyDeclined, type PasskeyDevice, readQuestion } from "../shared/passkey";
 import { type LoginWidgetProps, TelegramLogin } from "../panel/TelegramLogin";
 import { type ApiAuth, type ApiError, type Fetch, toApiError } from "../shared/api";
 import { useLatest, useSubmit } from "../shared/hooks";
@@ -28,6 +29,8 @@ type AdminRootProps = {
   botUsername?: string | null;
   /** The sign-in button; tests and previews replace Telegram's with one that loads nothing. */
   LoginWidget?: ComponentType<LoginWidgetProps>;
+  /** The device passkeys are asked of; a test passes its own. */
+  passkeys?: PasskeyDevice;
   /** What Telegram sent the browser back with, taken from the address when the page loaded. */
   loginReturn?: LoginReturn;
 };
@@ -134,10 +137,58 @@ function PasswordSignIn({ fetch, onSignedIn }: { fetch: Fetch; onSignedIn: (auth
   );
 }
 
+/**
+ * The way in with a passkey: the server says what must be answered, the device answers after it has
+ * verified its holder, and the answer goes back. Shown only where the browser has such devices.
+ */
+function PasskeySignIn({
+  fetch,
+  device,
+  onSignedIn,
+}: {
+  fetch: Fetch;
+  device: PasskeyDevice;
+  onSignedIn: (auth: ApiAuth) => void;
+}) {
+  const { t } = useI18n();
+  const [attempt, setAttempt] = useState<"idle" | "pending" | "declined" | "refused">("idle");
+
+  const onClick = () => {
+    if (attempt === "pending") {
+      return;
+    }
+    setAttempt("pending");
+    askPasskeyQuestion(fetch)
+      .then((header) => {
+        const question = readQuestion(header);
+        if (question === null) {
+          throw new Error("no question");
+        }
+        return device.answer(question);
+      })
+      .then((answer) => signInWithPasskey(fetch, answer))
+      .then(onSignedIn, (error: unknown) => setAttempt(error instanceof PasskeyDeclined ? "declined" : "refused"));
+  };
+
+  if (!device.available()) {
+    return null;
+  }
+  return (
+    <p className="actions">
+      <button type="button" className="button" onClick={onClick} disabled={attempt === "pending"}>
+        {t("door.passkey.open")}
+      </button>
+      {attempt === "declined" ? <span role="status">{t("door.passkey.declined")}</span> : null}
+      {attempt === "refused" ? <span role="alert">{t("door.passkey.refused")}</span> : null}
+    </p>
+  );
+}
+
 function SignIn({
   fetch,
   botUsername,
   LoginWidget,
+  passkeys,
   takeReturn,
   expired,
   onSignedIn,
@@ -145,6 +196,7 @@ function SignIn({
   fetch: Fetch;
   botUsername: string | null;
   LoginWidget: ComponentType<LoginWidgetProps>;
+  passkeys: PasskeyDevice;
   takeReturn: () => LoginReturn;
   expired: boolean;
   onSignedIn: (auth: ApiAuth) => void;
@@ -202,6 +254,7 @@ function SignIn({
           {attempt.status === "pending" ? <Loading /> : <LoginWidget botUsername={botUsername} language={language} />}
         </>
       )}
+      <PasskeySignIn fetch={fetch} device={passkeys} onSignedIn={onSignedIn} />
       <PasswordSignIn fetch={fetch} onSignedIn={onSignedIn} />
     </Door>
   );
@@ -401,6 +454,7 @@ function Root({
   now = systemClock,
   botUsername = BOT_USERNAME,
   LoginWidget = TelegramLogin,
+  passkeys = browserPasskeys,
   loginReturn = NO_RETURN,
 }: Omit<AdminRootProps, "initialLanguage">) {
   const { t } = useI18n();
@@ -484,6 +538,7 @@ function Root({
           fetch={fetch}
           botUsername={botUsername}
           LoginWidget={LoginWidget}
+          passkeys={passkeys}
           takeReturn={takeReturn}
           expired={phase.expired}
           onSignedIn={(signedIn) => setPhase({ kind: "checking", auth: signedIn })}

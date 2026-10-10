@@ -3650,8 +3650,6 @@ class PgPlatformSession(SharedCatalogAdminQueries, TerritoryAdminQueries):
             {"user_id": user_id, "failures": failures, "locked": locked_until},
         )
 
-    _PASSKEY = "id, user_id, credential_id, public_key, algorithm, sign_count, label, created_at, last_used_at"
-
     @staticmethod
     def _passkey(row: Any) -> Passkey:
         return Passkey(
@@ -3701,7 +3699,8 @@ class PgPlatformSession(SharedCatalogAdminQueries, TerritoryAdminQueries):
     async def passkeys_of(self, user_id: UUID) -> list[Passkey]:
         rows = await self._conn.execute(
             text(
-                f"SELECT {self._PASSKEY} FROM admin_passkey "
+                "SELECT id, user_id, credential_id, public_key, algorithm, sign_count, label, created_at, "
+                "  last_used_at FROM admin_passkey "
                 "WHERE user_id = :user_id AND revoked_at IS NULL ORDER BY created_at, id"
             ),
             {"user_id": user_id},
@@ -3712,7 +3711,8 @@ class PgPlatformSession(SharedCatalogAdminQueries, TerritoryAdminQueries):
         row = (
             await self._conn.execute(
                 text(
-                    f"SELECT {self._PASSKEY} FROM admin_passkey "
+                    "SELECT id, user_id, credential_id, public_key, algorithm, sign_count, label, created_at, "
+                    "  last_used_at FROM admin_passkey "
                     "WHERE credential_id = :credential_id AND revoked_at IS NULL FOR UPDATE"
                 ),
                 {"credential_id": credential_id},

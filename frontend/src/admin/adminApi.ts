@@ -1,3 +1,4 @@
+import type { NewCredential, PasskeyStart } from "../shared/passkey";
 import { type ApiAuth, type ApiError, call, type Call, type Fetch, type Page, reading, type Transport } from "../shared/api";
 
 /**
@@ -426,6 +427,19 @@ const ACTION_PATHS: Readonly<Record<SubscriptionAction, string>> = {
   unsuspend: "unsuspend",
 };
 
+/** One of the caller's passkeys: a device that can sign them in. */
+export type Passkey = Readonly<{ id: string; label: string; createdAt: string; lastUsedAt: string | null }>;
+
+function passkeyRow(value: unknown): Passkey {
+  const row = reading.record(value);
+  return {
+    id: reading.text(row["id"]),
+    label: reading.text(row["label"]),
+    createdAt: reading.text(row["created_at"]),
+    lastUsedAt: row["last_used_at"] === null ? null : reading.text(row["last_used_at"]),
+  };
+}
+
 export function createAdminApi(options: {
   fetch: Fetch;
   auth: ApiAuth;
@@ -707,6 +721,64 @@ export function createAdminApi(options: {
         query: { shop_id: params.shopId, open: params.open ? "true" : null, cursor: params.cursor },
         signal,
         read: reading.page(supportAccess),
+      });
+    },
+
+    /** The caller's own passkeys that are not ended. */
+    listPasskeys(signal?: AbortSignal): Promise<Passkey[]> {
+      return call(transport, {
+        method: "GET",
+        path: `${BASE}/passkeys`,
+        signal,
+        read: (value) => reading.list(reading.record(value)["items"], passkeyRow),
+      });
+    },
+
+    /** What this device must make a credential with. Nothing is kept by asking. */
+    passkeyChallenge(): Promise<PasskeyStart> {
+      return call(transport, {
+        method: "GET",
+        path: `${BASE}/passkeys/challenge`,
+        read: (value) => {
+          const body = reading.record(value);
+          const rp = reading.record(body["rp"]);
+          const user = reading.record(body["user"]);
+          return {
+            challenge: reading.text(body["challenge"]),
+            rpId: reading.text(rp["id"]),
+            rpName: reading.text(rp["name"]),
+            userId: reading.text(user["id"]),
+            userName: reading.text(user["name"]),
+            algorithms: reading.list(body["algorithms"], reading.whole),
+            exclude: reading.list(body["exclude"], reading.text),
+            timeout: reading.whole(body["timeout"]),
+          };
+        },
+      });
+    },
+
+    addPasskey(label: string, made: NewCredential, idempotencyKey: string): Promise<Passkey> {
+      return call(transport, {
+        method: "POST",
+        path: `${BASE}/passkeys`,
+        body: {
+          label,
+          client_data: made.clientData,
+          authenticator_data: made.authenticatorData,
+          public_key: made.publicKey,
+          algorithm: made.algorithm,
+        },
+        idempotencyKey,
+        read: passkeyRow,
+      });
+    },
+
+    removePasskey(passkeyId: string, idempotencyKey: string): Promise<void> {
+      return call(transport, {
+        method: "POST",
+        path: `${BASE}/passkeys/${segment(passkeyId)}/remove`,
+        idempotencyKey,
+        read: () => undefined,
       });
     },
 

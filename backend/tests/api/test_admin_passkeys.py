@@ -384,9 +384,9 @@ def test_a_host_that_is_not_a_bare_host_name_refuses_to_start(monkeypatch: pytes
 
     monkeypatch.delenv("QD_PASSKEY_HOST", raising=False)
     assert Settings().passkey_site_host() is None
-    monkeypatch.setenv("QD_PASSKEY_HOST", "Admin.Hisobox.UZ")
-    assert Settings().passkey_site_host() == "admin.hisobox.uz"
-    for bad in ("https://admin.hisobox.uz", "admin.hisobox.uz:443", "admin.hisobox.uz/panel", "localhost", "a b.uz"):
+    monkeypatch.setenv("QD_PASSKEY_HOST", "Admin.Example.UZ")
+    assert Settings().passkey_site_host() == "admin.example.uz"
+    for bad in ("https://admin.example.uz", "admin.example.uz:443", "admin.example.uz/panel", "localhost", "a b.uz"):
         monkeypatch.setenv("QD_PASSKEY_HOST", bad)
         with pytest.raises(ValueError, match="QD_PASSKEY_HOST"):
             Settings().passkey_site_host()

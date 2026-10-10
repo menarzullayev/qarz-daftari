@@ -567,8 +567,37 @@ same holds for whoever learns the password.
 - **In the audit:** `admin.service_key_created`, `admin.service_key_revoked`, `admin.password_set`,
   `admin.signed_in_with_password`, `admin.password_locked`.
 
+### What was built (second part: the passkey)
+
+- **Migration 0053.** `admin_passkey` holds a credential's identifier, its public key as the browser
+  gives it and the algorithm, the device's own count of signatures, a label, and when it was ended. The
+  administrators' role alone reads and writes it; nothing is ever deleted from it.
+- **A deployment setting, `QD_PASSKEY_HOST`**: the bare host name passkeys are made for (a passkey
+  belongs to one site). Empty, the default: there are no passkeys and their routes do not exist. Anything
+  that is not a bare host name refuses to start. On the single host it is the same name as
+  `DEPLOY_PUBLIC_HOST`.
+- **Registering** is for an administrator who is inside, and only for themselves: the settings screen
+  links to "Passkey devices", where this device is added under a name and any device is removed.
+  `GET /api/admin/v1/passkeys/challenge`, `POST /api/admin/v1/passkeys`, `POST …/{id}/remove`.
+- **Signing in** is one route, `POST /api/v1/auth/admin-passkey`. Called with no answer it refuses as it
+  refuses a wrong one and says, in `WWW-Authenticate`, what must be answered; so no route hands anything
+  to a caller who has shown nothing. The device offers the passkeys it holds for the site; nobody types a
+  name. The answer gives the web session the Telegram sign-in gives.
+- **What is checked**: the challenge is this server's, for this purpose (and, when registering, for this
+  person) and not older than five minutes; the client data is of the right kind and from this site's own
+  page; the authenticator made its data for this site and verified its holder; the signature is the
+  stored key's (ES256, RS256 or EdDSA); a device that counts has counted upwards; an accepted sign-in is
+  not accepted twice. Challenges are not stored: each carries its expiry and a MAC under a key drawn from
+  the server's secret.
+- **No attestation** is asked for, and the public key is taken as the browser hands it over: which make
+  of device holds the key is not checked. The person registering is an administrator already.
+- **No new dependency**: the signature is verified with `cryptography`, which the project had.
+- **In the audit:** `admin.passkey_added`, `admin.passkey_removed`, `admin.signed_in_with_passkey`,
+  `admin.passkey_counter_went_back`.
+
 ### Open
 
-- The passkey is not built yet.
+- No screen was opened in a real browser with a real device: the device is a stand-in in every test.
+- A passkey whose counter went back is refused and reported; it is not ended automatically.
 - A request made with a key is audited as its administrator's; the audit row does not say a key was used.
 - A password cannot be removed, only replaced; a page to see and end keys in the admin panel does not exist.
