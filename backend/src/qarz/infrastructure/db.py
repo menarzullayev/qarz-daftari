@@ -3574,10 +3574,18 @@ class PgPlatformSession(SharedCatalogAdminQueries, TerritoryAdminQueries):
         result = await self._conn.execute(
             text(
                 "INSERT INTO user_session (id, token_hash, user_id, kind, csrf_hash, label, created_at, expires_at) "
-                "VALUES (:id, :token_hash, :user_id, 'service', NULL, :label, :now, 'infinity') "
+                "VALUES (:id, :token_hash, :user_id, 'service', NULL, :label, :now, :never) "
                 "ON CONFLICT (label) WHERE kind = 'service' AND revoked_at IS NULL DO NOTHING"
             ),
-            {"id": uuid4(), "token_hash": token_hash, "user_id": user_id, "label": label, "now": now},
+            {
+                "id": uuid4(),
+                "token_hash": token_hash,
+                "user_id": user_id,
+                "label": label,
+                "now": now,
+                # A key does not run out. A real moment, far off: not every reader takes 'infinity'.
+                "never": datetime(9999, 1, 1, tzinfo=UTC),
+            },
         )
         return bool(result.rowcount)
 
