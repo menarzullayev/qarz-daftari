@@ -37,6 +37,8 @@ STOCK_HEADER = "X-Qarz-Stock"
 NETWORK_HEADER = "X-Qarz-Network"
 # The shared product catalogue is on: a client then offers picking an item from it.
 CATALOG_HEADER = "X-Qarz-Catalog"
+# A customer may have an address: a client then offers the pickers of the territory reference.
+ADDRESS_HEADER = "X-Qarz-Address"
 
 
 class ActiveShop(BaseModel):
@@ -76,6 +78,8 @@ def add_account_routes(
             response.headers[NETWORK_HEADER] = "on"
         if await account.catalog_on():
             response.headers[CATALOG_HEADER] = "on"
+        if await account.address_on():
+            response.headers[ADDRESS_HEADER] = "on"
         return body
 
     @app.put("/api/v1/me/active-shop", name=SET_ACTIVE_SHOP.name)

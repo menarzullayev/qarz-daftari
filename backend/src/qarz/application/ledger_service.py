@@ -28,6 +28,8 @@ from qarz.application.currencies import (
     require_currency,
     tag,
 )
+from qarz.application.customer_address import address_of
+from qarz.application.customer_address import switched_on as address_on
 from qarz.application.customers import (
     MAX_PAGE,
     CustomerArchived,
@@ -825,8 +827,13 @@ def payment_history_body(history: ledger.PaymentHistory | None) -> dict[str, int
     }
 
 
-async def customer_detail_in(session: TenantSession, customer_id: UUID, today: date, now: datetime) -> dict[str, Any]:
-    """One customer with balance, history and entries. The caller has already decided who may see them."""
+async def customer_detail_in(
+    session: TenantSession, customer_id: UUID, today: date, now: datetime, lang: str = "uz"
+) -> dict[str, Any]:
+    """One customer with balance, history and entries. The caller has already decided who may see them.
+
+    While the platform switch `address_on` is on the customer's address is with them, its places named
+    in `lang`; while it is off the body has no `address` at all."""
     customer = await session.get_customer(customer_id, for_update=False)
     if customer is None or customer.status == "anonymized":
         raise NotFound()
@@ -849,6 +856,8 @@ async def customer_detail_in(session: TenantSession, customer_id: UUID, today: d
             overdue=_overdue_body(ledger.overdue(in_dollars, today)),
             payment_history=payment_history_body(ledger.payment_history(in_dollars, today)),
         )
+    if await address_on(session):
+        body["address"] = await address_of(session, customer_id, lang)
     return {
         **body,
         "overdue": _overdue_body(ledger.overdue(entries, today)),
@@ -1050,11 +1059,13 @@ class LedgerService:
                 action=apply,
             )
 
-    async def customer_detail(self, user_id: UUID, shop_id: UUID, customer_id: UUID) -> dict[str, Any]:
+    async def customer_detail(
+        self, user_id: UUID, shop_id: UUID, customer_id: UUID, *, lang: str = "uz"
+    ) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, READ_CUSTOMER)
             await require_viewable(session, actor, self._today())
-            return await customer_detail_in(session, customer_id, self._today(), self._now())
+            return await customer_detail_in(session, customer_id, self._today(), self._now(), lang)
 
     async def overview(self, user_id: UUID, shop_id: UUID) -> dict[str, Any]:
         async with self._storage.tenant(shop_id) as session:

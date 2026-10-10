@@ -125,6 +125,8 @@ UZ: dict[str, str | tuple[str, ...]] = {
     "currency": "Valyuta",
     "limit_usd": "Nasiya limiti ($)",
     "owed_usd": "Qarzi ($)",
+    # Only while the platform switch `address_on` is on: the last column of the customers sheet.
+    "address": "Manzil",
     "summary_debtors_usd": "Dollarda qarzdor mijozlar soni",
     "summary_outstanding_usd": "Jami qarz ($)",
     "summary_advances": "Mijozlarning oldindan to'lovlari (avans)",
@@ -479,6 +481,7 @@ RU: dict[str, str | tuple[str, ...]] = {
     "currency": "Валюта",
     "limit_usd": "Лимит долга ($)",
     "owed_usd": "Долг ($)",
+    "address": "Адрес",
     "summary_debtors_usd": "Число должников в долларах",
     "summary_outstanding_usd": "Всего долг ($)",
     "summary_advances": "Предоплаты клиентов (авансы)",

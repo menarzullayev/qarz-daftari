@@ -607,6 +607,7 @@ EXPORT: dict[str, str | tuple[str, ...]] = {
     "currency": "Valyuta",
     "limit_usd": "Nesiye limiti ($)",
     "owed_usd": "Qarızı ($)",
+    "address": "Mánzil",
     "summary_debtors_usd": "Dollarda qarızdar qarıydarlar sanı",
     "summary_outstanding_usd": "Jámi qarız ($)",
     "summary_advances": "Qarıydarlardıń aldınnan tólemleri (avans)",

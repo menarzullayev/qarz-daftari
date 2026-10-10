@@ -9,6 +9,13 @@ from uuid import UUID, uuid4
 
 from qarz.application import idempotency
 from qarz.application.currencies import USD, dollars_on, limit_hint
+from qarz.application.customer_address import (
+    address_fingerprint,
+    address_of,
+    checked_address,
+    parse_address,
+)
+from qarz.application.customer_address import switched_on as address_on
 from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.operations import operation
 from qarz.application.ports import CustomerRecord, Membership, Storage, TenantSession
@@ -250,24 +257,50 @@ class CustomerService:
         return tashkent_date(self._now())
 
     async def create(
-        self, user_id: UUID, shop_id: UUID, display_name: str, phone: str | None, request_key: str | None
+        self,
+        user_id: UUID,
+        shop_id: UUID,
+        display_name: str,
+        phone: str | None,
+        request_key: str | None,
+        *,
+        address: Any = _UNSET,
+        lang: str = "uz",
     ) -> dict[str, Any]:
+        """`address` is what the request names for it, only while the platform switch `address_on` is
+        on: an object of the territory reference's identifiers. Left out or null, the customer has none."""
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, CREATE_CUSTOMER)
             key = idempotency.validate_key(request_key)
+            with_address = await address_on(session)
+            if address is not _UNSET and not with_address:
+                # As any field the request model does not know: while the switch is off there is no address.
+                raise ValidationFailed({"address": "unknown field"})
             name, number = clean_name(display_name), clean_phone(phone)
+            place = None if address is _UNSET else await checked_address(session, parse_address(address))
             await require_writable(session, self._today(), new_credit=False)
 
             async def apply() -> dict[str, Any]:
                 created = await create_customer_in(session, actor, clean_name(name), number, self._today())
-                return customer_body(created, 0, 0 if await dollars_on(session) else None)
+                if place is not None:
+                    await session.set_customer_address(created.customer_id, place, self._now())
+                body = customer_body(created, 0, 0 if await dollars_on(session) else None)
+                if with_address:
+                    body["address"] = await address_of(session, created.customer_id, lang)
+                return body
 
             return await idempotency.run_once(
                 session,
                 key=key,
                 operation=CREATE_CUSTOMER.name,
                 user_id=user_id,
-                request={"display_name": name, "phone": number},
+                # Only a request that names an address carries the key, so every other request keeps the
+                # fingerprint it had before addresses existed.
+                request={
+                    "display_name": name,
+                    "phone": number,
+                    **({} if address is _UNSET else {"address": address_fingerprint(place)}),
+                },
                 action=apply,
             )
 
@@ -291,10 +324,18 @@ class CustomerService:
         request_key: str | None,
         credit_limit: Any = _UNSET,
         credit_limit_usd: Any = _UNSET,
+        address: Any = _UNSET,
+        lang: str = "uz",
     ) -> dict[str, Any]:
+        """`address`, only while the platform switch `address_on` is on: left out, the address stays as
+        it is; null removes it; an object replaces it as a whole."""
         async with self._storage.tenant(shop_id) as session:
             actor = await require_member(session, user_id, UPDATE_CUSTOMER)
             key = idempotency.validate_key(request_key)
+            with_address = await address_on(session)
+            if address is not _UNSET and not with_address:
+                # As any field the request model does not know: while the switch is off there is no address.
+                raise ValidationFailed({"address": "unknown field"})
             if credit_limit_usd is not _UNSET and not await dollars_on(session):
                 # As any field the request model does not know: the shop has no dollar limit to set.
                 raise ValidationFailed({"credit_limit_usd": "unknown field"})
@@ -304,6 +345,7 @@ class CustomerService:
                 and reminders_off is None
                 and credit_limit is _UNSET
                 and credit_limit_usd is _UNSET
+                and address is _UNSET
             ):
                 raise ValidationFailed({"_": "nothing to change"})
             if credit_limit is not _UNSET and credit_limit is not None and not valid_limit(credit_limit):
@@ -318,6 +360,7 @@ class CustomerService:
                 raise ValidationFailed({"credit_limit_usd": limit_hint(USD)})
             name = clean_name(display_name) if display_name is not None else None
             number = _UNSET if phone is _UNSET else clean_phone(phone)
+            place = None if address is _UNSET else await checked_address(session, parse_address(address))
             await require_writable(session, self._today(), new_credit=False)
 
             async def apply() -> dict[str, Any]:
@@ -336,6 +379,8 @@ class CustomerService:
                     set_limit_usd=credit_limit_usd is not _UNSET,
                     credit_limit_usd=None if credit_limit_usd is _UNSET else credit_limit_usd,
                 )
+                if address is not _UNSET:
+                    await session.set_customer_address(customer_id, place, self._now())
                 await session.record_activity(
                     membership_id=actor.membership_id,
                     action="customer.updated",
@@ -344,9 +389,12 @@ class CustomerService:
                 )
                 balances = await session.balances([customer_id])
                 dollars = await dollar_balances(session, [customer_id])
-                return customer_body(
+                body = customer_body(
                     updated, balances.get(customer_id, 0), None if dollars is None else dollars.get(customer_id, 0)
                 )
+                if with_address:
+                    body["address"] = await address_of(session, customer_id, lang)
+                return body
 
             return await idempotency.run_once(
                 session,
@@ -364,6 +412,8 @@ class CustomerService:
                     # Only a request that names the dollar limit carries the key, so every other request
                     # keeps the fingerprint it had before dollars existed.
                     **({} if credit_limit_usd is _UNSET else {"credit_limit_usd": credit_limit_usd}),
+                    # The same for the address.
+                    **({} if address is _UNSET else {"address": address_fingerprint(place)}),
                 },
                 action=apply,
             )

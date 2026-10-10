@@ -81,6 +81,7 @@ from qarz.infrastructure.db_cash import CashStatements
 from qarz.infrastructure.db_network import NetworkQueries
 from qarz.infrastructure.db_shared_catalog import SharedCatalogAdminQueries, SharedCatalogQueries
 from qarz.infrastructure.db_stock import StockQueries
+from qarz.infrastructure.db_territories import TerritoryAdminQueries, TerritoryQueries
 
 # Measurement rows refer to a shop or an entry by a value derived from its identifier, never by the
 # identifier itself (ADR-010).
@@ -473,7 +474,7 @@ def _membership(row: Any) -> Membership:
     )
 
 
-class PgTenantSession(CashStatements, StockQueries, NetworkQueries, SharedCatalogQueries):
+class PgTenantSession(CashStatements, StockQueries, NetworkQueries, SharedCatalogQueries, TerritoryQueries):
     def __init__(self, conn: AsyncConnection, shop_id: UUID) -> None:
         self._conn = conn
         self._shop_id = shop_id
@@ -1772,6 +1773,9 @@ class PgTenantSession(CashStatements, StockQueries, NetworkQueries, SharedCatalo
         await self._conn.execute(
             text(
                 "UPDATE customer SET display_name = :label, name_norm = :norm, phone = NULL, lang = NULL, "
+                # Where the customer lives goes with the name and the phone (migration 0051).
+                "geo_region_id = NULL, geo_district_id = NULL, geo_mahalla_id = NULL, geo_street_id = NULL, "
+                "street_text = NULL, address_at = NULL, "
                 "status = 'anonymized', reminders_off = true WHERE id = :id"
             ),
             {"id": customer_id, "label": label, "norm": name_norm},
@@ -3085,7 +3089,7 @@ class PgTenantSession(CashStatements, StockQueries, NetworkQueries, SharedCatalo
         )
 
 
-class PgPlatformSession(SharedCatalogAdminQueries):
+class PgPlatformSession(SharedCatalogAdminQueries, TerritoryAdminQueries):
     def __init__(self, conn: AsyncConnection) -> None:
         self._conn = conn
 

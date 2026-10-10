@@ -21,6 +21,8 @@ from uuid import UUID, uuid4
 from qarz.application import idempotency
 from qarz.application.chat_texts import say
 from qarz.application.currencies import USD, UZS, dollars_on
+from qarz.application.customer_address import address_line
+from qarz.application.customer_address import switched_on as address_on
 from qarz.application.customers import require_viewable
 from qarz.application.errors import AppError, NotFound, StorageTimeout
 from qarz.application.export_texts import header, word
@@ -30,6 +32,7 @@ from qarz.application.operations import operation
 from qarz.application.ports import ExportJobRecord, Storage
 from qarz.application.shops import require_member
 from qarz.application.stock_export import write_stock
+from qarz.application.territories_ports import AddressRow
 from qarz.application.xlsx import MIME, Cell, Workbook
 from qarz.domain.access import Capability
 from qarz.domain.exports import (
@@ -293,11 +296,16 @@ class ExportService:
         is a sum of so'm and dollars.
         """
         dollar_columns = (word(lang, "limit_usd"), word(lang, "owed_usd")) if with_dollars else ()
+        # While the platform switch `address_on` is on, where each customer lives is the last column of
+        # the customers sheet: the address is the shop's own data, like the name and the phone.
+        async with self._storage.tenant(shop_id) as session:
+            with_address = await address_on(session)
+        address_columns = (word(lang, "address"),) if with_address else ()
         summary = book.sheet(word(lang, "sheet_summary"), widths=(46, 22, 14, 26, 20, 16, 30))
         customers = book.sheet(
             word(lang, "sheet_customers"),
-            (*header(lang, "customers"), *dollar_columns),
-            (28, 16, 22, 14, 14, 16, 38, *((16, 14) if with_dollars else ())),
+            (*header(lang, "customers"), *dollar_columns, *address_columns),
+            (28, 16, 22, 14, 14, 16, 38, *((16, 14) if with_dollars else ()), *((48,) if with_address else ())),
         )
         ledger = book.sheet(
             word(lang, "sheet_ledger"),
@@ -388,10 +396,13 @@ class ExportService:
                 )
 
         people = []
+        addresses: dict[UUID, AddressRow] = {}
         last: UUID | None = None
         while True:
             async with self._storage.tenant(shop_id) as session:
                 batch = await session.export_customers(after=last, limit=PAGE)
+                if with_address:
+                    addresses.update(await session.customer_addresses([person.customer_id for person in batch]))
             if not batch:
                 break
             last = batch[-1].customer_id
@@ -416,6 +427,7 @@ class ExportService:
                         if with_dollars
                         else ()
                     ),
+                    *((address_line(addresses.get(person.customer_id), lang),) if with_address else ()),
                 )
             )
 

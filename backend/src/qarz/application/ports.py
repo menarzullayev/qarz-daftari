@@ -12,6 +12,7 @@ from qarz.application.cash_ports import CashSession
 from qarz.application.network_ports import NetworkSession
 from qarz.application.shared_catalog_ports import SharedCatalogAdminSession, SharedCatalogSession
 from qarz.application.stock_ports import StockSession
+from qarz.application.territories_ports import TerritoryAdminSession, TerritorySession
 from qarz.domain.access import Role
 from qarz.domain.ledger import Entry
 from qarz.domain.money import Currency
@@ -716,7 +717,7 @@ class OutboxMessage:
     created_at: datetime
 
 
-class TenantSession(CashSession, StockSession, NetworkSession, SharedCatalogSession, Protocol):
+class TenantSession(CashSession, StockSession, NetworkSession, SharedCatalogSession, TerritorySession, Protocol):
     """One database transaction scoped to one shop. Nothing outside that shop is visible through it."""
 
     async def active_membership(self, user_id: UUID) -> Membership | None: ...
@@ -1495,7 +1496,7 @@ class TenantSession(CashSession, StockSession, NetworkSession, SharedCatalogSess
     async def store_response(self, key: str, response: dict[str, Any]) -> None: ...
 
 
-class PlatformSession(SharedCatalogAdminSession, Protocol):
+class PlatformSession(SharedCatalogAdminSession, TerritoryAdminSession, Protocol):
     """One database transaction with no tenant. Tenant tables show no rows through it."""
 
     async def claim_update(self, update_id: int) -> bool:

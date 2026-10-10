@@ -16,6 +16,7 @@ from qarz.domain.cash import SWITCH as CASH_SWITCH
 from qarz.domain.network import SWITCH as NETWORK_SWITCH
 from qarz.domain.shared_catalog import SWITCH as CATALOG_SWITCH
 from qarz.domain.stock import SWITCH as STOCK_SWITCH
+from qarz.domain.territories import SWITCH as ADDRESS_SWITCH
 
 LIST_MY_SHOPS = self_operation("me.shops.list")
 SET_ACTIVE_SHOP = self_operation("me.active_shop.set")
@@ -62,6 +63,11 @@ class AccountService:
         """Whether the shared product catalogue is on. Said in a header, and only when it is on."""
         async with self._storage.platform() as session:
             return await session.platform_setting(CATALOG_SWITCH) is True
+
+    async def address_on(self) -> bool:
+        """Whether a customer may have an address. Said in a header, and only when it is on."""
+        async with self._storage.platform() as session:
+            return await session.platform_setting(ADDRESS_SWITCH) is True
 
     async def my_shops(self, user_id: UUID) -> dict[str, Any]:
         async with self._storage.platform() as session:

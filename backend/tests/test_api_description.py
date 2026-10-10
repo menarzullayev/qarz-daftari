@@ -190,12 +190,13 @@ def _response_models(app: FastAPI) -> set[type[Answer]]:
     return found
 
 
-# The only fields with a default: what a shop that works in US dollars gets beside its so'm figures
+# The only fields with a default: a customer's address while `address_on` is on (answers.py), and what a
+# shop that works in US dollars gets beside its so'm figures
 # (answers.py, "Dollars"). A route whose model has one leaves an unset field out of its answer, which the
 # test below this one holds it to, so the default is never written into an answer.
 DOLLAR_FIELDS = {
     "Customer": ["usd"],
-    "CustomerDetail": ["usd"],
+    "CustomerDetail": ["usd", "address"],
     "CustomerDollars": ["overdue", "payment_history"],
     "Debtor": ["usd"],
     "Entry": ["currency"],
