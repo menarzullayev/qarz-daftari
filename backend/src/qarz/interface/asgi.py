@@ -10,11 +10,13 @@ from aiogram import Bot
 from fastapi import FastAPI
 
 from qarz.application.admin_access import AdminAccess
+from qarz.application.admin_passkeys import PasskeySite, challenge_key
 from qarz.application.admin_sign_in import Announce
 from qarz.application.auth import AuthService
 from qarz.application.online_payment import PaymentKeys
 from qarz.application.ops_watch import password_sign_in_message
 from qarz.domain.exports import MAX_EXPORT_BYTES
+from qarz.infrastructure import passkey_signature
 from qarz.infrastructure.db import Database
 from qarz.infrastructure.file_store import build_file_store
 from qarz.infrastructure.secret_box import SecretBox
@@ -46,6 +48,19 @@ def _password_sign_in_announcer(settings: Settings) -> Announce | None:
             await bot.session.close()
 
     return announce
+
+
+def _passkey_site(settings: Settings) -> PasskeySite | None:
+    """Where the administrators' passkeys are for; nobody's when no host or no server secret is set."""
+    host = settings.passkey_site_host()
+    if host is None or not settings.secrets_key:
+        return None
+    return PasskeySite(
+        host=host,
+        key=challenge_key(settings.secrets_key),
+        verify=passkey_signature.verified,
+        usable=passkey_signature.usable,
+    )
 
 
 def build(settings: Settings | None = None) -> FastAPI:
@@ -89,6 +104,7 @@ def build(settings: Settings | None = None) -> FastAPI:
         admin=admin,
         admin_storage=admin_database,
         admin_announce=_password_sign_in_announcer(settings),
+        passkey_site=_passkey_site(settings),
         webhook_secret=settings.webhook_secret or None,
         # A store that is named but misconfigured stops the start; none at all only refuses receipts.
         file_store=build_file_store(settings, max_object_bytes=MAX_EXPORT_BYTES),

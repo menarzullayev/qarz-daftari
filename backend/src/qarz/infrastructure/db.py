@@ -15,7 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from qarz.application.admin_sign_in_ports import ServiceKey, StoredPassword
+from qarz.application.admin_sign_in_ports import Passkey, ServiceKey, StoredPassword
 from qarz.application.errors import AlreadyMember, StorageTimeout
 from qarz.application.ports import (
     ActivityRow,
@@ -3649,6 +3649,92 @@ class PgPlatformSession(SharedCatalogAdminQueries, TerritoryAdminQueries):
             text("UPDATE admin_password SET failures = :failures, locked_until = :locked WHERE user_id = :user_id"),
             {"user_id": user_id, "failures": failures, "locked": locked_until},
         )
+
+    _PASSKEY = "id, user_id, credential_id, public_key, algorithm, sign_count, label, created_at, last_used_at"
+
+    @staticmethod
+    def _passkey(row: Any) -> Passkey:
+        return Passkey(
+            row.id,
+            row.user_id,
+            bytes(row.credential_id),
+            bytes(row.public_key),
+            row.algorithm,
+            row.sign_count,
+            row.label,
+            row.created_at,
+            row.last_used_at,
+        )
+
+    async def add_passkey(
+        self,
+        *,
+        user_id: UUID,
+        credential_id: bytes,
+        public_key: bytes,
+        algorithm: int,
+        sign_count: int,
+        label: str,
+        now: datetime,
+    ) -> UUID | None:
+        passkey_id = uuid4()
+        result = await self._conn.execute(
+            text(
+                "INSERT INTO admin_passkey "
+                "  (id, user_id, credential_id, public_key, algorithm, sign_count, label, created_at) "
+                "VALUES (:id, :user_id, :credential_id, :public_key, :algorithm, :sign_count, :label, :now) "
+                "ON CONFLICT (credential_id) DO NOTHING"
+            ),
+            {
+                "id": passkey_id,
+                "user_id": user_id,
+                "credential_id": credential_id,
+                "public_key": public_key,
+                "algorithm": algorithm,
+                "sign_count": sign_count,
+                "label": label,
+                "now": now,
+            },
+        )
+        return passkey_id if result.rowcount else None
+
+    async def passkeys_of(self, user_id: UUID) -> list[Passkey]:
+        rows = await self._conn.execute(
+            text(
+                f"SELECT {self._PASSKEY} FROM admin_passkey "
+                "WHERE user_id = :user_id AND revoked_at IS NULL ORDER BY created_at, id"
+            ),
+            {"user_id": user_id},
+        )
+        return [self._passkey(row) for row in rows]
+
+    async def passkey_by_credential(self, credential_id: bytes) -> Passkey | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    f"SELECT {self._PASSKEY} FROM admin_passkey "
+                    "WHERE credential_id = :credential_id AND revoked_at IS NULL FOR UPDATE"
+                ),
+                {"credential_id": credential_id},
+            )
+        ).first()
+        return None if row is None else self._passkey(row)
+
+    async def note_passkey_use(self, passkey_id: UUID, sign_count: int, now: datetime) -> None:
+        await self._conn.execute(
+            text("UPDATE admin_passkey SET sign_count = :sign_count, last_used_at = :now WHERE id = :id"),
+            {"id": passkey_id, "sign_count": sign_count, "now": now},
+        )
+
+    async def revoke_passkey(self, user_id: UUID, passkey_id: UUID, now: datetime) -> bool:
+        result = await self._conn.execute(
+            text(
+                "UPDATE admin_passkey SET revoked_at = :now "
+                "WHERE id = :id AND user_id = :user_id AND revoked_at IS NULL"
+            ),
+            {"id": passkey_id, "user_id": user_id, "now": now},
+        )
+        return bool(result.rowcount)
 
     async def platform_setting(self, key: str) -> Any | None:
         row = (
