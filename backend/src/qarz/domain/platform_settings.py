@@ -69,6 +69,9 @@ SETTINGS: dict[str, Setting] = {
     # The shared product catalogue (the founder's decisions of 2026-10-10): a shop picks an item out of
     # one catalogue for the whole platform and types only its price. Off: every shop types every item.
     "catalog_on": Setting("switch", False, needs_code=True),
+    # A customer's address, picked from the platform's territory reference (the owner's decisions of
+    # 2026-10-10). Off: a customer has a name and a phone and nothing else, exactly as before.
+    "address_on": Setting("switch", False, needs_code=True),
 }
 
 

@@ -118,6 +118,7 @@ ALLOWED = {
     "application/online_payment.py": "Payme's protocol asks for exactly uz, ru and en",
     "domain/languages.py": "the list of languages itself, Telegram's codes, and the SMS languages",
     "domain/shared_catalog.py": "the catalogue's items have a Russian and an Uzbek name: data, not texts of ours",
+    "domain/territories.py": "a region and a district have an Uzbek, a Russian and an English name: data, not texts",
 }
 FEW = {"uz", "ru"}
 ALL = set(WRITTEN)

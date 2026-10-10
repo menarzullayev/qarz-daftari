@@ -42,6 +42,7 @@ def test_the_settings_are_the_ones_the_administrator_controls() -> None:
         "cash_book_on",
         "network_on",
         "catalog_on",
+        "address_on",
     }
     assert "card_number" not in SETTINGS, "the single card became the list"
 
@@ -65,6 +66,7 @@ def test_defaults_when_nothing_is_stored() -> None:
         "cash_book_on": False,
         "network_on": False,
         "catalog_on": False,  # the shared product catalogue: off until the administrator turns it on
+        "address_on": False,  # a customer's address: off until the administrator turns it on
     }
 
 
@@ -114,6 +116,7 @@ def test_price_card_and_switches_need_a_code() -> None:
         "usd_on",
         "network_on",
         "catalog_on",
+        "address_on",
     }
     assert not needs_code("trial_days")
     assert not needs_code("sms_monthly_quota")
@@ -132,6 +135,7 @@ def test_price_card_and_switches_need_a_code() -> None:
         "stock_on",
         "network_on",
         "catalog_on",
+        "address_on",
     ],
 )
 def test_a_switch_is_true_or_false_and_nothing_else(key: str) -> None:

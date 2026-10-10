@@ -118,7 +118,18 @@ CATALOGUE: tuple[Permission, ...] = (
         "Mijoz qo'shish va uni Telegramga ulash",
         "Добавлять клиентов и подключать их к Telegram",
         _ALL,
-        ("customers.create", "customers.link.create", "waiting.attach", "waiting.dismiss"),
+        (
+            "customers.create",
+            "customers.link.create",
+            "waiting.attach",
+            "waiting.dismiss",
+            # The territory reference (behind `address_on`): looking a place up is part of adding a customer.
+            "territories.regions",
+            "territories.districts",
+            "territories.mahallas",
+            "territories.streets",
+            "territories.last",
+        ),
     ),
     Permission(
         "customers.edit",

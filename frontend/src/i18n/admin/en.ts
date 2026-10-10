@@ -180,6 +180,7 @@ export const enAdmin: PartialCatalog<typeof uzAdmin, EnPlural> = {
   "admin.setting.stock_on": "Stock, goods receipts and suppliers are on",
   "admin.setting.network_on": "Network between shops (partners, orders, delivery notes) is on",
   "admin.setting.catalog_on": "Shared product catalogue is on",
+  "admin.setting.address_on": "Customer address (region, district, mahalla, street) is on",
 
   "admin.audit.filters": "Audit filters",
   "admin.audit.at": "Time",

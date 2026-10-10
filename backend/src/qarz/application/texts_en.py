@@ -614,6 +614,7 @@ EXPORT: dict[str, str | tuple[str, ...]] = {
     "currency": "Currency",
     "limit_usd": "Credit limit ($)",
     "owed_usd": "Debt ($)",
+    "address": "Address",
     "summary_debtors_usd": "Number of customers in debt in dollars",
     "summary_outstanding_usd": "Total debt ($)",
     "summary_advances": "Customers' advances",

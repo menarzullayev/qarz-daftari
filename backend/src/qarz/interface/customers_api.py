@@ -5,7 +5,7 @@ from datetime import date
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, Query
+from fastapi import Depends, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,11 +36,27 @@ from qarz.interface.shops_api import IdempotencyKey
 CurrentUser = Callable[..., Awaitable[UUID]]
 
 
+class AddressInput(BaseModel):
+    """Where a customer lives, as identifiers of the territory reference. Only while the platform switch
+    `address_on` is on; while it is off a request that carries an address is refused like any other
+    request with an unknown field."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    region_id: str = Field(max_length=40)
+    district_id: str | None = Field(default=None, max_length=40)
+    mahalla_id: str | None = Field(default=None, max_length=40)
+    # A street of the reference, within the mahalla; or `street_text`, what the shop typed. Never both.
+    street_id: str | None = Field(default=None, max_length=40)
+    street_text: str | None = Field(default=None, max_length=200)
+
+
 class NewCustomer(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     display_name: str = Field(max_length=200)
     phone: str | None = Field(default=None, max_length=40)
+    address: AddressInput | None = None
 
 
 class CustomerPatch(BaseModel):
@@ -54,6 +70,18 @@ class CustomerPatch(BaseModel):
     credit_limit: int | None = None
     # The dollar limit, in whole cents, the same way. Only in a shop that works in dollars.
     credit_limit_usd: int | None = None
+    # Absent leaves the address as it is; null removes it; an object replaces it as a whole.
+    address: AddressInput | None = None
+
+
+def _address(body: NewCustomer | CustomerPatch) -> Any:
+    if "address" not in body.model_fields_set:
+        return UNSET
+    return None if body.address is None else body.address.model_dump()
+
+
+def _lang(request: Request) -> str:
+    return str(getattr(request.state, "lang", "uz"))
 
 
 class GoodsLine(BaseModel):
@@ -120,9 +148,17 @@ def add_customer_routes(
 
     @app.post(base, name=CREATE_CUSTOMER.name, status_code=201)
     async def create_customer(
-        shop_id: UUID, body: NewCustomer, user_id: user, idempotency_key: IdempotencyKey = None
+        shop_id: UUID, body: NewCustomer, request: Request, user_id: user, idempotency_key: IdempotencyKey = None
     ) -> dict[str, Any]:
-        return await customers.create(user_id, shop_id, body.display_name, body.phone, idempotency_key)
+        return await customers.create(
+            user_id,
+            shop_id,
+            body.display_name,
+            body.phone,
+            idempotency_key,
+            address=_address(body),
+            lang=_lang(request),
+        )
 
     @app.get(base, name=LIST_CUSTOMERS.name, response_model=CustomerPage, response_model_exclude_unset=True)
     async def list_customers(
@@ -141,12 +177,17 @@ def add_customer_routes(
         response_model=CustomerDetail,
         response_model_exclude_unset=True,
     )
-    async def read_customer(shop_id: UUID, customer_id: UUID, user_id: user) -> dict[str, Any]:
-        return await ledger.customer_detail(user_id, shop_id, customer_id)
+    async def read_customer(shop_id: UUID, customer_id: UUID, request: Request, user_id: user) -> dict[str, Any]:
+        return await ledger.customer_detail(user_id, shop_id, customer_id, lang=_lang(request))
 
     @app.patch(base + "/{customer_id}", name=UPDATE_CUSTOMER.name)
     async def update_customer(
-        shop_id: UUID, customer_id: UUID, body: CustomerPatch, user_id: user, idempotency_key: IdempotencyKey = None
+        shop_id: UUID,
+        customer_id: UUID,
+        body: CustomerPatch,
+        request: Request,
+        user_id: user,
+        idempotency_key: IdempotencyKey = None,
     ) -> dict[str, Any]:
         return await customers.update(
             user_id,
@@ -158,6 +199,8 @@ def add_customer_routes(
             request_key=idempotency_key,
             credit_limit=body.credit_limit if "credit_limit" in body.model_fields_set else UNSET,
             credit_limit_usd=body.credit_limit_usd if "credit_limit_usd" in body.model_fields_set else UNSET,
+            address=_address(body),
+            lang=_lang(request),
         )
 
     @app.post(base + "/{customer_id}/archive", name=ARCHIVE_CUSTOMER.name)

@@ -2,7 +2,7 @@ import { type FormEvent, useState } from "react";
 
 import { withMessages } from "../../i18n/catalog";
 import { useI18n } from "../../i18n/I18nProvider";
-import type { ApiError, ChangedPromise, Customer, CustomerDetail, CustomerPatch, Entry } from "../api";
+import type { ApiError, ChangedPromise, CustomerDetail, CustomerPatch, Entry } from "../api";
 import { changedDate, changeRange, DATE_REASON_MAX, isDebtKind, saleDay } from "../dateRules";
 import { formatCalendarDay, formatDateTime, formatMoney } from "../format";
 import { useLoad, useSubmit } from "../hooks";
@@ -14,6 +14,16 @@ import { DateReasonForm, dayText, PromiseHistory } from "../promiseParts";
 import { Link } from "../router";
 import { NotFoundScreen } from "../screens";
 import { canAddGoods, mayAddGoods } from "./AddGoodsScreen";
+import {
+  AddressFields,
+  addressInput,
+  addressLine,
+  addressProblem,
+  addressRefusal,
+  draftOf,
+  sameAddress,
+  type AddressDraft,
+} from "./AddressFields";
 import { useMay, useWorkspace } from "./context";
 import { CreditLimitSection } from "./CreditLimitSection";
 import { owesAnything } from "./CustomersScreen";
@@ -98,9 +108,13 @@ function PromiseChange({
   );
 }
 
-function EditForm({ customer, onSaved, onCancel }: { customer: Customer; onSaved: () => void; onCancel: () => void }) {
-  const { api } = useWorkspace();
+function EditForm({ customer, onSaved, onCancel }: { customer: CustomerDetail; onSaved: () => void; onCancel: () => void }) {
+  const { api, features } = useWorkspace();
   const { t } = useI18n();
+  // Only while addresses are on, and only when the server gave the customer's (null: they have none).
+  const withAddress = features?.address === true && customer.address !== undefined;
+  const [address, setAddress] = useState<AddressDraft>(() => draftOf(customer.address));
+  const [addressError, setAddressError] = useState<string | null>(null);
   const [name, setName] = useState(customer.displayName);
   const [phone, setPhone] = useState(customer.phone ?? "");
   const [remindersOff, setRemindersOff] = useState(customer.remindersOff);
@@ -112,11 +126,20 @@ function EditForm({ customer, onSaved, onCancel }: { customer: Customer; onSaved
     const displayName = cleanName(name);
     const problem = nameProblem(displayName, t);
     setNameError(problem);
-    if (problem !== null) {
+    const placeProblem = withAddress ? addressProblem(address, t) : null;
+    setAddressError(placeProblem);
+    if (problem !== null || placeProblem !== null) {
       return;
     }
     // Send only what changed; the server refuses an empty change.
     const patch: CustomerPatch = {};
+    if (withAddress) {
+      // An address is replaced as a whole; emptied, it is removed.
+      const next = addressInput(address);
+      if (!sameAddress(next, addressInput(draftOf(customer.address)))) {
+        patch.address = next;
+      }
+    }
     if (displayName !== customer.displayName) {
       patch.displayName = displayName;
     }
@@ -181,6 +204,17 @@ function EditForm({ customer, onSaved, onCancel }: { customer: Customer; onSaved
         <input type="checkbox" checked={remindersOff} onChange={(event) => setRemindersOff(event.target.checked)} />
         <span>{t("customer.remindersOff.label")}</span>
       </label>
+      {withAddress ? (
+        <AddressFields
+          id="edit-address"
+          value={address}
+          error={addressError ?? addressRefusal(failure, t)}
+          onChange={(draft) => {
+            setAddress(draft);
+            setAddressError(null);
+          }}
+        />
+      ) : null}
       <p className="actions">
         <button type="submit" className="button button--primary" disabled={pending}>
           {pending ? t("state.saving") : t("action.save")}
@@ -338,6 +372,7 @@ function Detail({
             <a href={`tel:${customer.phone}`}>{customer.phone}</a>
           </p>
         ) : null}
+        {customer.address ? <p className="row__meta address__line">{addressLine(customer.address)}</p> : null}
         {archived ? <p className="notice">{t("customer.archived")}</p> : null}
         {customer.remindersOff ? <p className="row__meta">{t("customer.remindersOff")}</p> : null}
 

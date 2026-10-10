@@ -421,6 +421,43 @@ def _shared(owner: psycopg.Connection, world: World) -> None:
     )
 
 
+def _geo_id(world: World, level: str) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-geo-{level}:{world.shop_a}")
+
+
+def _territories(owner: psycopg.Connection, world: World) -> None:
+    """The platform switch `address_on` and one region, district, mahalla and street of the territory
+    reference. With the switch off none of these routes exists: tests/api/test_territories.py."""
+    owner.execute(
+        "INSERT INTO platform_setting (key, value, updated_by) VALUES ('address_on', 'true', %s) "
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by",
+        (str(world.admin),),
+    )
+    code = str(world.shop_a.int % 10**10).zfill(10)
+    region, district = _geo_id(world, "region"), _geo_id(world, "district")
+    mahalla, street = _geo_id(world, "mahalla"), _geo_id(world, "street")
+    owner.execute(
+        "INSERT INTO geo_region (id, soato, name_uz, name_norm) VALUES (%s, %s, 'Suite viloyati', 'suite viloyati') "
+        "ON CONFLICT (id) DO NOTHING",
+        (region, code),
+    )
+    owner.execute(
+        "INSERT INTO geo_district (id, soato, region_id, name_uz, name_norm) "
+        "VALUES (%s, %s, %s, 'Suite tumani', 'suite tumani') ON CONFLICT (id) DO NOTHING",
+        (district, "9" + code, region),
+    )
+    owner.execute(
+        "INSERT INTO geo_mahalla (id, source_key, region_id, district_id, name_uz, name_norm) "
+        "VALUES (%s, %s, %s, %s, 'Suite mahalla', 'suite mahalla') ON CONFLICT (id) DO NOTHING",
+        (mahalla, f"c:suite-{code}", region, district),
+    )
+    owner.execute(
+        "INSERT INTO geo_street (id, mahalla_id, name, name_norm) VALUES (%s, %s, 'Suite', 'suite') "
+        "ON CONFLICT (id) DO NOTHING",
+        (street, mahalla),
+    )
+
+
 def _stock_archived_supplier(owner: psycopg.Connection, world: World) -> None:
     _stock(owner, world)
     owner.execute("UPDATE supplier SET status = 'archived' WHERE id = %s", (_supplier_id(world),))
@@ -1139,6 +1176,27 @@ CALLS: dict[str, Call] = {
         True,
         prepare=_shared,
     ),
+    # The territory reference is behind the platform switch `address_on`; the suite turns it on. With the
+    # switch off: tests/api/test_territories.py.
+    "territories.regions": Call(
+        "GET", lambda w, shop: f"/api/v1/shops/{shop}/territories/regions", prepare=_territories
+    ),
+    "territories.districts": Call(
+        "GET",
+        lambda w, shop: f"/api/v1/shops/{shop}/territories/districts?region={_geo_id(w, 'region')}",
+        prepare=_territories,
+    ),
+    "territories.mahallas": Call(
+        "GET",
+        lambda w, shop: f"/api/v1/shops/{shop}/territories/mahallas?region={_geo_id(w, 'region')}&q=suite",
+        prepare=_territories,
+    ),
+    "territories.streets": Call(
+        "GET",
+        lambda w, shop: f"/api/v1/shops/{shop}/territories/streets?mahalla={_geo_id(w, 'mahalla')}",
+        prepare=_territories,
+    ),
+    "territories.last": Call("GET", lambda w, shop: f"/api/v1/shops/{shop}/territories/last", prepare=_territories),
     "catalog.hide": Call("POST", lambda w, shop: f"/api/v1/shops/{shop}/catalog/{w.catalog_item_a}/hide", None, True),
     "catalog.unhide": Call(
         "POST", lambda w, shop: f"/api/v1/shops/{shop}/catalog/{w.catalog_item_a}/unhide", None, True
@@ -1221,6 +1279,12 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "ownership.transfer.accept": {Role.MANAGER, Role.OWNER},
     "ownership.transfer.decline": {Role.MANAGER, Role.OWNER},
     "customers.create": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    # Looking a place up in the territory reference is part of adding a customer: whoever may add one.
+    "territories.regions": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "territories.districts": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "territories.mahallas": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "territories.streets": {Role.SELLER, Role.MANAGER, Role.OWNER},
+    "territories.last": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "customers.list": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "customers.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "customers.update": {Role.MANAGER, Role.OWNER},

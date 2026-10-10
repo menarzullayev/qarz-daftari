@@ -56,6 +56,7 @@ from qarz.application.subscription_receipts import SubscriptionReceiptService
 from qarz.application.suppliers import SupplierService
 from qarz.application.support_access import SupportAccessService
 from qarz.application.telegram_updates import UpdateProcessor
+from qarz.application.territories import TerritoryService
 from qarz.domain import brand
 from qarz.interface.account_api import add_account_routes
 from qarz.interface.admin_api import add_admin_routes
@@ -94,6 +95,7 @@ from qarz.interface.subscription_api import add_subscription_routes
 from qarz.interface.subscription_receipts_api import SUBSCRIPTION_RECEIPT_UPLOAD, add_subscription_receipt_routes
 from qarz.interface.support_api import add_admin_support_routes, add_owner_support_routes
 from qarz.interface.telegram_webhook import add_webhook_route
+from qarz.interface.territories_api import add_territory_routes
 
 HealthCheck = Callable[[], Awaitable[bool]]
 
@@ -267,6 +269,7 @@ def create_app(
         add_customer_routes(app, CustomerService(storage, now), LedgerService(storage, now), current_user)
         add_catalog_routes(app, CatalogService(storage, now), current_user)
         add_shared_catalog_routes(app, shared_catalog, current_user)
+        add_territory_routes(app, TerritoryService(storage, now), current_user)
         add_stock_routes(
             app,
             StockService(storage, now),

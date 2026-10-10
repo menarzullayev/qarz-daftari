@@ -198,6 +198,14 @@ TABLE_RIGHTS: dict[str, tuple[str, str, str]] = {
     "shared_item": ("SELECT", "SELECT; INSERT; UPDATE", ""),
     "shared_barcode": ("SELECT", "SELECT", ""),
     "shared_suggestion": ("SELECT; INSERT", "", ""),
+    # The territory reference (migration 0051) belongs to no shop and holds no person: the application
+    # reads it and cannot write it; the administrators' role loads it (the import command) and cannot
+    # delete from it, because a customer's address may point at any row; the worker reads it for the
+    # owner's export.
+    "geo_region": ("SELECT", "SELECT; INSERT; UPDATE", "SELECT"),
+    "geo_district": ("SELECT", "SELECT; INSERT; UPDATE", "SELECT"),
+    "geo_mahalla": ("SELECT", "SELECT; INSERT; UPDATE", "SELECT"),
+    "geo_street": ("SELECT", "SELECT; INSERT; UPDATE", "SELECT"),
     "supplier": (
         "SELECT; INSERT; UPDATE(name, name_norm, phone, note, status)",
         "",

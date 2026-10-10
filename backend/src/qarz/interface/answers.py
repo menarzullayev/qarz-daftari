@@ -146,7 +146,24 @@ class StaffPaymentNotice(Answer):
     receipt_seen_before: bool
 
 
+class Place(Answer):
+    id: str
+    # In the reader's language where the territory reference has it, otherwise in Uzbek.
+    name: str
+
+
+class CustomerAddress(Answer):
+    region: Place
+    district: Place | None
+    mahalla: Place | None
+    # A street of the reference, or `street_text`, what the shop typed: never both.
+    street: Place | None
+    street_text: str | None
+
+
 class CustomerDetail(Customer):
+    # Only while the platform switch `address_on` is on; null for a customer without an address.
+    address: CustomerAddress | None = None
     overdue: Overdue
     payment_history: PaymentHistory | None
     entries: list[Entry]

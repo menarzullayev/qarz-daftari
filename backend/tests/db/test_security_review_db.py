@@ -197,6 +197,11 @@ _PLATFORM_RIGHTS: dict[str, tuple[set[str], set[str]]] = {
     # The shared catalogue (migration 0050) belongs to no shop: the application reads it and cannot write it.
     "shared_item": ({"SELECT"}, set()),
     "shared_barcode": ({"SELECT"}, set()),
+    # The territory reference (migration 0051): places, read by every shop and written by none.
+    "geo_region": ({"SELECT"}, set()),
+    "geo_district": ({"SELECT"}, set()),
+    "geo_mahalla": ({"SELECT"}, set()),
+    "geo_street": ({"SELECT"}, set()),
 }
 _TABLE_RIGHTS = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
 

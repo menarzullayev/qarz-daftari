@@ -51,9 +51,10 @@ describe("reasons and codes", () => {
 });
 
 describe("platform settings, by type and range", () => {
-  it("knows the seventeen settings of the platform", () => {
+  it("knows the eighteen settings of the platform", () => {
     expect(Object.keys(SETTING_RULES).sort()).toEqual(
       [
+        "address_on",
         "cash_book_on",
         "catalog_on",
         "customer_links_on",

@@ -317,3 +317,151 @@ against a real stack.**
 - **The search is by words, not by meaning or misspelling**: "kola" does not find "cola".
 - **No screen of this module has been seen by a person**, like the rest of the expansion.
 
+## Territories and a customer's address (10 October 2026)
+
+One territory reference for the whole platform (region, district, mahalla, street) and an optional address
+on a customer that is picked from it, behind the switch `address_on` (off by default, changed with a code
+from the authenticator like every switch), migration 0051. Built by one agent, in one pull request.
+Nothing was deployed and nothing was imported into production.
+
+### What the owner decided
+
+| # | Decision |
+|---|---|
+| 1 | The platform gets a territory reference: region, district, mahalla, street. It is seeded for all of Uzbekistan down to the mahalla, and with streets for one district, Qo'shrabot of Samarqand region, the owner's first market. |
+| 2 | A district carries aggregate counts where they are known (population, families, households). Numbers only. |
+| 3 | **No resident data.** The reference never holds a person. A customer is entered by the shop as today; the address only helps describe them. This is a deliberate boundary, not something left for later. |
+| 4 | Built together with an address on the customer's card (region, district, mahalla, street), behind a new switch `address_on`, off by default and protected by the second factor like the others. Off, nothing changes anywhere. |
+
+### The boundary: places, never people
+
+The four tables hold names of places, state codes and, for a district, three totals. They have no column
+that could hold a person, a household, a phone or a document, and a test lists their columns so that one
+cannot be added without changing that test on purpose (`backend/tests/db/test_territories_schema.py`).
+The import reads four files of places and nothing else. A shop is never given a list of who lives
+anywhere: the lists a shop reads are the same for every shop and do not change when a customer gets an
+address. A district's totals are stored and are not sent to any client.
+
+A customer's address is the opposite kind of data: it is personal, and it is the shop's own. It is five
+columns of the shop's `customer` row, under the same forced row-level security as the name and the
+phone, and it goes wherever those go:
+
+- **Read and written** by whoever may read and write the customer. Adding one with an address needs what
+  adding a customer needs; changing an address needs what editing a customer needs (a seller adds and
+  does not edit). An administrator with a support access a shop's owner opened sees it on the customer's
+  page, as they see the name and the phone.
+- **Removed with the customer's data.** A customer who asks for their data to be removed loses the
+  address in the same statement that removes the name and the phone.
+- **Exported to the owner.** While the switch is on, the owner's workbook has the address as the last
+  column of the customers sheet. While it is off the column is not there.
+- **Erased with the shop**, being columns of a row that is.
+- **Never in a list of customers**, in a reminder, in an SMS, on the customer's own page or in a
+  customer's read-only link.
+
+### What was built
+
+- **Tables that belong to no shop** (`geo_region`, `geo_district`, `geo_mahalla`, `geo_street`), like the
+  shared catalogue's. The ordinary application and the worker read them; neither can write one. The
+  administrators' role loads them (the import) and has no right to delete from them. A region and a
+  district are known by their state code (SOATO); a mahalla by the seed's code or, for the three rows
+  without one, by its region, district and name; a street by its mahalla and name.
+- **A mahalla always has a region and only sometimes a district.** Where the seed does not say which
+  district a mahalla is in, `district_id` is null. Nothing fills it in: not the import (the seed's
+  four-character grouping code is kept as `source_group` and links nothing), not the application, and
+  not what a shop says about its own customer.
+- **The address on a customer:** a region, and optionally a district, a mahalla, and a street that is
+  either a street of the reference or up to 120 characters the shop typed, never both. The chain is
+  checked by the application and held by foreign keys in the database: the district and the mahalla are
+  of the customer's region, the street is of the customer's mahalla. A mahalla whose district the
+  reference knows brings that district with it and cannot be put under another. For a mahalla whose
+  district it does not know, a district the shop names is kept on the customer as the shop's word.
+- **Lists** (`/api/v1/shops/{shop}/territories/regions`, `/districts`, `/mahallas`, `/streets`, `/last`):
+  regions and districts whole, by name; mahallas and streets by typing, every typed word found in the
+  name through the names' matching form, so that any apostrophe a phone types and a name typed in
+  Cyrillic find the row written in Latin. Asking for the mahallas of a district gives that district's
+  own and those of the region whose district is unknown. A region and a district are named in Russian
+  and English for those readers; everything else is Uzbek, in Cyrillic for who reads it so.
+- **The place the shop used last** (`/territories/last`): the region, district and mahalla of the
+  customer whose address the shop set most recently, never the street. The form for a new customer
+  starts from it, so a village shop does not pick the same three things for every customer. It is read
+  from the shop's own customers and stored nowhere else.
+- **Clients** (the panel and the Mini App share these screens): the forms that add and edit a customer
+  get an optional address: two selects, a mahalla found by typing, a street picked from the list or
+  typed, and a button that clears it. Two mahallas of one name are told apart by the seed's group.
+  The customer's card shows the address in one line. All texts are in six languages; Tajik and
+  Karakalpak were written by a model, as before, and wait for the same review
+  (`docs/10-operations/translation-review.md`).
+- **The administrator's panel:** the switch among the settings.
+
+### When a place disappears from a later seed
+
+Each of the four files is the whole of its table. A place that was loaded before and is in the file no
+longer is marked `retired`: the lists stop offering it, and it is never deleted. A customer whose address
+points at it keeps the address and is still shown the place's name. If a later seed has the place again,
+it becomes active under the identifier it always had. No role has the right to delete a row of the
+reference, and the database refuses to delete one a customer points at whoever asks. Because a missing
+file would read as "this table is now empty", the import refuses to start unless all four files are there.
+
+### Loading the seed
+
+The seed is not in the repository and must stay out of it: `regions.csv`, `districts.csv`,
+`mahallas.csv` and `streets.csv`, comma-separated, UTF-8 (a byte order mark is accepted).
+
+    python -m qarz.interface.import_territories DIRECTORY
+
+It connects with `QD_ADMIN_DATABASE_URL`. It is not a migration and CI does not run it. Running it again
+adds nothing and brings names up to date. It prints counts and no row, and turns no switch on. Run
+against a scratch database on the development machine, twice, it reported: 14 regions, 206 districts,
+9 442 mahallas (8 326 of them with a region and no district) and 298 streets added and nothing skipped
+the first time; nothing added and all of them brought up to date the second time. The scratch database
+was dropped afterwards.
+
+On the single host the command is `deploy/production/scripts/single-host.sh territories-import DIRECTORY`:
+a one-off container of the API's image with the seed mounted read-only. **That subcommand was read and
+syntax-checked and has never been run against a real stack.**
+
+### Where the data comes from
+
+Regions, districts and mahallas are from
+[`uzinfocom-org/digital-health-ig`](https://github.com/uzinfocom-org/digital-health-ig), licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); the names were normalised to plain
+apostrophes and the files reshaped, nothing else was changed. The streets of Qo'shrabot district and that
+district's three totals were read by the owner from the government's "Raqamli mahalla" dashboard. The
+same attribution is in the repository's `README.md`.
+
+### What the data does not have
+
+- **A mahalla's district is known for Samarqand region only**: 1 116 of 9 442 mahallas. Everywhere else a
+  shop picks a region and searches the region's mahallas; the district stays optional and unlinked.
+- **946 names are shared by two or more mahallas of one region** where the district is unknown (2 991
+  rows). The picker shows the seed's group beside such a name; it is a code, not the name of a district.
+- **Streets exist for one district** (Qo'shrabot, 298 streets and villages in 35 mahallas). Everywhere
+  else the street is what the shop types.
+- **A district's totals are known for one district.**
+- **Mahallas and streets have an Uzbek name only.**
+- **Three mahallas have no code** in the seed and are keyed by district and name: renaming one in a later
+  seed makes a new row and retires the old one.
+
+### Decided by the builder, for the owner to confirm
+
+- A typed street is at most 120 characters, and may be given with a region alone.
+- A district the shop names for a mahalla whose district is unknown is kept on that customer (see above).
+- An administrator's support access shows the address on the customer's page.
+- The owner's export has the address in one cell, widest place first.
+- Looking a place up needs the permission to add a customer; a list of customers never carries addresses,
+  and the customer list cannot be filtered or searched by place.
+- A district's totals are stored and shown nowhere.
+- The import of customers from a spreadsheet does not read an address.
+
+### Open
+
+- **Showing the attribution in the product.** It is in the documents; whether CC BY 4.0 also asks for a
+  line inside the application where the names are shown is a question for whoever reviews licences.
+- **Naming the districts of the seed's 206 groups** would link every mahalla to its district. The groups
+  are one per district; which is which is not known.
+- **A filter and a report by place** (the village shops module planned above) are not built: an address
+  is stored and shown, not yet searched.
+- **Correcting a place** (a wrong name, a missing street) has no screen: the import is the only way in.
+- **No screen of this module has been seen by a person, or opened against a real server or inside
+  Telegram.** The two forms and the card were rendered once in a browser 375 px wide against canned
+  answers, with a mahalla name of eighty characters: nothing reached past the edge of the screen.

@@ -182,6 +182,7 @@ export const tgAdmin: PartialCatalog<typeof uzAdmin> = {
   "admin.setting.stock_on": "Анбор, воридоти мол ва таъминкунандагон фаъоланд",
   "admin.setting.network_on": "Шабакаи байни мағозаҳо (шарикон, фармоишҳо, борхатҳо) фаъол аст",
   "admin.setting.catalog_on": "Каталоги умумии маҳсулот фаъол аст",
+  "admin.setting.address_on": "Суроғаи мизоҷ (вилоят, ноҳия, маҳалла, кӯча) фаъол аст",
 
   "admin.audit.filters": "Филтрҳои аудит",
   "admin.audit.at": "Вақт",

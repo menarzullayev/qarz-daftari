@@ -35,6 +35,7 @@ DEFAULTS = {
     "stock_on": False,
     "network_on": False,
     "catalog_on": False,
+    "address_on": False,
     "usd_on": False,
     "cash_book_on": False,
 }
@@ -50,6 +51,7 @@ NEEDS_CODE = {
     "stock_on": True,
     "network_on": True,
     "catalog_on": True,
+    "address_on": True,
     "cash_book_on": True,
     "review_group": -1001234567890,
     "free_plan_on": True,

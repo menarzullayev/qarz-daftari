@@ -65,6 +65,70 @@
         "title": "ActiveShop",
         "type": "object"
       },
+      "AddressInput": {
+        "additionalProperties": false,
+        "description": "Where a customer lives, as identifiers of the territory reference. Only while the platform switch\n`address_on` is on; while it is off a request that carries an address is refused like any other\nrequest with an unknown field.",
+        "properties": {
+          "district_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "District Id"
+          },
+          "mahalla_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mahalla Id"
+          },
+          "region_id": {
+            "maxLength": 40,
+            "title": "Region Id",
+            "type": "string"
+          },
+          "street_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Street Id"
+          },
+          "street_text": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Street Text"
+          }
+        },
+        "required": [
+          "region_id"
+        ],
+        "title": "AddressInput",
+        "type": "object"
+      },
       "Apply": {
         "additionalProperties": false,
         "properties": {
@@ -910,9 +974,77 @@
         "title": "Customer",
         "type": "object"
       },
+      "CustomerAddress": {
+        "additionalProperties": false,
+        "properties": {
+          "district": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Place"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mahalla": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Place"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "region": {
+            "$ref": "#/components/schemas/Place"
+          },
+          "street": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Place"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "street_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Street Text"
+          }
+        },
+        "required": [
+          "region",
+          "district",
+          "mahalla",
+          "street",
+          "street_text"
+        ],
+        "title": "CustomerAddress",
+        "type": "object"
+      },
       "CustomerDetail": {
         "additionalProperties": false,
         "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerAddress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "balance": {
             "title": "Balance",
             "type": "integer"
@@ -1093,6 +1225,16 @@
       "CustomerPatch": {
         "additionalProperties": false,
         "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AddressInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "credit_limit": {
             "anyOf": [
               {
@@ -2165,6 +2307,16 @@
       "NewCustomer": {
         "additionalProperties": false,
         "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AddressInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "display_name": {
             "maxLength": 200,
             "title": "Display Name",
@@ -2994,6 +3146,25 @@
           "price"
         ],
         "title": "PickBody",
+        "type": "object"
+      },
+      "Place": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "Place",
         "type": "object"
       },
       "Promise": {
@@ -16757,6 +16928,315 @@
           }
         },
         "summary": "Shop.Support Access.End"
+      }
+    },
+    "/api/v1/shops/{shop_id}/territories/districts": {
+      "get": {
+        "operationId": "territories_districts_api_v1_shops__shop_id__territories_districts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Shop Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "region",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Region",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Territories Districts Api V1 Shops  Shop Id  Territories Districts Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Territories.Districts"
+      }
+    },
+    "/api/v1/shops/{shop_id}/territories/last": {
+      "get": {
+        "operationId": "territories_last_api_v1_shops__shop_id__territories_last_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Shop Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Territories Last Api V1 Shops  Shop Id  Territories Last Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Territories.Last"
+      }
+    },
+    "/api/v1/shops/{shop_id}/territories/mahallas": {
+      "get": {
+        "operationId": "territories_mahallas_api_v1_shops__shop_id__territories_mahallas_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Shop Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "region",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Region",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "district",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "District"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Territories Mahallas Api V1 Shops  Shop Id  Territories Mahallas Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Territories.Mahallas"
+      }
+    },
+    "/api/v1/shops/{shop_id}/territories/regions": {
+      "get": {
+        "operationId": "territories_regions_api_v1_shops__shop_id__territories_regions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Shop Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Territories Regions Api V1 Shops  Shop Id  Territories Regions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Territories.Regions"
+      }
+    },
+    "/api/v1/shops/{shop_id}/territories/streets": {
+      "get": {
+        "operationId": "territories_streets_api_v1_shops__shop_id__territories_streets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Shop Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mahalla",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mahalla",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Territories Streets Api V1 Shops  Shop Id  Territories Streets Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Territories.Streets"
       }
     },
     "/api/v1/shops/{shop_id}/waiting": {
