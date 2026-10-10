@@ -117,6 +117,7 @@ ALLOWED = {
     "domain/permissions.py": "the catalogue of permissions: Uzbek and Russian here, the rest in PERMISSIONS, measured",
     "application/online_payment.py": "Payme's protocol asks for exactly uz, ru and en",
     "domain/languages.py": "the list of languages itself, Telegram's codes, and the SMS languages",
+    "domain/shared_catalog.py": "the catalogue's items have a Russian and an Uzbek name: data, not texts of ours",
 }
 FEW = {"uz", "ru"}
 ALL = set(WRITTEN)

@@ -66,6 +66,9 @@ SETTINGS: dict[str, Setting] = {
     # The network between shops: links, orders, delivery notes, payments both sides confirm (expansion
     # module J). It works only for shops of a platform where the stock is on as well. Off: nothing of it.
     "network_on": Setting("switch", False, needs_code=True),
+    # The shared product catalogue (the founder's decisions of 2026-10-10): a shop picks an item out of
+    # one catalogue for the whole platform and types only its price. Off: every shop types every item.
+    "catalog_on": Setting("switch", False, needs_code=True),
 }
 
 

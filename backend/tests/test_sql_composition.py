@@ -12,7 +12,7 @@ from pathlib import Path
 
 DB_MODULE = Path(__file__).resolve().parents[1] / "src" / "qarz" / "infrastructure" / "db.py"
 # The parts of the storage layer kept in files of their own are held to the same rule.
-DB_MODULES = (DB_MODULE, DB_MODULE.with_name("db_cash.py"))
+DB_MODULES = (DB_MODULE, DB_MODULE.with_name("db_cash.py"), DB_MODULE.with_name("db_shared_catalog.py"))
 _CONSTANT = re.compile(r"_?[A-Z][A-Z0-9_]*")
 
 

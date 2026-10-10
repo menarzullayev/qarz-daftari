@@ -94,6 +94,8 @@ export const platformBody = (overrides: Record<string, unknown> = {}, settings: 
     usd_on: false,
     cash_book_on: false,
     stock_on: false,
+    network_on: false,
+    catalog_on: false,
     ...settings,
   },
   needs_code: [

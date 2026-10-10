@@ -62,6 +62,7 @@ type Phase =
       cashBookOn: boolean;
       stockOn: boolean;
       networkOn: boolean;
+      catalogOn: boolean;
       isCustomer: boolean;
     };
 
@@ -193,6 +194,7 @@ export function StaffWorkspace({
           cashBookOn: mine.cashBookOn,
           stockOn: mine.stockOn,
           networkOn: mine.networkOn,
+          catalogOn: mine.catalogOn,
           isCustomer: Array.isArray(accounts) && accounts.length > 0,
         });
       }
@@ -258,9 +260,10 @@ export function StaffWorkspace({
   const cashBookOn = ready?.cashBookOn ?? false;
   const stockOn = ready?.stockOn ?? false;
   const networkOn = ready?.networkOn ?? false;
+  const catalogOn = ready?.catalogOn ?? false;
   const features = useMemo(
-    () => ({ cashBook: cashBookOn, stock: stockOn, network: networkOn }),
-    [cashBookOn, stockOn, networkOn],
+    () => ({ cashBook: cashBookOn, stock: stockOn, network: networkOn, catalog: catalogOn }),
+    [cashBookOn, stockOn, networkOn, catalogOn],
   );
 
   if (phase.kind === "connecting") {

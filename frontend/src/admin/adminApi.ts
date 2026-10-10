@@ -283,6 +283,51 @@ function adminReceipt(value: unknown): AdminReceipt {
   };
 }
 
+/**
+ * What a shop proposed for the shared catalogue: an item it added by hand, or a barcode it attached to
+ * an item it had picked. The server never says which shop it came from, and it carries no price.
+ */
+export type CatalogSuggestion = {
+  id: string;
+  kind: string;
+  /** An item: the name and the unit the shop gave it. */
+  name: string | null;
+  unit: string | null;
+  barcode: string | null;
+  /** A barcode: the catalogue item it is proposed for. An approved item: the item it became. */
+  sharedItem: { id: string; nameRu: string | null; nameUz: string | null; amount: string | null } | null;
+  status: string;
+  createdAt: string;
+  /** How many other shops wait with the same name, or the same barcode. */
+  same: number;
+};
+export type SuggestionNames = { nameRu: string | null; nameUz: string | null; category: string };
+
+function catalogSuggestion(value: unknown): CatalogSuggestion {
+  const body = record(value);
+  const item = body["shared_item"] === null || body["shared_item"] === undefined ? null : record(body["shared_item"]);
+  return {
+    id: text(body["id"]),
+    kind: text(body["kind"]),
+    name: textOrNull(body["name"]),
+    unit: textOrNull(body["unit"]),
+    barcode: textOrNull(body["barcode"]),
+    sharedItem:
+      item === null
+        ? null
+        : { id: text(item["id"]), nameRu: textOrNull(item["name_ru"]), nameUz: textOrNull(item["name_uz"]), amount: textOrNull(item["amount"]) },
+    status: text(body["status"]),
+    createdAt: text(body["created_at"]),
+    same: whole(body["same"]),
+  };
+}
+
+/** The answer to a decision: what the suggestion is now. */
+function decidedSuggestion(value: unknown): { id: string; status: string } {
+  const body = record(value);
+  return { id: text(body["id"]), status: text(body["status"]) };
+}
+
 function queuedReceipt(value: unknown): QueuedReceipt {
   return { ...adminReceipt(value), copies: whole(record(value)["copies"]) };
 }
@@ -507,6 +552,46 @@ export function createAdminApi(options: {
         body: { reason },
         idempotencyKey,
         read: decidedReceipt,
+      });
+    },
+
+    /** What shops proposed for the shared catalogue, in one status, oldest first. Behind `catalog_on`. */
+    listSuggestions(params: { status?: string | null; cursor?: string | null }, signal?: AbortSignal): Promise<Page<CatalogSuggestion>> {
+      return call(transport, {
+        method: "GET",
+        path: `${BASE}/catalog/suggestions`,
+        query: { status: params.status, cursor: params.cursor },
+        signal,
+        read: reading.page(catalogSuggestion),
+      });
+    },
+
+    /**
+     * Approves a waiting suggestion. An item gets the names and the category given here (at least one
+     * name); a barcode needs none and `names` is null.
+     */
+    approveSuggestion(suggestionId: string, names: SuggestionNames | null, idempotencyKey: string): Promise<{ id: string; status: string }> {
+      const path = `${BASE}/catalog/suggestions/${segment(suggestionId)}/approve`;
+      if (names === null) {
+        return call(transport, { method: "POST", path, idempotencyKey, read: decidedSuggestion });
+      }
+      const body: Record<string, unknown> = { category: names.category };
+      if (names.nameRu !== null) {
+        body["name_ru"] = names.nameRu;
+      }
+      if (names.nameUz !== null) {
+        body["name_uz"] = names.nameUz;
+      }
+      return call(transport, { method: "POST", path, body, idempotencyKey, read: decidedSuggestion });
+    },
+
+    /** Rejects a waiting suggestion. The shop's own item is untouched and the shop is not told. */
+    rejectSuggestion(suggestionId: string, idempotencyKey: string): Promise<{ id: string; status: string }> {
+      return call(transport, {
+        method: "POST",
+        path: `${BASE}/catalog/suggestions/${segment(suggestionId)}/reject`,
+        idempotencyKey,
+        read: decidedSuggestion,
       });
     },
 

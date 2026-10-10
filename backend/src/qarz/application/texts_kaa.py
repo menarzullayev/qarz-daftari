@@ -978,6 +978,8 @@ ERRORS: dict[str, str] = {
     ),
     "ENTRY_OF_DOCUMENT": "Bul jazbanı hújjet jaratqan. Onı biykarlaw ushın hújjettiń ózin biykarlań.",
     "BARCODE_TAKEN": "Bul shtrix-kod basqa tovarǵa biriktirilgen.",
+    "SUGGESTION_ALREADY_DECIDED": "Bul usınıs boyınsha sheshim álleqashan qabıllanǵan.",
+    "SHARED_BARCODE_TAKEN": "Bul shtrix-kod ulıwma katalogtaǵı basqa tovarǵa biriktirilgen.",
     "ITEM_NOT_COUNTABLE": (
         "Bul tovardı skladta esaplap bolmaydı: aldın onı kórip shıǵıń hám sklad ólshem birligin tańlań."
     ),

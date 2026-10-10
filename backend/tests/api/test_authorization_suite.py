@@ -381,6 +381,46 @@ def _stock(owner: psycopg.Connection, world: World) -> None:
     )
 
 
+def _shared_item_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-shared-item:{world.shop_a}")
+
+
+def _shared_code(world: World) -> str:
+    return f"SH-{world.shop_a.hex[:16]}"
+
+
+def _shared_suggestion_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"suite-shared-suggestion:{world.shop_a}")
+
+
+def _shared(owner: psycopg.Connection, world: World) -> None:
+    """The platform switch `catalog_on`, one item of the shared catalogue with an approved barcode, and a
+    barcode shop A proposed for it that still waits. With the switch off none of these routes exists:
+    tests/api/test_shared_catalog.py."""
+    owner.execute(
+        "INSERT INTO platform_setting (key, value, updated_by) VALUES ('catalog_on', 'true', %s) "
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by",
+        (str(world.admin),),
+    )
+    name = f"Suite choy {world.shop_a.hex[:12]}"
+    owner.execute(
+        "INSERT INTO shared_item (id, name_uz, search_norm, category, price_hint) VALUES (%s, %s, %s, 'tea', 9000) "
+        "ON CONFLICT (id) DO NOTHING",
+        (_shared_item_id(world), name, name.lower()),
+    )
+    owner.execute(
+        "INSERT INTO shared_barcode (code, item_id) VALUES (%s, %s) ON CONFLICT (code) DO NOTHING",
+        (_shared_code(world), _shared_item_id(world)),
+    )
+    owner.execute(
+        "INSERT INTO shared_suggestion (id, shop_id, kind, barcode, shared_item_id) "
+        "VALUES (%s, %s, 'barcode', %s, %s) "
+        # Waiting again when a test runs several decisions on the same world.
+        "ON CONFLICT (id) DO UPDATE SET status = 'pending', decided_by = NULL, decided_at = NULL",
+        (_shared_suggestion_id(world), world.shop_a, f"SG-{world.shop_a.hex[:16]}", _shared_item_id(world)),
+    )
+
+
 def _stock_archived_supplier(owner: psycopg.Connection, world: World) -> None:
     _stock(owner, world)
     owner.execute("UPDATE supplier SET status = 'archived' WHERE id = %s", (_supplier_id(world),))
@@ -1084,6 +1124,21 @@ CALLS: dict[str, Call] = {
     "catalog.update": Call(
         "PATCH", lambda w, shop: f"/api/v1/shops/{shop}/catalog/{w.catalog_item_a}", {"price": 4500}, True
     ),
+    # The shared catalogue is behind the platform switch `catalog_on`; the suite turns it on. With the
+    # switch off: tests/api/test_shared_catalog.py.
+    "catalog.shared.search": Call(
+        "GET", lambda w, shop: f"/api/v1/shops/{shop}/shared-catalog?q=suite", prepare=_shared
+    ),
+    "catalog.shared.lookup": Call(
+        "GET", lambda w, shop: f"/api/v1/shops/{shop}/shared-catalog/lookup?code={_shared_code(w)}", prepare=_shared
+    ),
+    "catalog.shared.pick": Call(
+        "POST",
+        lambda w, shop: f"/api/v1/shops/{shop}/shared-catalog/{_shared_item_id(w)}/pick",
+        {"price": 9500},
+        True,
+        prepare=_shared,
+    ),
     "catalog.hide": Call("POST", lambda w, shop: f"/api/v1/shops/{shop}/catalog/{w.catalog_item_a}/hide", None, True),
     "catalog.unhide": Call(
         "POST", lambda w, shop: f"/api/v1/shops/{shop}/catalog/{w.catalog_item_a}/unhide", None, True
@@ -1273,6 +1328,10 @@ ALLOWED_ROLES: dict[str, set[Role]] = {
     "catalog.learned.accept": {Role.MANAGER, Role.OWNER},
     "catalog.learned.dismiss": {Role.MANAGER, Role.OWNER},
     "catalog.learned.merge": {Role.MANAGER, Role.OWNER},
+    # Picking from the shared catalogue is adding an item: whoever may add one.
+    "catalog.shared.search": {Role.MANAGER, Role.OWNER},
+    "catalog.shared.lookup": {Role.MANAGER, Role.OWNER},
+    "catalog.shared.pick": {Role.MANAGER, Role.OWNER},
     # The stock (expansion module I): what is on hand is every member's to see; the rest is a manager's.
     "stock.settings.read": {Role.SELLER, Role.MANAGER, Role.OWNER},
     "stock.items.list": {Role.SELLER, Role.MANAGER, Role.OWNER},
@@ -2007,6 +2066,22 @@ ADMIN_CALLS: dict[str, AdminCall] = {
         "PATCH", lambda w: f"{ADMIN_API}/settings", lambda w: {"changes": {"trial_days": 14}}, True
     ),
     "admin.audit.list": AdminCall("GET", lambda w: f"{ADMIN_API}/audit"),
+    # The shared catalogue's queue, behind `catalog_on`.
+    "admin.catalog.suggestions.list": AdminCall("GET", lambda w: f"{ADMIN_API}/catalog/suggestions", prepare=_shared),
+    "admin.catalog.suggestions.approve": AdminCall(
+        "POST",
+        lambda w: f"{ADMIN_API}/catalog/suggestions/{_shared_suggestion_id(w)}/approve",
+        None,
+        True,
+        prepare=_shared,
+    ),
+    "admin.catalog.suggestions.reject": AdminCall(
+        "POST",
+        lambda w: f"{ADMIN_API}/catalog/suggestions/{_shared_suggestion_id(w)}/reject",
+        None,
+        True,
+        prepare=_shared,
+    ),
 }
 
 # The door: enrolling and passing the second factor. The code is well formed and wrong.

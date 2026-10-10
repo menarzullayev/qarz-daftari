@@ -11,6 +11,7 @@ import { errorText, formatInstant } from "../shared/workspace/parts";
 import "../shared/workspace/workspace.css";
 import type { AdminApi } from "./adminApi";
 import { AuditScreen } from "./AuditScreen";
+import { CatalogQueueScreen } from "./CatalogQueueScreen";
 import "./messages";
 import { ADMIN_SECTIONS } from "./navigation";
 import { ReceiptScreen } from "./ReceiptScreen";
@@ -98,6 +99,10 @@ function match(path: string, api: AdminApi, now: () => Date, who: Who): Match | 
   }
   if (path === "/settings") {
     return { sectionPath: "/settings", titleKey: "admin.nav.settings", screen: <SettingsScreen api={api} /> };
+  }
+  // Reached from the settings, where the switch of the shared catalogue is, and only while it is on.
+  if (path === "/settings/catalog") {
+    return { sectionPath: "/settings", titleKey: "admin.catalog.title", screen: <CatalogQueueScreen api={api} /> };
   }
   if (first === "audit" && (second === undefined || isUuid(second))) {
     return { sectionPath: "/audit", titleKey: "admin.nav.audit", screen: <AuditScreen api={api} shopId={second ?? null} /> };

@@ -97,6 +97,10 @@ DEFINER_FUNCTIONS: dict[str, set[str]] = {
     # How many active customers each of some shops has, which is what the free plan counts: numbers
     # for the administrators' list of shops (migration 0046).
     "admin_active_customer_counts(uuid[])": {ADMIN},
+    # The shared catalogue's queue (migration 0050): what shops propose, read and decided across shops
+    # by an administrator and by nobody else. Neither says which shop a proposal came from.
+    "admin_shared_suggestions(uuid,text,timestamp with time zone,uuid,integer)": {ADMIN},
+    "admin_shared_decide(uuid,uuid,boolean,uuid,text,text,text,text,timestamp with time zone)": {ADMIN},
     # --- the worker -----------------------------------------------------------------------------------
     "mark_recipient_unreachable(bigint)": {WORKER},
     "shops_due_for_reminders(smallint)": {WORKER},
@@ -186,6 +190,14 @@ TABLE_RIGHTS: dict[str, tuple[str, str, str]] = {
     # owed are written by triggers alone; a supplier's link to another shop cannot be changed. The
     # worker reads all of it for the owner's export.
     "catalog_barcode": ("SELECT; INSERT; DELETE", "", "SELECT"),
+    # The shared catalogue (migration 0050). Its items and barcodes belong to no shop: the application
+    # reads them and cannot write one; the administrators' role loads the items (the import command),
+    # and a barcode gets there through `admin_shared_decide` alone. A proposal is a shop's row under
+    # row-level security: the application adds one that waits (the policy refuses a decided one), and
+    # can neither change nor delete it.
+    "shared_item": ("SELECT", "SELECT; INSERT; UPDATE", ""),
+    "shared_barcode": ("SELECT", "SELECT", ""),
+    "shared_suggestion": ("SELECT; INSERT", "", ""),
     "supplier": (
         "SELECT; INSERT; UPDATE(name, name_norm, phone, note, status)",
         "",

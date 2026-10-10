@@ -194,6 +194,9 @@ _PLATFORM_RIGHTS: dict[str, tuple[set[str], set[str]]] = {
     # The operations watch (migration 0035) is the worker's: the application holds nothing on its state.
     "ops_alert": (set(), set()),
     "ops_sample": (set(), set()),
+    # The shared catalogue (migration 0050) belongs to no shop: the application reads it and cannot write it.
+    "shared_item": ({"SELECT"}, set()),
+    "shared_barcode": ({"SELECT"}, set()),
 }
 _TABLE_RIGHTS = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
 

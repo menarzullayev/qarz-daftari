@@ -46,6 +46,7 @@ from qarz.application.errors import AppError, NotFound, ValidationFailed
 from qarz.application.ledger_service import MAX_AMOUNT, MIN_AMOUNT, append_entry_in, reverse_entry_in
 from qarz.application.operations import operation
 from qarz.application.ports import Membership, Storage, TenantSession
+from qarz.application.shared_catalog_feed import propose_item
 from qarz.application.shops import require_member
 from qarz.application.stock import BarcodeTaken, check_countable, sees_costs
 from qarz.application.stock_currency import UZS, require_currency
@@ -480,6 +481,8 @@ async def _add_item(session: TenantSession, actor: Membership, new: CleanNewItem
         subject_type="catalog_item",
         subject_id=created.item_id,
     )
+    # Proposed for the platform's catalogue while that is on, with the barcode it came with.
+    await propose_item(session, item_id=created.item_id, name=new.name, unit=new.unit, barcode=new.barcode)
     return created.item_id
 
 

@@ -30,7 +30,7 @@ export function canManage(role: Role): boolean {
  * A part of the product that exists only while the platform has switched it on. The server says which
  * are on (a header of the person's shops); a section of one that is off is offered to nobody.
  */
-export type Feature = "cashBook" | "stock" | "network";
+export type Feature = "cashBook" | "stock" | "network" | "catalog";
 export type Features = Readonly<Partial<Record<Feature, boolean>>>;
 
 /** A section opens for whoever holds any one of `needs`, and only while its `feature`, if any, is on. */

@@ -44,6 +44,9 @@ FUNCTIONS = [
     "admin_reassign_owner(uuid, uuid, bigint, text, timestamptz)",
     # Active customers per shop, for the free plan in the list of shops (migration 0046): numbers alone.
     "admin_active_customer_counts(uuid[])",
+    # The shared catalogue's queue (migration 0050); what each does is tested in test_shared_catalog_schema.py.
+    "admin_shared_suggestions(uuid, text, timestamptz, uuid, integer)",
+    "admin_shared_decide(uuid, uuid, boolean, uuid, text, text, text, text, timestamptz)",
 ]
 SEARCH = "SELECT * FROM admin_shop_search(%s, %s, %s, %s, %s, %s, %s, %s)"
 SEARCH_COLUMNS = [

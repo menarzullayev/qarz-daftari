@@ -218,6 +218,10 @@ CATALOGUE: tuple[Permission, ...] = (
             "catalog.learned.dismiss",
             "catalog.learned.merge",
             "stock.items.update",
+            # The platform's catalogue (behind `catalog_on`): picking from it is adding an item.
+            "catalog.shared.search",
+            "catalog.shared.lookup",
+            "catalog.shared.pick",
         ),
     ),
     # --- stock (expansion module I; every operation below exists only while `stock_on` is on) ----------

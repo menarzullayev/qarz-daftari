@@ -1043,6 +1043,52 @@ a.row__link:hover .row__name,
   background: var(--qd-surface);
 }
 
+/*
+ * The platform's shared catalogue, where an item is picked instead of typed. A row is a photo, then the
+ * name over the category; the name wraps, so nothing is wider than a phone 375 px across.
+ */
+.picks--tall {
+  max-height: 24rem;
+}
+
+.pick--shared {
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.pick--shared:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.thumb {
+  flex: none;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--qd-radius-sm);
+  background: var(--qd-surface);
+  object-fit: contain;
+}
+
+.thumb--none {
+  border: 1px dashed var(--qd-border);
+}
+
+.shared__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.shared__chosen {
+  display: flex;
+  align-items: center;
+  gap: var(--qd-space-3);
+  margin: 0 0 var(--qd-space-3);
+}
+
 .pick:disabled {
   cursor: default;
   opacity: 0.55;

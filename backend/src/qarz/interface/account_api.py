@@ -35,6 +35,8 @@ CASH_BOOK_HEADER = "X-Qarz-Cash-Book"
 STOCK_HEADER = "X-Qarz-Stock"
 # Sent with the caller's shops while the network between shops is switched on (expansion module J).
 NETWORK_HEADER = "X-Qarz-Network"
+# The shared product catalogue is on: a client then offers picking an item from it.
+CATALOG_HEADER = "X-Qarz-Catalog"
 
 
 class ActiveShop(BaseModel):
@@ -72,6 +74,8 @@ def add_account_routes(
             response.headers[STOCK_HEADER] = "on"
         if await account.network_on():
             response.headers[NETWORK_HEADER] = "on"
+        if await account.catalog_on():
+            response.headers[CATALOG_HEADER] = "on"
         return body
 
     @app.put("/api/v1/me/active-shop", name=SET_ACTIVE_SHOP.name)

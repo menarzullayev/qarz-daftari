@@ -44,6 +44,7 @@ from qarz.application.permissions import PermissionService
 from qarz.application.ports import FileStore, Storage, TelegramChatMembers, TelegramFiles
 from qarz.application.reminders import ReminderService
 from qarz.application.reports import ReportService
+from qarz.application.shared_catalog import AdminSharedCatalogService, SharedCatalogService
 from qarz.application.shop_deletion import ShopDeletionService
 from qarz.application.shops import ShopService
 from qarz.application.staff import StaffService
@@ -80,6 +81,11 @@ from qarz.interface.permissions_api import add_permission_routes
 from qarz.interface.rate_limit import RateLimiter, RateLimits
 from qarz.interface.reminders_api import add_reminder_routes
 from qarz.interface.reports_api import add_report_routes
+from qarz.interface.shared_catalog_api import (
+    add_admin_shared_catalog_routes,
+    add_shared_catalog_routes,
+    add_shared_image_route,
+)
 from qarz.interface.shop_deletion_api import add_shop_deletion_routes
 from qarz.interface.shops_api import add_shop_routes
 from qarz.interface.staff_api import add_staff_routes
@@ -187,13 +193,23 @@ def create_app(
     if files is not None:
         # Served whoever asks: a link is given only after authorization and works for five minutes.
         add_file_route(app, files, now or (lambda: datetime.now(UTC)))
+    shared_catalog = None if storage is None else SharedCatalogService(storage, file_store, now)
+    if shared_catalog is not None:
+        # A product's photo, served whoever asks while the catalogue is on.
+        add_shared_image_route(app, shared_catalog)
     payments = None if storage is None else OnlinePaymentService(storage, payment_keys or PaymentKeys(), now)
     if payments is not None:
         # Served whatever the configuration, so that a provider is always answered: "disabled" until
         # the platform switch is on and that provider's key is set (ADR-019).
         add_provider_routes(app, payments)
 
-    if storage is not None and auth is not None and payments is not None and files is not None:
+    if (
+        storage is not None
+        and auth is not None
+        and payments is not None
+        and files is not None
+        and shared_catalog is not None
+    ):
         resolver: Authenticator = authenticator or SessionAuthenticator(auth)
         limiter = None if rate_limits is None else RateLimiter(rate_limits, monotonic)
 
@@ -250,6 +266,7 @@ def create_app(
         add_import_routes(app, ImportService(storage, files, now), current_user)
         add_customer_routes(app, CustomerService(storage, now), LedgerService(storage, now), current_user)
         add_catalog_routes(app, CatalogService(storage, now), current_user)
+        add_shared_catalog_routes(app, shared_catalog, current_user)
         add_stock_routes(
             app,
             StockService(storage, now),
@@ -284,6 +301,7 @@ def create_app(
                 AdminOwnershipService(admin_storage, admin, now),
             )
             add_admin_support_routes(app, SupportAccessService(admin_storage, now), admin_user)
+            add_admin_shared_catalog_routes(app, AdminSharedCatalogService(admin_storage, now), admin_user)
 
     if webhook_secret is not None and storage is not None:
         chat = ChatService(

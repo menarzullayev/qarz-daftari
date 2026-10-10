@@ -58,6 +58,7 @@ export const SETTING_RULES: Readonly<Record<string, SettingRule>> = {
   cash_book_on: { kind: "switch" },
   stock_on: { kind: "switch" },
   network_on: { kind: "switch" },
+  catalog_on: { kind: "switch" },
 };
 
 /**
@@ -282,6 +283,11 @@ export function isOpenAccess(access: { state: string; endsAt: string }, now: Dat
 /** The statuses a receipt has, as the queue filters by them (backend/src/qarz/domain/subscription_receipts.py). */
 export const RECEIPT_STATUSES = ["submitted", "approved", "rejected"] as const;
 export const RECEIPT_MONTHS_MAX = 36;
+
+/** The statuses a suggestion for the shared catalogue has (backend/src/qarz/domain/shared_catalog.py). */
+export const SUGGESTION_STATUSES = ["pending", "approved", "rejected"] as const;
+/** The longest name an item of the shared catalogue may have. */
+export const SHARED_NAME_MAX = 300;
 
 /** The months an approval counts: a whole number from 1 to 36 in plain digits, or null. */
 export function parseReceiptMonths(input: string): number | null {
