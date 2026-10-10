@@ -517,3 +517,58 @@ lost by going back: the secrets stay stored and `required` restores the codes wi
   runbook 7.
 - `deploy/monitoring/alerts.yml` has no rule for the gauge: no monitoring system reads that file on the
   single host (DEC-070), and the worker's watch is what tells the operators.
+
+## More ways into the admin panel (10 October 2026)
+
+Telegram stays. The owner asked for other ways in, because an agent cannot sign in with his Telegram
+account and so could not turn a module switch on.
+
+### What the owner decided
+
+1. Three more ways: a **service key**, a **login and password**, a **passkey**.
+2. The service key has **full administrator rights**. Keys limited to the module switches, and keys that
+   also read, were offered; he chose the full one.
+3. A key has **no expiry**; it lives until it is revoked. Thirty days and one day were offered.
+4. The password: at least 14 characters, five wrong attempts lock the login for 15 minutes, every
+   sign-in by password is announced to the operations chat. It is set by the owner on the server and by
+   nobody else.
+5. All three in one piece of work, without sub-agents.
+
+A limit the agent stated to the owner and keeps: with a full key in hand it turns module switches and
+reads, and changes payment cards, the price or a shop's owner only when told to, each time.
+
+### The risk
+
+A key is a password that is never typed and never changes: whoever reads the file beside the env file is
+an administrator of the platform until someone revokes the key. With the second factor off (above), the
+same holds for whoever learns the password.
+
+### What was built (first part: the key and the password)
+
+- **Migration 0052.** `user_session` takes a third kind, `service`, with a `label` (one live key a
+  label); `admin_password` holds a login, a salt and scrypt's hash, the count of wrong attempts and the
+  lock. The ordinary role writes the session a key is, as it writes every session; the administrators'
+  role alone reads and writes `admin_password` and keeps the audit.
+- **The key** is sent as `Authorization: Bearer qdk_…`. It is never accepted as a cookie. It is the
+  session of the administrator it was made for, so "sign out everywhere" by that person ends it too.
+- **The password** is `POST /api/v1/auth/admin-password`, which answers what the Telegram sign-in
+  answers. An unknown login, a wrong password, a locked login and a person taken off the allow-list get
+  one answer, after the same work. The admin sign-in page shows the form folded under the Telegram button.
+- **Neither decides who is an administrator**: a key or a password is made only for a person on the
+  allow-list with an active account, and every administrator operation still asks what it asked. While
+  the second factor is `required`, that includes the code.
+- **Commands**, on the server only:
+
+      single-host.sh admin-key create <telegram-id> <label>    # writes ~/.qarz/admin-key.<label>, prints no key
+      single-host.sh admin-key list
+      single-host.sh admin-key revoke <label>
+      single-host.sh admin-password <telegram-id> <login>      # typed on the terminal, twice
+
+- **In the audit:** `admin.service_key_created`, `admin.service_key_revoked`, `admin.password_set`,
+  `admin.signed_in_with_password`, `admin.password_locked`.
+
+### Open
+
+- The passkey is not built yet.
+- A request made with a key is audited as its administrator's; the audit row does not say a key was used.
+- A password cannot be removed, only replaced; a page to see and end keys in the admin panel does not exist.

@@ -48,12 +48,15 @@ class AdminSignIn:
         self,
         admin_storage: Storage,
         *,
+        sessions: Storage,
         allowed_tg_ids: Container[int],
         auth: AuthService | None = None,
         announce: Announce | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._storage = admin_storage
+        # The ordinary role's connection: it alone may write a session, and a key is one.
+        self._sessions = sessions
         self._allowed = allowed_tg_ids
         self._auth = auth
         self._announce = announce
@@ -88,22 +91,32 @@ class AdminSignIn:
         token = KEY_PREFIX + secrets.token_urlsafe(32)
         async with self._storage.platform() as session:
             user_id = await self._administrator(session, tg_id)
-            if not await session.create_service_key(
+        async with self._sessions.platform() as session:
+            made = await session.create_service_key(
                 token_hash=_hash(token), user_id=user_id, label=label, now=self._now()
-            ):
-                raise ValueError(f"a key labelled {label!r} exists: revoke it first, or choose another label")
-            await self._audit(session, user_id, "admin.service_key_created", {"label": label})
+            )
+        if not made:
+            raise ValueError(f"a key labelled {label!r} exists: revoke it first, or choose another label")
+        try:
+            async with self._storage.platform() as session:
+                await self._audit(session, user_id, "admin.service_key_created", {"label": label})
+        except Exception:
+            # Two roles, two transactions: a key the audit does not know of must not stay.
+            async with self._sessions.platform() as session:
+                await session.revoke_service_key(label, self._now())
+            raise
         return token
 
     async def keys(self) -> list[ServiceKey]:
-        async with self._storage.platform() as session:
+        async with self._sessions.platform() as session:
             return await session.service_keys()
 
     async def revoke_key(self, label: str) -> bool:
-        async with self._storage.platform() as session:
+        async with self._sessions.platform() as session:
             user_id = await session.revoke_service_key(label, self._now())
-            if user_id is None:
-                return False
+        if user_id is None:
+            return False
+        async with self._storage.platform() as session:
             await self._audit(session, user_id, "admin.service_key_revoked", {"label": label})
         return True
 

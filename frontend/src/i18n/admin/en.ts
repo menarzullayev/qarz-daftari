@@ -8,6 +8,11 @@ export const enAdmin: PartialCatalog<typeof uzAdmin, EnPlural> = {
   "door.signIn.noBot": "No Telegram bot is set in this build, so the sign-in button is not shown.",
   "door.signIn.refused": "The Telegram data was not accepted. Press the sign-in button again.",
   "door.signIn.expired": "The session has ended. Sign in again.",
+  "door.password.open": "Sign in with a password",
+  "door.password.login": "Login",
+  "door.password.password": "Password",
+  "door.password.submit": "Sign in",
+  "door.password.refused": "The login or the password was not accepted. Five wrong attempts lock the login for 15 minutes.",
   "door.signOut": "Sign out",
 
   "door.title": "Second factor",

@@ -3,7 +3,7 @@ import { type ComponentType, type FormEvent, type ReactNode, useCallback, useEff
 import { I18nProvider, useI18n } from "../i18n/I18nProvider";
 import type { Language } from "../i18n/types";
 import { type LoginReturn, NO_RETURN } from "../panel/loginReturn";
-import { signInPanel, signOutPanel } from "../panel/signIn";
+import { signInPanel, signInWithPassword, signOutPanel } from "../panel/signIn";
 import { type LoginWidgetProps, TelegramLogin } from "../panel/TelegramLogin";
 import { type ApiAuth, type ApiError, type Fetch, toApiError } from "../shared/api";
 import { useLatest, useSubmit } from "../shared/hooks";
@@ -63,6 +63,76 @@ function Nowhere() {
 }
 
 type Attempt = { status: "idle" } | { status: "pending" } | { status: "failed"; error: ApiError | null };
+
+/**
+ * The other way in for an administrator: a login and a password set on the server. It is shown folded,
+ * under the Telegram button, and says one thing whatever was wrong, as the server does.
+ */
+function PasswordSignIn({ fetch, onSignedIn }: { fetch: Fetch; onSignedIn: (auth: ApiAuth) => void }) {
+  const { t } = useI18n();
+  const [login, setLogin] = useState("");
+  const [password, setPassword] = useState("");
+  const [attempt, setAttempt] = useState<Attempt>({ status: "idle" });
+
+  const onSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    if (attempt.status === "pending" || login.trim() === "" || password === "") {
+      return;
+    }
+    setAttempt({ status: "pending" });
+    signInWithPassword(fetch, login.trim(), password).then(
+      (auth) => {
+        setPassword("");
+        onSignedIn(auth);
+      },
+      (error: unknown) => {
+        setPassword("");
+        setAttempt({ status: "failed", error: toApiError(error) });
+      },
+    );
+  };
+
+  return (
+    <details>
+      <summary>{t("door.password.open")}</summary>
+      <form className="form" onSubmit={onSubmit}>
+        <label className="field">
+          <span>{t("door.password.login")}</span>
+          <input
+            className="input"
+            name="username"
+            autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
+            maxLength={40}
+            value={login}
+            onChange={(event) => setLogin(event.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span>{t("door.password.password")}</span>
+          <input
+            className="input"
+            type="password"
+            name="password"
+            autoComplete="current-password"
+            maxLength={200}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </label>
+        {attempt.status === "failed" ? (
+          <p className="notice notice--error" role="alert">
+            {attempt.error && attempt.error.status !== 401 ? errorText(attempt.error, t) : t("door.password.refused")}
+          </p>
+        ) : null}
+        <button className="button button--primary" type="submit" disabled={attempt.status === "pending"}>
+          {t("door.password.submit")}
+        </button>
+      </form>
+    </details>
+  );
+}
 
 function SignIn({
   fetch,
@@ -132,6 +202,7 @@ function SignIn({
           {attempt.status === "pending" ? <Loading /> : <LoginWidget botUsername={botUsername} language={language} />}
         </>
       )}
+      <PasswordSignIn fetch={fetch} onSignedIn={onSignedIn} />
     </Door>
   );
 }

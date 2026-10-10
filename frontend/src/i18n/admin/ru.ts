@@ -7,6 +7,11 @@ export const ruAdmin: RuAdminCatalog = {
   "door.signIn.noBot": "В этой сборке не указан бот Telegram, поэтому кнопки входа нет.",
   "door.signIn.refused": "Данные Telegram не приняты. Нажмите кнопку входа ещё раз.",
   "door.signIn.expired": "Сеанс завершён. Войдите снова.",
+  "door.password.open": "Войти по паролю",
+  "door.password.login": "Логин",
+  "door.password.password": "Пароль",
+  "door.password.submit": "Войти",
+  "door.password.refused": "Логин или пароль не приняты. После пяти ошибок логин закрывается на 15 минут.",
   "door.signOut": "Выйти",
 
   "door.title": "Второй фактор",

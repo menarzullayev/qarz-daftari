@@ -7,7 +7,8 @@ Run with:
     python -m qarz.interface.admin_sign_in key-revoke LABEL
     python -m qarz.interface.admin_sign_in password-set TG_ID LOGIN
 
-Connects with `QD_ADMIN_DATABASE_URL`, the administrators' role, and reads `QD_ADMIN_TG_IDS`: a key or a
+Connects as both roles (`QD_ADMIN_DATABASE_URL` says who is an administrator and keeps the audit,
+`QD_DATABASE_URL` writes the session a key is) and reads `QD_ADMIN_TG_IDS`: a key or a
 password is made only for a person on the allow-list who has an active administrator's account.
 
 A key is printed once and kept nowhere; with `--out` it is written to that file (readable by its owner
@@ -37,7 +38,9 @@ def _service(settings: Settings) -> AdminSignIn:
     allowed = settings.admin_allow_list()
     if not allowed:
         raise ValueError("QD_ADMIN_TG_IDS names nobody")
-    return AdminSignIn(Database(settings.admin_database_url), allowed_tg_ids=allowed)
+    return AdminSignIn(
+        Database(settings.admin_database_url), sessions=Database(settings.database_url), allowed_tg_ids=allowed
+    )
 
 
 def _write_secret(path: Path, secret: str) -> None:

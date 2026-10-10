@@ -253,7 +253,12 @@ def create_app(
             None
             if admin is None or admin_storage is None
             else AdminSignIn(
-                admin_storage, allowed_tg_ids=admin.allowed_tg_ids, auth=auth, announce=admin_announce, now=now
+                admin_storage,
+                sessions=storage,
+                allowed_tg_ids=admin.allowed_tg_ids,
+                auth=auth,
+                announce=admin_announce,
+                now=now,
             ),
         )
         add_shop_routes(app, ShopService(storage), current_user)

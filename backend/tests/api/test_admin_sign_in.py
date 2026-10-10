@@ -85,8 +85,8 @@ def tg_id(world: World, owner: psycopg.Connection, admin_env: AdminEnv) -> int:
 class Tool:
     """What the server's command line works through, one call after another on a loop of its own."""
 
-    def __init__(self, database: Database, service: AdminSignIn) -> None:
-        self._database, self._service = database, service
+    def __init__(self, databases: list[Database], service: AdminSignIn) -> None:
+        self._databases, self._service = databases, service
         self._loop = asyncio.new_event_loop()
 
     def create_key(self, tg_id: int, label: str) -> str:
@@ -102,15 +102,17 @@ class Tool:
         self._loop.run_until_complete(self._service.set_password(tg_id, login, password))
 
     def close(self) -> None:
-        self._loop.run_until_complete(self._database.dispose())
+        for database in self._databases:
+            self._loop.run_until_complete(database.dispose())
         self._loop.close()
 
 
 @pytest.fixture
-def tool(admin_database_url: str, admin_env: AdminEnv) -> Iterator[Tool]:
+def tool(app_database_url: str, admin_database_url: str, admin_env: AdminEnv) -> Iterator[Tool]:
     """The administrators' role and the allow-list, as the command has them."""
-    database = Database(admin_database_url)
-    made = Tool(database, AdminSignIn(database, allowed_tg_ids=admin_env.allowed, now=admin_env.clock.now))
+    database, sessions = Database(admin_database_url), Database(app_database_url)
+    service = AdminSignIn(database, sessions=sessions, allowed_tg_ids=admin_env.allowed, now=admin_env.clock.now)
+    made = Tool([database, sessions], service)
     yield made
     made.close()
 

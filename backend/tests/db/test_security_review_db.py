@@ -182,6 +182,7 @@ _PLATFORM_RIGHTS: dict[str, tuple[set[str], set[str]]] = {
     "admin_session": (set(), set()),
     "admin_audit": (set(), set()),
     "admin_request_key": (set(), set()),
+    "admin_password": (set(), set()),
     "user_session": ({"SELECT", "INSERT"}, {"revoked_at"}),
     "signin_replay": ({"SELECT", "INSERT"}, set()),
     # Queued only: delivering is the worker's. Of a queued row the role reads five columns and not the

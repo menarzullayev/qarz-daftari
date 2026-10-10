@@ -14,6 +14,11 @@ export const uzAdmin = {
   "door.signIn.noBot": "Bu yig'ilmada Telegram boti ko'rsatilmagan, shuning uchun kirish tugmasi chiqmaydi.",
   "door.signIn.refused": "Telegram ma'lumotlari qabul qilinmadi. Kirish tugmasini qayta bosing.",
   "door.signIn.expired": "Sessiya tugadi. Qayta kiring.",
+  "door.password.open": "Parol bilan kirish",
+  "door.password.login": "Login",
+  "door.password.password": "Parol",
+  "door.password.submit": "Kirish",
+  "door.password.refused": "Login yoki parol qabul qilinmadi. Besh marta xato kiritilsa, login 15 daqiqaga yopiladi.",
   "door.signOut": "Chiqish",
 
   "door.title": "Ikkinchi omil",

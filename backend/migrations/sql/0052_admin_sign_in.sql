@@ -14,10 +14,8 @@ ALTER TABLE user_session ADD CONSTRAINT user_session_label_check
 -- One live key a label: a label names the key that is revoked.
 CREATE UNIQUE INDEX user_session_service_label ON user_session (label) WHERE kind = 'service' AND revoked_at IS NULL;
 
--- Keys are made and ended by the administrators' role, from the server's command line. The ordinary
--- role keeps the rights it had; it reads the row when a request brings the key.
-GRANT SELECT, INSERT ON user_session TO qd_admin;
-GRANT UPDATE (revoked_at) ON user_session TO qd_admin;
+-- A key's row is written and ended by the ordinary role, which alone may touch user_session; the
+-- administrators' role says who the key is for and keeps the audit (the command uses both).
 
 -- An administrator's password. Set from the server's command line only; the hash is scrypt's, with a
 -- salt of its own. Five wrong attempts lock the login for a quarter of an hour.

@@ -430,6 +430,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/admin-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Auth.Admin Password */
+        post: operations["auth_admin_password_api_v1_auth_admin_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/sign-out": {
         parameters: {
             query?: never;
@@ -3860,6 +3877,13 @@ export interface components {
             /** Customers */
             customers: number;
         };
+        /** PasswordSignIn */
+        PasswordSignIn: {
+            /** Login */
+            login: string;
+            /** Password */
+            password: string;
+        };
         /** PaymentBody */
         PaymentBody: {
             /** Amount */
@@ -5105,6 +5129,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_admin_password_api_v1_auth_admin_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordSignIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

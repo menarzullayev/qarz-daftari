@@ -159,6 +159,8 @@ TABLE_RIGHTS: dict[str, tuple[str, str, str]] = {
         "",
     ),
     "admin_session": ("", "SELECT; INSERT; UPDATE(revoked_at)", ""),
+    # An administrator's password (migration 0052): the administrators' role alone, and no DELETE.
+    "admin_password": ("", "SELECT; INSERT; UPDATE(login, salt, hash, failures, locked_until, updated_at)", ""),
     "admin_audit": ("", "SELECT; INSERT", ""),
     "admin_request_key": ("", "SELECT; INSERT", ""),
     "outbox_message": (
