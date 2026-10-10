@@ -15,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
+from qarz.application.admin_sign_in_ports import ServiceKey, StoredPassword
 from qarz.application.errors import AlreadyMember, StorageTimeout
 from qarz.application.ports import (
     ActivityRow,
@@ -3562,6 +3563,92 @@ class PgPlatformSession(SharedCatalogAdminQueries, TerritoryAdminQueries):
             {"user_id": user_id, "now": now, "kind": kind},
         )
         return int(result.rowcount)
+
+    # --- the administrators' other ways in: a service key, a password ---------------------------------
+
+    async def user_by_telegram_id(self, tg_id: int) -> UUID | None:
+        row = (await self._conn.execute(text("SELECT id FROM app_user WHERE tg_id = :tg_id"), {"tg_id": tg_id})).first()
+        return None if row is None else row.id
+
+    async def create_service_key(self, *, token_hash: bytes, user_id: UUID, label: str, now: datetime) -> bool:
+        result = await self._conn.execute(
+            text(
+                "INSERT INTO user_session (id, token_hash, user_id, kind, csrf_hash, label, created_at, expires_at) "
+                "VALUES (:id, :token_hash, :user_id, 'service', NULL, :label, :now, :never) "
+                "ON CONFLICT (label) WHERE kind = 'service' AND revoked_at IS NULL DO NOTHING"
+            ),
+            {
+                "id": uuid4(),
+                "token_hash": token_hash,
+                "user_id": user_id,
+                "label": label,
+                "now": now,
+                # A key does not run out. A real moment, far off: not every reader takes 'infinity'.
+                "never": datetime(9999, 1, 1, tzinfo=UTC),
+            },
+        )
+        return bool(result.rowcount)
+
+    async def service_keys(self) -> list[ServiceKey]:
+        rows = await self._conn.execute(
+            text(
+                "SELECT label, user_id, created_at FROM user_session "
+                "WHERE kind = 'service' AND revoked_at IS NULL ORDER BY created_at, label"
+            )
+        )
+        return [ServiceKey(row.label, row.user_id, row.created_at) for row in rows]
+
+    async def revoke_service_key(self, label: str, now: datetime) -> UUID | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "UPDATE user_session SET revoked_at = :now "
+                    "WHERE kind = 'service' AND label = :label AND revoked_at IS NULL RETURNING user_id"
+                ),
+                {"label": label, "now": now},
+            )
+        ).first()
+        return None if row is None else row.user_id
+
+    async def admin_password(self, login: str) -> StoredPassword | None:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT user_id, salt, hash, failures, locked_until FROM admin_password "
+                    "WHERE login = :login FOR UPDATE"
+                ),
+                {"login": login},
+            )
+        ).first()
+        if row is None:
+            return None
+        return StoredPassword(row.user_id, bytes(row.salt), bytes(row.hash), row.failures, row.locked_until)
+
+    async def set_admin_password(self, *, user_id: UUID, login: str, salt: bytes, hash: bytes, now: datetime) -> bool:
+        taken = (
+            await self._conn.execute(
+                text("SELECT 1 FROM admin_password WHERE login = :login AND user_id <> :user_id"),
+                {"login": login, "user_id": user_id},
+            )
+        ).first()
+        if taken is not None:
+            return False
+        await self._conn.execute(
+            text(
+                "INSERT INTO admin_password (user_id, login, salt, hash, updated_at) "
+                "VALUES (:user_id, :login, :salt, :hash, :now) "
+                "ON CONFLICT (user_id) DO UPDATE SET login = EXCLUDED.login, salt = EXCLUDED.salt, "
+                "  hash = EXCLUDED.hash, failures = 0, locked_until = NULL, updated_at = EXCLUDED.updated_at"
+            ),
+            {"user_id": user_id, "login": login, "salt": salt, "hash": hash, "now": now},
+        )
+        return True
+
+    async def note_password_attempt(self, user_id: UUID, failures: int, locked_until: datetime | None) -> None:
+        await self._conn.execute(
+            text("UPDATE admin_password SET failures = :failures, locked_until = :locked WHERE user_id = :user_id"),
+            {"user_id": user_id, "failures": failures, "locked": locked_until},
+        )
 
     async def platform_setting(self, key: str) -> Any | None:
         row = (

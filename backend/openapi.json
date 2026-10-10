@@ -3037,6 +3037,29 @@
         "title": "OverviewOverdue",
         "type": "object"
       },
+      "PasswordSignIn": {
+        "additionalProperties": false,
+        "properties": {
+          "login": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Login",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "login",
+          "password"
+        ],
+        "title": "PasswordSignIn",
+        "type": "object"
+      },
       "PaymentBody": {
         "additionalProperties": false,
         "properties": {
@@ -5813,6 +5836,46 @@
           }
         },
         "summary": "Admin.Support.List"
+      }
+    },
+    "/api/v1/auth/admin-password": {
+      "post": {
+        "operationId": "auth_admin_password_api_v1_auth_admin_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordSignIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Auth Admin Password Api V1 Auth Admin Password Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Auth.Admin Password"
       }
     },
     "/api/v1/auth/sign-out": {

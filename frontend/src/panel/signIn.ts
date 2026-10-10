@@ -47,6 +47,24 @@ export async function signInPanel(fetch: Fetch, data: TelegramLoginData): Promis
   return { kind: "cookie", csrfToken };
 }
 
+/**
+ * Signs an administrator in with a login and a password (`POST /api/v1/auth/admin-password`). The answer
+ * is the one the Telegram sign-in gives: the cookie is set and the CSRF token comes in the body. The
+ * password goes to the server and nowhere else: it is not kept, not even in memory, after the call.
+ */
+export async function signInWithPassword(fetch: Fetch, login: string, password: string): Promise<ApiAuth> {
+  const csrfToken = await call(
+    { fetch, auth: { kind: "cookie", csrfToken: null } },
+    {
+      method: "POST",
+      path: "/api/v1/auth/admin-password",
+      body: { login, password },
+      read: (value) => reading.text(reading.record(value)["csrf_token"]),
+    },
+  );
+  return { kind: "cookie", csrfToken };
+}
+
 /** Ends the session on the server, which also removes the cookie. */
 export function signOutPanel(fetch: Fetch, auth: ApiAuth): Promise<void> {
   return call({ fetch, auth }, { method: "POST", path: "/api/v1/auth/sign-out", read: () => undefined });

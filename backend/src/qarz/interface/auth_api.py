@@ -7,8 +7,10 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from qarz.application.admin_sign_in import AdminSignIn
 from qarz.application.auth import (
     READ_ME,
+    SIGN_IN_PASSWORD,
     SIGN_IN_WEB,
     SIGN_IN_WEBAPP,
     SIGN_OUT,
@@ -44,7 +46,9 @@ class SessionAuthenticator:
             if scheme != "Bearer" or not token:
                 return None
             info = await self._auth.resolve(token)
-            if info is None or info.kind != "webapp":
+            # A service key is a bearer token too: it is never a cookie, so nothing of the CSRF check
+            # is sidestepped by it.
+            if info is None or info.kind not in ("webapp", "service"):
                 return None
             request.state.session_token = token
             return info.user_id
@@ -67,6 +71,13 @@ class WebAppSignIn(BaseModel):
     init_data: str = Field(min_length=1, max_length=4096)
 
 
+class PasswordSignIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    login: str = Field(min_length=1, max_length=40)
+    password: str = Field(min_length=1, max_length=200)
+
+
 class MePatch(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -74,7 +85,11 @@ class MePatch(BaseModel):
 
 
 def add_auth_routes(
-    app: FastAPI, auth: AuthService, current_user: CurrentUser, end_admin_sessions: EndAdminSessions | None = None
+    app: FastAPI,
+    auth: AuthService,
+    current_user: CurrentUser,
+    end_admin_sessions: EndAdminSessions | None = None,
+    admin_sign_in: AdminSignIn | None = None,
 ) -> None:
     user = Annotated[UUID, Depends(current_user)]
 
@@ -96,6 +111,23 @@ def add_auth_routes(
             samesite="lax",
         )
         return {"csrf_token": issued.csrf_token, "expires_at": issued.expires_at.isoformat()}
+
+    if admin_sign_in is not None:
+        # Served only where the administrators' side is. The answer to every refusal is the one a wrong
+        # Telegram signature gets.
+        @app.post("/api/v1/auth/admin-password", name=SIGN_IN_PASSWORD.name)
+        async def sign_in_password(body: PasswordSignIn, response: Response) -> dict[str, Any]:
+            issued = await admin_sign_in.sign_in(body.login, body.password)
+            response.set_cookie(
+                SESSION_COOKIE,
+                issued.token,
+                expires=issued.expires_at,
+                path="/api",
+                httponly=True,
+                secure=True,
+                samesite="lax",
+            )
+            return {"csrf_token": issued.csrf_token, "expires_at": issued.expires_at.isoformat()}
 
     @app.post("/api/v1/auth/sign-out", name=SIGN_OUT.name, status_code=204)
     async def sign_out(request: Request, response: Response, user_id: user) -> None:

@@ -9,6 +9,11 @@ export const tgAdmin: PartialCatalog<typeof uzAdmin> = {
     "Дар ин версия боти Telegram нишон дода нашудааст, бинобар ин тугмаи даромад намебарояд.",
   "door.signIn.refused": "Маълумоти Telegram қабул нашуд. Тугмаи даромадро аз нав пахш кунед.",
   "door.signIn.expired": "Сессия тамом шуд. Аз нав ворид шавед.",
+  "door.password.open": "Бо парол ворид шудан",
+  "door.password.login": "Логин",
+  "door.password.password": "Парол",
+  "door.password.submit": "Даромад",
+  "door.password.refused": "Логин ё парол қабул нашуд. Пас аз панҷ хато логин ба 15 дақиқа баста мешавад.",
   "door.signOut": "Баромадан",
 
   "door.title": "Омили дуюм",

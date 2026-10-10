@@ -451,6 +451,7 @@ CHAT: dict[str, str] = {
     "ops_line_resolved": "• {name}: {text} ({since} — {until})",
     "ops_more": "…боз {count} огоҳӣ дар хабари навбатӣ.",
     "ops_footer": "Чӣ бояд кард: runbook 16 (docs/10-operations/runbooks.md).",
+    "ops_password_sign_in": "🔑 {brand}: ба панели админ бо парол ворид шуданд. Логин: {login} ({at}).",
     "ops_test": (
         "✅ {brand}: огоҳии САНҶИШӢ ({at}).\n"
         "Ин носозии ҳақиқӣ нест. Барои санҷидани он фиристода шуд, ки хабарҳои назорати система ба ҳамин чат мерасанд."

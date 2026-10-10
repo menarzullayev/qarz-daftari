@@ -8,6 +8,11 @@ export const kaaAdmin: PartialCatalog<typeof uzAdmin> = {
   "door.signIn.noBot": "Bul jıynaqta Telegram botı kórsetilmegen, sonıń ushın kiriw túymesi shıqpaydı.",
   "door.signIn.refused": "Telegram maǵlıwmatları qabıllanbadı. Kiriw túymesin qayta basıń.",
   "door.signIn.expired": "Sessiya tamamlandı. Qayta kiriń.",
+  "door.password.open": "Parol menen kiriw",
+  "door.password.login": "Login",
+  "door.password.password": "Parol",
+  "door.password.submit": "Kiriw",
+  "door.password.refused": "Login yamasa parol qabıllanbadı. Bes márte qáte kiritilse, login 15 minutqa jabıladı.",
   "door.signOut": "Shıǵıw",
 
   "door.title": "Ekinshi faktor",

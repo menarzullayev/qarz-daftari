@@ -432,6 +432,7 @@ CHAT: dict[str, str] = {
     "ops_line_resolved": "• {name}: {text} ({since} — {until})",
     "ops_more": "…more alerts in the next message: {count}.",
     "ops_footer": "What to do: runbook 16 (docs/10-operations/runbooks.md).",
+    "ops_password_sign_in": "🔑 {brand}: the admin panel was entered with a password. Login: {login} ({at}).",
     "ops_test": (
         "✅ {brand}: TEST alert ({at}).\nThis is not a real fault. It was sent to check that system "
         "monitoring messages reach this chat."

@@ -17,6 +17,11 @@
 #   single-host.sh territories-import <dir>   load the seed of the territory reference from <dir>
 #                                         (regions.csv, districts.csv, mahallas.csv, streets.csv) into
 #                                         the database; safe to run again; turns no switch on
+#   single-host.sh admin-key create <telegram-id> <label> | list | revoke <label>
+#                                         a service key of an administrator: a bearer token that does not
+#                                         run out; written once to admin-key.<label> beside the env file
+#   single-host.sh admin-password <telegram-id> <login>
+#                                         set an administrator's password, typed on this terminal
 #   single-host.sh backup <full|diff>     one backup, now
 #   single-host.sh restore-test           restore the latest backup into a throwaway instance and check it
 #   single-host.sh restore [--time '<moment>']   restore the bucket into the EMPTY data volume
@@ -245,6 +250,32 @@ case "${1:-}" in
     use_current
     seed="$(native_path "$(cd "$2" && pwd)")"
     dce run --rm --no-deps --volume "$seed:/seed:ro" api python -m qarz.interface.import_territories /seed ;;
+  admin-key)
+    use_current
+    case "${2:-}" in
+      create)
+        [ $# -eq 4 ] || die "usage: single-host.sh admin-key create <telegram-id> <label>"
+        # The key is shown by nothing: it goes from the command straight into a file only this user
+        # reads, and the file is never written over.
+        out="$(dirname "$DEPLOY_ENV_FILE")/admin-key.$4"
+        [ ! -e "$out" ] || die "$out exists: revoke that key and remove the file, or choose another label"
+        key="$(dce exec -T api python -m qarz.interface.admin_sign_in key-create "$3" "$4" | head -n 1)"
+        case "$key" in qdk_*) ;; *) die "no key was made" ;; esac
+        (umask 077 && printf '%s\n' "$key" > "$out")
+        unset key
+        echo "key '$4' written to $out; it is kept nowhere else. Send it as:  Authorization: Bearer <key>" ;;
+      list) dce exec -T api python -m qarz.interface.admin_sign_in key-list ;;
+      revoke)
+        [ $# -eq 3 ] || die "usage: single-host.sh admin-key revoke <label>"
+        dce exec -T api python -m qarz.interface.admin_sign_in key-revoke "$3" ;;
+      *) die "usage: single-host.sh admin-key create <telegram-id> <label> | list | revoke <label>" ;;
+    esac ;;
+  admin-password)
+    [ $# -eq 3 ] || die "usage: single-host.sh admin-password <telegram-id> <login>"
+    # Asked for on this terminal, twice; it is never an argument and nothing here prints it.
+    [ -t 0 ] || die "run this in a terminal: the password is typed, not passed"
+    use_current
+    dce exec api python -m qarz.interface.admin_sign_in password-set "$2" "$3" ;;
   restore) shift; restore "$@" ;;
   restore-files) use_current_or_head; compose run --rm --no-deps restore-files ;;
   pitr) pitr "${2:-}" ;;

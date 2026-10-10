@@ -1481,6 +1481,9 @@ SELF_CALLS: dict[str, PlainCall] = {
 PUBLIC_CALLS: dict[str, PlainCall] = {
     "auth.telegram_webapp": PlainCall("POST", "/api/v1/auth/telegram-webapp", {"init_data": "user=%7B%7D&hash=00"}),
     "auth.telegram_login": PlainCall("POST", "/api/v1/auth/telegram-login", {"id": 1, "auth_date": 1, "hash": "00"}),
+    "auth.admin_password": PlainCall(
+        "POST", "/api/v1/auth/admin-password", {"login": "nobody", "password": "not a password at all"}
+    ),
 }
 
 # Operations opened by a secret link: the route, and the header that carries the secret.

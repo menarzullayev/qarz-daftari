@@ -428,6 +428,7 @@ CHAT: dict[str, str] = {
     "ops_line_resolved": "• {name}: {text} ({since} — {until})",
     "ops_more": "…jáne {count} eskertiw keyingi xabarda.",
     "ops_footer": "Ne islew kerek: runbook 16 (docs/10-operations/runbooks.md).",
+    "ops_password_sign_in": "🔑 {brand}: admin paneline parol menen kirildi. Login: {login} ({at}).",
     "ops_test": (
         "✅ {brand}: SÍNAQ eskertiwi ({at}).\n"
         "Bul haqıyqıy nasazlıq emes. Sistema qadaǵalawı xabarları usı chatqa jetip keliwin tekseriw ushın jiberildi."
