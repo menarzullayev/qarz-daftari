@@ -17,6 +17,7 @@ import { ADMIN_SECTIONS } from "./navigation";
 import { ReceiptScreen } from "./ReceiptScreen";
 import { ReceiptsScreen } from "./ReceiptsScreen";
 import { isUuid } from "./rules";
+import { PasskeysSection } from "./PasskeysSection";
 import { SettingsScreen } from "./SettingsScreen";
 import { ShopScreen } from "./ShopScreen";
 import { ShopsScreen } from "./ShopsScreen";
@@ -99,6 +100,9 @@ function match(path: string, api: AdminApi, now: () => Date, who: Who): Match | 
   }
   if (path === "/settings") {
     return { sectionPath: "/settings", titleKey: "admin.nav.settings", screen: <SettingsScreen api={api} /> };
+  }
+  if (path === "/settings/passkeys") {
+    return { sectionPath: "/settings", titleKey: "passkeys.title", screen: <PasskeysSection api={api} /> };
   }
   // Reached from the settings, where the switch of the shared catalogue is, and only while it is on.
   if (path === "/settings/catalog") {

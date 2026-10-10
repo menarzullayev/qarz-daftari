@@ -37,12 +37,14 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from qarz.application.operations import all_operations
+from qarz.domain import passkey
 from qarz.domain.access import Role, lowest_role_with
 from qarz.domain.promise import tashkent_date
 
 from ..receipt_samples import JPEG
 from .conftest import (
     ADMIN_API,
+    TEST_PASSKEY_SITE,
     AdminEnv,
     World,
     allow_list,
@@ -52,6 +54,7 @@ from .conftest import (
     make_admin,
     switch_permissions_on,
 )
+from .test_admin_passkeys import Device
 
 pytestmark = pytest.mark.db
 
@@ -1484,6 +1487,8 @@ PUBLIC_CALLS: dict[str, PlainCall] = {
     "auth.admin_password": PlainCall(
         "POST", "/api/v1/auth/admin-password", {"login": "nobody", "password": "not a password at all"}
     ),
+    # With no answer it is the question, and the question is refused like a wrong answer.
+    "auth.admin_passkey": PlainCall("POST", "/api/v1/auth/admin-passkey", {}),
 }
 
 # Operations opened by a secret link: the route, and the header that carries the secret.
@@ -2051,6 +2056,25 @@ def _waiting_receipt(owner: psycopg.Connection, world: World) -> None:
     )
 
 
+def _passkey_id(world: World) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"passkey:{world.admin}")
+
+
+def _a_passkey(owner: psycopg.Connection, world: World) -> None:
+    """A passkey of the world's administrator, there to be ended."""
+    owner.execute(
+        "INSERT INTO admin_passkey (id, user_id, credential_id, public_key, algorithm, label) "
+        "VALUES (%s, %s, %s, %s, -7, 'laptop') ON CONFLICT (id) DO UPDATE SET revoked_at = NULL",
+        (_passkey_id(world), world.admin, _passkey_id(world).bytes, bytes(91)),
+    )
+
+
+def _new_passkey(world: World) -> dict[str, Any]:
+    """A registration a device would send, answering a challenge of the world's administrator."""
+    challenge = passkey.new_challenge(TEST_PASSKEY_SITE.key, passkey.REGISTER, datetime.now(UTC), world.admin.bytes)
+    return Device().register(passkey.b64(challenge))
+
+
 ADMIN_CALLS: dict[str, AdminCall] = {
     "admin.support.open": AdminCall(
         "POST",
@@ -2133,6 +2157,17 @@ ADMIN_CALLS: dict[str, AdminCall] = {
         "PATCH", lambda w: f"{ADMIN_API}/settings", lambda w: {"changes": {"trial_days": 14}}, True
     ),
     "admin.audit.list": AdminCall("GET", lambda w: f"{ADMIN_API}/audit"),
+    # An administrator's own passkeys.
+    "admin.passkeys.list": AdminCall("GET", lambda w: f"{ADMIN_API}/passkeys"),
+    "admin.passkeys.challenge": AdminCall("GET", lambda w: f"{ADMIN_API}/passkeys/challenge"),
+    "admin.passkeys.add": AdminCall("POST", lambda w: f"{ADMIN_API}/passkeys", lambda w: _new_passkey(w), True, 201),
+    "admin.passkeys.remove": AdminCall(
+        "POST",
+        lambda w: f"{ADMIN_API}/passkeys/{_passkey_id(w)}/remove",
+        None,
+        True,
+        prepare=lambda o, w: _a_passkey(o, w),
+    ),
     # The shared catalogue's queue, behind `catalog_on`.
     "admin.catalog.suggestions.list": AdminCall("GET", lambda w: f"{ADMIN_API}/catalog/suggestions", prepare=_shared),
     "admin.catalog.suggestions.approve": AdminCall(

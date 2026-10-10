@@ -121,6 +121,8 @@ QD_BOT_TOKEN=
 QD_ADMIN_TG_IDS=
 # The administrators' second factor: required, or off (no code is asked for anywhere; SINGLE-HOST.md).
 QD_ADMIN_SECOND_FACTOR=required
+# The host administrators' passkeys are made for: the same name as DEPLOY_PUBLIC_HOST. Empty: none.
+QD_PASSKEY_HOST=
 # Whom the operations watch tells (your Telegram identifier, or a group's). Empty: nobody is told.
 QD_ALERT_CHAT_IDS=
 

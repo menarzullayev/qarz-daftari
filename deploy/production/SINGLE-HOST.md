@@ -152,6 +152,7 @@ none of them and refuses to overwrite an existing file.
 | `VITE_BOT_USERNAME`, `QD_BOT_TOKEN` | BotFather: the production bot's username without `@`, and its token |
 | `QD_ADMIN_TG_IDS` | the numeric Telegram identifiers of the administrators, separated by commas |
 | `QD_ADMIN_SECOND_FACTOR` | already written as `required`; leave it. `off` switches the administrators' second factor off for this installation: see "The administrators' second factor" in runbook 7 before changing it |
+| `QD_PASSKEY_HOST` | the same name as `DEPLOY_PUBLIC_HOST`, for administrators' passkeys; empty means there are none |
 | `QD_ALERT_CHAT_IDS` | whom the worker's watch tells when something is wrong: your numeric Telegram identifier, or a group's (negative; the bot must be in it). See "What is watched". Empty: nobody is told |
 
 A value that contains `$` goes in single quotes. The file is never committed, never pasted into a chat,

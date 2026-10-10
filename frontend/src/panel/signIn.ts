@@ -65,6 +65,44 @@ export async function signInWithPassword(fetch: Fetch, login: string, password: 
   return { kind: "cookie", csrfToken };
 }
 
+const PASSKEY_PATH = "/api/v1/auth/admin-passkey";
+
+/**
+ * What a passkey must answer (`WWW-Authenticate` of the refusal an empty question gets), or null when
+ * this server has no passkeys. Asked with the page's own fetch: the header is what is read, not a body.
+ */
+export async function askPasskeyQuestion(fetch: Fetch): Promise<string | null> {
+  const answer = await fetch(PASSKEY_PATH, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: "{}",
+    credentials: "same-origin",
+  });
+  return answer.status === 401 ? answer.headers.get("WWW-Authenticate") : null;
+}
+
+/** Signs an administrator in with a device's answer. The cookie is set; the result is the CSRF token. */
+export async function signInWithPasskey(
+  fetch: Fetch,
+  answer: Readonly<{ id: string; clientData: string; authenticatorData: string; signature: string }>,
+): Promise<ApiAuth> {
+  const csrfToken = await call(
+    { fetch, auth: { kind: "cookie", csrfToken: null } },
+    {
+      method: "POST",
+      path: PASSKEY_PATH,
+      body: {
+        id: answer.id,
+        client_data: answer.clientData,
+        authenticator_data: answer.authenticatorData,
+        signature: answer.signature,
+      },
+      read: (value) => reading.text(reading.record(value)["csrf_token"]),
+    },
+  );
+  return { kind: "cookie", csrfToken };
+}
+
 /** Ends the session on the server, which also removes the cookie. */
 export function signOutPanel(fetch: Fetch, auth: ApiAuth): Promise<void> {
   return call({ fetch, auth }, { method: "POST", path: "/api/v1/auth/sign-out", read: () => undefined });

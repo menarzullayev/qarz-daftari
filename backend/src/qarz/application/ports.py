@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Any, Protocol
 from uuid import UUID
 
-from qarz.application.admin_sign_in_ports import AdminSignInSession
+from qarz.application.admin_sign_in_ports import AdminPasskeySession, AdminSignInSession
 from qarz.application.cash_ports import CashSession
 from qarz.application.network_ports import NetworkSession
 from qarz.application.shared_catalog_ports import SharedCatalogAdminSession, SharedCatalogSession
@@ -1497,7 +1497,9 @@ class TenantSession(CashSession, StockSession, NetworkSession, SharedCatalogSess
     async def store_response(self, key: str, response: dict[str, Any]) -> None: ...
 
 
-class PlatformSession(SharedCatalogAdminSession, TerritoryAdminSession, AdminSignInSession, Protocol):
+class PlatformSession(
+    SharedCatalogAdminSession, TerritoryAdminSession, AdminSignInSession, AdminPasskeySession, Protocol
+):
     """One database transaction with no tenant. Tenant tables show no rows through it."""
 
     async def claim_update(self, update_id: int) -> bool:

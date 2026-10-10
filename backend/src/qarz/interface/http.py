@@ -16,6 +16,7 @@ from qarz.application.account import AccountService, ActivityService
 from qarz.application.admin import AdminService
 from qarz.application.admin_access import AdminAccess
 from qarz.application.admin_ownership import AdminOwnershipService
+from qarz.application.admin_passkeys import AdminPasskeys, PasskeySite
 from qarz.application.admin_receipts import AdminReceiptService
 from qarz.application.admin_sign_in import AdminSignIn, Announce
 from qarz.application.auth import AuthService
@@ -61,6 +62,7 @@ from qarz.application.territories import TerritoryService
 from qarz.domain import brand
 from qarz.interface.account_api import add_account_routes
 from qarz.interface.admin_api import add_admin_routes
+from qarz.interface.admin_passkey_api import add_passkey_admin_routes, add_passkey_sign_in_routes
 from qarz.interface.auth_api import SessionAuthenticator, add_auth_routes
 from qarz.interface.body_limit import BodyLimit
 from qarz.interface.cash_api import add_cash_routes
@@ -127,6 +129,7 @@ def create_app(
     admin: AdminAccess | None = None,
     admin_storage: Storage | None = None,
     admin_announce: Announce | None = None,
+    passkey_site: PasskeySite | None = None,
     authenticator: Authenticator | None = None,
     webhook_secret: str | None = None,
     now: Callable[[], datetime] | None = None,
@@ -307,6 +310,21 @@ def create_app(
             app, AccountService(storage), ActivityService(storage), OwnershipService(storage), current_user
         )
 
+        passkeys = (
+            None
+            if admin is None or admin_storage is None or passkey_site is None
+            else AdminPasskeys(
+                admin_storage,
+                sessions=storage,
+                allowed_tg_ids=admin.allowed_tg_ids,
+                site=passkey_site,
+                auth=auth,
+                now=now,
+            )
+        )
+        if passkeys is not None:
+            add_passkey_sign_in_routes(app, passkeys)
+
         if admin is not None and admin_storage is not None:
             # Who the caller is, and their language, is the ordinary side's knowledge; everything the
             # administrator then does goes through the administrators' role.
@@ -322,6 +340,8 @@ def create_app(
             )
             add_admin_support_routes(app, SupportAccessService(admin_storage, now), admin_user)
             add_admin_shared_catalog_routes(app, AdminSharedCatalogService(admin_storage, now), admin_user)
+            if passkeys is not None:
+                add_passkey_admin_routes(app, passkeys, admin_user)
 
     if webhook_secret is not None and storage is not None:
         chat = ChatService(

@@ -540,6 +540,10 @@ def test_every_administrator_write_leaves_exactly_one_audit_row_saying_who_what_
         assert (target_type, target_id, target_shop) == ("receipt", receipt, world.shop_a)
         assert body is not None
         assert reason == body.get("reason")
+    elif "passkeys" in op_name:
+        # An administrator's own passkey: the row is about the administrator, and names no shop.
+        done = {"admin.passkeys.add": "admin.passkey_added", "admin.passkeys.remove": "admin.passkey_removed"}[op_name]
+        assert (action, target_type, target_id, target_shop, reason) == (done, "admin", str(world.admin), None, None)
     elif "catalog" in op_name:
         # The audit, like the queue, does not say which shop a suggestion came from.
         suggestion = call.path(world).split("/")[-2]

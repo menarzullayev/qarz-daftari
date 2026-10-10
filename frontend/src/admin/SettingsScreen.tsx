@@ -319,6 +319,12 @@ function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings
           {t("admin.settings.secondFactorOff")}
         </p>
       ) : null}
+      {/* The administrator's own passkeys are a screen of their own: this form asks the server nothing more. */}
+      <p className="actions">
+        <Link to="/settings/passkeys" className="button">
+          {t("passkeys.title")}
+        </Link>
+      </p>
       {/* The queue of the shared catalogue exists only while its switch is on: no link to it before. */}
       {saved.values["catalog_on"] === true ? (
         <p className="actions">

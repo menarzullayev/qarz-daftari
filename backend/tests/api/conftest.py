@@ -19,9 +19,11 @@ from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from qarz.application.admin_access import AdminAccess
+from qarz.application.admin_passkeys import PasskeySite, challenge_key
 from qarz.application.auth import AuthService
 from qarz.domain import totp
 from qarz.domain.promise import tashkent_date
+from qarz.infrastructure import passkey_signature
 from qarz.infrastructure.db import Database
 from qarz.infrastructure.file_store import FilesystemFileStore
 from qarz.infrastructure.secret_box import SecretBox
@@ -45,6 +47,16 @@ class HeaderAuthenticator:
             return uuid.UUID(raw)
         except ValueError:
             return None
+
+
+# Where the test application's passkeys are for: a deployment with QD_PASSKEY_HOST set.
+TEST_PASSKEY_HOST = "admin.shop.test"
+TEST_PASSKEY_SITE = PasskeySite(
+    host=TEST_PASSKEY_HOST,
+    key=challenge_key("a server secret of the tests"),
+    verify=passkey_signature.verified,
+    usable=passkey_signature.usable,
+)
 
 
 class MovableClock:
@@ -288,6 +300,7 @@ def build_app(stage: Stage) -> FastAPI:
         admin=admin,
         admin_storage=stage.admin_database,
         authenticator=HeaderAuthenticator(),
+        passkey_site=TEST_PASSKEY_SITE,
         webhook_secret=WEBHOOK_SECRET,
         now=stage.now,
         file_store=stage.file_store,

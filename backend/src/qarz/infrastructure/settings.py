@@ -1,5 +1,7 @@
 """Runtime configuration read from the environment. Secrets never live in the repository."""
 
+import re
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -27,6 +29,9 @@ class Settings(BaseSettings):
     # secrets are left as they are, so "required" brings the codes back with no new enrolment. A person
     # who never confirmed a second factor still enrols once. Any other value refuses to start.
     admin_second_factor: str = "required"
+    # The public host administrators' passkeys are made for (a passkey belongs to one site). Empty: no
+    # passkey can be registered or used. A bare host name: no scheme, no port, no path.
+    passkey_host: str = ""
     # Where files are kept (ADR-020): "filesystem" (development, tests) or "s3" (production). Empty means
     # no store is configured and every file is refused.
     file_store: str = ""
@@ -109,6 +114,16 @@ class Settings(BaseSettings):
         if self.admin_second_factor not in ("required", "off"):
             raise ValueError('QD_ADMIN_SECOND_FACTOR must be "required" or "off"')
         return self.admin_second_factor == "required"
+
+    def passkey_site_host(self) -> str | None:
+        """The host of the administrators' passkeys, or None when none is set. Anything that is not a bare
+        host name refuses to start: a passkey made for a mistyped site would work nowhere."""
+        host = self.passkey_host.strip().lower()
+        if not host:
+            return None
+        if not re.fullmatch(r"(?=.{1,253}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+", host):
+            raise ValueError("QD_PASSKEY_HOST must be a bare host name, such as admin.example.uz")
+        return host
 
     def alert_chats(self) -> tuple[int, ...]:
         """The chats of the operations alerts, in the order written. Anything that is not a whole number
