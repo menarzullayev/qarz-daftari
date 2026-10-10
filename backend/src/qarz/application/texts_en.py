@@ -454,6 +454,9 @@ CHAT: dict[str, str] = {
     "ops_rule_AdminWithoutSupportAccess": "an administrator asked for shop data without support access",
     "ops_rule_ShopOwnerReassigned": "an administrator replaced a shop owner",
     "ops_rule_MetricsMissing": "the API metrics cannot be read",
+    "ops_rule_AdminSecondFactorOff": (
+        "the administrator's second factor is off (QD_ADMIN_SECOND_FACTOR=off): settings change without a code"
+    ),
     "ops_rule_BackupFailed": "the latest backup failed",
     "ops_rule_BackupMissing": "no fresh backup in the store (none in 26 hours, or no full backup in 8 days)",
     "ops_rule_WalArchiveStale": "the WAL archive is older than 5 minutes, or the check itself is not working",

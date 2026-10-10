@@ -37,6 +37,7 @@ when a rule is added here that the watch neither mirrors nor names as not watche
 | `ReceiptsWaiting` | Yes | `oldest_waiting_receipt()` |
 | `CrossTenantAttempt`, `InvalidSignaturesRepeated`, `AdminSecondFactorRepeated`, `SupportAccessOpened`, `AdminWithoutSupportAccess`, `ShopOwnerReassigned` | Yes | The API's `/metrics`: `qd_security_events_total`, compared across rounds |
 | `MetricsMissing` | Yes, as "the worker cannot read `/metrics`" | The API's `/metrics` |
+| (none: a rule of the watch alone) `AdminSecondFactorOff` | Yes: a standing warning while the API runs with `QD_ADMIN_SECOND_FACTOR=off` | The API's `/metrics`: the gauge `qd_admin_second_factor_off`, 1 while it is off; absent where the API serves no administrators |
 | `BackupFailed`, `BackupMissing`, `RestoreTestNotPassed` | Yes | The figure files of the backup jobs, mounted read-only into the worker |
 | `WalArchiveStale` | Yes, with one difference: the rule wants the check of the repository younger than 5 minutes, which fits a check every minute; the single host checks every 5 minutes, so the watch allows 16 (three intervals and a minute), as the `backup` container's own health check does. The age of the archive itself is the rule's 5 minutes | The same files |
 

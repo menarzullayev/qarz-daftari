@@ -717,7 +717,7 @@ Nothing else: `require_member` enforces the new permission, the permission matri
 | Telegram signatures | Webhook secret compared in constant time; launch data and login data verified by HMAC with the bot token and rejected when older than the allowed age |
 | Sessions | Random 256-bit identifiers stored hashed; revocable; rotated on privilege change |
 | Web | CSRF token on writes; strict content security policy; no third-party scripts except Telegram's; frame rules that allow embedding only by Telegram for the Mini App |
-| Administrator | Allow-list; time-based second factor with the secret encrypted at rest; re-prompt for sensitive changes; every action in an audit log the administrator cannot alter |
+| Administrator | Allow-list; time-based second factor with the secret encrypted at rest; re-prompt for sensitive changes; every action in an audit log the administrator cannot alter. Amended 2026-10-10: the second factor and the re-prompt hold where `QD_ADMIN_SECOND_FACTOR` is `required`, which is the default; a deployment may set it to `off` (ADR-017, runbook 7), and then neither is asked of an administrator whose second factor is confirmed. The allow-list and the audit are not affected by the setting |
 | Tenant isolation | Row-level security (ADR-016); automated tests attempt every cross-shop access |
 | Tokens | Invitations: 32 random bytes, stored as SHA-256, single use or expiring; counter codes are reusable and revocable |
 | Input | Length limits; strict amount and quantity parsing; parameterized SQL; output encoded by the framework |

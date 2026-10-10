@@ -7,6 +7,7 @@ import { Confirm, FieldError } from "../shared/workspace/parts";
 import type { AdminApi, AdminShop } from "./adminApi";
 import "./messages";
 import { cleanReason, isCode, isOwnerRefusal, REASON_MAX, REASON_MIN, telegramId } from "./rules";
+import { useSecondFactorOff } from "./secondFactor";
 
 type Draft = { newOwnerTgId: number; reason: string };
 type Problems = { owner: string | null; reason: string | null; code: string | null };
@@ -16,7 +17,8 @@ const NO_PROBLEMS: Problems = { owner: null, reason: null, code: null };
  * Gives the shop to another person, for an owner who lost their Telegram account (operations runbook 7).
  * The new owner is named by Telegram identifier and must have started the bot. The change needs a reason
  * and, every time, a fresh code from the authenticator; nothing is sent before the "yes" that follows
- * the statement of what will happen.
+ * the statement of what will happen. Where the server runs with the second factor switched off no code
+ * is asked for and none is sent.
  */
 export function OwnerSection({
   api,
@@ -30,6 +32,7 @@ export function OwnerSection({
   onChanged: (changed: AdminShop) => void;
 }) {
   const { t } = useI18n();
+  const noCode = useSecondFactorOff();
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
   const [owner, setOwner] = useState("");
@@ -41,7 +44,7 @@ export function OwnerSection({
   // request to the server, so it is read when the request is made and never compared.
   const codeNow = useRef("");
   const { state, submit, reset } = useSubmit((payload: Draft, key) =>
-    api.reassignOwner(shop.id, { ...payload, code: codeNow.current }, key).then((changed) => {
+    api.reassignOwner(shop.id, { ...payload, code: noCode ? null : codeNow.current }, key).then((changed) => {
       setOpen(false);
       setDraft(null);
       setOwner("");
@@ -61,7 +64,7 @@ export function OwnerSection({
     const found: Problems = {
       owner: id === null ? t("admin.owner.newOwner.invalid") : id === shop.ownerTgId ? t("admin.owner.refused.already_owner") : null,
       reason: clean === null ? t("admin.reason.invalid", { min: REASON_MIN, max: REASON_MAX }) : null,
-      code: isCode(code.trim()) ? null : t("door.code.invalid"),
+      code: noCode || isCode(code.trim()) ? null : t("door.code.invalid"),
     };
     setProblems(found);
     if (id !== null && clean !== null && found.owner === null && found.code === null) {
@@ -171,27 +174,29 @@ export function OwnerSection({
             </p>
             <FieldError id="owner-reason-error" message={problems.reason} />
           </div>
-          <div className="field">
-            <label htmlFor="owner-code">{t("admin.settings.code")}</label>
-            <input
-              id="owner-code"
-              className="input"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              value={code}
-              aria-invalid={problems.code !== null}
-              aria-describedby="owner-code-hint owner-code-error"
-              onChange={(event) => {
-                setCode(event.target.value);
-                setProblems((current) => ({ ...current, code: null }));
-              }}
-            />
-            <p className="field__hint" id="owner-code-hint">
-              {t("admin.owner.code.hint")}
-            </p>
-            <FieldError id="owner-code-error" message={problems.code} />
-          </div>
+          {noCode ? null : (
+            <div className="field">
+              <label htmlFor="owner-code">{t("admin.settings.code")}</label>
+              <input
+                id="owner-code"
+                className="input"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={code}
+                aria-invalid={problems.code !== null}
+                aria-describedby="owner-code-hint owner-code-error"
+                onChange={(event) => {
+                  setCode(event.target.value);
+                  setProblems((current) => ({ ...current, code: null }));
+                }}
+              />
+              <p className="field__hint" id="owner-code-hint">
+                {t("admin.owner.code.hint")}
+              </p>
+              <FieldError id="owner-code-error" message={problems.code} />
+            </div>
+          )}
           <p className="actions">
             <button type="submit" className="button button--primary">
               {t("admin.change.continue")}

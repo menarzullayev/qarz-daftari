@@ -88,6 +88,12 @@ class OwnerBody(ReasonBody):
     code: str = Field(pattern=r"^[0-9]{6}$")
 
 
+class OwnerBodyWithoutCode(OwnerBody):
+    # Only on a deployment with the second factor off: no code is asked for, and one that is sent is
+    # not looked at.
+    code: str | None = Field(default=None, pattern=r"^[0-9]{6}$")  # type: ignore[assignment]
+
+
 class ApproveBody(_Strict):
     # Absent or null approves the months the owner stated; a number corrects them (BR-27).
     months: int | None = None
@@ -247,7 +253,7 @@ def add_admin_routes(
         async def reassign_owner(
             shop_id: UUID, request: Request, user_id: admin, idempotency_key: IdempotencyKey = None
         ) -> dict[str, Any]:
-            body = await _read(request, OwnerBody)
+            body = await _read(request, OwnerBody if access.second_factor_required else OwnerBodyWithoutCode)
             try:
                 answer = await owners.reassign(
                     user_id,

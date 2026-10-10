@@ -146,6 +146,8 @@ export const uzAdmin = {
   "admin.cards.invalid": "Kartalardagi xatolarni tuzating.",
   "admin.settings.rule.chat": "Telegram guruhining chat ID raqami (manfiy son); bo'sh qoldirilsa, o'chiriladi.",
   "admin.settings.needsCode": "O'zgartirish uchun autentifikator kodi qayta so'raladi.",
+  "admin.settings.secondFactorOff":
+    "Bu o'rnatmada ikkinchi omil o'chirilgan: sozlamalar, jumladan to'lov kartalari va narx, kodsiz o'zgaradi.",
   "admin.settings.lastChange": "Oxirgi o'zgarish: {date}, administrator {admin}.",
   "admin.settings.reason": "Sabab (ixtiyoriy)",
   "admin.settings.code": "Autentifikator kodi",
@@ -209,6 +211,7 @@ export const uzAdmin = {
   "admin.action.admin.session_closed": "Admin sessiyasi yopildi",
   "admin.action.shop.viewed": "Do'kon sahifasi ko'rildi",
   "admin.action.shop.owner_reassigned": "Do'kon egasi almashtirildi",
+  "admin.action.shop.owner_reassigned_without_code": "Do'kon egasi kodsiz almashtirildi (ikkinchi omil o'chirilgan)",
   "admin.action.subscription.trial_set": "Sinov muddati belgilandi",
   "admin.action.subscription.trial_ended": "Sinov tugatildi",
   "admin.action.subscription.paid_through_set": "To'langan muddat belgilandi",

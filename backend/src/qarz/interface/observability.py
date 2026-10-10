@@ -60,6 +60,8 @@ SECURITY_SUPPORT_ACCESS_OPENED = "support_access_opened"
 SECURITY_SUPPORT_ACCESS_REQUIRED = "admin_without_support_access"
 # An administrator gave a shop to another person (runbook 7). Rare, and each one should be known about.
 SECURITY_OWNER_REASSIGNED = "owner_reassigned"
+# 1 while this deployment asks administrators for no second factor (QD_ADMIN_SECOND_FACTOR=off).
+ADMIN_SECOND_FACTOR_OFF = "qd_admin_second_factor_off"
 EVERY_SECURITY_KIND = (
     SECURITY_SHOP_NOT_MEMBER,
     SECURITY_BAD_SIGN_IN,
@@ -133,7 +135,7 @@ class Metrics:
     def security_event(self, kind: str) -> None:
         self._security[kind] = self._security.get(kind, 0) + 1
 
-    def render(self, gauges: dict[str, dict[str, float]] | None = None) -> str:
+    def render(self, gauges: dict[str, dict[str, float]] | None = None, standing: dict[str, bool] | None = None) -> str:
         lines = ["# TYPE qd_requests_total counter"]
         for (method, route, status), count in sorted(self._requests.items()):
             lines.append(f'qd_requests_total{{method="{method}",route="{route}",status="{status}"}} {count}')
@@ -153,6 +155,10 @@ class Metrics:
             label = "channel" if "outbox" in name else "status" if "receipts" in name or "sms" in name else "job"
             for key, value in sorted(values.items()):
                 lines.append(f'{name}{{{label}="{key}"}} {value:.0f}')
+        # Standing conditions of this deployment: a gauge with no label, 1 while the condition holds.
+        for name, holds in sorted((standing or {}).items()):
+            lines.append(f"# TYPE {name} gauge")
+            lines.append(f"{name} {int(holds)}")
         return "\n".join(lines) + "\n"
 
 

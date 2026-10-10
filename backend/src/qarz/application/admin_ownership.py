@@ -90,6 +90,19 @@ class AdminOwnershipService:
                 if done.outcome != "reassigned":
                     raise OwnerReassignmentRefused({"reason": _REFUSALS[done.outcome]})
                 assert done.audit_id is not None and done.shop_name is not None
+                if not self._access.second_factor_required:
+                    # The database writes the row of the change itself and knows nothing of codes. The
+                    # audit is insert-only, so that this change was made without one is a row beside it.
+                    await session.add_admin_audit(
+                        admin_id=admin_id,
+                        action="shop.owner_reassigned_without_code",
+                        target_type="shop",
+                        target_id=str(shop_id),
+                        shop_id=shop_id,
+                        reason=None,
+                        detail={"change": str(done.audit_id)} | self._access.unverified(),
+                        now=now,
+                    )
                 if done.deletion_due is None:
                     text = say(done.new_owner_lang or "uz", "owner_reassigned_new", shop=done.shop_name)
                 else:

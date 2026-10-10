@@ -145,6 +145,8 @@ export const kaaAdmin: PartialCatalog<typeof uzAdmin> = {
   "admin.cards.invalid": "Kartalardaǵı qátelerdi dúzetiń.",
   "admin.settings.rule.chat": "Telegram toparınıń chat ID nomeri (teris san); bos qaldırılsa, óshiriledi.",
   "admin.settings.needsCode": "Ózgertiw ushın autentifikator kodı qayta soraladı.",
+  "admin.settings.secondFactorOff":
+    "Bul ornatpada ekinshi faktor óshirilgen: sazlawlar, sonıń ishinde tólem kartaları hám baha, kodsız ózgeredi.",
   "admin.settings.lastChange": "Sońǵı ózgeris: {date}, administrator {admin}.",
   "admin.settings.reason": "Sebep (shárt emes)",
   "admin.settings.code": "Autentifikator kodı",
@@ -209,6 +211,7 @@ export const kaaAdmin: PartialCatalog<typeof uzAdmin> = {
   "admin.action.admin.session_closed": "Admin sessiyası jabıldı",
   "admin.action.shop.viewed": "Dúkan beti kórildi",
   "admin.action.shop.owner_reassigned": "Dúkan iyesi almastırıldı",
+  "admin.action.shop.owner_reassigned_without_code": "Dúkan iyesi kodsız almastırıldı (ekinshi faktor óshirilgen)",
   "admin.action.subscription.trial_set": "Sınaq múddeti belgilendi",
   "admin.action.subscription.trial_ended": "Sınaq tamamlandı",
   "admin.action.subscription.paid_through_set": "Tólengen múddet belgilendi",

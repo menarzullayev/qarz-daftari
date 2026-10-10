@@ -3,6 +3,7 @@
 Run with:  uvicorn qarz.interface.asgi:build --factory
 """
 
+import logging
 from datetime import timedelta
 
 from fastapi import FastAPI
@@ -21,6 +22,8 @@ from qarz.interface.http import create_app
 from qarz.interface.observability import configure_logging
 from qarz.interface.rate_limit import Limit, RateLimits
 
+log = logging.getLogger("qarz.admin")
+
 
 def build(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
@@ -37,6 +40,8 @@ def build(settings: Settings | None = None) -> FastAPI:
     # No allow-list or no key for the second-factor secrets: nobody can be an administrator, so that side
     # of the API does not exist. A malformed list or key refuses to start instead.
     allowed = settings.admin_allow_list()
+    # Read here, whoever is served: a value that is neither "required" nor "off" refuses to start.
+    second_factor_required = settings.second_factor_required()
     admin: AdminAccess | None = None
     admin_database: Database | None = None
     if allowed and settings.secrets_key:
@@ -46,7 +51,14 @@ def build(settings: Settings | None = None) -> FastAPI:
         if not settings.admin_database_url:
             raise ValueError("QD_ADMIN_DATABASE_URL must be set when QD_ADMIN_TG_IDS is")
         admin_database = Database(settings.admin_database_url, statement_timeout_ms=settings.statement_timeout_ms)
-        admin = AdminAccess(admin_database, allowed_tg_ids=allowed, cipher=cipher)
+        admin = AdminAccess(
+            admin_database, allowed_tg_ids=allowed, cipher=cipher, second_factor_required=second_factor_required
+        )
+        if not second_factor_required:
+            log.warning(
+                "admin_second_factor_off QD_ADMIN_SECOND_FACTOR=off: administrators are asked for no code; "
+                "the allow-list and the Telegram sign-in are the only controls on the administrators' side"
+            )
     return create_app(
         database.reachable,
         database,

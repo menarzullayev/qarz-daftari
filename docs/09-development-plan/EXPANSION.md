@@ -465,3 +465,55 @@ same attribution is in the repository's `README.md`.
 - **No screen of this module has been seen by a person, or opened against a real server or inside
   Telegram.** The two forms and the card were rendered once in a browser 375 px wide against canned
   answers, with a mahalla name of eighty characters: nothing reached past the edge of the screen.
+
+## The administrators' second factor can be switched off (10 October 2026)
+
+A setting of the deployment, `QD_ADMIN_SECOND_FACTOR`, read from the environment when the API starts:
+`required` (the default) or `off`. No migration. One pull request, nothing deployed, and the setting is
+`required` in every file of the repository.
+
+### What the owner decided
+
+| # | Decision |
+|---|---|
+| 1 | The administrators' second factor is switched off through the environment on the owner's own installation, because entering a code for every switch was blocking development. Decided on 2026-10-10. |
+| 2 | The owner was warned twice, and was offered a narrower option: only the module switches without a code, with the payment cards, the price, the review group and online payment still asking for one. He chose the full one, knowing that those four then change without a code as well. |
+| 3 | The requirement itself is not withdrawn. ADR-017 and the specification keep it, `required` is the default everywhere, and `off` is an exception a deployment has to state. |
+
+### The risk
+
+With `off`, the allow-listed Telegram account is the only control on the administrators' side: whoever
+takes over that account, or a browser where it is signed in, can change where subscription payments go
+and what they cost, and give a shop to another person. Nothing about `off` is hidden, and nothing is
+lost by going back: the secrets stay stored and `required` restores the codes with no new enrolment.
+
+### What was built
+
+- **The setting.** `Settings.admin_second_factor` and `second_factor_required()`; the API reads it at
+  start whether or not it serves administrators, and a value that is neither `required` nor `off`
+  refuses to start. It is in both env examples, in `compose.yml` (`${QD_ADMIN_SECOND_FACTOR:-required}`)
+  and in the file `single-host.sh env-init` writes (`required`).
+- **Off.** `AdminAccess` lets an administrator with a confirmed second factor through with no admin
+  session, and `check_code` judges nothing for them. The door's status answers `elevated: true` and
+  `second_factor: "off"`; the settings answer `needs_code: []` and `second_factor: "off"`. Neither answer
+  has the new field while the setting is `required`, so that path is unchanged to the byte.
+- **What the database still asks for.** Migrations 0027 and 0028 let a setting or an owner change only
+  for an account that once confirmed a second factor and that has an admin session open. Neither was
+  weakened. The API keeps a session open for the administrator, held by no browser, and a person who
+  never confirmed a second factor still enrols once.
+- **Visible.** A warning in the API's log at start; `second_factor: off` in the audit detail of every
+  setting changed without a code, and a row `shop.owner_reassigned_without_code` beside the row of a
+  replaced owner (the audit is insert-only and the database writes that row itself); a permanent notice
+  on the settings screen in the six languages; the gauge `qd_admin_second_factor_off` in `/metrics`, and
+  the rule `AdminSecondFactorOff` of the worker's watch, said at once and every four hours while it
+  stays.
+- **The panel.** It reads what the server says and guesses nothing: no code field on the settings
+  screen or for replacing an owner, and no "close the admin session" button, since there is none to
+  close.
+
+### Open
+
+- The decision has no record in `.project-alpha/decisions` yet; it is written here, in ADR-017 and in
+  runbook 7.
+- `deploy/monitoring/alerts.yml` has no rule for the gauge: no monitoring system reads that file on the
+  single host (DEC-070), and the worker's watch is what tells the operators.

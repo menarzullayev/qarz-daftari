@@ -3655,6 +3655,18 @@ class PgPlatformSession(SharedCatalogAdminQueries, TerritoryAdminQueries):
         ).first()
         return None if row is None else row.expires_at
 
+    async def admin_session_open(self, user_id: UUID, now: datetime) -> bool:
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT 1 FROM admin_session WHERE user_id = :user_id AND revoked_at IS NULL "
+                    "AND expires_at > :now LIMIT 1"
+                ),
+                {"user_id": user_id, "now": now},
+            )
+        ).first()
+        return row is not None
+
     async def revoke_admin_sessions(self, user_id: UUID, now: datetime) -> int:
         result = await self._conn.execute(
             text("UPDATE admin_session SET revoked_at = :now WHERE user_id = :user_id AND revoked_at IS NULL"),
