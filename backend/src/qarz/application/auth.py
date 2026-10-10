@@ -21,6 +21,7 @@ from qarz.domain.telegram_auth import (
 
 SIGN_IN_WEBAPP = public_operation("auth.telegram_webapp")
 SIGN_IN_WEB = public_operation("auth.telegram_login")
+SIGN_IN_PASSWORD = public_operation("auth.admin_password")
 SIGN_OUT = self_operation("auth.sign_out")
 SIGN_OUT_EVERYWHERE = self_operation("auth.sign_out_everywhere")
 READ_ME = self_operation("me.read")
@@ -104,6 +105,21 @@ class AuthService:
             user_id = await session.ensure_user(identity.tg_id, "uz")
             # One web session a person (security review, finding 9): signing in on the web ends the web
             # sessions the person had, in this browser or another. Mini App sessions are left alone.
+            await session.revoke_user_sessions(user_id, now, kind="web")
+            await session.create_session(
+                token_hash=_hash(token), user_id=user_id, kind="web", csrf_hash=_hash(csrf), now=now, expires_at=expires
+            )
+        return IssuedSession(token, expires, csrf)
+
+    async def issue_web_session(self, user_id: UUID) -> IssuedSession:
+        """A web session for a person some other check has already let in (an administrator's password).
+
+        The same session the Telegram sign-in gives, under the same rule: one web session a person.
+        """
+        now = self._now()
+        token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+        expires = now + WEB_SESSION
+        async with self._storage.platform() as session:
             await session.revoke_user_sessions(user_id, now, kind="web")
             await session.create_session(
                 token_hash=_hash(token), user_id=user_id, kind="web", csrf_hash=_hash(csrf), now=now, expires_at=expires

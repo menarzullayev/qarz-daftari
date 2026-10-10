@@ -17,6 +17,7 @@ OPS_UZ = {
     "ops_line_resolved": "• {name}: {text} ({since} — {until})",
     "ops_more": "…yana {count} ta ogohlantirish keyingi xabarda.",
     "ops_footer": "Nima qilish kerak: runbook 16 (docs/10-operations/runbooks.md).",
+    "ops_password_sign_in": "🔑 {brand}: admin panelga parol bilan kirildi. Login: {login} ({at}).",
     "ops_test": (
         "✅ {brand}: SINOV ogohlantirishi ({at}).\n"
         "Bu haqiqiy nosozlik emas. Tizim nazorati xabarlari shu chatga yetib kelishini tekshirish uchun yuborildi."
@@ -67,6 +68,7 @@ OPS_RU = {
     "ops_line_resolved": "• {name}: {text} ({since} — {until})",
     "ops_more": "…ещё предупреждений: {count}, они будут в следующем сообщении.",
     "ops_footer": "Что делать: runbook 16 (docs/10-operations/runbooks.md).",
+    "ops_password_sign_in": "🔑 {brand}: вход в админ-панель по паролю. Логин: {login} ({at}).",
     "ops_test": (
         "✅ {brand}: ПРОБНОЕ предупреждение ({at}).\n"
         "Это не настоящая неисправность. Оно отправлено, чтобы проверить, что сообщения контроля доходят в этот чат."

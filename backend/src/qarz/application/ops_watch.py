@@ -160,6 +160,11 @@ def trial_text(now: datetime) -> str:
     return "\n\n".join(say(lang, "ops_test", at=clock(now)) for lang in ("uz", "ru"))
 
 
+def password_sign_in_message(login: str, now: datetime) -> str:
+    """What the operators' chats are told when an administrator comes in with a password."""
+    return "\n\n".join(say(lang, "ops_password_sign_in", login=login, at=clock(now)) for lang in ("uz", "ru"))
+
+
 async def send_test_alert(channel: AlertChannel, chats: Sequence[int], now: datetime) -> dict[int, str]:
     """Send the test alert to every configured chat. For each: `sent`, or why Telegram did not take it."""
     outcomes: dict[int, str] = {}

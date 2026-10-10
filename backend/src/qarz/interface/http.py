@@ -17,6 +17,7 @@ from qarz.application.admin import AdminService
 from qarz.application.admin_access import AdminAccess
 from qarz.application.admin_ownership import AdminOwnershipService
 from qarz.application.admin_receipts import AdminReceiptService
+from qarz.application.admin_sign_in import AdminSignIn, Announce
 from qarz.application.auth import AuthService
 from qarz.application.cash_book import CashBookService
 from qarz.application.cash_export import CashExportService
@@ -125,6 +126,7 @@ def create_app(
     auth: AuthService | None = None,
     admin: AdminAccess | None = None,
     admin_storage: Storage | None = None,
+    admin_announce: Announce | None = None,
     authenticator: Authenticator | None = None,
     webhook_secret: str | None = None,
     now: Callable[[], datetime] | None = None,
@@ -243,7 +245,17 @@ def create_app(
                     counted.answered(user_id, shop_id)
                 return response
 
-        add_auth_routes(app, auth, current_user, None if admin is None else admin.end_sessions_of)
+        add_auth_routes(
+            app,
+            auth,
+            current_user,
+            None if admin is None else admin.end_sessions_of,
+            None
+            if admin is None or admin_storage is None
+            else AdminSignIn(
+                admin_storage, allowed_tg_ids=admin.allowed_tg_ids, auth=auth, announce=admin_announce, now=now
+            ),
+        )
         add_shop_routes(app, ShopService(storage), current_user)
         add_staff_routes(app, StaffService(storage), current_user)
         add_permission_routes(app, PermissionService(storage), current_user)

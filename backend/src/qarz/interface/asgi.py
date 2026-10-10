@@ -4,18 +4,22 @@ Run with:  uvicorn qarz.interface.asgi:build --factory
 """
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
+from aiogram import Bot
 from fastapi import FastAPI
 
 from qarz.application.admin_access import AdminAccess
+from qarz.application.admin_sign_in import Announce
 from qarz.application.auth import AuthService
 from qarz.application.online_payment import PaymentKeys
+from qarz.application.ops_watch import password_sign_in_message
 from qarz.domain.exports import MAX_EXPORT_BYTES
 from qarz.infrastructure.db import Database
 from qarz.infrastructure.file_store import build_file_store
 from qarz.infrastructure.secret_box import SecretBox
 from qarz.infrastructure.settings import Settings
+from qarz.infrastructure.telegram_alerts import TelegramAlerts
 from qarz.infrastructure.telegram_files import TelegramFileFetcher
 from qarz.infrastructure.telegram_members import TelegramMemberReader
 from qarz.interface.http import create_app
@@ -23,6 +27,25 @@ from qarz.interface.observability import configure_logging
 from qarz.interface.rate_limit import Limit, RateLimits
 
 log = logging.getLogger("qarz.admin")
+
+
+def _password_sign_in_announcer(settings: Settings) -> Announce | None:
+    """Tell the operators' chats of every sign-in by password; nobody when no chat or no bot is set."""
+    chats = settings.alert_chats()
+    if not chats or not settings.bot_token:
+        return None
+    token = settings.bot_token
+
+    async def announce(login: str, at: datetime) -> None:
+        bot = Bot(token)
+        try:
+            channel = TelegramAlerts(bot)
+            for chat in chats:
+                await channel.send(chat, password_sign_in_message(login, at))
+        finally:
+            await bot.session.close()
+
+    return announce
 
 
 def build(settings: Settings | None = None) -> FastAPI:
@@ -65,6 +88,7 @@ def build(settings: Settings | None = None) -> FastAPI:
         auth=auth,
         admin=admin,
         admin_storage=admin_database,
+        admin_announce=_password_sign_in_announcer(settings),
         webhook_secret=settings.webhook_secret or None,
         # A store that is named but misconfigured stops the start; none at all only refuses receipts.
         file_store=build_file_store(settings, max_object_bytes=MAX_EXPORT_BYTES),
