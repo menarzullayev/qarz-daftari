@@ -80,7 +80,8 @@ function PasswordSignIn({ fetch, onSignedIn }: { fetch: Fetch; onSignedIn: (auth
       return;
     }
     setAttempt({ status: "pending" });
-    signInWithPassword(fetch, login.trim(), password).then(
+    // A phone capitalises the first letter; a login is lower case on the server.
+    signInWithPassword(fetch, login.trim().toLowerCase(), password).then(
       (auth) => {
         setPassword("");
         onSignedIn(auth);
@@ -102,7 +103,6 @@ function PasswordSignIn({ fetch, onSignedIn }: { fetch: Fetch; onSignedIn: (auth
             className="input"
             name="username"
             autoComplete="username"
-            autoCapitalize="none"
             spellCheck={false}
             maxLength={40}
             value={login}

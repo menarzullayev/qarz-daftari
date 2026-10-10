@@ -20,7 +20,8 @@ CREATE UNIQUE INDEX user_session_service_label ON user_session (label) WHERE kin
 -- An administrator's password. Set from the server's command line only; the hash is scrypt's, with a
 -- salt of its own. Five wrong attempts lock the login for a quarter of an hour.
 CREATE TABLE admin_password (
-  user_id       uuid PRIMARY KEY REFERENCES admin_account(user_id),
+  -- Goes with the account: no role may delete an account, so this is for whoever owns the database.
+  user_id       uuid PRIMARY KEY REFERENCES admin_account(user_id) ON DELETE CASCADE,
   login         text NOT NULL UNIQUE CHECK (login ~ '^[a-z0-9][a-z0-9._-]{2,39}$'),
   salt          bytea NOT NULL CHECK (length(salt) = 16),
   hash          bytea NOT NULL CHECK (length(hash) = 64),

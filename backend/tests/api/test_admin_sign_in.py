@@ -117,12 +117,19 @@ def tool(app_database_url: str, admin_database_url: str, admin_env: AdminEnv) ->
     made.close()
 
 
-@pytest.fixture(autouse=True)
-def nothing_left_over(owner: psycopg.Connection, world: World) -> None:
-    """Labels and logins are the platform's, not a shop's: what an earlier test made is taken away."""
+def _clear(owner: psycopg.Connection) -> None:
     owner.execute("DELETE FROM user_session WHERE kind = 'service'")
     owner.execute("DELETE FROM admin_password")
+
+
+@pytest.fixture(autouse=True)
+def nothing_left_over(owner: psycopg.Connection, world: World) -> Iterator[None]:
+    """Labels and logins are the platform's, not a shop's: what a test made is taken away, before and
+    after, so that neither this file's tests nor anyone else's meet it."""
+    _clear(owner)
     _NOW["admin"] = world.admin
+    yield
+    _clear(owner)
 
 
 _NOW: dict[str, uuid.UUID] = {}
