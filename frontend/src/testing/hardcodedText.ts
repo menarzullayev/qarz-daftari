@@ -22,6 +22,9 @@ const TECHNICAL_ATTRIBUTES = new Set([
   "lang",
   "dir",
   "src",
+  // How a picture is fetched and decoded ("lazy", "async"): tokens, read by nobody.
+  "loading",
+  "decoding",
   "method",
   "scope",
   "autoComplete",
