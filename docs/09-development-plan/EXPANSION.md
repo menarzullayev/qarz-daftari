@@ -462,5 +462,6 @@ same attribution is in the repository's `README.md`.
 - **A filter and a report by place** (the village shops module planned above) are not built: an address
   is stored and shown, not yet searched.
 - **Correcting a place** (a wrong name, a missing street) has no screen: the import is the only way in.
-- **No screen of this module has been seen by a person or rendered in a browser**; the layout at 375 px
-  rests on the form's existing styles and on tests of the markup, not on a measurement.
+- **No screen of this module has been seen by a person, or opened against a real server or inside
+  Telegram.** The two forms and the card were rendered once in a browser 375 px wide against canned
+  answers, with a mahalla name of eighty characters: nothing reached past the edge of the screen.

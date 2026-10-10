@@ -1100,6 +1100,10 @@ a.row__link:hover .row__name,
   border-top: 1px solid var(--qd-line);
 }
 
+.address > .field__hint {
+  margin-bottom: var(--qd-space-3);
+}
+
 .address > .field:last-of-type {
   margin-bottom: var(--qd-space-2);
 }
