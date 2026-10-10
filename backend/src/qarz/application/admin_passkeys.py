@@ -21,6 +21,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from qarz.application import idempotency
+from qarz.application.admin_access import AdminRequestKeys
 from qarz.application.admin_sign_in_ports import Passkey
 from qarz.application.auth import AuthService, IssuedSession
 from qarz.application.errors import AppError, NotFound, Unauthenticated, ValidationFailed
@@ -30,7 +32,6 @@ from qarz.domain import brand, passkey
 
 log = logging.getLogger("qarz.admin")
 
-PASSKEY_CHALLENGE = public_operation("auth.admin_passkey_challenge")
 SIGN_IN_PASSKEY = public_operation("auth.admin_passkey")
 LIST_PASSKEYS = admin_operation("admin.passkeys.list")
 START_PASSKEY = admin_operation("admin.passkeys.challenge")
@@ -62,6 +63,15 @@ class PasskeySite:
 def challenge_key(secret: str) -> bytes:
     """The key of the challenges, drawn from the server's secret and good for nothing else."""
     return hashlib.sha256(b"qd-admin-passkey-challenge|" + secret.encode("utf-8")).digest()
+
+
+class PasskeyWanted(Unauthenticated):
+    """Nobody is signed in, and this is what a passkey would have to answer: the refusal every wrong
+    answer gets, with a fresh challenge beside it (`WWW-Authenticate`, as HTTP has it)."""
+
+    def __init__(self, www_authenticate: str) -> None:
+        super().__init__()
+        self.www_authenticate = www_authenticate
 
 
 class AdminPasskeys:
@@ -113,8 +123,17 @@ class AdminPasskeys:
         }
 
     async def add(
-        self, user_id: UUID, *, label: str, client_data: str, authenticator_data: str, public_key: str, algorithm: int
+        self,
+        user_id: UUID,
+        *,
+        label: str,
+        client_data: str,
+        authenticator_data: str,
+        public_key: str,
+        algorithm: int,
+        request_key: str | None,
     ) -> dict[str, Any]:
+        key_of_request = idempotency.validate_key(request_key)
         label = " ".join(label.split())
         if not 1 <= len(label) <= 60:
             raise ValidationFailed({"label": "required"})
@@ -124,68 +143,88 @@ class AdminPasskeys:
             passkey.challenge_expiry(self._site.key, passkey.REGISTER, challenge, now, user_id.bytes)
             data = passkey.read_authenticator_data(passkey.unb64(authenticator_data), self._site.host)
             key = passkey.unb64(public_key)
-            if (
-                data.credential_id is None
-                or algorithm not in passkey.ALGORITHMS
-                or not self._site.usable(key, algorithm)
-            ):
-                raise passkey.Refused("no credential, or a key that cannot be used")
+            if data.credential_id is None or algorithm not in passkey.ALGORITHMS:
+                raise passkey.Refused("no credential, or an algorithm that is not taken")
+            if not self._site.usable(key, algorithm):
+                raise passkey.Refused("a key that cannot be used")
         except passkey.Refused as refused:
             log.warning("admin_passkey_not_registered user=%s why=%s", user_id, refused)
             raise ValidationFailed({"passkey": "invalid"}) from refused
+        credential_id = data.credential_id
         async with self._storage.platform() as session:
-            if len(await session.passkeys_of(user_id)) >= MAX_PASSKEYS:
-                raise ValidationFailed({"passkey": "too_many"})
-            passkey_id = await session.add_passkey(
-                user_id=user_id,
-                credential_id=data.credential_id,
-                public_key=key,
-                algorithm=algorithm,
-                sign_count=data.sign_count,
-                label=label,
-                now=now,
-            )
-            if passkey_id is None:
-                raise ValidationFailed({"passkey": "exists"})
-            await session.add_admin_audit(
-                admin_id=user_id,
-                action="admin.passkey_added",
-                target_type="admin",
-                target_id=str(user_id),
-                shop_id=None,
-                reason=None,
-                detail={"passkey": str(passkey_id), "label": label},
-                now=now,
-            )
-            rows = await session.passkeys_of(user_id)
-        return self._view(next(row for row in rows if row.id == passkey_id))
 
-    async def remove(self, user_id: UUID, passkey_id: UUID) -> None:
+            async def apply() -> dict[str, Any]:
+                if len(await session.passkeys_of(user_id)) >= MAX_PASSKEYS:
+                    raise ValidationFailed({"passkey": "too_many"})
+                passkey_id = await session.add_passkey(
+                    user_id=user_id,
+                    credential_id=credential_id,
+                    public_key=key,
+                    algorithm=algorithm,
+                    sign_count=data.sign_count,
+                    label=label,
+                    now=now,
+                )
+                if passkey_id is None:
+                    raise ValidationFailed({"passkey": "exists"})
+                await session.add_admin_audit(
+                    admin_id=user_id,
+                    action="admin.passkey_added",
+                    target_type="admin",
+                    target_id=str(user_id),
+                    shop_id=None,
+                    reason=None,
+                    detail={"passkey": str(passkey_id), "label": label},
+                    now=now,
+                )
+                rows = await session.passkeys_of(user_id)
+                return self._view(next(row for row in rows if row.id == passkey_id))
+
+            return await idempotency.run_once(
+                AdminRequestKeys(session, user_id),
+                key=key_of_request,
+                operation=ADD_PASSKEY.name,
+                user_id=user_id,
+                request={"label": label, "credential": passkey.b64(credential_id)},
+                action=apply,
+            )
+
+    async def remove(self, user_id: UUID, passkey_id: UUID, request_key: str | None) -> dict[str, Any]:
+        key_of_request = idempotency.validate_key(request_key)
         now = self._now()
         async with self._storage.platform() as session:
-            if not await session.revoke_passkey(user_id, passkey_id, now):
-                raise NotFound()
-            await session.add_admin_audit(
-                admin_id=user_id,
-                action="admin.passkey_removed",
-                target_type="admin",
-                target_id=str(user_id),
-                shop_id=None,
-                reason=None,
-                detail={"passkey": str(passkey_id)},
-                now=now,
+
+            async def apply() -> dict[str, Any]:
+                if not await session.revoke_passkey(user_id, passkey_id, now):
+                    raise NotFound()
+                await session.add_admin_audit(
+                    admin_id=user_id,
+                    action="admin.passkey_removed",
+                    target_type="admin",
+                    target_id=str(user_id),
+                    shop_id=None,
+                    reason=None,
+                    detail={"passkey": str(passkey_id)},
+                    now=now,
+                )
+                return {"removed": True}
+
+            return await idempotency.run_once(
+                AdminRequestKeys(session, user_id),
+                key=key_of_request,
+                operation=REMOVE_PASSKEY.name,
+                user_id=user_id,
+                request={"passkey": str(passkey_id)},
+                action=apply,
             )
 
     # --- signing in -------------------------------------------------------------------------------------
 
-    def challenge(self) -> dict[str, Any]:
-        """What the browser needs to ask a device for a signature. Nothing is stored and nobody is named:
-        the device offers the passkeys it holds for this site."""
-        return {
-            "challenge": passkey.b64(passkey.new_challenge(self._site.key, passkey.SIGN_IN, self._now())),
-            "rp_id": self._site.host,
-            "timeout": TIMEOUT_MS,
-        }
+    def wanted(self) -> PasskeyWanted:
+        """The refusal for a caller who brought no answer: it carries a fresh challenge. Nothing is stored
+        and nobody is named: the device offers the passkeys it holds for this site."""
+        challenge = passkey.b64(passkey.new_challenge(self._site.key, passkey.SIGN_IN, self._now()))
+        return PasskeyWanted(f'QD-Passkey challenge="{challenge}", rp_id="{self._site.host}", timeout={TIMEOUT_MS}')
 
     async def sign_in(
         self, *, credential_id: str, client_data: str, authenticator_data: str, signature: str

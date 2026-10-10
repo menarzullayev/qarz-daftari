@@ -437,6 +437,10 @@ async def app_error_handler(request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, AppError)
     lang = getattr(request.state, "lang", "uz")
     response = error_response(exc.code, lang, exc.fields, exc.wording)
+    wanted = getattr(exc, "www_authenticate", None)
+    if wanted is not None:
+        # What would be accepted instead: a passkey's answer to this challenge (admin_passkeys).
+        response.headers["WWW-Authenticate"] = str(wanted)
     retry_after = getattr(exc, "retry_after", None)
     if retry_after is not None:
         response.headers["Retry-After"] = str(retry_after)
