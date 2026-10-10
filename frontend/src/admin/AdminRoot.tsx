@@ -18,6 +18,7 @@ import { type AdminApi, type AuthStatus, createAdminApi } from "./adminApi";
 import { AdminRoutes } from "./AdminApp";
 import "./messages";
 import { isCode } from "./rules";
+import { SecondFactorOff } from "./secondFactor";
 
 type AdminRootProps = {
   initialLanguage: Language;
@@ -434,7 +435,20 @@ function Root({
     case "door":
       return api ? <SecondFactor api={api} status={phase.status} now={now} onChanged={recheck} onSignOut={signOut} /> : null;
     case "in":
-      return api ? <AdminRoutes api={api} now={now} sessionEnds={phase.status.expiresAt} onSessionClosed={recheck} /> : null;
+      if (!api) {
+        return null;
+      }
+      // Second factor off on this installation: there is no admin session to end, so nothing to close.
+      return (
+        <SecondFactorOff.Provider value={phase.status.secondFactorOff}>
+          <AdminRoutes
+            api={api}
+            now={now}
+            sessionEnds={phase.status.expiresAt}
+            onSessionClosed={phase.status.secondFactorOff ? undefined : recheck}
+          />
+        </SecondFactorOff.Provider>
+      );
   }
 }
 

@@ -114,6 +114,8 @@ DEPLOY_R2_SECRET_ACCESS_KEY=
 VITE_BOT_USERNAME=
 QD_BOT_TOKEN=
 QD_ADMIN_TG_IDS=
+# The administrators' second factor: required, or off (no code is asked for anywhere; SINGLE-HOST.md).
+QD_ADMIN_SECOND_FACTOR=required
 # Whom the operations watch tells (your Telegram identifier, or a group's). Empty: nobody is told.
 QD_ALERT_CHAT_IDS=
 

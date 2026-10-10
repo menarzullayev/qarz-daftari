@@ -147,6 +147,8 @@ export const enAdmin: PartialCatalog<typeof uzAdmin, EnPlural> = {
   "admin.settings.rule.chat":
     "The chat ID of a Telegram group (a negative number); if left empty, it is turned off.",
   "admin.settings.needsCode": "The authenticator code is asked for again to change this.",
+  "admin.settings.secondFactorOff":
+    "The second factor is off on this installation: settings, payment cards and the price included, change without a code.",
   "admin.settings.lastChange": "Last change: {date}, administrator {admin}.",
   "admin.settings.reason": "Reason (optional)",
   "admin.settings.code": "Authenticator code",
@@ -210,6 +212,7 @@ export const enAdmin: PartialCatalog<typeof uzAdmin, EnPlural> = {
   "admin.action.admin.session_closed": "Admin session closed",
   "admin.action.shop.viewed": "Shop page viewed",
   "admin.action.shop.owner_reassigned": "Shop owner replaced",
+  "admin.action.shop.owner_reassigned_without_code": "Shop owner replaced without a code (second factor off)",
   "admin.action.subscription.trial_set": "Trial set",
   "admin.action.subscription.trial_ended": "Trial ended",
   "admin.action.subscription.paid_through_set": "Paid-through date set",

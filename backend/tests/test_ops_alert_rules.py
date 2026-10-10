@@ -65,6 +65,7 @@ HEALTHY = Figures(
     api_healthy=True,
     metrics_readable=True,
     increases=QUIET_COUNTERS,
+    second_factor_off=False,
     telegram="ok",
     dispatch_idle=1.0,
 )
@@ -204,6 +205,8 @@ CONDITIONS: list[tuple[str, Figures, Figures]] = [
     ("TelegramRefusesBot", replace(HEALTHY, telegram="refused"), replace(HEALTHY, telegram="unreachable")),
     ("TelegramUnreachable", replace(HEALTHY, telegram="unreachable"), replace(HEALTHY, telegram="refused")),
     ("DispatcherFailing", replace(HEALTHY, dispatch_idle=301.0), replace(HEALTHY, dispatch_idle=300.0)),
+    # A standing condition: it holds for as long as the API says its second factor is off.
+    ("AdminSecondFactorOff", replace(HEALTHY, second_factor_off=True), HEALTHY),
 ]
 
 

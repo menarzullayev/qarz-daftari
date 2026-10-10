@@ -75,6 +75,8 @@ services:
       QD_SECRETS_KEY: ${QD_SECRETS_KEY:-}
       QD_SECRETS_KEY_PREVIOUS: ${QD_SECRETS_KEY_PREVIOUS:-}
       QD_ADMIN_TG_IDS: ${QD_ADMIN_TG_IDS:-}
+      # `required` unless the env file says `off`; anything else and the API refuses to start.
+      QD_ADMIN_SECOND_FACTOR: ${QD_ADMIN_SECOND_FACTOR:-required}
       QD_METRICS_TOKEN: ${QD_METRICS_TOKEN:-}
       QD_RATE_USER_PER_MINUTE: ${QD_RATE_USER_PER_MINUTE:-120}
       QD_RATE_USER_BURST: ${QD_RATE_USER_BURST:-60}

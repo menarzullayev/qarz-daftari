@@ -450,6 +450,9 @@ CHAT: dict[str, str] = {
     "ops_rule_AdminWithoutSupportAccess": "administrator járdem kiriwisiz dúkan maǵlıwmatın soradı",
     "ops_rule_ShopOwnerReassigned": "administrator dúkan iyesin almastırdı",
     "ops_rule_MetricsMissing": "API kórsetkishlerin oqıp bolmay atır",
+    "ops_rule_AdminSecondFactorOff": (
+        "administratordıń ekinshi faktorı óshirilgen (QD_ADMIN_SECOND_FACTOR=off): sazlawlar kodsız ózgeredi"
+    ),
     "ops_rule_BackupFailed": "sońǵı rezerv nusqa alıw sátsiz tamamlandı",
     "ops_rule_BackupMissing": ("saqlaǵıshta jańa rezerv nusqa joq (26 saatta birewi de, yamasa 8 kúnde tolıq nusqa)"),
     "ops_rule_WalArchiveStale": "WAL arxivi 5 minuttan eski yamasa tekseriwdiń ózi islemey atır",

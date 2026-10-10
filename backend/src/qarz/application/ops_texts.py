@@ -39,6 +39,9 @@ OPS_UZ = {
     "ops_rule_AdminWithoutSupportAccess": "administrator yordam kirishisiz do'kon ma'lumotini so'radi",
     "ops_rule_ShopOwnerReassigned": "administrator do'kon egasini almashtirdi",
     "ops_rule_MetricsMissing": "API ko'rsatkichlarini o'qib bo'lmayapti",
+    "ops_rule_AdminSecondFactorOff": (
+        "administratorning ikkinchi omili o'chirilgan (QD_ADMIN_SECOND_FACTOR=off): sozlamalar kodsiz o'zgaradi"
+    ),
     "ops_rule_BackupFailed": "oxirgi zaxira nusxa olish muvaffaqiyatsiz tugadi",
     "ops_rule_BackupMissing": "omborda yangi zaxira nusxa yo'q (26 soatda birorta ham, yoki 8 kunda to'liq nusxa)",
     "ops_rule_WalArchiveStale": "WAL arxivi 5 daqiqadan eski yoki tekshiruvning o'zi ishlamayapti",
@@ -86,6 +89,9 @@ OPS_RU = {
     "ops_rule_AdminWithoutSupportAccess": "администратор запросил данные магазина без доступа поддержки",
     "ops_rule_ShopOwnerReassigned": "администратор сменил владельца магазина",
     "ops_rule_MetricsMissing": "показатели API не читаются",
+    "ops_rule_AdminSecondFactorOff": (
+        "второй фактор администратора выключен (QD_ADMIN_SECOND_FACTOR=off): настройки меняются без кода"
+    ),
     "ops_rule_BackupFailed": "последнее резервное копирование завершилось неудачей",
     "ops_rule_BackupMissing": "в хранилище нет свежей копии (ни одной за 26 часов или полной за 8 дней)",
     "ops_rule_WalArchiveStale": "архив WAL старше 5 минут, или сама проверка не выполняется",

@@ -549,6 +549,21 @@ def test_security_events_and_errors_are_read_from_the_apis_counters_across_round
     assert stage.time.current - oldest <= rules.SAMPLES_KEPT
 
 
+def test_a_second_factor_that_is_off_is_a_standing_warning_said_again_until_it_is_required_again() -> None:
+    api = FakeApi(metrics={"qd_admin_second_factor_off": 1.0})
+    stage = Stage(sources=Sources(api=api, metrics=True))
+    assert stage.round().told == ["AdminSecondFactorOff"], "said at once"
+    assert "QD_ADMIN_SECOND_FACTOR=off" in stage.texts()[0]
+    assert stage.round(hours=3, minutes=59).told == []
+    assert stage.round(minutes=1).told == ["AdminSecondFactorOff"], "and again while it stays"
+    api.metrics = {"qd_admin_second_factor_off": 0.0}
+    assert stage.round(minutes=1).resolved == ["AdminSecondFactorOff"]
+    # An API that says nothing of it (no administrators' side, or an older release) is not judged.
+    quiet = Stage(sources=Sources(api=FakeApi(metrics={}), metrics=True))
+    quiet.round()
+    assert "AdminSecondFactorOff" not in quiet.store.alerts
+
+
 def test_unreadable_metrics_fire_their_own_rule_and_judge_no_counter() -> None:
     api = FakeApi(metrics=None)
     stage = Stage(sources=Sources(api=api, metrics=True))

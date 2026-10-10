@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     # Telegram identifiers of the people who may be administrators (ADR-017), separated by commas.
     # Empty means nobody: the administrator's API is then not served at all.
     admin_tg_ids: str = Field(default="", repr=False)
+    # The administrators' second factor (ADR-017): "required" (the default) or "off". Off, an administrator
+    # who has a confirmed second factor is asked for no code anywhere: the allow-list and the Telegram
+    # sign-in are then the only controls on the administrators' side, sensitive settings included. Stored
+    # secrets are left as they are, so "required" brings the codes back with no new enrolment. A person
+    # who never confirmed a second factor still enrols once. Any other value refuses to start.
+    admin_second_factor: str = "required"
     # Where files are kept (ADR-020): "filesystem" (development, tests) or "s3" (production). Empty means
     # no store is configured and every file is refused.
     file_store: str = ""
@@ -96,6 +102,13 @@ class Settings(BaseSettings):
                 raise ValueError("QD_ADMIN_TG_IDS must be Telegram user identifiers separated by commas")
             ids.add(int(raw))
         return frozenset(ids)
+
+    def second_factor_required(self) -> bool:
+        """Whether administrators must pass the second factor. Anything other than the two values refuses
+        to start: a typing mistake must not silently mean either of them."""
+        if self.admin_second_factor not in ("required", "off"):
+            raise ValueError('QD_ADMIN_SECOND_FACTOR must be "required" or "off"')
+        return self.admin_second_factor == "required"
 
     def alert_chats(self) -> tuple[int, ...]:
         """The chats of the operations alerts, in the order written. Anything that is not a whole number

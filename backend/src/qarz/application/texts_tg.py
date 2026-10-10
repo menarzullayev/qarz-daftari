@@ -473,6 +473,9 @@ CHAT: dict[str, str] = {
     "ops_rule_AdminWithoutSupportAccess": "администратор бе дастрасии кумак маълумоти мағозаро дархост кард",
     "ops_rule_ShopOwnerReassigned": "администратор соҳиби мағозаро иваз кард",
     "ops_rule_MetricsMissing": "нишондиҳандаҳои API-ро хонда намешавад",
+    "ops_rule_AdminSecondFactorOff": (
+        "омили дуюми администратор хомӯш аст (QD_ADMIN_SECOND_FACTOR=off): танзимот бе код тағйир меёбад"
+    ),
     "ops_rule_BackupFailed": "гирифтани нусхаи эҳтиётии охирин бо нокомӣ анҷом ёфт",
     "ops_rule_BackupMissing": "дар анбор нусхаи эҳтиётии нав нест (дар 26 соат ягонто, ё дар 8 рӯз нусхаи пурра)",
     "ops_rule_WalArchiveStale": "архиви WAL аз 5 дақиқа кӯҳнатар аст ё худи санҷиш кор намекунад",

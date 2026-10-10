@@ -148,6 +148,8 @@ export const tgAdmin: PartialCatalog<typeof uzAdmin> = {
   "admin.settings.rule.chat":
     "Рақами chat ID-и гурӯҳи Telegram (адади манфӣ); агар холӣ монад, хомӯш мешавад.",
   "admin.settings.needsCode": "Барои тағйир додан коди аутентификатор аз нав пурсида мешавад.",
+  "admin.settings.secondFactorOff":
+    "Дар ин насб омили дуюм хомӯш аст: танзимот, аз ҷумла кортҳои пардохт ва нарх, бе код тағйир меёбад.",
   "admin.settings.lastChange": "Тағйири охирин: {date}, администратор {admin}.",
   "admin.settings.reason": "Сабаб (ихтиёрӣ)",
   "admin.settings.code": "Коди аутентификатор",
@@ -212,6 +214,7 @@ export const tgAdmin: PartialCatalog<typeof uzAdmin> = {
   "admin.action.admin.session_closed": "Сессияи админ пӯшида шуд",
   "admin.action.shop.viewed": "Саҳифаи мағоза дида шуд",
   "admin.action.shop.owner_reassigned": "Соҳиби мағоза иваз шуд",
+  "admin.action.shop.owner_reassigned_without_code": "Соҳиби мағоза бе код иваз шуд (омили дуюм хомӯш аст)",
   "admin.action.subscription.trial_set": "Мӯҳлати озмоишӣ муайян шуд",
   "admin.action.subscription.trial_ended": "Озмоиш тамом карда шуд",
   "admin.action.subscription.paid_through_set": "Мӯҳлати пардохтшуда муайян шуд",

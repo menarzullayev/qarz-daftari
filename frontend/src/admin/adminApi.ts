@@ -29,6 +29,8 @@ export type AuthStatus = {
   expiresAt: string | null;
   /** While this instant is in the future no code is looked at. */
   lockedUntil: string | null;
+  /** The server runs with the second factor switched off: no code is asked for anywhere. */
+  secondFactorOff: boolean;
 };
 
 /** `otpauthUri` is the secret, shown once; null when the server answers a repeated request. */
@@ -146,6 +148,8 @@ export type PlatformSettings = {
   values: Readonly<Record<string, SettingValue>>;
   /** The settings whose change asks for a code from the authenticator again. */
   needsCode: readonly string[];
+  /** The server runs with the second factor switched off; `needsCode` is then empty. */
+  secondFactorOff: boolean;
   /** Who last changed a setting and when, for the ones that were ever changed. */
   changed: Readonly<Record<string, { by: string; at: string }>>;
   /**
@@ -186,6 +190,7 @@ function authStatus(value: unknown): AuthStatus {
     elevated: flag(body["elevated"]),
     expiresAt: textOrNull(body["expires_at"]),
     lockedUntil: textOrNull(body["locked_until"]),
+    secondFactorOff: body["second_factor"] === "off",
   };
 }
 
@@ -405,7 +410,7 @@ function platformSettings(value: unknown): PlatformSettings {
     const who = record(entry);
     changed[key] = { by: text(who["by"]), at: text(who["at"]) };
   }
-  return { values, needsCode: list(body["needs_code"], text), changed, planLimited: shopsLimited(body["free_plan_off"] ?? body["free_plan_lowered"]) };
+  return { values, needsCode: list(body["needs_code"], text), secondFactorOff: body["second_factor"] === "off", changed, planLimited: shopsLimited(body["free_plan_off"] ?? body["free_plan_lowered"]) };
 }
 
 /** `shops_limited` of the server's word on a free plan lowered or switched off; null where it says nothing of one. */
@@ -629,17 +634,22 @@ export function createAdminApi(options: {
 
     /**
      * Gives the shop to the person with this Telegram identifier (an owner who lost their account).
-     * Needs a reason and, every time, a fresh code from the authenticator.
+     * Needs a reason and, every time, a fresh code from the authenticator; `code` is null only where
+     * the server runs with the second factor switched off.
      */
     reassignOwner(
       shopId: string,
-      input: { newOwnerTgId: number; reason: string; code: string },
+      input: { newOwnerTgId: number; reason: string; code: string | null },
       idempotencyKey: string,
     ): Promise<AdminShop> {
+      const body: Record<string, unknown> = { new_owner_tg_id: input.newOwnerTgId, reason: input.reason };
+      if (input.code !== null) {
+        body["code"] = input.code;
+      }
       return call(transport, {
         method: "POST",
         path: `${BASE}/shops/${encodeURIComponent(shopId)}/owner`,
-        body: { new_owner_tg_id: input.newOwnerTgId, reason: input.reason, code: input.code },
+        body,
         idempotencyKey,
         read: adminShop,
       });

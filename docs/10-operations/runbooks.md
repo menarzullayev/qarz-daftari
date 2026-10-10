@@ -380,6 +380,46 @@ shop.
 3. The administrator signs in and enrols again; the new secret is shown once.
 4. Review the admin audit for anything done with the lost device.
 
+**The administrators' second factor, on or off (`QD_ADMIN_SECOND_FACTOR`).** A setting of the
+deployment, read from the environment when the API starts: `required`, which is the default and what an
+empty or absent value means in the Compose files, or `off`. Anything else and the API refuses to start.
+The owner chose `off` for his own installation on 2026-10-10, knowing what follows; every file in the
+repository keeps `required`.
+
+The risk, plainly. With `off` nothing but the allow-listed Telegram account stands between a person and
+the administrators' side: whoever takes over that account, or sits at a browser where it is signed in,
+can change the payment cards, the subscription price, the review group and online payment, and give a
+shop to another person, with no code. Money that owners pay for the subscription goes to the cards
+stored there.
+
+What `off` does:
+
+- An administrator whose second factor is confirmed is asked for no code: the panel opens after the
+  Telegram sign-in, sensitive settings are saved without a code, and a shop's owner is replaced with a
+  reason alone. A code that is sent anyway is not looked at and not counted.
+- A person who never confirmed a second factor still enrols once, with one code. The database changes a
+  setting or an owner only for an account that once confirmed one (migrations 0027 and 0028), and no
+  setting of the application reaches that. After that one code, nothing is asked again.
+- Stored secrets, confirmations, failure counts and locks are not touched. Setting `required` again and
+  restarting the API brings everything back as it was, with the same authenticator and no new enrolment.
+- The database also asks for an open admin session before it changes a setting or an owner. The API
+  keeps one open for the administrator, held by no browser; each is in the audit as `admin.session_opened`
+  with `second_factor: off`.
+
+How you know it is off, without reading the env file:
+
+- the API's log at every start: a `warning` line `admin_second_factor_off` (`single-host.sh logs api`);
+- the settings screen of the panel: a notice that does not go away, in every language;
+- the operators' chat: `AdminSecondFactorOff`, at once and again every four hours while it stays
+  (runbook 16); `single-host.sh status` lists it among what is firing;
+- the audit: a setting changed without a code has `second_factor: off` in its details, and a replaced
+  owner has a row `shop.owner_reassigned_without_code` beside the row of the change;
+- `/metrics`: `qd_admin_second_factor_off 1`.
+
+To change it: set the line in the env file of the installation (`QD_ADMIN_SECOND_FACTOR=off`, or
+`required`) and restart the API as for any other setting of the environment (runbook 1). Nothing is
+migrated in either direction.
+
 ## 8. Review and decide subscription receipts; a suspected forged or reused receipt
 
 **When.** An owner sent a receipt for a card transfer. An alert fires when one has waited 24 hours.
@@ -844,6 +884,7 @@ worker` shows the watch's own lines (`ops_alert_firing`, `ops_alert_resolved`, `
 | `ApiDown`, `MetricsMissing`, `ErrorRateHigh` | `single-host.sh logs api`; `single-host.sh status` | Runbook 5. `ErrorRateHigh` right after a release: runbook 1, roll back |
 | `CrossTenantAttempt`, `InvalidSignaturesRepeated`, `AdminSecondFactorRepeated`, `AdminWithoutSupportAccess` | `single-host.sh logs api`, lines with `"event":"security"`: they carry the request identifier, the user and the shop | One `CrossTenantAttempt` is often a member who was just removed. Repeated, or with the others: runbook 11 |
 | `SupportAccessOpened`, `ShopOwnerReassigned` | The admin audit in the panel | Expected now and then; you should be able to name the reason for each (runbooks 9 and 7) |
+| `AdminSecondFactorOff` | The env file of the installation: `QD_ADMIN_SECOND_FACTOR=off`. The API's log has `admin_second_factor_off` at its last start | Not a fault: a standing reminder that administrators are asked for no code (runbook 7). It is repeated every four hours for as long as the setting stays, and taken back when the API runs with `required` again. If nobody decided this, set `required`, restart the API, and read the admin audit for rows with `second_factor: off` |
 | "the worker cannot reach the database" | `single-host.sh status`, `single-host.sh logs db` | Runbook 5, then 14. While it lasts nothing else is watched |
 
 ### When no alert arrives and one should have

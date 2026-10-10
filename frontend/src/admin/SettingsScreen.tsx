@@ -313,6 +313,12 @@ function SettingsForm({ api, loaded }: { api: AdminApi; loaded: PlatformSettings
 
   return (
     <form className="form" onSubmit={onSubmit} noValidate>
+      {/* Always there while the server says so: not a message that can be dismissed or that goes away. */}
+      {saved.secondFactorOff ? (
+        <p className="notice notice--error" role="note" id="settings-second-factor-off">
+          {t("admin.settings.secondFactorOff")}
+        </p>
+      ) : null}
       {/* The queue of the shared catalogue exists only while its switch is on: no link to it before. */}
       {saved.values["catalog_on"] === true ? (
         <p className="actions">

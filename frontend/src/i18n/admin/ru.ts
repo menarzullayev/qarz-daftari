@@ -139,6 +139,8 @@ export const ruAdmin: RuAdminCatalog = {
   "admin.cards.invalid": "Исправьте ошибки в картах.",
   "admin.settings.rule.chat": "Идентификатор чата группы Telegram (отрицательное число); пустое поле очищает значение.",
   "admin.settings.needsCode": "Для изменения снова запрашивается код аутентификатора.",
+  "admin.settings.secondFactorOff":
+    "На этой установке второй фактор выключен: настройки, включая платёжные карты и цену, меняются без кода.",
   "admin.settings.lastChange": "Последнее изменение: {date}, администратор {admin}.",
   "admin.settings.reason": "Причина (необязательно)",
   "admin.settings.code": "Код аутентификатора",
@@ -202,6 +204,7 @@ export const ruAdmin: RuAdminCatalog = {
   "admin.action.admin.session_closed": "Закрыт сеанс администратора",
   "admin.action.shop.viewed": "Просмотрена страница магазина",
   "admin.action.shop.owner_reassigned": "Владелец магазина изменён",
+  "admin.action.shop.owner_reassigned_without_code": "Владелец магазина изменён без кода (второй фактор выключен)",
   "admin.action.subscription.trial_set": "Задан пробный период",
   "admin.action.subscription.trial_ended": "Пробный период завершён",
   "admin.action.subscription.paid_through_set": "Задан оплаченный срок",

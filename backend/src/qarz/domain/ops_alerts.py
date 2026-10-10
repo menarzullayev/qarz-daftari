@@ -149,6 +149,9 @@ RULES: dict[str, Rule] = {
         Rule("TelegramRefusesBot", TELEGRAM, 0),
         Rule("TelegramUnreachable", TELEGRAM, 5 * MINUTE),
         Rule("DispatcherFailing", WORKER, 0, "age"),
+        # A standing condition, not an event: the deployment runs with QD_ADMIN_SECOND_FACTOR=off. It is
+        # said at once and again every REPEAT_AFTER for as long as the setting stays.
+        Rule("AdminSecondFactorOff", METRICS, 0),
     )
 }
 
@@ -168,6 +171,8 @@ F_BACKUP_CHECK = "qd_backup_check_timestamp_seconds"
 F_RESTORE_SUCCESS = "qd_backup_restore_test_last_success_timestamp_seconds"
 F_RESTORE_RUN = "qd_backup_restore_test_last_run_success"
 F_FILES_SUCCESS = "sync.last-success"
+# The API's gauge of its own setting: 1 while administrators are asked for no second factor.
+F_SECOND_FACTOR_OFF = "qd_admin_second_factor_off"
 
 _LABEL = re.compile(r"[A-Za-z0-9_./-]{1,60}")
 _STATUS = re.compile(r'status="(\d{3})"')
@@ -203,6 +208,8 @@ class Figures:
     metrics_readable: bool | None = None
     # (series, window in seconds) -> by how much the counter grew; absent while there are too few samples
     increases: Mapping[tuple[str, int], float] | None = None
+    # The API says it asks administrators for no second factor; None when it says nothing of it.
+    second_factor_off: bool | None = None
     telegram: str | None = None  # "ok", "refused" or "unreachable"
     dispatch_idle: float | None = None  # seconds since the dispatcher last finished a round
 
@@ -405,6 +412,8 @@ def evaluate(figures: Figures) -> dict[str, Finding]:
         found["ApiDown"] = Finding(not figures.api_healthy)
     if figures.metrics_readable is not None:
         found |= _metrics(figures.metrics_readable, figures.increases or {})
+        if figures.second_factor_off is not None:
+            found["AdminSecondFactorOff"] = Finding(figures.second_factor_off)
     if figures.telegram is not None:
         found["TelegramRefusesBot"] = Finding(figures.telegram == "refused")
         found["TelegramUnreachable"] = Finding(figures.telegram == "unreachable")

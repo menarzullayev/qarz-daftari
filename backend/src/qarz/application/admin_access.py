@@ -5,6 +5,16 @@ and they have an administrator account that is active. Even then nothing of the 
 opens until they pass a time-based code, which gives them an admin session: a separate, short-lived
 token, stored hashed, bound to the same user, and never found in the table of ordinary sessions.
 
+A deployment may switch the second factor off (`QD_ADMIN_SECOND_FACTOR=off`, the owner's decision of
+2026-10-10). Then an administrator whose second factor is confirmed is asked for no code anywhere: the
+allow-list and the active account are the whole check, `status` says so, and what is written to the audit
+without a code carries `SECOND_FACTOR_OFF`. Stored secrets and their state are not touched while it is
+off. The database has controls of its own that no setting of the application reaches (migrations 0027
+and 0028): it changes a platform setting or a shop's owner only for an account that once confirmed a
+second factor and that has an admin session open. So the application keeps such a session open for the
+administrator, held by nobody's browser, and a person who never confirmed a second factor still enrols
+once, with one code, before anything opens.
+
 Everyone else is told "not found", exactly as for a route that does not exist. Codes, secrets and tokens
 are never logged and never stored in the audit or in an idempotent response.
 """
@@ -33,6 +43,9 @@ CLOSE_ADMIN_SESSION = admin_operation("admin.session.close")
 ADMIN_SESSION = timedelta(hours=8)
 # What an authenticator application shows beside the code: the product's name.
 ISSUER = brand.NAME
+
+# What the audit detail of an operation carries when it would have needed a code and none was asked for.
+SECOND_FACTOR_OFF = {"second_factor": "off"}
 
 log = logging.getLogger("qarz.admin")
 
@@ -95,16 +108,28 @@ class AdminAccess:
         allowed_tg_ids: Container[int],
         cipher: SecretCipher,
         now: Callable[[], datetime] | None = None,
+        second_factor_required: bool = True,
     ) -> None:
         self._storage = storage
         self._allowed = allowed_tg_ids
         self._cipher = cipher
+        self._required = second_factor_required
         self._now = now or (lambda: datetime.now(UTC))
 
     @property
     def allowed_tg_ids(self) -> Container[int]:
         """The allow-list: who is told about what waits for an administrator."""
         return self._allowed
+
+    @property
+    def second_factor_required(self) -> bool:
+        """False on a deployment that switched the second factor off."""
+        return self._required
+
+    def unverified(self) -> dict[str, str]:
+        """What to add to the audit detail of an operation that needs a code: nothing while codes are
+        asked for, `SECOND_FACTOR_OFF` on a deployment that asks for none."""
+        return {} if self._required else dict(SECOND_FACTOR_OFF)
 
     # --- who may come in --------------------------------------------------------------------------------
 
@@ -129,7 +154,14 @@ class AdminAccess:
             account = await self._candidate(session, user_id)
             # The schema lets an admin session exist only for an administrator account. The account is
             # asked for here all the same: two controls, not one (security review, finding 1).
-            if account is None or await self._expiry(session, user_id, token) is None:
+            if account is None:
+                raise NotFound()
+            if self._required:
+                if await self._expiry(session, user_id, token) is None:
+                    raise NotFound()
+            elif not account.confirmed:
+                # Second factor off: no admin session is asked for. Someone who never confirmed a second
+                # factor is still at the door, where they enrol once (see the module's description).
                 raise NotFound()
 
     async def _expiry(self, session: PlatformSession, user_id: UUID, token: str | None) -> datetime | None:
@@ -144,17 +176,56 @@ class AdminAccess:
         now = self._now()
         async with self._storage.platform() as session:
             account = await self._candidate(session, user_id)
+            if not self._required and account is not None and account.confirmed:
+                await self._hold_session(session, user_id, now)
+                return {
+                    "enrolled": True,
+                    "confirmed": True,
+                    # The panel goes on with no step. Nothing of this ends, and a lock set while codes
+                    # were asked for stops nobody: no code is looked at.
+                    "elevated": True,
+                    "expires_at": None,
+                    "locked_until": None,
+                    "second_factor": "off",
+                }
             expires = None if account is None else await self._expiry(session, user_id, token)
         locked_until = None
         if account is not None and account.locked_until is not None and now < account.locked_until:
             locked_until = account.locked_until
-        return {
+        body = {
             "enrolled": account is not None,
             "confirmed": account is not None and account.confirmed,
             "elevated": expires is not None,
             "expires_at": None if expires is None else expires.isoformat(),
             "locked_until": None if locked_until is None else locked_until.isoformat(),
         }
+        # Off, and this person never confirmed a second factor: the step is the enrolment, once.
+        return body if self._required else {**body, "elevated": False, "expires_at": None, "second_factor": "off"}
+
+    async def _hold_session(self, session: PlatformSession, user_id: UUID, now: datetime) -> None:
+        """Second factor off: keep an admin session open for this administrator, for the database.
+
+        The database changes a setting or an owner only while the administrator has an admin session
+        open. With no code there is no moment at which one is opened, so one is opened here whenever
+        none is, with a token that is thrown away: no browser holds it and no request is let in by it.
+        Each is in the audit like any other, marked as opened without a code.
+        """
+        if await session.admin_session_open(user_id, now):
+            return
+        expires = now + ADMIN_SESSION
+        await session.open_admin_session(
+            token_hash=_hash(secrets.token_urlsafe(32)), user_id=user_id, now=now, expires_at=expires
+        )
+        await session.add_admin_audit(
+            admin_id=user_id,
+            action="admin.session_opened",
+            target_type="admin",
+            target_id=str(user_id),
+            shop_id=None,
+            reason=None,
+            detail={"expires_at": expires.isoformat()} | SECOND_FACTOR_OFF,
+            now=now,
+        )
 
     async def enrol(self, user_id: UUID, request_key: str | None) -> dict[str, Any]:
         """Give an allow-listed person their second factor. The secret is shown once, here.
@@ -200,10 +271,17 @@ class AdminAccess:
 
         Returns the refusal instead of raising it: a wrong code has to be counted, so the transaction
         that counts it must commit. The caller leaves its transaction normally and raises afterwards.
+
+        With the second factor off, for an administrator who has confirmed one, nothing is judged and
+        nothing of the factor is stored: the change is let through, and the caller marks its audit row
+        with `unverified()`. The first code of an enrolment is judged as ever.
         """
         account = await session.admin_account(user_id, for_update=True)
         if account is None:
             return AdminNotEnrolled()
+        if not self._required and account.confirmed:
+            await self._hold_session(session, user_id, self._now())
+            return None
         if code is None:
             return ValidationFailed({"code": "this change needs a current code from your authenticator"})
         now = self._now()
@@ -262,7 +340,7 @@ class AdminAccess:
                     target_id=str(user_id),
                     shop_id=None,
                     reason=None,
-                    detail={"expires_at": expires.isoformat()},
+                    detail={"expires_at": expires.isoformat()} | self.unverified(),
                     now=now,
                 )
         if refusal is not None:

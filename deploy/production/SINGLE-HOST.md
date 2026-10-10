@@ -151,6 +151,7 @@ none of them and refuses to overwrite an existing file.
 | `DEPLOY_R2_ENDPOINT`, `DEPLOY_R2_BUCKET`, `DEPLOY_R2_ACCESS_KEY_ID`, `DEPLOY_R2_SECRET_ACCESS_KEY` | steps 3.1 and 3.2 |
 | `VITE_BOT_USERNAME`, `QD_BOT_TOKEN` | BotFather: the production bot's username without `@`, and its token |
 | `QD_ADMIN_TG_IDS` | the numeric Telegram identifiers of the administrators, separated by commas |
+| `QD_ADMIN_SECOND_FACTOR` | already written as `required`; leave it. `off` switches the administrators' second factor off for this installation: see "The administrators' second factor" in runbook 7 before changing it |
 | `QD_ALERT_CHAT_IDS` | whom the worker's watch tells when something is wrong: your numeric Telegram identifier, or a group's (negative; the bot must be in it). See "What is watched". Empty: nobody is told |
 
 A value that contains `$` goes in single quotes. The file is never committed, never pasted into a chat,
@@ -382,6 +383,7 @@ never a shop, a person, a phone number or an amount.
 | An SMS was refused or given up within the hour; SMS are queued and not accepted | `SmsRefused`, `SmsNotGoingOut` | at once; 30 minutes |
 | The API does not answer `/healthz` inside the Compose network | `ApiDown` | 2 minutes |
 | The API's counters cannot be read | `MetricsMissing` | 3 minutes |
+| The API runs with the administrators' second factor switched off (`QD_ADMIN_SECOND_FACTOR=off`): a standing warning, repeated every four hours while it stays | `AdminSecondFactorOff` | at once |
 | More than 2% of the answers of the last 5 minutes are server errors | `ErrorRateHigh` | 5 minutes |
 | A signed-in user asked about a shop that is not theirs; more than 10 invalid signatures in 10 minutes; more than 5 refused administrator second factors in 15 minutes; a support access was opened; an administrator asked for a shop's data without one; a shop's owner was reassigned | `CrossTenantAttempt`, `InvalidSignaturesRepeated:<kind>`, `AdminSecondFactorRepeated`, `SupportAccessOpened`, `AdminWithoutSupportAccess`, `ShopOwnerReassigned` | at once |
 | The worker cannot reach the database for 2 minutes | a message of its own (the state is kept in the database, so this one is kept in memory) | 2 minutes |

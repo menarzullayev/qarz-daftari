@@ -75,7 +75,7 @@ from qarz.interface.imports_api import IMPORT_UPLOAD, add_import_routes
 from qarz.interface.links_api import add_link_routes
 from qarz.interface.me_api import add_me_routes
 from qarz.interface.network_api import add_network_routes
-from qarz.interface.observability import Metrics, Observe
+from qarz.interface.observability import ADMIN_SECOND_FACTOR_OFF, Metrics, Observe
 from qarz.interface.online_payment_api import add_online_order_routes, add_provider_routes
 from qarz.interface.payment_notices_api import RECEIPT_UPLOAD, add_file_route, add_payment_notice_routes
 from qarz.interface.permissions_api import add_permission_routes
@@ -334,7 +334,9 @@ def create_app(
             if storage is not None:
                 async with storage.platform() as session:
                     gauges = await session.health_figures()
-            return Response(metrics.render(gauges), media_type="text/plain; version=0.0.4")
+            # Only where the administrators' side is served: elsewhere there is no factor to be off.
+            standing = {} if admin is None else {ADMIN_SECOND_FACTOR_OFF: not admin.second_factor_required}
+            return Response(metrics.render(gauges, standing), media_type="text/plain; version=0.0.4")
 
     # Added last, so it is outermost: every request is identified, measured and logged, whatever
     # answers it.

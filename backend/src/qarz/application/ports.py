@@ -1665,6 +1665,10 @@ class PlatformSession(SharedCatalogAdminSession, TerritoryAdminSession, Protocol
         """When the admin session with this hash ends, if it is this user's, not revoked and not over."""
         ...
 
+    async def admin_session_open(self, user_id: UUID, now: datetime) -> bool:
+        """Whether this person has an admin session that is neither revoked nor over, whoever holds it."""
+        ...
+
     async def revoke_admin_sessions(self, user_id: UUID, now: datetime) -> int:
         """End the administrator sessions of this person that are still open. Returns how many it ended."""
         ...

@@ -274,12 +274,15 @@ class OpsWatch:
         healthy: bool | None = None
         readable: bool | None = None
         increases: dict[tuple[str, int], float] | None = None
+        second_factor_off: bool | None = None
         if sources.api is not None:
             healthy = await sources.api.healthy()
             if sources.metrics:
                 counters = await sources.api.counters()
                 readable = counters is not None
                 if counters is not None:
+                    if rules.F_SECOND_FACTOR_OFF in counters:
+                        second_factor_off = counters[rules.F_SECOND_FACTOR_OFF] > 0
                     try:
                         increases = await self._increases(now, rules.counter_series(counters))
                     except Exception:
@@ -298,6 +301,7 @@ class OpsWatch:
             api_healthy=healthy,
             metrics_readable=readable,
             increases=increases,
+            second_factor_off=second_factor_off,
             telegram=await self._channel.state() if self._chats else None,
             dispatch_idle=None if sources.health is None else sources.health.idle_seconds(now),
         )

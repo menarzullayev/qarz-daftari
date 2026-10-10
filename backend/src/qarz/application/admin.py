@@ -10,7 +10,7 @@ Every method here assumes the caller already passed `AdminAccess.require_admin`.
 
 import base64
 import json
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
@@ -437,9 +437,15 @@ class AdminService:
 
     # --- platform settings ------------------------------------------------------------------------------
 
-    @staticmethod
-    async def _settings_body(session: PlatformSession) -> dict[str, Any]:
+    async def _settings_body(self, session: PlatformSession) -> dict[str, Any]:
         stored = await session.platform_settings()
+        if not self._access.second_factor_required:
+            # No change asks for a code on this deployment, and the answer says why.
+            return {**self._settings_values(stored), "needs_code": [], "second_factor": "off"}
+        return self._settings_values(stored)
+
+    @staticmethod
+    def _settings_values(stored: Mapping[str, Any]) -> dict[str, Any]:
         return {
             "settings": {
                 key: platform_settings.effective(key, stored[key][0] if key in stored else None)
@@ -634,7 +640,9 @@ class AdminService:
                         detail={
                             "before": platform_settings.masked(name, old),
                             "after": platform_settings.masked(name, cleaned[name]),
-                        },
+                        }
+                        # A sensitive setting changed with no code says so in its own audit row.
+                        | (self._access.unverified() if platform_settings.needs_code(name) else {}),
                         now=now,
                     )
                     if not stored_now:
