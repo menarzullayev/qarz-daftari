@@ -2828,6 +2828,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shops/{shop_id}/territories/districts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Territories.Districts */
+        get: operations["territories_districts_api_v1_shops__shop_id__territories_districts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/territories/last": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Territories.Last */
+        get: operations["territories_last_api_v1_shops__shop_id__territories_last_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/territories/mahallas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Territories.Mahallas */
+        get: operations["territories_mahallas_api_v1_shops__shop_id__territories_mahallas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/territories/regions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Territories.Regions */
+        get: operations["territories_regions_api_v1_shops__shop_id__territories_regions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shops/{shop_id}/territories/streets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Territories.Streets */
+        get: operations["territories_streets_api_v1_shops__shop_id__territories_streets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/shops/{shop_id}/waiting": {
         parameters: {
             query?: never;
@@ -2936,6 +3021,24 @@ export interface components {
              * Format: uuid
              */
             shop_id: string;
+        };
+        /**
+         * AddressInput
+         * @description Where a customer lives, as identifiers of the territory reference. Only while the platform switch
+         *     `address_on` is on; while it is off a request that carries an address is refused like any other
+         *     request with an unknown field.
+         */
+        AddressInput: {
+            /** District Id */
+            district_id?: string | null;
+            /** Mahalla Id */
+            mahalla_id?: string | null;
+            /** Region Id */
+            region_id: string;
+            /** Street Id */
+            street_id?: string | null;
+            /** Street Text */
+            street_text?: string | null;
         };
         /** Apply */
         Apply: {
@@ -3203,8 +3306,18 @@ export interface components {
             status: string;
             usd?: components["schemas"]["CustomerDollars"] | null;
         };
+        /** CustomerAddress */
+        CustomerAddress: {
+            district: components["schemas"]["Place"] | null;
+            mahalla: components["schemas"]["Place"] | null;
+            region: components["schemas"]["Place"];
+            street: components["schemas"]["Place"] | null;
+            /** Street Text */
+            street_text: string | null;
+        };
         /** CustomerDetail */
         CustomerDetail: {
+            address?: components["schemas"]["CustomerAddress"] | null;
             /** Balance */
             balance: number;
             /** Credit Limit */
@@ -3250,6 +3363,7 @@ export interface components {
         };
         /** CustomerPatch */
         CustomerPatch: {
+            address?: components["schemas"]["AddressInput"] | null;
             /** Credit Limit */
             credit_limit?: number | null;
             /** Credit Limit Usd */
@@ -3541,6 +3655,7 @@ export interface components {
         };
         /** NewCustomer */
         NewCustomer: {
+            address?: components["schemas"]["AddressInput"] | null;
             /** Display Name */
             display_name: string;
             /** Phone */
@@ -3778,6 +3893,13 @@ export interface components {
             price: number;
             /** Unit */
             unit?: string | null;
+        };
+        /** Place */
+        Place: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
         };
         /** Promise */
         Promise: {
@@ -11243,6 +11365,182 @@ export interface operations {
             path: {
                 shop_id: string;
                 access_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    territories_districts_api_v1_shops__shop_id__territories_districts_get: {
+        parameters: {
+            query: {
+                region: string;
+            };
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    territories_last_api_v1_shops__shop_id__territories_last_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    territories_mahallas_api_v1_shops__shop_id__territories_mahallas_get: {
+        parameters: {
+            query: {
+                region: string;
+                district?: string | null;
+                q?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    territories_regions_api_v1_shops__shop_id__territories_regions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    territories_streets_api_v1_shops__shop_id__territories_streets_get: {
+        parameters: {
+            query: {
+                mahalla: string;
+                q?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                shop_id: string;
             };
             cookie?: never;
         };

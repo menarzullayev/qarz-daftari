@@ -36,7 +36,7 @@ from qarz.interface.shops_api import IdempotencyKey
 CurrentUser = Callable[..., Awaitable[UUID]]
 
 
-class CustomerAddress(BaseModel):
+class AddressInput(BaseModel):
     """Where a customer lives, as identifiers of the territory reference. Only while the platform switch
     `address_on` is on; while it is off a request that carries an address is refused like any other
     request with an unknown field."""
@@ -56,7 +56,7 @@ class NewCustomer(BaseModel):
 
     display_name: str = Field(max_length=200)
     phone: str | None = Field(default=None, max_length=40)
-    address: CustomerAddress | None = None
+    address: AddressInput | None = None
 
 
 class CustomerPatch(BaseModel):
@@ -71,7 +71,7 @@ class CustomerPatch(BaseModel):
     # The dollar limit, in whole cents, the same way. Only in a shop that works in dollars.
     credit_limit_usd: int | None = None
     # Absent leaves the address as it is; null removes it; an object replaces it as a whole.
-    address: CustomerAddress | None = None
+    address: AddressInput | None = None
 
 
 def _address(body: NewCustomer | CustomerPatch) -> Any:

@@ -65,6 +65,70 @@
         "title": "ActiveShop",
         "type": "object"
       },
+      "AddressInput": {
+        "additionalProperties": false,
+        "description": "Where a customer lives, as identifiers of the territory reference. Only while the platform switch\n`address_on` is on; while it is off a request that carries an address is refused like any other\nrequest with an unknown field.",
+        "properties": {
+          "district_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "District Id"
+          },
+          "mahalla_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mahalla Id"
+          },
+          "region_id": {
+            "maxLength": 40,
+            "title": "Region Id",
+            "type": "string"
+          },
+          "street_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Street Id"
+          },
+          "street_text": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Street Text"
+          }
+        },
+        "required": [
+          "region_id"
+        ],
+        "title": "AddressInput",
+        "type": "object"
+      },
       "Apply": {
         "additionalProperties": false,
         "properties": {
@@ -910,71 +974,7 @@
         "title": "Customer",
         "type": "object"
       },
-      "CustomerAddress-Input": {
-        "additionalProperties": false,
-        "description": "Where a customer lives, as identifiers of the territory reference. Only while the platform switch\n`address_on` is on; while it is off a request that carries an address is refused like any other\nrequest with an unknown field.",
-        "properties": {
-          "district_id": {
-            "anyOf": [
-              {
-                "maxLength": 40,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "District Id"
-          },
-          "mahalla_id": {
-            "anyOf": [
-              {
-                "maxLength": 40,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mahalla Id"
-          },
-          "region_id": {
-            "maxLength": 40,
-            "title": "Region Id",
-            "type": "string"
-          },
-          "street_id": {
-            "anyOf": [
-              {
-                "maxLength": 40,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Street Id"
-          },
-          "street_text": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Street Text"
-          }
-        },
-        "required": [
-          "region_id"
-        ],
-        "title": "CustomerAddress",
-        "type": "object"
-      },
-      "CustomerAddress-Output": {
+      "CustomerAddress": {
         "additionalProperties": false,
         "properties": {
           "district": {
@@ -1038,7 +1038,7 @@
           "address": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CustomerAddress-Output"
+                "$ref": "#/components/schemas/CustomerAddress"
               },
               {
                 "type": "null"
@@ -1228,7 +1228,7 @@
           "address": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CustomerAddress-Input"
+                "$ref": "#/components/schemas/AddressInput"
               },
               {
                 "type": "null"
@@ -2310,7 +2310,7 @@
           "address": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CustomerAddress-Input"
+                "$ref": "#/components/schemas/AddressInput"
               },
               {
                 "type": "null"

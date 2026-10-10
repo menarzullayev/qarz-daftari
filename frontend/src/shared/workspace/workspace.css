@@ -1089,6 +1089,52 @@ a.row__link:hover .row__name,
   margin: 0 0 var(--qd-space-3);
 }
 
+/*
+ * A customer's address: region and district are plain selects, a mahalla and a street are found by
+ * typing. Every control is as wide as the form and a name wraps, so nothing is wider than a phone
+ * 375 px across.
+ */
+.address {
+  margin-top: var(--qd-space-4);
+  padding-top: var(--qd-space-3);
+  border-top: 1px solid var(--qd-line);
+}
+
+.address > .field:last-of-type {
+  margin-bottom: var(--qd-space-2);
+}
+
+.field > .field__label {
+  display: block;
+  margin-bottom: var(--qd-space-1);
+  color: var(--qd-muted);
+  font: var(--qd-type-small);
+  font-weight: 600;
+}
+
+.address__line {
+  overflow-wrap: anywhere;
+}
+
+.picks--address {
+  max-height: 13rem;
+}
+
+.pick--place {
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+
+.address__chosen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--qd-space-2) var(--qd-space-3);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .pick:disabled {
   cursor: default;
   opacity: 0.55;

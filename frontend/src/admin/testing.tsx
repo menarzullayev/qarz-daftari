@@ -96,6 +96,7 @@ export const platformBody = (overrides: Record<string, unknown> = {}, settings: 
     stock_on: false,
     network_on: false,
     catalog_on: false,
+    address_on: false,
     ...settings,
   },
   needs_code: [

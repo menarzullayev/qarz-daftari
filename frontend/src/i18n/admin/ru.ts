@@ -172,6 +172,7 @@ export const ruAdmin: RuAdminCatalog = {
   "admin.setting.stock_on": "Склад, приход и поставщики включены",
   "admin.setting.network_on": "Сеть между магазинами (партнёры, заказы, накладные) включена",
   "admin.setting.catalog_on": "Общий каталог товаров включён",
+  "admin.setting.address_on": "Адрес клиента (область, район, махалля, улица) включён",
 
   "admin.audit.filters": "Фильтры аудита",
   "admin.audit.at": "Время",

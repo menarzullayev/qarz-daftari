@@ -1,10 +1,19 @@
 import { useEffect, useState, type FormEvent } from "react";
 
 import { useI18n, type Translate } from "../../i18n/I18nProvider";
-import type { ApiError } from "../api";
+import type { AddressInput, ApiError } from "../api";
 import { useSubmit } from "../hooks";
 import { Link, navigate } from "../router";
 import { NotFoundScreen } from "../screens";
+import {
+  AddressFields,
+  addressInput,
+  addressProblem,
+  addressRefusal,
+  draftOf,
+  NO_ADDRESS,
+  type AddressDraft,
+} from "./AddressFields";
 import { useMay, useWorkspace } from "./context";
 import { errorText, FieldError } from "./parts";
 
@@ -39,14 +48,41 @@ export function customerFieldErrors(error: ApiError | null, t: Translate): { nam
 }
 
 function NewCustomer() {
-  const { api } = useWorkspace();
+  const { api, features } = useWorkspace();
   const { t } = useI18n();
+  const withAddress = features?.address === true;
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
-  const { state, submit } = useSubmit((payload: { displayName: string; phone: string | null }, key) =>
-    api.createCustomer(payload, key),
+  // `filled` while the draft is still the place the shop used last, untouched by the person.
+  const [address, setAddress] = useState<{ draft: AddressDraft; filled: boolean; touched: boolean }>({
+    draft: NO_ADDRESS,
+    filled: false,
+    touched: false,
+  });
+  const [addressError, setAddressError] = useState<string | null>(null);
+  const { state, submit } = useSubmit(
+    (payload: { displayName: string; phone: string | null; address?: AddressInput | null }, key) =>
+      api.createCustomer(payload, key),
   );
+
+  // A village shop's customers live in one place: the form starts from the region, district and mahalla
+  // the shop used last. It is only a start, never the street, and never over what the person chose.
+  useEffect(() => {
+    if (!withAddress) {
+      return;
+    }
+    const controller = new AbortController();
+    api.lastAddress(controller.signal).then(
+      (last) => {
+        if (last !== null && !controller.signal.aborted) {
+          setAddress((current) => (current.touched ? current : { draft: draftOf(last), filled: true, touched: false }));
+        }
+      },
+      () => undefined, // without it the form is simply empty
+    );
+    return () => controller.abort();
+  }, [api, withAddress]);
 
   const created = state.status === "done" ? state.result.id : null;
   useEffect(() => {
@@ -60,8 +96,15 @@ function NewCustomer() {
     const displayName = cleanName(name);
     const problem = nameProblem(displayName, t);
     setNameError(problem);
-    if (problem === null) {
-      submit({ displayName, phone: phone.trim() === "" ? null : phone.trim() });
+    const placeProblem = withAddress ? addressProblem(address.draft, t) : null;
+    setAddressError(placeProblem);
+    if (problem === null && placeProblem === null) {
+      submit({
+        displayName,
+        phone: phone.trim() === "" ? null : phone.trim(),
+        // Named only while addresses are on and one was chosen: otherwise the request is what it always was.
+        ...(withAddress ? { address: addressInput(address.draft) } : {}),
+      });
     }
   };
 
@@ -109,6 +152,18 @@ function NewCustomer() {
         />
         <FieldError id="customer-phone-error" message={refused.phone} />
       </div>
+      {withAddress ? (
+        <AddressFields
+          id="customer-address"
+          value={address.draft}
+          note={address.filled ? t("address.last") : null}
+          error={addressError ?? addressRefusal(failure, t)}
+          onChange={(draft) => {
+            setAddress({ draft, filled: false, touched: true });
+            setAddressError(null);
+          }}
+        />
+      ) : null}
       <p className="actions">
         <button type="submit" className="button button--primary" disabled={pending}>
           {pending ? t("state.saving") : t("customers.add")}

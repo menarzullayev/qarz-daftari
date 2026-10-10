@@ -179,6 +179,7 @@ export const uzAdmin = {
   "admin.setting.stock_on": "Ombor, kirim va ta'minotchilar yoqilgan",
   "admin.setting.network_on": "Do'konlar orasidagi tarmoq (hamkorlar, buyurtmalar, yuk xatlari) yoqilgan",
   "admin.setting.catalog_on": "Umumiy mahsulotlar katalogi yoqilgan",
+  "admin.setting.address_on": "Mijoz manzili (viloyat, tuman, mahalla, ko'cha) yoqilgan",
 
   "admin.audit.filters": "Audit filtrlari",
   "admin.audit.at": "Vaqt",

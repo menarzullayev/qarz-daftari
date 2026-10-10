@@ -59,6 +59,7 @@ export const SETTING_RULES: Readonly<Record<string, SettingRule>> = {
   stock_on: { kind: "switch" },
   network_on: { kind: "switch" },
   catalog_on: { kind: "switch" },
+  address_on: { kind: "switch" },
 };
 
 /**

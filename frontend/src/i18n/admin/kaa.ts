@@ -179,6 +179,7 @@ export const kaaAdmin: PartialCatalog<typeof uzAdmin> = {
   "admin.setting.stock_on": "Sklad, kiris hám támiyinlewshiler qosılǵan",
   "admin.setting.network_on": "Dúkanlar arasındaǵı tarmaq (sherikler, buyırtpalar, júk xatları) qosılǵan",
   "admin.setting.catalog_on": "Ulıwma ónimler katalogı qosılǵan",
+  "admin.setting.address_on": "Qarıydar mánzili (wálayat, rayon, máhálle, kóshe) qosılǵan",
 
   "admin.audit.filters": "Audit filtrleri",
   "admin.audit.at": "Waqıt",

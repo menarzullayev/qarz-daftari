@@ -208,7 +208,42 @@ export type ChangedPromise = {
   dateRequest: DateRequest | null;
 };
 
+/** A place of the platform's territory reference, named in the reader's language where it has a name in it. */
+export type Place = { id: string; name: string };
+
+/**
+ * Where a customer lives. Everything below the region is optional; the street is either a street of the
+ * reference (`street`) or what the shop typed (`streetText`), never both.
+ */
+export type CustomerAddress = {
+  region: Place;
+  district: Place | null;
+  mahalla: Place | null;
+  street: Place | null;
+  streetText: string | null;
+};
+
+/** An address as it is sent: identifiers of the reference, and a typed street. */
+export type AddressInput = {
+  regionId: string;
+  districtId: string | null;
+  mahallaId: string | null;
+  streetId: string | null;
+  streetText: string | null;
+};
+
+/**
+ * A mahalla to pick. `districtId` is null where the reference does not know its district; `group` is the
+ * seed's own grouping code, which tells two mahallas of one name apart and says nothing else.
+ */
+export type MahallaOption = Place & { districtId: string | null; group: string | null };
+export type PlaceList<T> = { items: T[]; more: boolean };
+/** The region, district and mahalla the shop used last: where its next customer most likely lives. */
+export type LastAddress = Pick<CustomerAddress, "region" | "district" | "mahalla">;
+
 export type CustomerDetail = Customer & {
+  /** Only while the platform has switched addresses on: null for a customer without one. */
+  address?: CustomerAddress | null;
   overdue: Overdue;
   paymentHistory: PaymentHistory | null;
   entries: Entry[];
@@ -339,6 +374,8 @@ export type CustomerPatch = {
   creditLimit?: number | null;
   /** The dollar limit in cents, the same way; only in a shop that works in dollars. */
   creditLimitUsd?: number | null;
+  /** Only while addresses are on: an address replaces the customer's as a whole, null removes it. */
+  address?: AddressInput | null;
 };
 
 /**
@@ -523,6 +560,8 @@ export type MyShops = {
   networkOn: boolean;
   /** The platform has switched the shared product catalogue on: adding an item then offers picking one. */
   catalogOn: boolean;
+  /** The platform has switched addresses on: a customer may then have one, picked from its territories. */
+  addressOn: boolean;
 };
 
 /** A customer's objection to one entry. `status`: open, declined, withdrawn, or reversed (the shop agreed). */
@@ -845,10 +884,78 @@ function paymentHistory(value: unknown): PaymentHistory | null {
   };
 }
 
+function place(value: unknown): Place {
+  const body = record(value);
+  return { id: text(body["id"]), name: text(body["name"]) };
+}
+
+function placeOrNull(value: unknown): Place | null {
+  return value === null || value === undefined ? null : place(value);
+}
+
+/** Nothing while addresses are off (the answer has no such field); null for a customer without one. */
+function addressOf(value: unknown): Pick<CustomerDetail, "address"> {
+  if (value === undefined) {
+    return {};
+  }
+  if (value === null) {
+    return { address: null };
+  }
+  const body = fieldsOf<Wire["CustomerAddress"]>(value);
+  return {
+    address: {
+      region: place(body.raw("region")),
+      district: placeOrNull(body.raw("district")),
+      mahalla: placeOrNull(body.raw("mahalla")),
+      street: placeOrNull(body.raw("street")),
+      streetText: body.get("street_text", textOrNull),
+    },
+  };
+}
+
+function placeList<T>(item: (element: unknown) => T): (value: unknown) => PlaceList<T> {
+  return (value) => {
+    const body = record(value);
+    // The two short lists (regions, districts) are whole and say nothing of more.
+    return { items: list(body["items"], item), more: body["more"] === true };
+  };
+}
+
+function mahallaOption(value: unknown): MahallaOption {
+  const body = record(value);
+  return { ...place(value), districtId: textOrNull(body["district_id"]), group: textOrNull(body["group"]) };
+}
+
+function lastAddress(value: unknown): LastAddress | null {
+  const given = record(value)["address"];
+  if (given === null || given === undefined) {
+    return null;
+  }
+  const body = record(given);
+  return { region: place(body["region"]), district: placeOrNull(body["district"]), mahalla: placeOrNull(body["mahalla"]) };
+}
+
+function addressBody(address: AddressInput): Wire["AddressInput"] {
+  const body: Wire["AddressInput"] = { region_id: address.regionId };
+  if (address.districtId !== null) {
+    body.district_id = address.districtId;
+  }
+  if (address.mahallaId !== null) {
+    body.mahalla_id = address.mahallaId;
+  }
+  if (address.streetId !== null) {
+    body.street_id = address.streetId;
+  } else if (address.streetText !== null) {
+    body.street_text = address.streetText;
+  }
+  return body;
+}
+
 function customerDetail(value: unknown): CustomerDetail {
   const body = fieldsOf<Wire["CustomerDetail"]>(value);
   return {
     ...customer(value),
+    ...addressOf(body.raw("address")),
     overdue: overdue(body.raw("overdue")),
     paymentHistory: paymentHistory(body.raw("payment_history")),
     entries: list(body.raw("entries"), entry),
@@ -1194,6 +1301,8 @@ export const STOCK_HEADER = "X-Qarz-Stock";
 export const NETWORK_HEADER = "X-Qarz-Network";
 /** The header the server sends with a person's shops while the shared product catalogue is switched on. */
 export const CATALOG_HEADER = "X-Qarz-Catalog";
+/** The header the server sends with a person's shops while a customer's address is switched on. */
+export const ADDRESS_HEADER = "X-Qarz-Address";
 
 function myShops(value: unknown, headers: Headers): MyShops {
   const body = fieldsOf<Wire["MyShops"]>(value);
@@ -1203,6 +1312,7 @@ function myShops(value: unknown, headers: Headers): MyShops {
     stockOn: headers.get(STOCK_HEADER) === "on",
     networkOn: headers.get(NETWORK_HEADER) === "on",
     catalogOn: headers.get(CATALOG_HEADER) === "on",
+    addressOn: headers.get(ADDRESS_HEADER) === "on",
     items: list(body.raw("items"), (element) => {
       const shop = fieldsOf<Wire["MyShop"]>(element);
       const role = shop.raw("role");
@@ -1600,10 +1710,17 @@ function shopApi(transport: Transport, shopId: string) {
       });
     },
 
-    createCustomer(input: { displayName: string; phone: string | null }, idempotencyKey: string): Promise<Customer> {
+    createCustomer(
+      input: { displayName: string; phone: string | null; address?: AddressInput | null },
+      idempotencyKey: string,
+    ): Promise<Customer> {
       const body: Wire["NewCustomer"] = { display_name: input.displayName };
       if (input.phone !== null) {
         body.phone = input.phone;
+      }
+      // Sent only when there is one: while addresses are off the server does not know the field.
+      if (input.address !== undefined && input.address !== null) {
+        body.address = addressBody(input.address);
       }
       return call(transport, { method: "POST", path: `${base}/customers`, body, idempotencyKey, read: customer });
     },
@@ -1639,6 +1756,9 @@ function shopApi(transport: Transport, shopId: string) {
           throw new RangeError("a dollar credit limit must be a whole number of cents");
         }
         body.credit_limit_usd = patch.creditLimitUsd;
+      }
+      if (patch.address !== undefined) {
+        body.address = patch.address === null ? null : addressBody(patch.address); // null removes the address
       }
       return call(transport, {
         method: "PATCH",
@@ -1863,6 +1983,53 @@ function shopApi(transport: Transport, shopId: string) {
         body["unit"] = input.unit;
       }
       return call(transport, { method: "POST", path: `${base}/catalog`, body, idempotencyKey, read: catalogItem });
+    },
+
+    /** The regions of the territory reference, by name. Only while addresses are switched on. */
+    listRegions(signal?: AbortSignal): Promise<PlaceList<Place>> {
+      return call(transport, { method: "GET", path: `${base}/territories/regions`, signal, read: placeList(place) });
+    },
+
+    listDistricts(regionId: string, signal?: AbortSignal): Promise<PlaceList<Place>> {
+      return call(transport, {
+        method: "GET",
+        path: `${base}/territories/districts`,
+        query: { region: regionId },
+        signal,
+        read: placeList(place),
+      });
+    },
+
+    /**
+     * Mahallas of a region whose names hold every typed word. With a district: that district's own, and
+     * those whose district the reference does not know.
+     */
+    searchMahallas(
+      params: { regionId: string; districtId: string | null; q: string; limit?: number },
+      signal?: AbortSignal,
+    ): Promise<PlaceList<MahallaOption>> {
+      return call(transport, {
+        method: "GET",
+        path: `${base}/territories/mahallas`,
+        query: { region: params.regionId, district: params.districtId, q: params.q, limit: params.limit?.toString() },
+        signal,
+        read: placeList(mahallaOption),
+      });
+    },
+
+    searchStreets(params: { mahallaId: string; q: string; limit?: number }, signal?: AbortSignal): Promise<PlaceList<Place>> {
+      return call(transport, {
+        method: "GET",
+        path: `${base}/territories/streets`,
+        query: { mahalla: params.mahallaId, q: params.q, limit: params.limit?.toString() },
+        signal,
+        read: placeList(place),
+      });
+    },
+
+    /** Where the shop's last addressed customer lives, without the street; null when it has set none. */
+    lastAddress(signal?: AbortSignal): Promise<LastAddress | null> {
+      return call(transport, { method: "GET", path: `${base}/territories/last`, signal, read: lastAddress });
     },
 
     /** A page of the shared catalogue: items whose names hold every typed word, in one category or all. */
