@@ -71,6 +71,15 @@ def _suggest_barcode(owner: psycopg.Connection, shop: Shop, shared: uuid.UUID, c
     return suggestion
 
 
+def _settle_the_queue(owner: psycopg.Connection) -> None:
+    """Nothing waits any more. The test database is one for the whole session and the queue is read a
+    page at a time, oldest first: what other tests left waiting would otherwise fill the page."""
+    owner.execute(
+        "UPDATE shared_suggestion SET status = 'rejected', decided_by = gen_random_uuid(), decided_at = now() "
+        "WHERE status = 'pending'"
+    )
+
+
 def _decide(
     session: AppSession, admin: uuid.UUID, suggestion: uuid.UUID, approve: bool = True, **names: Any
 ) -> tuple[Any, ...]:
@@ -277,6 +286,7 @@ def test_a_shop_holds_a_catalogue_item_once(owner: psycopg.Connection, shop_a: S
 def test_the_queue_is_empty_for_anyone_who_is_not_an_active_administrator(
     owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop
 ) -> None:
+    _settle_the_queue(owner)
     suggestion = _suggest_item(owner, shop_a, f"Tuz {uuid.uuid4().hex[:8]}")
     admin, disabled = _admin(owner), _admin(owner, "disabled")
     with as_admin(None) as conn:
@@ -291,6 +301,7 @@ def test_the_queue_is_empty_for_anyone_who_is_not_an_active_administrator(
 def test_the_queue_never_says_which_shop_a_suggestion_came_from(
     owner: psycopg.Connection, as_admin: AppSession, shop_a: Shop, shop_b: Shop
 ) -> None:
+    _settle_the_queue(owner)
     name = f"Makaron {uuid.uuid4().hex[:8]}"
     mine = _suggest_item(owner, shop_a, name, barcode="4780000000021")
     _suggest_item(owner, shop_b, name)
